@@ -3,11 +3,7 @@ export const runtime = "nodejs";
 import { NextResponse } from "next/server";
 import OpenAI from "openai";
 import { Client } from "pg";
-
-// Use pdf-parse and ensure it’s called in Node runtime only
-import * as pdfParseModule from "pdf-parse";
-
-const pdfParse = (pdfParseModule as any).default || pdfParseModule;
+import pdfParse from "pdf-parse"; // ✅ fixed import (no .default, no wildcard)
 
 const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY!,
@@ -24,6 +20,7 @@ export async function POST(req: Request) {
       return NextResponse.json({ ok: false, error: "No file uploaded" }, { status: 400 });
     }
 
+    // ✅ Read the file buffer
     const buffer = Buffer.from(await file.arrayBuffer());
     const parsed = await pdfParse(buffer);
     const text = parsed.text?.trim() || "";
@@ -32,6 +29,7 @@ export async function POST(req: Request) {
       return NextResponse.json({ ok: false, error: "PDF has no readable text" }, { status: 400 });
     }
 
+    // ✅ Use OpenAI to extract structured COI data
     const completion = await openai.chat.completions.create({
       model: "gpt-4o-mini",
       temperature: 0,
@@ -39,12 +37,12 @@ export async function POST(req: Request) {
         {
           role: "system",
           content:
-            "You are an expert at reading Certificates of Insurance (COIs). Extract structured insurance data and return valid JSON only.",
+            "You read Certificates of Insurance (COIs) and return ONLY valid JSON containing the requested fields.",
         },
         {
           role: "user",
           content: `
-Extract the following fields:
+Extract and return this JSON only:
 {
   "carrier": "",
   "policy_number": "",
@@ -60,6 +58,7 @@ ${text.slice(0, 8000)}
       ],
     });
 
+    // ✅ Parse OpenAI output safely
     const raw = completion.choices[0]?.message?.content ?? "{}";
     let extracted: any = {};
 
@@ -70,6 +69,7 @@ ${text.slice(0, 8000)}
       extracted = match ? JSON.parse(match[0]) : { error: "Failed to parse model output", raw };
     }
 
+    // ✅ Store results in Neon
     db = new Client({
       connectionString: process.env.DATABASE_URL!,
       ssl: { rejectUnauthorized: false },
