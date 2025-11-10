@@ -99,10 +99,10 @@ export async function POST(req: NextRequest) {
     await client.end();
 
     return NextResponse.json({ ok: true, extracted }, { status: 200 });
-  } catch (err: any) {
-    console.error("❌ Error parsing COI:", err);
+    } catch (err: any) {
+    console.error("❌ Full server error:", err);
     return NextResponse.json(
-      { ok: false, error: err.message },
+      { ok: false, error: err?.message || "Unknown server error", stack: err?.stack },
       { status: 500 }
     );
   }
