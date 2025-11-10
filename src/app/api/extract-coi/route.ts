@@ -3,9 +3,11 @@ export const runtime = "nodejs";
 import { NextResponse } from "next/server";
 import OpenAI from "openai";
 import { Client } from "pg";
-import * as pdfjsLib from "pdfjs-dist/legacy/build/pdf.js";
 
-// Required for Vercel runtime to load PDF.js
+// IMPORTANT: pdfjs-dist v3.x exposes these paths:
+import * as pdfjsLib from "pdfjs-dist/legacy/build/pdf.js";
+// Worker file is present in v3.x;
+// In Node we still have to set a value to avoid DOM/canvas complaints.
 (pdfjsLib as any).GlobalWorkerOptions.workerSrc = require("pdfjs-dist/build/pdf.worker.js");
 
 const openai = new OpenAI({
@@ -23,9 +25,9 @@ export async function POST(req: Request) {
       return NextResponse.json({ ok: false, error: "No file uploaded" }, { status: 400 });
     }
 
-    // ✅ Extract text using PDF.js instead of pdf-parse
+    // ---- Extract text with PDF.js (server-safe, no DOM) ----
     const buffer = Buffer.from(await file.arrayBuffer());
-    const pdf = await pdfjsLib.getDocument({ data: buffer }).promise;
+    const pdf = await (pdfjsLib as any).getDocument({ data: buffer }).promise;
 
     let text = "";
     for (let i = 1; i <= pdf.numPages; i++) {
@@ -39,7 +41,7 @@ export async function POST(req: Request) {
       return NextResponse.json({ ok: false, error: "PDF has no readable text" }, { status: 400 });
     }
 
-    // 🧠 Send extracted text to OpenAI for structured extraction
+    // ---- Extract fields with OpenAI ----
     const completion = await openai.chat.completions.create({
       model: "gpt-4o-mini",
       temperature: 0,
@@ -47,12 +49,12 @@ export async function POST(req: Request) {
         {
           role: "system",
           content:
-            "You are an expert at reading Certificates of Insurance (COIs). Extract key fields as clean JSON only.",
+            "You read Certificates of Insurance (COIs) and return only strict JSON of requested fields.",
         },
         {
           role: "user",
           content: `
-Extract these fields:
+Return JSON only with these fields:
 {
   "carrier": "",
   "policy_number": "",
@@ -70,7 +72,6 @@ ${text.slice(0, 8000)}
 
     const raw = completion.choices[0]?.message?.content ?? "{}";
     let extracted: any = {};
-
     try {
       extracted = JSON.parse(raw);
     } catch {
@@ -78,18 +79,15 @@ ${text.slice(0, 8000)}
       extracted = match ? JSON.parse(match[0]) : { error: "Failed to parse model output", raw };
     }
 
-    // ✅ Save to Neon DB
+    // ---- Save to Neon ----
     db = new Client({
       connectionString: process.env.DATABASE_URL!,
       ssl: { rejectUnauthorized: false },
     });
-
     await db.connect();
     await db.query(
-      `
-      INSERT INTO coi_records (carrier, policy_number, expiration_date, coverage_type, named_insured)
-      VALUES ($1, $2, $3, $4, $5);
-      `,
+      `INSERT INTO coi_records (carrier, policy_number, expiration_date, coverage_type, named_insured)
+       VALUES ($1, $2, $3, $4, $5);`,
       [
         extracted.carrier || "",
         extracted.policy_number || "",
