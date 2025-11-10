@@ -5,7 +5,6 @@ import React, { useState } from "react";
 export default function UploadCOIPage() {
   const [file, setFile] = useState<File | null>(null);
   const [message, setMessage] = useState<string>("");
-  const [isLoading, setIsLoading] = useState(false);
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     setFile(e.target.files?.[0] || null);
@@ -14,11 +13,10 @@ export default function UploadCOIPage() {
 
   const handleUpload = async () => {
     if (!file) {
-      setMessage("❌ Please choose a PDF file first.");
+      setMessage("❌ Please select a PDF file.");
       return;
     }
 
-    setIsLoading(true);
     setMessage("⏳ Uploading...");
 
     try {
@@ -30,23 +28,21 @@ export default function UploadCOIPage() {
         body: formData,
       });
 
-      // Handle both JSON and text safely
       const text = await res.text();
-      let data = {};
+      let data;
       try {
         data = JSON.parse(text);
       } catch {
-        console.error("Response not valid JSON:", text);
+        throw new Error("Server did not return valid JSON");
       }
 
-      if (!res.ok) throw new Error((data as any)?.error || "Upload failed");
+      if (!res.ok) throw new Error(data.error || "Upload failed");
 
-      setMessage(`✅ Success: ${(data as any)?.message || "COI processed"}`);
+      setMessage(`✅ ${data.message || "COI extracted successfully!"}`);
+      console.log("Extraction result:", data.aiResult);
     } catch (err: any) {
       console.error("Upload error:", err);
-      setMessage(`❌ Error: ${err.message}`);
-    } finally {
-      setIsLoading(false);
+      setMessage(`❌ ${err.message}`);
     }
   };
 
@@ -59,17 +55,14 @@ export default function UploadCOIPage() {
           type="file"
           accept="application/pdf"
           onChange={handleFileChange}
-          className="mb-4 w-full text-center text-gray-300"
+          className="mb-4 w-full text-gray-300"
         />
 
         <button
           onClick={handleUpload}
-          disabled={isLoading}
-          className={`w-full py-3 rounded-lg font-semibold transition ${
-            isLoading ? "bg-blue-400 cursor-not-allowed" : "bg-blue-600 hover:bg-blue-700"
-          }`}
+          className="w-full py-3 bg-blue-600 hover:bg-blue-700 rounded-lg font-semibold transition"
         >
-          {isLoading ? "Processing..." : "Upload & Extract"}
+          Upload & Extract
         </button>
 
         {message && (
