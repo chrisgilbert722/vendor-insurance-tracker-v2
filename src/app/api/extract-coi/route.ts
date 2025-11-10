@@ -7,55 +7,85 @@ const openai = new OpenAI({
 
 export async function POST(req: Request) {
   try {
-    // 🧾 Get uploaded file
     const form = await req.formData();
     const file = form.get("file") as File | null;
 
     if (!file) {
-      return NextResponse.json({ ok: false, error: "No file uploaded" }, { status: 400 });
+      return NextResponse.json(
+        { ok: false, error: "No file uploaded" },
+        { status: 400 }
+      );
     }
 
-    // 🧠 Load pdf-parse dynamically (avoids build import issues)
-    const { default: pdfParse } = await import("pdf-parse");
-
-    // 📄 Convert PDF to text
+    // Read uploaded file into Buffer
     const buffer = Buffer.from(await file.arrayBuffer());
-    const pdfData = await pdfParse(buffer);
-    const text = pdfData.text || "";
 
-    if (!text.trim()) {
-      return NextResponse.json({ ok: false, error: "PDF is empty or unreadable" }, { status: 400 });
+    // Dynamically import pdf-parse with a safe fallback (ESM/CJS agnostic)
+    const pdfModule: any = await import("pdf-parse");
+    const pdfParse: (buf: Buffer) => Promise<{ text: string }> =
+      (pdfModule?.default ?? pdfModule) as any;
+
+    // Extract text (assumes PDFs for now; if not a PDF, still try)
+    const parsed = await pdfParse(buffer);
+    const text = parsed?.text?.trim() ?? "";
+
+    if (!text) {
+      return NextResponse.json(
+        { ok: false, error: "PDF appears empty or could not be read" },
+        { status: 400 }
+      );
     }
 
-    // 🔍 Ask OpenAI to extract structured data
-    const aiResponse = await openai.chat.completions.create({
+    // Ask OpenAI to extract structured COI fields
+    const completion = await openai.chat.completions.create({
       model: "gpt-4o-mini",
+      temperature: 0,
       messages: [
         {
           role: "system",
           content:
-            "You are an assistant that extracts structured insurance details from PDF text clearly and accurately.",
+            "You extract structured fields from Certificates of Insurance (COI). Respond ONLY with valid JSON.",
         },
         {
           role: "user",
-          content: `Extract and summarize key COI fields from this text:\n${text}`,
+          content: `
+Extract the following fields from this COI text. If missing, return an empty string for that field.
+
+Return JSON in exactly this shape (no markdown, no commentary):
+{
+  "carrier": "",
+  "policy_number": "",
+  "expiration_date": "",
+  "coverage_type": "",
+  "named_insured": ""
+}
+
+COI TEXT:
+${text.slice(0, 8000)}
+          `.trim(),
         },
       ],
-      temperature: 0.2,
     });
 
-    const extracted =
-      aiResponse.choices[0]?.message?.content?.trim() || "No structured data extracted.";
+    const raw = completion.choices[0]?.message?.content ?? "{}";
 
-    return NextResponse.json({
-      ok: true,
-      message: "COI extraction complete",
-      extracted,
-    });
-  } catch (err: any) {
-    console.error("❌ COI Extraction Error:", err);
+    let extracted: any = {};
+    try {
+      extracted = JSON.parse(raw);
+    } catch {
+      // If model gave extra annotations, try to salvage JSON block
+      const match = raw.match(/\{[\s\S]*\}/);
+      extracted = match ? JSON.parse(match[0]) : { error: "Failed to parse model output", raw };
+    }
+
     return NextResponse.json(
-      { ok: false, error: err.message || "Server error" },
+      { ok: true, extracted, time: new Date().toISOString() },
+      { status: 200 }
+    );
+  } catch (err: any) {
+    console.error("❌ extract-coi error:", err);
+    return NextResponse.json(
+      { ok: false, error: err?.message ?? "Server error" },
       { status: 500 }
     );
   }
@@ -64,6 +94,7 @@ export async function POST(req: Request) {
 export async function GET() {
   return NextResponse.json({
     ok: true,
-    message: "✅ Extract-COI route is active and ready",
+    message: "✅ /api/extract-coi is live. POST a FormData { file: <PDF> }.",
+    time: new Date().toISOString(),
   });
 }
