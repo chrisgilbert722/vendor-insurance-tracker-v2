@@ -1,10 +1,8 @@
-export const runtime = "nodejs"; // Force full Node.js runtime to fix DOMMatrix errors
+export const runtime = "nodejs"; // Force full Node.js runtime
 
 import { NextResponse } from "next/server";
 import OpenAI from "openai";
 import { Client } from "pg";
-// ✅ Node-only import avoids DOMMatrix issue
-import pdfParse from "pdf-parse/lib/pdf-parse.js";
 
 const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY!,
@@ -21,10 +19,13 @@ export async function POST(req: Request) {
       return NextResponse.json({ ok: false, error: "No file uploaded" }, { status: 400 });
     }
 
-    // ✅ Convert PDF buffer to text
+    // ✅ Dynamically import pdf-parse inside Node environment
+    const pdfParse = (await import("pdf-parse")).default || (await import("pdf-parse"));
+
+    // Convert uploaded PDF to text
     const buffer = Buffer.from(await file.arrayBuffer());
-    const parsed = await pdfParse(buffer);
-    const text = parsed.text?.trim() || "";
+    const pdfData = await pdfParse(buffer);
+    const text = pdfData.text?.trim() || "";
 
     if (!text) {
       return NextResponse.json({ ok: false, error: "PDF has no readable text" }, { status: 400 });
@@ -38,12 +39,12 @@ export async function POST(req: Request) {
         {
           role: "system",
           content:
-            "You are an expert in reading Certificates of Insurance (COI). Extract structured insurance data and return valid JSON only.",
+            "You are an expert at reading Certificates of Insurance (COIs). Extract key details in JSON only.",
         },
         {
           role: "user",
           content: `
-Extract these fields from this COI text:
+Extract the following fields:
 {
   "carrier": "",
   "policy_number": "",
@@ -51,6 +52,7 @@ Extract these fields from this COI text:
   "coverage_type": "",
   "named_insured": ""
 }
+
 COI TEXT:
 ${text.slice(0, 8000)}
           `.trim(),
@@ -59,8 +61,8 @@ ${text.slice(0, 8000)}
     });
 
     const raw = completion.choices[0]?.message?.content ?? "{}";
-
     let extracted: any = {};
+
     try {
       extracted = JSON.parse(raw);
     } catch {
@@ -68,13 +70,13 @@ ${text.slice(0, 8000)}
       extracted = match ? JSON.parse(match[0]) : { error: "Failed to parse model output", raw };
     }
 
-    // ✅ Connect to Neon and save record
+    // ✅ Save extracted data to Neon (Postgres)
     db = new Client({
       connectionString: process.env.DATABASE_URL!,
       ssl: { rejectUnauthorized: false },
     });
-    await db.connect();
 
+    await db.connect();
     await db.query(
       `
       INSERT INTO coi_records (carrier, policy_number, expiration_date, coverage_type, named_insured)
@@ -88,12 +90,11 @@ ${text.slice(0, 8000)}
         extracted.named_insured || "",
       ]
     );
-
     await db.end();
 
     return NextResponse.json({
       ok: true,
-      message: "✅ COI extracted and saved to database",
+      message: "✅ COI extracted and saved successfully!",
       extracted,
       time: new Date().toISOString(),
     });
@@ -110,7 +111,8 @@ ${text.slice(0, 8000)}
 export async function GET() {
   return NextResponse.json({
     ok: true,
-    message: "✅ /api/extract-coi is live. POST a FormData { file: <PDF> } to extract COI details.",
+    message:
+      "✅ /api/extract-coi is live. POST a FormData { file: <PDF> } to extract and save COI details.",
     time: new Date().toISOString(),
   });
 }
