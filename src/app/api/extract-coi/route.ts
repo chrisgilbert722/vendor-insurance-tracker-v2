@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import OpenAI from "openai";
 import { Client } from "pg";
+import pdf from "pdf-parse";
 
 const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY!,
@@ -15,15 +16,23 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ ok: false, error: "No file uploaded" }, { status: 400 });
     }
 
-    // Convert uploaded file to text
+    // Convert uploaded file to buffer
     const buffer = Buffer.from(await file.arrayBuffer());
-    const text = buffer.toString("utf-8");
+    let text = "";
 
-    // Ask GPT to extract COI details
+    // Handle PDF vs text files
+    if (file.type === "application/pdf" || file.name.endsWith(".pdf")) {
+      const parsed = await pdf(buffer);
+      text = parsed.text;
+    } else {
+      text = buffer.toString("utf-8");
+    }
+
+    // Build the AI prompt
     const prompt = `
       You are an insurance document parser.
       Extract key details from this Certificate of Insurance text.
-      Return a JSON object with:
+      Return a valid JSON object with:
       {
         "carrier": "",
         "policy_number": "",
@@ -31,8 +40,9 @@ export async function POST(req: NextRequest) {
         "coverage_type": "",
         "named_insured": ""
       }
+
       Text:
-      """${text}"""
+      """${text.slice(0, 8000)}"""  // limit to first 8000 chars for token safety
     `;
 
     const completion = await openai.chat.completions.create({
@@ -44,12 +54,12 @@ export async function POST(req: NextRequest) {
     const raw = completion.choices[0].message?.content || "{}";
     const extracted = JSON.parse(raw);
 
-    // Save extracted data to Neon DB
+    // Save results to Neon DB
     const client = new Client({ connectionString: process.env.DATABASE_URL });
     await client.connect();
 
-    await client.query(
-      `CREATE TABLE IF NOT EXISTS certificates (
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS certificates (
         id SERIAL PRIMARY KEY,
         carrier TEXT,
         policy_number TEXT,
@@ -57,8 +67,8 @@ export async function POST(req: NextRequest) {
         coverage_type TEXT,
         named_insured TEXT,
         uploaded_at TIMESTAMP DEFAULT NOW()
-      )`
-    );
+      );
+    `);
 
     await client.query(
       `INSERT INTO certificates (carrier, policy_number, expiration_date, coverage_type, named_insured)
@@ -80,4 +90,4 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ ok: false, error: err.message }, { status: 500 });
   }
 }
- 
+
