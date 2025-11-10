@@ -1,19 +1,18 @@
-export const runtime = "nodejs"; // 👈 Force Node.js runtime (fixes DOMMatrix issue)
+export const runtime = "nodejs"; // Force full Node.js runtime to fix DOMMatrix errors
 
 import { NextResponse } from "next/server";
 import OpenAI from "openai";
 import { Client } from "pg";
+// ✅ Node-only import avoids DOMMatrix issue
+import pdfParse from "pdf-parse/lib/pdf-parse.js";
 
 const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY!,
 });
 
-const db = new Client({
-  connectionString: process.env.DATABASE_URL!,
-  ssl: { rejectUnauthorized: false },
-});
-
 export async function POST(req: Request) {
+  let db: Client | null = null;
+
   try {
     const form = await req.formData();
     const file = form.get("file") as File | null;
@@ -22,21 +21,16 @@ export async function POST(req: Request) {
       return NextResponse.json({ ok: false, error: "No file uploaded" }, { status: 400 });
     }
 
+    // ✅ Convert PDF buffer to text
     const buffer = Buffer.from(await file.arrayBuffer());
-
-    // Dynamically import pdf-parse (works in Node.js runtime)
-    const pdfModule: any = await import("pdf-parse");
-    const pdfParse = pdfModule.default || pdfModule;
     const parsed = await pdfParse(buffer);
-    const text = parsed?.text?.trim() ?? "";
+    const text = parsed.text?.trim() || "";
 
     if (!text) {
-      return NextResponse.json(
-        { ok: false, error: "PDF appears empty or unreadable" },
-        { status: 400 }
-      );
+      return NextResponse.json({ ok: false, error: "PDF has no readable text" }, { status: 400 });
     }
 
+    // ✅ Use OpenAI to extract structured COI data
     const completion = await openai.chat.completions.create({
       model: "gpt-4o-mini",
       temperature: 0,
@@ -44,14 +38,12 @@ export async function POST(req: Request) {
         {
           role: "system",
           content:
-            "You extract structured fields from Certificates of Insurance (COI). Respond ONLY with valid JSON.",
+            "You are an expert in reading Certificates of Insurance (COI). Extract structured insurance data and return valid JSON only.",
         },
         {
           role: "user",
           content: `
-Extract the following fields from this COI text. If missing, return an empty string for that field.
-
-Return JSON in exactly this shape (no markdown, no commentary):
+Extract these fields from this COI text:
 {
   "carrier": "",
   "policy_number": "",
@@ -59,7 +51,6 @@ Return JSON in exactly this shape (no markdown, no commentary):
   "coverage_type": "",
   "named_insured": ""
 }
-
 COI TEXT:
 ${text.slice(0, 8000)}
           `.trim(),
@@ -77,8 +68,13 @@ ${text.slice(0, 8000)}
       extracted = match ? JSON.parse(match[0]) : { error: "Failed to parse model output", raw };
     }
 
-    // Save to Neon DB
+    // ✅ Connect to Neon and save record
+    db = new Client({
+      connectionString: process.env.DATABASE_URL!,
+      ssl: { rejectUnauthorized: false },
+    });
     await db.connect();
+
     await db.query(
       `
       INSERT INTO coi_records (carrier, policy_number, expiration_date, coverage_type, named_insured)
@@ -92,17 +88,20 @@ ${text.slice(0, 8000)}
         extracted.named_insured || "",
       ]
     );
+
     await db.end();
 
-    return NextResponse.json(
-      { ok: true, extracted, message: "✅ Saved to database", time: new Date().toISOString() },
-      { status: 200 }
-    );
+    return NextResponse.json({
+      ok: true,
+      message: "✅ COI extracted and saved to database",
+      extracted,
+      time: new Date().toISOString(),
+    });
   } catch (err: any) {
     console.error("❌ extract-coi error:", err);
-    await db.end().catch(() => {});
+    if (db) await db.end().catch(() => {});
     return NextResponse.json(
-      { ok: false, error: err?.message ?? "Server error" },
+      { ok: false, error: err?.message ?? "Internal Server Error" },
       { status: 500 }
     );
   }
@@ -111,7 +110,7 @@ ${text.slice(0, 8000)}
 export async function GET() {
   return NextResponse.json({
     ok: true,
-    message: "✅ /api/extract-coi is live. POST a FormData { file: <PDF> }.",
+    message: "✅ /api/extract-coi is live. POST a FormData { file: <PDF> } to extract COI details.",
     time: new Date().toISOString(),
   });
 }
