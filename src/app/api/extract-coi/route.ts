@@ -1,8 +1,8 @@
 import { NextResponse } from "next/server";
 import OpenAI from "openai";
-import { parsePdfOnServer } from "@/lib/server/parsePdf";
+import { parsePdf } from "@/lib/server/pdfParser";
 
-export const runtime = "nodejs"; // ✅ never edge
+export const runtime = "nodejs"; // 👈 ensures Node environment only
 
 export async function POST(req: Request) {
   try {
@@ -11,12 +11,11 @@ export async function POST(req: Request) {
     if (!file)
       return NextResponse.json({ ok: false, error: "No file uploaded" }, { status: 400 });
 
-    // ✅ parse only on server
     const buffer = Buffer.from(await file.arrayBuffer());
-    const pdfData = await parsePdfOnServer(buffer);
+    const pdfData = await parsePdf(buffer);
     const text = pdfData.text || "";
     if (!text.trim())
-      return NextResponse.json({ ok: false, error: "No readable text in PDF" }, { status: 400 });
+      return NextResponse.json({ ok: false, error: "Empty or unreadable PDF" }, { status: 400 });
 
     const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY! });
     const completion = await openai.chat.completions.create({
@@ -25,7 +24,7 @@ export async function POST(req: Request) {
         {
           role: "system",
           content:
-            "Extract the insurance company name, policy number, and expiration date from this COI text.",
+            "Extract the insurance company name, policy number, and expiration date from this certificate of insurance text.",
         },
         { role: "user", content: text },
       ],
@@ -33,15 +32,15 @@ export async function POST(req: Request) {
 
     const result = completion.choices[0]?.message?.content ?? "No structured data found.";
     return NextResponse.json({ ok: true, result });
-  } catch (e: any) {
-    console.error("❌ Server error:", e);
-    return NextResponse.json({ ok: false, error: e.message }, { status: 500 });
+  } catch (err: any) {
+    console.error("❌ Server error:", err);
+    return NextResponse.json({ ok: false, error: err.message || "Internal server error" });
   }
 }
 
 export async function GET() {
   return NextResponse.json({
     ok: true,
-    message: "✅ /api/extract-coi ready. POST FormData with { file: <PDF> }.",
+    message: "✅ /api/extract-coi active. POST FormData { file: <PDF> }",
   });
 }
