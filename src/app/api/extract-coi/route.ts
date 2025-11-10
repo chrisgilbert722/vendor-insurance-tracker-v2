@@ -1,4 +1,4 @@
-export const runtime = "nodejs"; // Force full Node.js runtime
+export const runtime = "nodejs"; // Force Node.js runtime
 
 import { NextResponse } from "next/server";
 import OpenAI from "openai";
@@ -19,10 +19,11 @@ export async function POST(req: Request) {
       return NextResponse.json({ ok: false, error: "No file uploaded" }, { status: 400 });
     }
 
-    // ✅ Dynamically import pdf-parse inside Node environment
-    const pdfParse = (await import("pdf-parse")).default || (await import("pdf-parse"));
+    // ✅ Load pdf-parse dynamically (fixes default export issue)
+    const imported = await import("pdf-parse");
+    const pdfParse = typeof imported === "function" ? imported : (imported as any).default || imported;
 
-    // Convert uploaded PDF to text
+    // Convert uploaded PDF file to text
     const buffer = Buffer.from(await file.arrayBuffer());
     const pdfData = await pdfParse(buffer);
     const text = pdfData.text?.trim() || "";
@@ -31,7 +32,7 @@ export async function POST(req: Request) {
       return NextResponse.json({ ok: false, error: "PDF has no readable text" }, { status: 400 });
     }
 
-    // ✅ Use OpenAI to extract structured COI data
+    // ✅ Use OpenAI to extract COI data
     const completion = await openai.chat.completions.create({
       model: "gpt-4o-mini",
       temperature: 0,
@@ -39,7 +40,7 @@ export async function POST(req: Request) {
         {
           role: "system",
           content:
-            "You are an expert at reading Certificates of Insurance (COIs). Extract key details in JSON only.",
+            "You are an expert at reading Certificates of Insurance (COIs). Extract structured insurance data and return valid JSON only.",
         },
         {
           role: "user",
@@ -70,7 +71,7 @@ ${text.slice(0, 8000)}
       extracted = match ? JSON.parse(match[0]) : { error: "Failed to parse model output", raw };
     }
 
-    // ✅ Save extracted data to Neon (Postgres)
+    // ✅ Save data to Neon DB
     db = new Client({
       connectionString: process.env.DATABASE_URL!,
       ssl: { rejectUnauthorized: false },
