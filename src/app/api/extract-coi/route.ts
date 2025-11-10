@@ -1,84 +1,95 @@
-"use client";
+import { NextResponse } from "next/server";
+import OpenAI from "openai";
 
-import React, { useState } from "react";
+const openai = new OpenAI({
+  apiKey: process.env.OPENAI_API_KEY!,
+});
 
-export default function UploadCOIPage() {
-  const [file, setFile] = useState<File | null>(null);
-  const [loading, setLoading] = useState(false);
-  const [result, setResult] = useState<any>(null);
-  const [error, setError] = useState<string | null>(null);
+export async function POST(req: Request) {
+  try {
+    const form = await req.formData();
+    const file = form.get("file") as File | null;
 
-  async function handleSubmit(e: React.FormEvent) {
-    e.preventDefault();
-    if (!file) return setError("Please choose a PDF file first.");
-
-    setError(null);
-    setLoading(true);
-    setResult(null);
-
-    try {
-      const formData = new FormData();
-      formData.append("file", file);
-
-      const res = await fetch("/api/extract-coi", {
-        method: "POST",
-        body: formData,
-      });
-
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || "Unknown error");
-
-      setResult(data.extracted || data);
-    } catch (err: any) {
-      setError(err.message || "Something went wrong.");
-    } finally {
-      setLoading(false);
+    if (!file) {
+      return NextResponse.json(
+        { ok: false, error: "No file uploaded" },
+        { status: 400 }
+      );
     }
+
+    const buffer = Buffer.from(await file.arrayBuffer());
+
+    // Dynamically import pdf-parse with fallback for ESM/CJS
+    const pdfModule: any = await import("pdf-parse");
+    const pdfParse = pdfModule.default || pdfModule;
+
+    const parsed = await pdfParse(buffer);
+    const text = parsed?.text?.trim() ?? "";
+
+    if (!text) {
+      return NextResponse.json(
+        { ok: false, error: "PDF appears empty or could not be read" },
+        { status: 400 }
+      );
+    }
+
+    const completion = await openai.chat.completions.create({
+      model: "gpt-4o-mini",
+      temperature: 0,
+      messages: [
+        {
+          role: "system",
+          content:
+            "You extract structured fields from Certificates of Insurance (COI). Respond ONLY with valid JSON.",
+        },
+        {
+          role: "user",
+          content: `
+Extract the following fields from this COI text. If missing, return an empty string for that field.
+
+Return JSON in exactly this shape (no markdown, no commentary):
+{
+  "carrier": "",
+  "policy_number": "",
+  "expiration_date": "",
+  "coverage_type": "",
+  "named_insured": ""
+}
+
+COI TEXT:
+${text.slice(0, 8000)}
+          `.trim(),
+        },
+      ],
+    });
+
+    const raw = completion.choices[0]?.message?.content ?? "{}";
+
+    let extracted: any = {};
+    try {
+      extracted = JSON.parse(raw);
+    } catch {
+      const match = raw.match(/\{[\s\S]*\}/);
+      extracted = match ? JSON.parse(match[0]) : { error: "Failed to parse model output", raw };
+    }
+
+    return NextResponse.json(
+      { ok: true, extracted, time: new Date().toISOString() },
+      { status: 200 }
+    );
+  } catch (err: any) {
+    console.error("❌ extract-coi error:", err);
+    return NextResponse.json(
+      { ok: false, error: err?.message ?? "Server error" },
+      { status: 500 }
+    );
   }
+}
 
-  return (
-    <main className="min-h-screen bg-gray-950 text-white flex flex-col items-center justify-center p-6">
-      <div className="max-w-2xl w-full bg-gray-900 border border-gray-800 rounded-2xl p-8 shadow-lg">
-        <h1 className="text-3xl font-semibold mb-4 text-center">
-          Upload Certificate of Insurance
-        </h1>
-
-        <form onSubmit={handleSubmit} className="space-y-4">
-          <input
-            type="file"
-            accept="application/pdf"
-            onChange={(e) => setFile(e.target.files?.[0] || null)}
-            className="block w-full text-sm text-gray-400 file:mr-4 file:py-2 file:px-4
-              file:rounded-full file:border-0 file:text-sm file:font-semibold
-              file:bg-blue-600 file:text-white hover:file:bg-blue-700"
-          />
-
-          <button
-            type="submit"
-            disabled={loading}
-            className="w-full py-2 rounded-lg bg-blue-600 hover:bg-blue-700 disabled:bg-gray-600 text-white font-medium"
-          >
-            {loading ? "Processing..." : "Upload & Extract"}
-          </button>
-        </form>
-
-        {error && (
-          <div className="text-red-400 text-sm mt-4">
-            ❌ Error: {error}
-          </div>
-        )}
-
-        {result && (
-          <div className="mt-6 bg-gray-800 p-4 rounded-lg">
-            <h2 className="text-xl font-semibold mb-2 text-blue-400">
-              Extracted Fields
-            </h2>
-            <pre className="text-sm whitespace-pre-wrap">
-              {JSON.stringify(result, null, 2)}
-            </pre>
-          </div>
-        )}
-      </div>
-    </main>
-  );
+export async function GET() {
+  return NextResponse.json({
+    ok: true,
+    message: "✅ /api/extract-coi is live. POST a FormData { file: <PDF> }.",
+    time: new Date().toISOString(),
+  });
 }
