@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import OpenAI from "openai";
 import { Client } from "pg";
-import pdf from "pdf-parse";
+import * as pdfParse from "pdf-parse";
 
 const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY!,
@@ -13,26 +13,30 @@ export async function POST(req: NextRequest) {
     const file = formData.get("file") as File;
 
     if (!file) {
-      return NextResponse.json({ ok: false, error: "No file uploaded" }, { status: 400 });
+      return NextResponse.json(
+        { ok: false, error: "No file uploaded" },
+        { status: 400 }
+      );
     }
 
-    // Convert uploaded file to buffer
+    // Convert uploaded file to Buffer
     const buffer = Buffer.from(await file.arrayBuffer());
     let text = "";
 
-    // Handle PDF vs text files
+    // If the file is PDF → extract text
     if (file.type === "application/pdf" || file.name.endsWith(".pdf")) {
-      const parsed = await pdf(buffer);
+      const parsed = await (pdfParse as any)(buffer);
       text = parsed.text;
     } else {
+      // Otherwise treat as plain text
       text = buffer.toString("utf-8");
     }
 
-    // Build the AI prompt
+    // Ask OpenAI to extract key insurance details
     const prompt = `
-      You are an insurance document parser.
-      Extract key details from this Certificate of Insurance text.
-      Return a valid JSON object with:
+      You are an expert insurance document parser.
+      Extract key fields from this Certificate of Insurance text.
+      Return ONLY valid JSON in this structure:
       {
         "carrier": "",
         "policy_number": "",
@@ -42,7 +46,7 @@ export async function POST(req: NextRequest) {
       }
 
       Text:
-      """${text.slice(0, 8000)}"""  // limit to first 8000 chars for token safety
+      """${text.slice(0, 8000)}"""
     `;
 
     const completion = await openai.chat.completions.create({
@@ -52,10 +56,18 @@ export async function POST(req: NextRequest) {
     });
 
     const raw = completion.choices[0].message?.content || "{}";
-    const extracted = JSON.parse(raw);
+    let extracted;
+    try {
+      extracted = JSON.parse(raw);
+    } catch {
+      extracted = { error: "Failed to parse AI output", raw };
+    }
 
-    // Save results to Neon DB
-    const client = new Client({ connectionString: process.env.DATABASE_URL });
+    // Save extracted data to Neon PostgreSQL
+    const client = new Client({
+      connectionString: process.env.DATABASE_URL,
+      ssl: { rejectUnauthorized: false },
+    });
     await client.connect();
 
     await client.query(`
@@ -71,8 +83,10 @@ export async function POST(req: NextRequest) {
     `);
 
     await client.query(
-      `INSERT INTO certificates (carrier, policy_number, expiration_date, coverage_type, named_insured)
-       VALUES ($1,$2,$3,$4,$5)`,
+      `
+        INSERT INTO certificates (carrier, policy_number, expiration_date, coverage_type, named_insured)
+        VALUES ($1,$2,$3,$4,$5)
+      `,
       [
         extracted.carrier || "Unknown",
         extracted.policy_number || "N/A",
@@ -86,8 +100,10 @@ export async function POST(req: NextRequest) {
 
     return NextResponse.json({ ok: true, extracted }, { status: 200 });
   } catch (err: any) {
-    console.error("Error parsing COI:", err);
-    return NextResponse.json({ ok: false, error: err.message }, { status: 500 });
+    console.error("❌ Error parsing COI:", err);
+    return NextResponse.json(
+      { ok: false, error: err.message },
+      { status: 500 }
+    );
   }
 }
-
