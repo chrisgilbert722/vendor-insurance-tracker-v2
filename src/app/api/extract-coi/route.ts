@@ -4,11 +4,10 @@ import { NextResponse } from "next/server";
 import OpenAI from "openai";
 import { Client } from "pg";
 
-// IMPORTANT: pdfjs-dist v3.x exposes these paths:
-import * as pdfjsLib from "pdfjs-dist/legacy/build/pdf.js";
-// Worker file is present in v3.x;
-// In Node we still have to set a value to avoid DOM/canvas complaints.
-(pdfjsLib as any).GlobalWorkerOptions.workerSrc = require("pdfjs-dist/build/pdf.worker.js");
+// Use pdf-parse and ensure it’s called in Node runtime only
+import * as pdfParseModule from "pdf-parse";
+
+const pdfParse = (pdfParseModule as any).default || pdfParseModule;
 
 const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY!,
@@ -25,23 +24,14 @@ export async function POST(req: Request) {
       return NextResponse.json({ ok: false, error: "No file uploaded" }, { status: 400 });
     }
 
-    // ---- Extract text with PDF.js (server-safe, no DOM) ----
     const buffer = Buffer.from(await file.arrayBuffer());
-    const pdf = await (pdfjsLib as any).getDocument({ data: buffer }).promise;
+    const parsed = await pdfParse(buffer);
+    const text = parsed.text?.trim() || "";
 
-    let text = "";
-    for (let i = 1; i <= pdf.numPages; i++) {
-      const page = await pdf.getPage(i);
-      const content = await page.getTextContent();
-      const pageText = content.items.map((it: any) => it.str).join(" ");
-      text += pageText + "\n";
-    }
-
-    if (!text.trim()) {
+    if (!text) {
       return NextResponse.json({ ok: false, error: "PDF has no readable text" }, { status: 400 });
     }
 
-    // ---- Extract fields with OpenAI ----
     const completion = await openai.chat.completions.create({
       model: "gpt-4o-mini",
       temperature: 0,
@@ -49,12 +39,12 @@ export async function POST(req: Request) {
         {
           role: "system",
           content:
-            "You read Certificates of Insurance (COIs) and return only strict JSON of requested fields.",
+            "You are an expert at reading Certificates of Insurance (COIs). Extract structured insurance data and return valid JSON only.",
         },
         {
           role: "user",
           content: `
-Return JSON only with these fields:
+Extract the following fields:
 {
   "carrier": "",
   "policy_number": "",
@@ -72,6 +62,7 @@ ${text.slice(0, 8000)}
 
     const raw = completion.choices[0]?.message?.content ?? "{}";
     let extracted: any = {};
+
     try {
       extracted = JSON.parse(raw);
     } catch {
@@ -79,7 +70,6 @@ ${text.slice(0, 8000)}
       extracted = match ? JSON.parse(match[0]) : { error: "Failed to parse model output", raw };
     }
 
-    // ---- Save to Neon ----
     db = new Client({
       connectionString: process.env.DATABASE_URL!,
       ssl: { rejectUnauthorized: false },
