@@ -1,3 +1,5 @@
+export const runtime = "nodejs"; // 👈 Force Node.js runtime (fixes DOMMatrix issue)
+
 import { NextResponse } from "next/server";
 import OpenAI from "openai";
 import { Client } from "pg";
@@ -22,7 +24,7 @@ export async function POST(req: Request) {
 
     const buffer = Buffer.from(await file.arrayBuffer());
 
-    // Load pdf-parse dynamically (supports Next.js edge runtime)
+    // Dynamically import pdf-parse (works in Node.js runtime)
     const pdfModule: any = await import("pdf-parse");
     const pdfParse = pdfModule.default || pdfModule;
     const parsed = await pdfParse(buffer);
@@ -75,7 +77,7 @@ ${text.slice(0, 8000)}
       extracted = match ? JSON.parse(match[0]) : { error: "Failed to parse model output", raw };
     }
 
-    // 🧠 Save to Neon DB
+    // Save to Neon DB
     await db.connect();
     await db.query(
       `
