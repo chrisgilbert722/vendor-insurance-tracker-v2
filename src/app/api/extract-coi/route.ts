@@ -1,8 +1,12 @@
-export const runtime = "nodejs"; // Force Node.js runtime
+export const runtime = "nodejs";
 
 import { NextResponse } from "next/server";
 import OpenAI from "openai";
 import { Client } from "pg";
+import * as pdfjsLib from "pdfjs-dist/legacy/build/pdf.js";
+
+// Required for Vercel runtime to load PDF.js
+(pdfjsLib as any).GlobalWorkerOptions.workerSrc = require("pdfjs-dist/build/pdf.worker.js");
 
 const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY!,
@@ -19,20 +23,23 @@ export async function POST(req: Request) {
       return NextResponse.json({ ok: false, error: "No file uploaded" }, { status: 400 });
     }
 
-    // ✅ Load pdf-parse dynamically (fixes default export issue)
-    const imported = await import("pdf-parse");
-    const pdfParse = typeof imported === "function" ? imported : (imported as any).default || imported;
-
-    // Convert uploaded PDF file to text
+    // ✅ Extract text using PDF.js instead of pdf-parse
     const buffer = Buffer.from(await file.arrayBuffer());
-    const pdfData = await pdfParse(buffer);
-    const text = pdfData.text?.trim() || "";
+    const pdf = await pdfjsLib.getDocument({ data: buffer }).promise;
 
-    if (!text) {
+    let text = "";
+    for (let i = 1; i <= pdf.numPages; i++) {
+      const page = await pdf.getPage(i);
+      const content = await page.getTextContent();
+      const pageText = content.items.map((it: any) => it.str).join(" ");
+      text += pageText + "\n";
+    }
+
+    if (!text.trim()) {
       return NextResponse.json({ ok: false, error: "PDF has no readable text" }, { status: 400 });
     }
 
-    // ✅ Use OpenAI to extract COI data
+    // 🧠 Send extracted text to OpenAI for structured extraction
     const completion = await openai.chat.completions.create({
       model: "gpt-4o-mini",
       temperature: 0,
@@ -40,12 +47,12 @@ export async function POST(req: Request) {
         {
           role: "system",
           content:
-            "You are an expert at reading Certificates of Insurance (COIs). Extract structured insurance data and return valid JSON only.",
+            "You are an expert at reading Certificates of Insurance (COIs). Extract key fields as clean JSON only.",
         },
         {
           role: "user",
           content: `
-Extract the following fields:
+Extract these fields:
 {
   "carrier": "",
   "policy_number": "",
@@ -71,7 +78,7 @@ ${text.slice(0, 8000)}
       extracted = match ? JSON.parse(match[0]) : { error: "Failed to parse model output", raw };
     }
 
-    // ✅ Save data to Neon DB
+    // ✅ Save to Neon DB
     db = new Client({
       connectionString: process.env.DATABASE_URL!,
       ssl: { rejectUnauthorized: false },
