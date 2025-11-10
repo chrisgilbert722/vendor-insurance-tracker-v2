@@ -2,17 +2,19 @@
 const nextConfig = {
   output: "standalone",
 
-  // ✅ Enables appDir for Next 14+ correctly
-  experimental: {
-    appDir: true,
+  webpack(config) {
+    console.log("✅ Building Vendor Insurance Tracker v2...");
+    return config;
   },
 
-  // ✅ Ensure both app and pages routes are scanned
-  webpack(config) {
-    console.log("✅ Including /src/app/api routes...");
-    return config;
+  async rewrites() {
+    return [
+      {
+        source: "/api/:path*",
+        destination: "/src/app/api/:path*",
+      },
+    ];
   },
 };
 
 export default nextConfig;
-
