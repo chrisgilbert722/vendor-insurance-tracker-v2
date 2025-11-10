@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import OpenAI from "openai";
-import * as pdfParse from "pdf-parse"; // ✅ properly imported as a module
+import pdf from "pdf-parse"; // ✅ This is now properly imported for Next.js edge runtime
 
 const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY!,
@@ -15,38 +15,39 @@ export async function POST(req: Request) {
       return NextResponse.json({ ok: false, error: "No file uploaded" }, { status: 400 });
     }
 
-    // Convert PDF to text
+    // ✅ Read PDF buffer
     const buffer = Buffer.from(await file.arrayBuffer());
-    const pdfData = await pdfParse.default(buffer);
+    const pdfData = await pdf(buffer);
     const text = pdfData.text || "";
 
     if (!text.trim()) {
       return NextResponse.json({ ok: false, error: "PDF is empty or unreadable" }, { status: 400 });
     }
 
-    // Ask AI to extract insurance fields
+    // 🧠 Send text to OpenAI
     const aiResponse = await openai.chat.completions.create({
       model: "gpt-4o-mini",
       messages: [
         {
           role: "system",
-          content:
-            "You are an expert at reading insurance certificates and extracting structured data clearly.",
+          content: "You are an expert at reading insurance documents and extracting structured fields.",
         },
         {
           role: "user",
-          content: `Extract the following details from this text (if found): 
-          - Carrier name
-          - Policy number
-          - Expiration date
-          - Insured name
-          \n\nPDF text:\n${text}`,
+          content: `Extract the following from this COI:
+          - Insured Name
+          - Carrier Name
+          - Policy Number
+          - Expiration Date
+          - Any other relevant fields
+
+          PDF Text:\n${text}`,
         },
       ],
       temperature: 0.2,
     });
 
-    const extracted = aiResponse.choices[0]?.message?.content?.trim() || "No data extracted";
+    const extracted = aiResponse.choices[0]?.message?.content?.trim() || "No details extracted";
 
     return NextResponse.json({
       ok: true,
@@ -54,7 +55,7 @@ export async function POST(req: Request) {
       time: new Date().toISOString(),
     });
   } catch (err: any) {
-    console.error("❌ Extraction error:", err);
+    console.error("❌ COI Extraction Error:", err);
     return NextResponse.json({ ok: false, error: err.message }, { status: 500 });
   }
 }
