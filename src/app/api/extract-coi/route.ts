@@ -1,8 +1,14 @@
 import { NextResponse } from "next/server";
 import OpenAI from "openai";
+import { Client } from "pg";
 
 const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY!,
+});
+
+const db = new Client({
+  connectionString: process.env.DATABASE_URL!,
+  ssl: { rejectUnauthorized: false },
 });
 
 export async function POST(req: Request) {
@@ -11,24 +17,20 @@ export async function POST(req: Request) {
     const file = form.get("file") as File | null;
 
     if (!file) {
-      return NextResponse.json(
-        { ok: false, error: "No file uploaded" },
-        { status: 400 }
-      );
+      return NextResponse.json({ ok: false, error: "No file uploaded" }, { status: 400 });
     }
 
     const buffer = Buffer.from(await file.arrayBuffer());
 
-    // Dynamically import pdf-parse with fallback for ESM/CJS
+    // Load pdf-parse dynamically (supports Next.js edge runtime)
     const pdfModule: any = await import("pdf-parse");
     const pdfParse = pdfModule.default || pdfModule;
-
     const parsed = await pdfParse(buffer);
     const text = parsed?.text?.trim() ?? "";
 
     if (!text) {
       return NextResponse.json(
-        { ok: false, error: "PDF appears empty or could not be read" },
+        { ok: false, error: "PDF appears empty or unreadable" },
         { status: 400 }
       );
     }
@@ -73,12 +75,30 @@ ${text.slice(0, 8000)}
       extracted = match ? JSON.parse(match[0]) : { error: "Failed to parse model output", raw };
     }
 
+    // 🧠 Save to Neon DB
+    await db.connect();
+    await db.query(
+      `
+      INSERT INTO coi_records (carrier, policy_number, expiration_date, coverage_type, named_insured)
+      VALUES ($1, $2, $3, $4, $5);
+      `,
+      [
+        extracted.carrier || "",
+        extracted.policy_number || "",
+        extracted.expiration_date || "",
+        extracted.coverage_type || "",
+        extracted.named_insured || "",
+      ]
+    );
+    await db.end();
+
     return NextResponse.json(
-      { ok: true, extracted, time: new Date().toISOString() },
+      { ok: true, extracted, message: "✅ Saved to database", time: new Date().toISOString() },
       { status: 200 }
     );
   } catch (err: any) {
     console.error("❌ extract-coi error:", err);
+    await db.end().catch(() => {});
     return NextResponse.json(
       { ok: false, error: err?.message ?? "Server error" },
       { status: 500 }
