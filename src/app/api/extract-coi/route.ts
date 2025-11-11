@@ -1,3 +1,6 @@
+// ✅ Force this API route to use Node.js runtime (fixes DOMMatrix + Buffer issues)
+export const runtime = "nodejs";
+
 import { NextResponse } from "next/server";
 import OpenAI from "openai";
 import { Client } from "pg";
@@ -8,6 +11,7 @@ const openai = new OpenAI({
 
 export async function POST(req: Request) {
   try {
+    // 🧾 Get uploaded PDF file
     const formData = await req.formData();
     const file = formData.get("file") as File;
 
@@ -18,10 +22,11 @@ export async function POST(req: Request) {
       );
     }
 
-    // ✅ Dynamically import pdf-parse with type cast to avoid TS complaints
+    // ✅ Dynamically import pdf-parse (works on Node, avoids ESM errors)
     const pdfParseModule = (await import("pdf-parse")) as any;
     const parsePdf = pdfParseModule.default || pdfParseModule;
 
+    // 📄 Convert file into text
     const buffer = Buffer.from(await file.arrayBuffer());
     const pdfData = await parsePdf(buffer);
     const text = pdfData.text?.trim();
@@ -33,15 +38,19 @@ export async function POST(req: Request) {
       );
     }
 
-    // 🧠 Use OpenAI to extract policy data
+    // 🧠 Extract structured data using OpenAI
     const ai = await openai.chat.completions.create({
       model: "gpt-4o-mini",
       messages: [
         {
           role: "user",
-          content: `Extract the following from this COI PDF text:
-          carrier, policy_number, effective_date, expiration_date, and coverage_type.
-          PDF text:\n\n${text}`,
+          content: `
+          Extract and return a JSON object with these fields:
+          carrier, policy_number, effective_date, expiration_date, coverage_type.
+
+          If missing data, use "N/A". Here is the text from the COI:
+          \n\n${text}
+        `,
         },
       ],
     });
@@ -54,12 +63,18 @@ export async function POST(req: Request) {
       extracted = { raw };
     }
 
-    // 🗄️ Save extracted info into Postgres
-    const client = new Client({ connectionString: process.env.DATABASE_URL });
+    // 🗄️ Save extracted data to Neon (Postgres)
+    const client = new Client({
+      connectionString: process.env.DATABASE_URL,
+    });
     await client.connect();
+
     await client.query(
-      `INSERT INTO public.insurance_extracts (file_name, carrier, policy_number, effective_date, expiration_date, coverage_type, created_at)
-       VALUES ($1, $2, $3, $4, $5, $6, NOW())`,
+      `
+      INSERT INTO public.insurance_extracts 
+      (file_name, carrier, policy_number, effective_date, expiration_date, coverage_type, created_at)
+      VALUES ($1, $2, $3, $4, $5, $6, NOW())
+      `,
       [
         file.name,
         extracted.carrier || "Unknown",
@@ -69,8 +84,10 @@ export async function POST(req: Request) {
         extracted.coverage_type || "N/A",
       ]
     );
+
     await client.end();
 
+    // ✅ Success response
     return NextResponse.json({
       ok: true,
       message: "✅ Extraction completed successfully!",
