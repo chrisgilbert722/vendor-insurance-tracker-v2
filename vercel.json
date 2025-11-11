@@ -1,10 +1,10 @@
 {
   "version": 2,
   "functions": {
-    "api/**/*.ts": {
-      "runtime": "nodejs18.x"
-    }
-  },
+    "api/**/*.js": { "runtime": "nodejs18.x" }
+  }
+}
+,
   "builds": [
     { "src": "next.config.mjs", "use": "@vercel/next" },
     { "src": "src/app/api/**/*.ts", "use": "@vercel/node" }
