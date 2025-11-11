@@ -1,6 +1,5 @@
 import { NextResponse } from "next/server";
 import OpenAI from "openai";
-import * as pdfParse from "pdf-parse";  // ✅ Correct import
 import { Client } from "pg";
 
 const openai = new OpenAI({
@@ -13,25 +12,36 @@ export async function POST(req: Request) {
     const file = formData.get("file") as File;
 
     if (!file) {
-      return NextResponse.json({ ok: false, error: "No file uploaded." }, { status: 400 });
+      return NextResponse.json(
+        { ok: false, error: "No file uploaded." },
+        { status: 400 }
+      );
     }
 
-    // Read PDF
+    // ✅ Dynamically import pdf-parse at runtime (no default export errors)
+    const pdfParseModule = await import("pdf-parse");
+    const parsePdf = pdfParseModule.default || pdfParseModule; // handles both ESM/CJS
+
     const buffer = Buffer.from(await file.arrayBuffer());
-    const pdfData = await pdfParse.default(buffer); // ✅ FIXED
+    const pdfData = await parsePdf(buffer);
     const text = pdfData.text?.trim();
 
     if (!text) {
-      return NextResponse.json({ ok: false, error: "PDF has no readable text." }, { status: 400 });
+      return NextResponse.json(
+        { ok: false, error: "No readable text found in PDF." },
+        { status: 400 }
+      );
     }
 
-    // Ask AI to extract key data
+    // 🧠 Extract data via OpenAI
     const ai = await openai.chat.completions.create({
       model: "gpt-4o-mini",
       messages: [
         {
           role: "user",
-          content: `Extract these fields from this COI PDF text:\n\n${text}\n\nReturn JSON with carrier, policy_number, effective_date, expiration_date, and coverage_type.`,
+          content: `Extract this COI PDF into JSON fields:
+          carrier, policy_number, effective_date, expiration_date, and coverage_type.
+          PDF text:\n\n${text}`,
         },
       ],
     });
@@ -44,10 +54,9 @@ export async function POST(req: Request) {
       extracted = { raw };
     }
 
-    // Save to Postgres
+    // 🗄️ Save to Postgres
     const client = new Client({ connectionString: process.env.DATABASE_URL });
     await client.connect();
-
     await client.query(
       `INSERT INTO public.insurance_extracts (file_name, carrier, policy_number, effective_date, expiration_date, coverage_type, created_at)
        VALUES ($1, $2, $3, $4, $5, $6, NOW())`,
@@ -60,12 +69,11 @@ export async function POST(req: Request) {
         extracted.coverage_type || "N/A",
       ]
     );
-
     await client.end();
 
     return NextResponse.json({
       ok: true,
-      message: "Extraction completed successfully!",
+      message: "✅ Extraction completed successfully!",
       extracted,
     });
   } catch (error: any) {
