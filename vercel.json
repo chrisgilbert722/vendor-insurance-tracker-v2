@@ -7,10 +7,10 @@
   },
   "builds": [
     { "src": "next.config.mjs", "use": "@vercel/next" },
-    { "src": "src/app/api/**/*.ts", "use": "@vercel/node" }
+    { "src": "src/pages/api/**/*.js", "use": "@vercel/node" }
   ],
   "routes": [
-    { "src": "/api/(.*)", "dest": "/src/app/api/$1" },
+    { "src": "/api/(.*)", "dest": "/src/pages/api/$1" },
     { "src": "/(.*)", "dest": "/" }
   ]
 }
