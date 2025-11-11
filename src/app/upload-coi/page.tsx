@@ -1,62 +1,72 @@
 'use client';
 
-import React, { useState } from 'react';
+import React from 'react';
 
-export default function UploadCOIPage() {
-  const [file, setFile] = useState<File | null>(null);
-  const [msg, setMsg] = useState<string>('');
+export default function UploadCOI() {
+  const [file, setFile] = React.useState<File | null>(null);
+  const [busy, setBusy] = React.useState(false);
+  const [msg, setMsg] = React.useState<string | null>(null);
 
-  async function handleUpload() {
+  async function onSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    setMsg(null);
+
+    if (!file) {
+      setMsg('Please choose a PDF first.');
+      return;
+    }
+
     try {
-      setMsg('');
-      if (!file) {
-        setMsg('Please select a file first.');
-        return;
+      setBusy(true);
+      const res = await fetch('/api/extract-coi', {
+        method: 'POST',
+        headers: { 'content-type': 'application/pdf' }, // send buffer
+        body: await file.arrayBuffer(),
+      });
+
+      const text = await res.text();
+      let data: any;
+      try {
+        data = JSON.parse(text);
+      } catch {
+        throw new Error('Server returned non-JSON response.');
       }
-      const fd = new FormData();
-      // IMPORTANT: raw body mode (Pages API above expects the whole body as the file)
-      // If you prefer standard multipart parsing later, we can switch to formidable.
-      const buf = new Uint8Array(await file.arrayBuffer());
-      fd.append('file', new Blob([buf]), file.name);
 
-      const res = await fetch('/api/extract-coi', { method: 'POST', body: fd });
-
-      // Always parse JSON; our API guarantees JSON response
-      const data = await res.json().catch(() => ({ ok: false, error: 'Bad JSON response' }));
-
-      if (!res.ok || !data.ok) {
-        setMsg(`❌ ${data.error ?? 'Upload failed'}`);
-        return;
-      }
+      if (!res.ok) throw new Error(data?.error || 'Upload failed.');
       setMsg('✅ Extraction completed successfully!');
-    } catch (e: any) {
-      setMsg(`❌ ${e?.message ?? 'Unexpected error'}`);
+    } catch (err: any) {
+      setMsg(`❌ ${err.message}`);
+    } finally {
+      setBusy(false);
     }
   }
 
   return (
-    <div className="mx-auto max-w-xl p-6">
-      <h1 className="text-3xl font-semibold mb-4">Upload Certificate of Insurance</h1>
+    <main className="min-h-screen flex items-center justify-center p-8 bg-black text-white">
+      <form onSubmit={onSubmit} className="max-w-xl w-full space-y-6 bg-zinc-900/60 p-6 rounded-2xl border border-zinc-800">
+        <h1 className="text-3xl font-semibold">Upload Certificate of Insurance</h1>
 
-      <input
-        type="file"
-        accept="application/pdf,image/*"
-        className="w-full mb-4"
-        onChange={(e) => setFile(e.target.files?.[0] ?? null)}
-      />
+        <input
+          type="file"
+          accept="application/pdf"
+          onChange={(e) => setFile(e.target.files?.[0] || null)}
+          className="block w-full rounded-lg border border-zinc-700 bg-zinc-950 p-3"
+        />
 
-      <button
-        onClick={handleUpload}
-        className="w-full rounded bg-blue-600 text-white py-3 hover:bg-blue-700"
-      >
-        Upload COI
-      </button>
+        <button
+          type="submit"
+          disabled={busy || !file}
+          className="w-full rounded-lg bg-blue-600 hover:bg-blue-500 disabled:opacity-50 py-3 font-semibold"
+        >
+          {busy ? 'Uploading…' : 'Upload COI'}
+        </button>
 
-      {msg && <p className="mt-4 text-sm">{msg}</p>}
+        {msg && <p className="text-sm">{msg}</p>}
 
-      <div className="mt-6">
-        <a className="text-blue-500 underline" href="/dashboard">Go to Dashboard →</a>
-      </div>
-    </div>
+        <a href="/dashboard" className="text-blue-400 underline">
+          Go to Dashboard →
+        </a>
+      </form>
+    </main>
   );
 }
