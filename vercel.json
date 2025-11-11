@@ -1,19 +1,17 @@
 {
   "version": 2,
+  "functions": {
+    "api/**/*.ts": {
+      "runtime": "nodejs18.x",
+      "maxDuration": 30
+    }
+  },
   "builds": [
     { "src": "next.config.mjs", "use": "@vercel/next" },
     { "src": "src/app/api/**/*.ts", "use": "@vercel/node" }
   ],
-  "functions": {
-    "api/**/*.ts": {
-      "runtime": "nodejs18.x"
-    }
-  },
   "routes": [
-    {
-      "src": "/api/(.*)",
-      "dest": "/src/app/api/$1"
-    },
+    { "src": "/api/(.*)", "dest": "/src/app/api/$1" },
     { "src": "/(.*)", "dest": "/" }
   ]
 }
