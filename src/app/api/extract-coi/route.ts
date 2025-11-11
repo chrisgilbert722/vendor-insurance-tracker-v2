@@ -18,9 +18,9 @@ export async function POST(req: Request) {
       );
     }
 
-    // ✅ Dynamically import pdf-parse at runtime (no default export errors)
-    const pdfParseModule = await import("pdf-parse");
-    const parsePdf = pdfParseModule.default || pdfParseModule; // handles both ESM/CJS
+    // ✅ Dynamically import pdf-parse with type cast to avoid TS complaints
+    const pdfParseModule = (await import("pdf-parse")) as any;
+    const parsePdf = pdfParseModule.default || pdfParseModule;
 
     const buffer = Buffer.from(await file.arrayBuffer());
     const pdfData = await parsePdf(buffer);
@@ -33,13 +33,13 @@ export async function POST(req: Request) {
       );
     }
 
-    // 🧠 Extract data via OpenAI
+    // 🧠 Use OpenAI to extract policy data
     const ai = await openai.chat.completions.create({
       model: "gpt-4o-mini",
       messages: [
         {
           role: "user",
-          content: `Extract this COI PDF into JSON fields:
+          content: `Extract the following from this COI PDF text:
           carrier, policy_number, effective_date, expiration_date, and coverage_type.
           PDF text:\n\n${text}`,
         },
@@ -54,7 +54,7 @@ export async function POST(req: Request) {
       extracted = { raw };
     }
 
-    // 🗄️ Save to Postgres
+    // 🗄️ Save extracted info into Postgres
     const client = new Client({ connectionString: process.env.DATABASE_URL });
     await client.connect();
     await client.query(
