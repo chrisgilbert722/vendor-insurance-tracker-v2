@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import OpenAI from "openai";
-import pdfParse from "pdf-parse";
+import * as pdfParse from "pdf-parse";  // ✅ Correct import
 import { Client } from "pg";
 
 const openai = new OpenAI({
@@ -16,37 +16,38 @@ export async function POST(req: Request) {
       return NextResponse.json({ ok: false, error: "No file uploaded." }, { status: 400 });
     }
 
-    // Read PDF as buffer
+    // Read PDF
     const buffer = Buffer.from(await file.arrayBuffer());
-    const pdfData = await pdfParse(buffer);
+    const pdfData = await pdfParse.default(buffer); // ✅ FIXED
     const text = pdfData.text?.trim();
 
     if (!text) {
       return NextResponse.json({ ok: false, error: "PDF has no readable text." }, { status: 400 });
     }
 
-    // Extract key data via OpenAI
+    // Ask AI to extract key data
     const ai = await openai.chat.completions.create({
       model: "gpt-4o-mini",
       messages: [
         {
           role: "user",
-          content: `Extract the following fields from this insurance document:\n\n${text}\n\nReturn JSON with carrier, policy_number, effective_date, expiration_date, and coverage_type.`,
+          content: `Extract these fields from this COI PDF text:\n\n${text}\n\nReturn JSON with carrier, policy_number, effective_date, expiration_date, and coverage_type.`,
         },
       ],
     });
 
-    const json = ai.choices?.[0]?.message?.content || "{}";
+    const raw = ai.choices?.[0]?.message?.content || "{}";
     let extracted;
     try {
-      extracted = JSON.parse(json);
+      extracted = JSON.parse(raw);
     } catch {
-      extracted = { raw: json };
+      extracted = { raw };
     }
 
-    // Save to DB
+    // Save to Postgres
     const client = new Client({ connectionString: process.env.DATABASE_URL });
     await client.connect();
+
     await client.query(
       `INSERT INTO public.insurance_extracts (file_name, carrier, policy_number, effective_date, expiration_date, coverage_type, created_at)
        VALUES ($1, $2, $3, $4, $5, $6, NOW())`,
@@ -59,9 +60,9 @@ export async function POST(req: Request) {
         extracted.coverage_type || "N/A",
       ]
     );
+
     await client.end();
 
-    // ✅ Always return JSON
     return NextResponse.json({
       ok: true,
       message: "Extraction completed successfully!",
