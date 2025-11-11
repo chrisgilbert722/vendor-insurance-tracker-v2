@@ -1,8 +1,6 @@
 import { NextResponse } from "next/server";
 import OpenAI from "openai";
 import { Client } from "pg";
-
-// ✅ Import correctly for pdf-parse (ESM-safe)
 import * as pdfParse from "pdf-parse";
 
 const openai = new OpenAI({
@@ -18,7 +16,7 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "No file uploaded" }, { status: 400 });
     }
 
-    // ✅ Convert PDF → text using proper ESM import
+    // ✅ Convert PDF → text
     const buffer = Buffer.from(await file.arrayBuffer());
     const pdfData = await (pdfParse as any)(buffer);
     const text = pdfData.text || "";
@@ -27,23 +25,36 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "No text extracted from PDF" }, { status: 400 });
     }
 
-    // 🧠 Send extracted text to OpenAI for structured extraction
+    // ✅ Ask OpenAI for structured JSON output
     const completion = await openai.chat.completions.create({
       model: "gpt-4o-mini",
       messages: [
         {
           role: "system",
           content:
-            "You are an expert in insurance compliance. Extract carrier, policy number, effective date, and expiration date from the provided document text.",
+            "You are an insurance document parser. Return only valid JSON with these fields: carrier, policy_number, effective_date, expiration_date.",
         },
         { role: "user", content: text },
       ],
     });
 
-    const aiResponse = completion.choices[0].message?.content || "No response";
-    const jsonData = { ai_extracted: aiResponse };
+    const rawResponse = completion.choices[0].message?.content || "{}";
 
-    // ✅ Save to Neon
+    // ✅ Safely parse JSON from AI
+    let parsedData: any = {};
+    try {
+      parsedData = JSON.parse(rawResponse);
+    } catch {
+      // fallback: try regex-based extraction
+      parsedData = {
+        carrier: rawResponse.match(/carrier[:\s]*([A-Za-z0-9 .-]+)/i)?.[1] || "N/A",
+        policy_number: rawResponse.match(/policy[:\s#]*([A-Za-z0-9-]+)/i)?.[1] || "N/A",
+        effective_date: rawResponse.match(/effective[:\s]*([A-Za-z0-9/]+)/i)?.[1] || null,
+        expiration_date: rawResponse.match(/expire[:\s]*([A-Za-z0-9/]+)/i)?.[1] || null,
+      };
+    }
+
+    // ✅ Save to Neon DB
     const client = new Client({
       connectionString: process.env.DATABASE_URL,
     });
@@ -53,10 +64,10 @@ export async function POST(req: Request) {
       "INSERT INTO insurance_extracts (file_name, carrier, policy_number, effective_date, expiration_date) VALUES ($1, $2, $3, $4, $5)",
       [
         file.name,
-        jsonData.ai_extracted.carrier || "N/A",
-        jsonData.ai_extracted.policy_number || "N/A",
-        jsonData.ai_extracted.effective_date || null,
-        jsonData.ai_extracted.expiration_date || null,
+        parsedData.carrier || "N/A",
+        parsedData.policy_number || "N/A",
+        parsedData.effective_date || null,
+        parsedData.expiration_date || null,
       ]
     );
 
@@ -64,8 +75,8 @@ export async function POST(req: Request) {
 
     return NextResponse.json({
       ok: true,
-      message: "✅ Extraction and save successful",
-      extracted: jsonData,
+      message: "✅ Extraction completed and saved successfully!",
+      extracted: parsedData,
     });
   } catch (error: any) {
     console.error("❌ Extraction Error:", error);
@@ -79,6 +90,6 @@ export async function POST(req: Request) {
 export async function GET() {
   return NextResponse.json({
     ok: true,
-    message: "✅ /api/extract-coi route is active. POST a FormData { file: <PDF> }",
+    message: "✅ /api/extract-coi route is live. POST a FormData { file: <PDF> }",
   });
 }
