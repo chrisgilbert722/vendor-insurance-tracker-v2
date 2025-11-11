@@ -11,11 +11,11 @@ export async function GET() {
     });
     await client.connect();
 
-    // ✅ Explicitly use schema name 'neondb' instead of public
+    // ✅ Your schema is 'public', confirmed by SQL
     const { rows } = await client.query(`
       SELECT v.vendor_name, v.email, p.policy_number, p.expiration_date
-      FROM neondb.policies p
-      JOIN neondb.vendors v ON v.id = p.vendor_id
+      FROM public.policies p
+      JOIN public.vendors v ON v.id = p.vendor_id
       WHERE p.expiration_date < NOW() + INTERVAL '15 days'
       AND p.expiration_date > NOW()
     `);
@@ -28,7 +28,7 @@ export async function GET() {
       });
     }
 
-    // Send out the emails
+    // ✅ Send email alerts via Resend
     for (const row of rows) {
       await resend.emails.send({
         from: "alerts@coibot.ai",
@@ -37,9 +37,9 @@ export async function GET() {
         html: `
           <h2>Policy Expiring Soon</h2>
           <p>Hello ${row.vendor_name},</p>
-          <p>Your policy <strong>${row.policy_number}</strong> is expiring on 
+          <p>Your policy <strong>${row.policy_number}</strong> expires on 
           <strong>${new Date(row.expiration_date).toDateString()}</strong>.</p>
-          <p>Please upload a renewed certificate to remain compliant.</p>
+          <p>Please upload your renewed certificate to remain compliant.</p>
           <br/>
           <p style="color:gray;font-size:12px;">COIbot AI — Automated Compliance Monitoring</p>
         `,
