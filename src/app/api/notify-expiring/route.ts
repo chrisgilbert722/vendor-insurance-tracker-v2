@@ -6,24 +6,22 @@ const resend = new Resend(process.env.RESEND_API_KEY!);
 
 export async function GET() {
   try {
-    // ✅ Force Postgres to use the 'public' schema every time
     const client = new Client({
       connectionString: process.env.DATABASE_URL,
-      options: "-c search_path=public",
+      ssl: { rejectUnauthorized: false },
     });
-
     await client.connect();
 
-    // ✅ Query policies expiring within the next 15 days
+    // ✅ Corrected vendor column to match your Neon DB schema
     const { rows } = await client.query(`
-      SELECT v.vendor_name, v.email, p.policy_number, p.expiration_date
-      FROM policies p
-      JOIN vendors v ON v.id = p.vendor_id
+      SELECT v.name AS vendor_name, v.contact_email AS email, 
+             p.policy_number, p.expiration_date
+      FROM public.policies p
+      JOIN public.vendors v ON v.id = p.vendor_id
       WHERE p.expiration_date < NOW() + INTERVAL '15 days'
-      AND p.expiration_date > NOW()
+      AND p.expiration_date > NOW();
     `);
 
-    // ✅ If no results, exit early
     if (rows.length === 0) {
       await client.end();
       return NextResponse.json({
@@ -32,7 +30,7 @@ export async function GET() {
       });
     }
 
-    // ✅ Send renewal reminder emails via Resend
+    // ✅ Send email alerts via Resend
     for (const row of rows) {
       await resend.emails.send({
         from: "alerts@coibot.ai",
@@ -41,7 +39,7 @@ export async function GET() {
         html: `
           <h2>Policy Expiring Soon</h2>
           <p>Hello ${row.vendor_name},</p>
-          <p>Your policy <strong>${row.policy_number}</strong> is expiring on 
+          <p>Your policy <strong>${row.policy_number}</strong> expires on 
           <strong>${new Date(row.expiration_date).toDateString()}</strong>.</p>
           <p>Please upload your renewed certificate to remain compliant.</p>
           <br/>
@@ -51,12 +49,10 @@ export async function GET() {
     }
 
     await client.end();
-
     return NextResponse.json({
       ok: true,
       message: `✅ Sent ${rows.length} renewal alerts.`,
     });
-
   } catch (error: any) {
     console.error("❌ Error in notify-expiring route:", error);
     return NextResponse.json(
