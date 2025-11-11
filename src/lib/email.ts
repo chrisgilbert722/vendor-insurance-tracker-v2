@@ -1,7 +1,11 @@
+// src/lib/email.ts
 import { Resend } from "resend";
 
 const resend = new Resend(process.env.RESEND_API_KEY!);
 
+/**
+ * Sends a compliance reminder email using Resend
+ */
 export async function sendComplianceEmail({
   to,
   subject,
@@ -27,6 +31,6 @@ export async function sendComplianceEmail({
     });
     console.log(`📧 Sent compliance email to ${to}`);
   } catch (error) {
-    console.error("❌ Email failed:", error);
+    console.error("❌ Email send failed:", error);
   }
 }
