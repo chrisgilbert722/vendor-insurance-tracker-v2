@@ -28,7 +28,7 @@ module.exports = async function handler(req, res) {
 
     const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
     const prompt = `
-Extract fields from this insurance certificate into JSON:
+Extract these fields from the insurance certificate into JSON:
 carrier, policy_number, effective_date, expiration_date, coverage_type.
 Return valid JSON only.
 ---
@@ -77,3 +77,4 @@ ${text.slice(0, 4000)}
       .json({ ok: false, error: e.message || "Unexpected server error" });
   }
 };
+
