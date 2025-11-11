@@ -1,5 +1,7 @@
 // ✅ Force this API route to use Node.js runtime (fixes DOMMatrix + Buffer issues)
 export const runtime = "nodejs";
+export const preferredRegion = "iad1"; // (any AWS/Vercel US-East region is fine)
+
 
 import { NextResponse } from "next/server";
 import OpenAI from "openai";
