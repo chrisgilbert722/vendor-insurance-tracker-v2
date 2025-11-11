@@ -1,7 +1,9 @@
 import { NextResponse } from "next/server";
 import OpenAI from "openai";
 import { Client } from "pg";
-import parsePdf from "pdf-parse"; // direct import works fine in Node
+
+// ✅ Import correctly for pdf-parse (ESM-safe)
+import * as pdfParse from "pdf-parse";
 
 const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY!,
@@ -9,71 +11,74 @@ const openai = new OpenAI({
 
 export async function POST(req: Request) {
   try {
-    const formData = await req.formData();
-    const file = formData.get("file") as File | null;
+    const form = await req.formData();
+    const file = form.get("file") as File | null;
 
     if (!file) {
-      return NextResponse.json({ ok: false, error: "No file uploaded" }, { status: 400 });
+      return NextResponse.json({ error: "No file uploaded" }, { status: 400 });
     }
 
-    // Convert PDF → text
+    // ✅ Convert PDF → text using proper ESM import
     const buffer = Buffer.from(await file.arrayBuffer());
-    const pdfData = await parsePdf(buffer);
-    const text = pdfData.text?.trim() || "";
+    const pdfData = await (pdfParse as any)(buffer);
+    const text = pdfData.text || "";
 
-    if (!text) {
-      return NextResponse.json({ ok: false, error: "Empty or unreadable PDF" }, { status: 400 });
+    if (!text.trim()) {
+      return NextResponse.json({ error: "No text extracted from PDF" }, { status: 400 });
     }
 
-    // Ask OpenAI to extract key insurance fields
-    const prompt = `
-Extract the following from this Certificate of Insurance text:
-- Carrier (insurance company name)
-- Policy Number
-- Expiration Date
-
-Return results in JSON format with keys: carrier, policyNumber, expirationDate.
-
-Certificate Text:
-"""${text.slice(0, 4000)}"""
-`;
-
+    // 🧠 Send extracted text to OpenAI for structured extraction
     const completion = await openai.chat.completions.create({
       model: "gpt-4o-mini",
-      messages: [{ role: "user", content: prompt }],
-      temperature: 0,
+      messages: [
+        {
+          role: "system",
+          content:
+            "You are an expert in insurance compliance. Extract carrier, policy number, effective date, and expiration date from the provided document text.",
+        },
+        { role: "user", content: text },
+      ],
     });
 
-    const content = completion.choices[0]?.message?.content?.trim() || "{}";
-    const parsed = JSON.parse(content);
+    const aiResponse = completion.choices[0].message?.content || "No response";
+    const jsonData = { ai_extracted: aiResponse };
 
-    // Optional: save to Neon DB
+    // ✅ Save to Neon
     const client = new Client({
-      connectionString: process.env.DATABASE_URL!,
-      ssl: { rejectUnauthorized: false },
+      connectionString: process.env.DATABASE_URL,
     });
     await client.connect();
+
     await client.query(
-      "INSERT INTO insurance_extracts (carrier, policy_number, expiration_date, created_at) VALUES ($1, $2, $3, NOW())",
-      [parsed.carrier, parsed.policyNumber, parsed.expirationDate]
+      "INSERT INTO insurance_extracts (file_name, carrier, policy_number, effective_date, expiration_date) VALUES ($1, $2, $3, $4, $5)",
+      [
+        file.name,
+        jsonData.ai_extracted.carrier || "N/A",
+        jsonData.ai_extracted.policy_number || "N/A",
+        jsonData.ai_extracted.effective_date || null,
+        jsonData.ai_extracted.expiration_date || null,
+      ]
     );
+
     await client.end();
 
     return NextResponse.json({
       ok: true,
-      extracted: parsed,
-      time: new Date().toISOString(),
+      message: "✅ Extraction and save successful",
+      extracted: jsonData,
     });
-  } catch (err: any) {
-    console.error("Extraction error:", err);
-    return NextResponse.json({ ok: false, error: err.message || "Extraction failed" }, { status: 500 });
+  } catch (error: any) {
+    console.error("❌ Extraction Error:", error);
+    return NextResponse.json(
+      { error: error.message || "Server error during extraction" },
+      { status: 500 }
+    );
   }
 }
 
 export async function GET() {
   return NextResponse.json({
     ok: true,
-    message: "✅ /api/extract-coi is live — POST a PDF file to extract fields.",
-    time: new Date().toISOString(),
+    message: "✅ /api/extract-coi route is active. POST a FormData { file: <PDF> }",
   });
 }
