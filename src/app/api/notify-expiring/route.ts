@@ -11,20 +11,24 @@ export async function GET() {
     });
     await client.connect();
 
-    // Find policies expiring within 15 days
+    // ✅ Explicitly reference the 'public' schema so Postgres knows where to look
     const { rows } = await client.query(`
       SELECT v.vendor_name, v.email, p.policy_number, p.expiration_date
-      FROM policies p
-      JOIN vendors v ON v.id = p.vendor_id
+      FROM public.policies p
+      JOIN public.vendors v ON v.id = p.vendor_id
       WHERE p.expiration_date < NOW() + INTERVAL '15 days'
       AND p.expiration_date > NOW()
     `);
 
     if (rows.length === 0) {
-      return NextResponse.json({ ok: true, message: "No expiring policies today." });
+      await client.end();
+      return NextResponse.json({
+        ok: true,
+        message: "No expiring policies today.",
+      });
     }
 
-    // Send alert emails
+    // ✅ Loop through expiring policies and send email alerts
     for (const row of rows) {
       await resend.emails.send({
         from: "alerts@coibot.ai",
@@ -33,16 +37,24 @@ export async function GET() {
         html: `
           <h2>Policy Expiring Soon</h2>
           <p>Hello ${row.vendor_name},</p>
-          <p>Your policy <strong>${row.policy_number}</strong> is expiring on ${new Date(row.expiration_date).toDateString()}.</p>
+          <p>Your policy <strong>${row.policy_number}</strong> is expiring on <strong>${new Date(row.expiration_date).toDateString()}</strong>.</p>
           <p>Please upload a renewed certificate to remain compliant.</p>
+          <br />
+          <p style="color:gray;font-size:12px;">COIbot AI — Automated Compliance Monitoring</p>
         `,
       });
     }
 
     await client.end();
-    return NextResponse.json({ ok: true, message: `Sent ${rows.length} renewal alerts.` });
+    return NextResponse.json({
+      ok: true,
+      message: `✅ Sent ${rows.length} renewal alerts.`,
+    });
   } catch (error: any) {
-    console.error(error);
-    return NextResponse.json({ ok: false, error: error.message }, { status: 500 });
+    console.error("❌ Error in notify-expiring route:", error);
+    return NextResponse.json(
+      { ok: false, error: error.message },
+      { status: 500 }
+    );
   }
 }
