@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import OpenAI from "openai";
+import pdfParse from "pdf-parse";
 import { Client } from "pg";
-import * as pdfParse from "pdf-parse";
 
 const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY!,
@@ -9,114 +9,69 @@ const openai = new OpenAI({
 
 export async function POST(req: Request) {
   try {
-    const form = await req.formData();
-    const file = form.get("file") as File | null;
+    const formData = await req.formData();
+    const file = formData.get("file") as File;
 
     if (!file) {
-      return NextResponse.json({ error: "No file uploaded" }, { status: 400 });
+      return NextResponse.json({ ok: false, error: "No file uploaded." }, { status: 400 });
     }
 
-    // 🧩 Step 1: Extract text from uploaded PDF
+    // Read PDF as buffer
     const buffer = Buffer.from(await file.arrayBuffer());
-    const pdfData = await (pdfParse as any)(buffer);
-    const text = pdfData.text || "";
+    const pdfData = await pdfParse(buffer);
+    const text = pdfData.text?.trim();
 
-    if (!text.trim()) {
-      return NextResponse.json({ error: "No text extracted from PDF" }, { status: 400 });
+    if (!text) {
+      return NextResponse.json({ ok: false, error: "PDF has no readable text." }, { status: 400 });
     }
 
-    // 🧠 Step 2: Use OpenAI to extract structured insurance data
-    const completion = await openai.chat.completions.create({
+    // Extract key data via OpenAI
+    const ai = await openai.chat.completions.create({
       model: "gpt-4o-mini",
       messages: [
         {
-          role: "system",
-          content:
-            "You are an insurance document parser. Return only JSON with these fields: carrier, policy_number, effective_date, expiration_date.",
+          role: "user",
+          content: `Extract the following fields from this insurance document:\n\n${text}\n\nReturn JSON with carrier, policy_number, effective_date, expiration_date, and coverage_type.`,
         },
-        { role: "user", content: text },
       ],
     });
 
-    const rawResponse = completion.choices[0].message?.content || "{}";
-
-    // 🧩 Step 3: Safely parse JSON or fallback to regex
-    let parsedData: any = {};
+    const json = ai.choices?.[0]?.message?.content || "{}";
+    let extracted;
     try {
-      parsedData = JSON.parse(rawResponse);
+      extracted = JSON.parse(json);
     } catch {
-      parsedData = {
-        carrier: rawResponse.match(/carrier[:\s]*([A-Za-z0-9 .-]+)/i)?.[1] || "N/A",
-        policy_number: rawResponse.match(/policy[:\s#]*([A-Za-z0-9-]+)/i)?.[1] || "N/A",
-        effective_date: rawResponse.match(/effective[:\s]*([A-Za-z0-9/]+)/i)?.[1] || null,
-        expiration_date: rawResponse.match(/expire[:\s]*([A-Za-z0-9/]+)/i)?.[1] || null,
-      };
+      extracted = { raw: json };
     }
 
-    // 🧠 Step 4: Auto compliance engine
-    let complianceStatus = "Pending";
-    let complianceScore = 0;
-
-    if (parsedData.expiration_date) {
-      const expDate = new Date(parsedData.expiration_date);
-      const today = new Date();
-      const diffDays = (expDate.getTime() - today.getTime()) / (1000 * 3600 * 24);
-
-      if (diffDays < 0) {
-        complianceStatus = "Expired ❌";
-        complianceScore = 0;
-      } else if (diffDays < 30) {
-        complianceStatus = "Expiring Soon ⚠️";
-        complianceScore = 50;
-      } else {
-        complianceStatus = "Compliant ✅";
-        complianceScore = 100;
-      }
-    }
-
-    // 🧾 Step 5: Save to Neon Database
-    const client = new Client({
-      connectionString: process.env.DATABASE_URL,
-    });
+    // Save to DB
+    const client = new Client({ connectionString: process.env.DATABASE_URL });
     await client.connect();
-
     await client.query(
-      `INSERT INTO insurance_extracts 
-      (file_name, carrier, policy_number, effective_date, expiration_date, compliance_status, compliance_score)
-      VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+      `INSERT INTO public.insurance_extracts (file_name, carrier, policy_number, effective_date, expiration_date, coverage_type, created_at)
+       VALUES ($1, $2, $3, $4, $5, $6, NOW())`,
       [
         file.name,
-        parsedData.carrier || "N/A",
-        parsedData.policy_number || "N/A",
-        parsedData.effective_date || null,
-        parsedData.expiration_date || null,
-        complianceStatus,
-        complianceScore,
+        extracted.carrier || "Unknown",
+        extracted.policy_number || "N/A",
+        extracted.effective_date || null,
+        extracted.expiration_date || null,
+        extracted.coverage_type || "N/A",
       ]
     );
-
     await client.end();
 
+    // ✅ Always return JSON
     return NextResponse.json({
       ok: true,
-      message: "✅ Extraction and compliance check completed successfully!",
-      extracted: parsedData,
-      compliance: { complianceStatus, complianceScore },
+      message: "Extraction completed successfully!",
+      extracted,
     });
   } catch (error: any) {
-    console.error("❌ Extraction Error:", error);
+    console.error("❌ Error in /api/extract-coi:", error);
     return NextResponse.json(
-      { error: error.message || "Server error during extraction" },
+      { ok: false, error: error.message || "Unexpected server error" },
       { status: 500 }
     );
   }
 }
-
-// Simple test route
-export async function GET() {
-  return NextResponse.json({
-    ok: true,
-    message: "✅ /api/extract-coi route is live and compliance logic is active!",
-  });
-}
-
