@@ -1,32 +1,9 @@
-{
-  "name": "vendor-insurance-tracker",
-  "version": "0.1.0",
-  "private": true,
-  "scripts": {
-    "dev": "next dev --webpack",
-    "build": "next build --webpack",
-    "start": "next start",
-    "lint": "eslint"
-  },
-  "dependencies": {
-    "next": "16.0.1",
-    "openai": "^6.8.1",
-    "pdf-parse": "^2.4.5",
-    "pg": "^8.16.3",
-    "react": "19.2.0",
-    "react-dom": "19.2.0",
-    "resend": "^4.0.0"             // 👈 Added Resend for email automation
-  },
-  "devDependencies": {
-    "@tailwindcss/postcss": "^4",
-    "@types/node": "^20.19.24",
-    "@types/pdf-parse": "^1.1.5",
-    "@types/pg": "^8.15.6",
-    "@types/react": "^19",
-    "@types/react-dom": "^19",
-    "eslint": "^9",
-    "eslint-config-next": "16.0.1",
-    "tailwindcss": "^4",
-    "typescript": "^5"
-  }
-}
+Error: Could not read /vercel/path0/package.json: Expected ',' or '}' after property value in JSON at position 418.
+    at scanParentDirs (/var/task/sandbox.js:78:34763)
+    at async getNodeVersion (/var/task/sandbox.js:78:33483)
+    at async $P (/var/task/sandbox.js:610:3586)
+    at async Promise.all (index 0)
+    at async /var/task/sandbox.js:638:22939
+    at async yct (/var/task/sandbox.js:638:21478)
+    at async hVr (/var/task/sandbox.js:640:1373)
+    at async fVr (/var/task/sandbox.js:640:1174)
