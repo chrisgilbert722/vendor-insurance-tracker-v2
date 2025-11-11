@@ -1,15 +1,9 @@
 {
-  "version": 2,
-  "regions": ["iad1"],
   "crons": [
     { "path": "/api/cron-renewal", "schedule": "0 14 * * *" },
     { "path": "/api/admin-digest", "schedule": "0 8 * * 1" }
   ],
-  "functions": {
-    "api/**/*.ts": {
-      "runtime": "nodejs20.x"
-    }
-  },
+  "regions": ["iad1"],
   "env": {
     "NODE_ENV": "production",
     "NEXT_TELEMETRY_DISABLED": "1"
