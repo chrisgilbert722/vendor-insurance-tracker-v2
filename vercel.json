@@ -1,9 +1,24 @@
 {
+  "version": 2,
+  "regions": ["iad1"], 
+  "builds": [
+    { "src": "next.config.mjs", "use": "@vercel/next" }
+  ],
   "crons": [
     {
-      "path": "/api/notify-expiring",
-      "schedule": "0 9 * * *"
+      "path": "/api/cron-renewal",
+      "schedule": "0 14 * * *"
     }
-  ]
+  ],
+  "env": {
+    "NODE_ENV": "production",
+    "NEXT_TELEMETRY_DISABLED": "1"
+  },
+  "functions": {
+    "api/**/*.ts": {
+      "runtime": "nodejs20.x",
+      "maxDuration": 30,
+      "memory": 1024
+    }
+  }
 }
- 
