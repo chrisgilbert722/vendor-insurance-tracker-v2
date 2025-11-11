@@ -1,105 +1,63 @@
-// ✅ Force this API route to use Node.js runtime (fixes DOMMatrix + Buffer issues)
 export const runtime = "nodejs";
-export const preferredRegion = "iad1"; // (any AWS/Vercel US-East region is fine)
-
 
 import { NextResponse } from "next/server";
 import OpenAI from "openai";
 import { Client } from "pg";
 
-const openai = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY!,
-});
+// ✅ import dynamically to stay Node-only
+import { extractPdfText } from "@/lib/server/pdfProcessor";
 
 export async function POST(req: Request) {
   try {
-    // 🧾 Get uploaded PDF file
     const formData = await req.formData();
     const file = formData.get("file") as File;
+    if (!file) return NextResponse.json({ ok: false, error: "No file uploaded." });
 
-    if (!file) {
-      return NextResponse.json(
-        { ok: false, error: "No file uploaded." },
-        { status: 400 }
-      );
-    }
-
-    // ✅ Dynamically import pdf-parse (works on Node, avoids ESM errors)
-    const pdfParseModule = (await import("pdf-parse")) as any;
-    const parsePdf = pdfParseModule.default || pdfParseModule;
-
-    // 📄 Convert file into text
+    // Convert to Buffer
     const buffer = Buffer.from(await file.arrayBuffer());
-    const pdfData = await parsePdf(buffer);
-    const text = pdfData.text?.trim();
+    const text = await extractPdfText(buffer);
+    if (!text) return NextResponse.json({ ok: false, error: "PDF text could not be extracted." });
 
-    if (!text) {
-      return NextResponse.json(
-        { ok: false, error: "No readable text found in PDF." },
-        { status: 400 }
-      );
-    }
-
-    // 🧠 Extract structured data using OpenAI
-    const ai = await openai.chat.completions.create({
+    // OpenAI extraction
+    const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY! });
+    const prompt = `
+      Extract these fields from the COI text as JSON:
+      carrier, policy_number, effective_date, expiration_date, coverage_type
+      ---
+      ${text.slice(0, 4000)}
+    `;
+    const completion = await openai.chat.completions.create({
       model: "gpt-4o-mini",
       messages: [
-        {
-          role: "user",
-          content: `
-          Extract and return a JSON object with these fields:
-          carrier, policy_number, effective_date, expiration_date, coverage_type.
-
-          If missing data, use "N/A". Here is the text from the COI:
-          \n\n${text}
-        `,
-        },
+        { role: "system", content: "You are a JSON extraction assistant." },
+        { role: "user", content: prompt },
       ],
+      temperature: 0,
     });
 
-    const raw = ai.choices?.[0]?.message?.content || "{}";
-    let extracted;
-    try {
-      extracted = JSON.parse(raw);
-    } catch {
-      extracted = { raw };
-    }
+    const raw = completion.choices[0].message?.content || "{}";
+    const json = JSON.parse(raw.match(/\{[\s\S]*\}/)?.[0] || "{}");
 
-    // 🗄️ Save extracted data to Neon (Postgres)
-    const client = new Client({
-      connectionString: process.env.DATABASE_URL,
-    });
+    // Save to database
+    const client = new Client({ connectionString: process.env.DATABASE_URL });
     await client.connect();
-
     await client.query(
-      `
-      INSERT INTO public.insurance_extracts 
-      (file_name, carrier, policy_number, effective_date, expiration_date, coverage_type, created_at)
-      VALUES ($1, $2, $3, $4, $5, $6, NOW())
-      `,
+      `INSERT INTO public.policies (policy_number, carrier, effective_date, expiration_date, coverage_type, status)
+       VALUES ($1, $2, $3, $4, $5, 'active')
+       ON CONFLICT DO NOTHING`,
       [
-        file.name,
-        extracted.carrier || "Unknown",
-        extracted.policy_number || "N/A",
-        extracted.effective_date || null,
-        extracted.expiration_date || null,
-        extracted.coverage_type || "N/A",
+        json.policy_number || null,
+        json.carrier || null,
+        json.effective_date || null,
+        json.expiration_date || null,
+        json.coverage_type || null,
       ]
     );
-
     await client.end();
 
-    // ✅ Success response
-    return NextResponse.json({
-      ok: true,
-      message: "✅ Extraction completed successfully!",
-      extracted,
-    });
-  } catch (error: any) {
-    console.error("❌ Error in /api/extract-coi:", error);
-    return NextResponse.json(
-      { ok: false, error: error.message || "Unexpected server error" },
-      { status: 500 }
-    );
+    return NextResponse.json({ ok: true, message: "Extraction completed successfully!", json });
+  } catch (err: any) {
+    console.error("Server error:", err);
+    return NextResponse.json({ ok: false, error: err.message }, { status: 500 });
   }
 }
