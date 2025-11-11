@@ -1,5 +1,3 @@
-// src/lib/server/pdfExtract.js
-// Runs in Node only – never imported by client components.
 const pdfParse = require("pdf-parse");
 
 async function extractText(buffer) {
