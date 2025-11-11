@@ -1,59 +1,48 @@
 import { NextResponse } from "next/server";
+import { Resend } from "resend";
 import { Client } from "pg";
-import { sendComplianceEmail } from "@/lib/email";
 
-export const runtime = "nodejs";
+const resend = new Resend(process.env.RESEND_API_KEY!);
 
-/**
- * Daily check for expiring or expired policies.
- * Sends alert emails automatically via Resend.
- */
 export async function GET() {
   try {
-    const client = new Client({ connectionString: process.env.DATABASE_URL });
+    const client = new Client({
+      connectionString: process.env.DATABASE_URL,
+    });
     await client.connect();
 
-    const result = await client.query(`
-      SELECT id, file_name, carrier, policy_number, expiration_date
-      FROM insurance_extracts
-      WHERE expiration_date IS NOT NULL
+    // Find policies expiring within 15 days
+    const { rows } = await client.query(`
+      SELECT v.vendor_name, v.email, p.policy_number, p.expiration_date
+      FROM policies p
+      JOIN vendors v ON v.id = p.vendor_id
+      WHERE p.expiration_date < NOW() + INTERVAL '15 days'
+      AND p.expiration_date > NOW()
     `);
 
-    const now = new Date();
+    if (rows.length === 0) {
+      return NextResponse.json({ ok: true, message: "No expiring policies today." });
+    }
 
-    for (const r of result.rows) {
-      const exp = new Date(r.expiration_date);
-      const diffDays = Math.ceil((exp.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
-
-      if (diffDays <= 30 && diffDays > 0) {
-        await sendComplianceEmail({
-          to: "admin@yourdomain.com",
-          subject: `⚠️ Policy ${r.policy_number || "(unknown)"} expires in ${diffDays} days`,
-          message: `
-            The policy for carrier <b>${r.carrier}</b> (${r.file_name})
-            will expire on <b>${r.expiration_date}</b>.
-            <br><br>
-            Please request an updated COI before expiration.
-          `,
-        });
-      } else if (diffDays <= 0) {
-        await sendComplianceEmail({
-          to: "admin@yourdomain.com",
-          subject: `❌ Policy ${r.policy_number || "(unknown)"} has expired!`,
-          message: `
-            The policy for carrier <b>${r.carrier}</b> (${r.file_name})
-            expired on <b>${r.expiration_date}</b>.
-            <br><br>
-            Please contact the vendor for renewal immediately.
-          `,
-        });
-      }
+    // Send alert emails
+    for (const row of rows) {
+      await resend.emails.send({
+        from: "alerts@coibot.ai",
+        to: row.email,
+        subject: `🚨 Policy Expiring Soon: ${row.policy_number}`,
+        html: `
+          <h2>Policy Expiring Soon</h2>
+          <p>Hello ${row.vendor_name},</p>
+          <p>Your policy <strong>${row.policy_number}</strong> is expiring on ${new Date(row.expiration_date).toDateString()}.</p>
+          <p>Please upload a renewed certificate to remain compliant.</p>
+        `,
+      });
     }
 
     await client.end();
-    return NextResponse.json({ ok: true, message: "✅ Checked expiring policies and sent alerts." });
+    return NextResponse.json({ ok: true, message: `Sent ${rows.length} renewal alerts.` });
   } catch (error: any) {
-    console.error("❌ notify-expiring error:", error);
+    console.error(error);
     return NextResponse.json({ ok: false, error: error.message }, { status: 500 });
   }
 }
