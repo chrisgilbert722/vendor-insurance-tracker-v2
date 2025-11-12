@@ -1,15 +1,8 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
-  // ✅ Explicitly tell Next.js to use /pages directory
+  reactStrictMode: true,
   pageExtensions: ['js', 'jsx', 'ts', 'tsx'],
-
-  // ✅ Ensure correct runtime
-  experimental: {
-    runtime: 'nodejs',
-  },
-
-  // ✅ Disable appDir since we deleted /app
-  appDir: false,
+  experimental: { appDir: false },
 };
 
 export default nextConfig;
