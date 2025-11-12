@@ -1,15 +1,15 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
-  output: "standalone",
+  // ✅ Explicitly tell Next.js to use /pages directory
+  pageExtensions: ['js', 'jsx', 'ts', 'tsx'],
 
-  webpack(config) {
-    console.log("✅ Including /src/app/api routes...");
-    return config;
-  },
-
+  // ✅ Ensure correct runtime
   experimental: {
-    serverActions: {}, // ✅ this replaces the old `appDir` key
+    runtime: 'nodejs',
   },
+
+  // ✅ Disable appDir since we deleted /app
+  appDir: false,
 };
 
 export default nextConfig;
