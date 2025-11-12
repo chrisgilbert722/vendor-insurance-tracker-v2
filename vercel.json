@@ -9,8 +9,6 @@
     { "src": "pages/**/*.js", "use": "@vercel/next" }
   ],
   "routes": [
-    { "src": "/api/(.*)", "dest": "/pages/api/$1" },
-    { "src": "/(.*)", "dest": "/pages/$1" }
+    { "src": "/(.*)", "dest": "/" }
   ]
 }
- 
