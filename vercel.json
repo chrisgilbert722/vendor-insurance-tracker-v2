@@ -2,12 +2,14 @@
   "version": 2,
   "functions": {
     "pages/api/**/*.js": {
-      "runtime": "nodejs18.x",
-      "maxDuration": 60
+      "runtime": "nodejs18.x"
     }
   },
+  "builds": [
+    { "src": "pages/**/*.js", "use": "@vercel/next" }
+  ],
   "routes": [
     { "src": "/api/(.*)", "dest": "/pages/api/$1" },
-    { "src": "/(.*)", "dest": "/" }
+    { "src": "/(.*)", "dest": "/pages/$1" }
   ]
 }
