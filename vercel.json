@@ -1,11 +1,12 @@
 {
   "version": 2,
   "functions": {
-    "pages/api/**/*.js": {
+    "api/**/*.js": {
       "runtime": "nodejs18.x"
     }
   },
   "routes": [
-    { "src": "/(.*)", "dest": "/" }
+    { "src": "/api/(.*)", "dest": "/api/$1" },
+    { "src": "/(.*)", "dest": "/pages/$1" }
   ]
 }
