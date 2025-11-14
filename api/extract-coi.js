@@ -1,10 +1,8 @@
-// ✅ FINAL — Node.js Server Function (Vercel Compatible)
+// ✅ FINAL — Vercel Node.js Server API (Correct Runtime Placement)
 
 export const config = {
-  api: {
-    bodyParser: false,   // Must be false for formidable
-    runtime: "nodejs"    // Force Node, NOT Edge
-  },
+  runtime: "nodejs",          // MUST be here (not inside api)
+  api: { bodyParser: false }, // Required for formidable
 };
 
 import OpenAI from "openai";
@@ -19,22 +17,21 @@ export default async function handler(req, res) {
   }
 
   try {
-    // 🧩 Parse form-data
+    // Parse form-data
     const form = formidable({});
     const [fields, files] = await form.parse(req);
 
     const file = files.file?.[0];
     if (!file) throw new Error("No file uploaded");
 
-    // Read PDF file buffer
+    // Read and parse PDF
     const buffer = fs.readFileSync(file.filepath);
     const pdfData = await pdfParse(buffer);
-
     if (!pdfData.text) throw new Error("Could not read PDF text");
 
     const text = pdfData.text.trim().slice(0, 3500);
 
-    // 🧠 Call OpenAI
+    // OpenAI JSON extraction
     const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
     const prompt = `
@@ -50,7 +47,7 @@ Return ONLY valid JSON. No commentary.
 
 PDF TEXT:
 ${text}
-    `;
+`;
 
     const completion = await openai.chat.completions.create({
       model: "gpt-4o-mini",
@@ -62,13 +59,12 @@ ${text}
 
     const raw = completion.choices[0]?.message?.content || "{}";
 
-    // Extract ONLY JSON
     const match = raw.match(/\{[\s\S]*\}/);
     if (!match) throw new Error("AI did not return JSON");
 
     const jsonData = JSON.parse(match[0]);
 
-    // 💾 Insert into PostgreSQL
+    // Save to PostgreSQL
     const client = new Client({ connectionString: process.env.DATABASE_URL });
     await client.connect();
 
