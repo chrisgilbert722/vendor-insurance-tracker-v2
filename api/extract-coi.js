@@ -1,13 +1,15 @@
 // ✅ Final Clean Node-only Extract COI API
+
+export const config = {
+  api: { bodyParser: false },
+  runtime: "nodejs",       // ⬅️ REQUIRED so Vercel runs this in Node.js, not Edge
+};
+
 import OpenAI from "openai";
 import { Client } from "pg";
 import formidable from "formidable";
 import fs from "fs";
 import pdfParse from "pdf-parse";
-
-export const config = {
-  api: { bodyParser: false },
-};
 
 export default async function handler(req, res) {
   if (req.method !== "POST") {
@@ -71,6 +73,7 @@ export default async function handler(req, res) {
       message: "✅ COI extracted and stored successfully",
       json: jsonData,
     });
+
   } catch (err) {
     console.error("extract-coi error:", err);
     return res.status(500).json({ ok: false, error: err.message });
