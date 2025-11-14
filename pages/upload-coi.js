@@ -12,7 +12,10 @@ export default function UploadCOI() {
     setSuccess("");
     setDebugResponse("");
 
-    if (!file) return setError("Please select a file first.");
+    if (!file) {
+      setError("Please select a file first.");
+      return;
+    }
 
     const form = new FormData();
     form.append("file", file);
@@ -27,17 +30,20 @@ export default function UploadCOI() {
 
       if (contentType.includes("application/json")) {
         const data = await res.json();
-        if (!res.ok) throw new Error(data.error);
+
+        if (!res.ok) {
+          throw new Error(data.error || "Upload failed");
+        }
 
         setSuccess("Upload successful!");
         setDebugResponse(JSON.stringify(data, null, 2));
       } else {
         const text = await res.text();
         setDebugResponse(text);
-        throw new Error("Server returned non-JSON.");
+        throw new Error("Server returned non-JSON response.");
       }
     } catch (err) {
-      setError(err.message);
+      setError(err.message || "Unknown error");
     }
   }
 
@@ -49,17 +55,38 @@ export default function UploadCOI() {
 
       <input
         type="file"
-        onChange={(e) => setFile(e.target.files[0] || null)}
+        onChange={(e) => setFile(e.target.files?.[0] || null)}
         style={{ marginBottom: "10px" }}
       />
 
-      <button onClick={handleUpload}>Upload COI</button>
+      <button onClick={handleUpload} style={{ padding: "8px 16px" }}>
+        Upload COI
+      </button>
 
-      {error && <p style={{ color: "red" }}>❌ {error}</p>}
-      {success && <p style={{ color: "green" }}>✅ {success}</p>}
+      {error && <p style={{ color: "red", marginTop: "10px" }}>❌ {error}</p>}
+      {success && (
+        <p style={{ color: "green", marginTop: "10px" }}>✅ {success}</p>
+      )}
 
       {debugResponse && (
         <pre
           style={{
             marginTop: "20px",
-            padding: "12
+            padding: "12px",
+            border: "1px solid #ccc",
+            background: "#f7f7f7",
+            maxWidth: "800px",
+            whiteSpace: "pre-wrap",
+            fontSize: "12px",
+          }}
+        >
+          {debugResponse}
+        </pre>
+      )}
+
+      <br />
+      <br />
+      <a href="/dashboard">Go to Dashboard →</a>
+    </div>
+  );
+}
