@@ -7,15 +7,23 @@ export default function Callback() {
 
   useEffect(() => {
     async function finishLogin() {
-      const { data: { session } } = await supabase.auth.getSession();
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
 
       if (!session) {
         router.push("/auth/login");
         return;
       }
 
-      // Save session client-side
       localStorage.setItem("sb_session", JSON.stringify(session));
+
+      // Sync Supabase user → Neon DB
+      await fetch("/api/auth/sync-user", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ user: session.user }),
+      });
 
       router.push("/dashboard");
     }
