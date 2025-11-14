@@ -1,4 +1,5 @@
 import { useState } from "react";
+import Header from "../components/Header";
 
 export default function VendorsPage() {
   const [name, setName] = useState("");
@@ -25,84 +26,60 @@ export default function VendorsPage() {
       });
 
       const data = await res.json();
-      if (!res.ok || !data.ok) {
-        throw new Error(data.error || "Failed to create vendor.");
-      }
+      if (!res.ok || !data.ok) throw new Error(data.error);
 
       setCreatedVendor(data.vendor);
       setSuccess("Vendor created successfully!");
     } catch (err) {
-      setError(err.message || "Unknown error");
+      setError(err.message);
     }
   }
 
   return (
     <div style={{ padding: "40px" }}>
+      <Header />
+
       <h1>Vendors</h1>
       <p>Create a vendor and get a self-service COI upload link.</p>
 
       <div style={{ marginTop: "20px", maxWidth: "400px" }}>
-        <div style={{ marginBottom: "10px" }}>
-          <label>
-            Vendor Name
-            <br />
-            <input
-              type="text"
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              style={{ width: "100%", padding: "8px", marginTop: "4px" }}
-            />
-          </label>
-        </div>
+        <label>Vendor Name</label>
+        <input
+          type="text"
+          value={name}
+          onChange={(e) => setName(e.target.value)}
+          style={{ width: "100%", padding: "8px", marginBottom: "10px" }}
+        />
 
-        <div style={{ marginBottom: "10px" }}>
-          <label>
-            Vendor Email (optional)
-            <br />
-            <input
-              type="email"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              style={{ width: "100%", padding: "8px", marginTop: "4px" }}
-            />
-          </label>
-        </div>
+        <label>Vendor Email (optional)</label>
+        <input
+          type="email"
+          value={email}
+          onChange={(e) => setEmail(e.target.value)}
+          style={{ width: "100%", padding: "8px", marginBottom: "10px" }}
+        />
 
         <button onClick={handleCreate} style={{ padding: "8px 16px" }}>
           Create Vendor
         </button>
 
-        {error && <p style={{ color: "red", marginTop: "10px" }}>❌ {error}</p>}
-        {success && (
-          <p style={{ color: "green", marginTop: "10px" }}>✅ {success}</p>
-        )}
-
+        {error && <p style={{ color: "red" }}>❌ {error}</p>}
+        {success && <p style={{ color: "green" }}>✅ {success}</p>}
         {createdVendor && (
-          <div
+          <pre
             style={{
-              marginTop: "16px",
               padding: "12px",
-              border: "1px solid #ccc",
-              borderRadius: "4px",
-              background: "#f9f9f9",
+              background: "#f4f4f4",
+              borderRadius: "6px",
+              marginTop: "10px",
             }}
           >
-            <p>
-              <strong>Vendor:</strong> {createdVendor.name}
-            </p>
-            {createdVendor.email && (
-              <p>
-                <strong>Email:</strong> {createdVendor.email}
-              </p>
-            )}
-            <p>
-              <strong>Upload Link:</strong>
-              <br />
-              <a href={createdVendor.uploadUrl} target="_blank" rel="noreferrer">
-                {createdVendor.uploadUrl}
-              </a>
-            </p>
-          </div>
+            Vendor: {createdVendor.name}
+            {"\n"}
+            Upload Link:
+            {"\n"}
+            {createdVendor.uploadUrl}
+          </pre>
         )}
       </div>
 
