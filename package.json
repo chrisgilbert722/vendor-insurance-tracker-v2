@@ -7,7 +7,7 @@
     "dev": "next dev --webpack",
     "build": "next build --webpack",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint ."
   },
   "dependencies": {
     "next": "16.0.1",
@@ -20,16 +20,17 @@
     "resend": "4.0.0"
   },
   "devDependencies": {
+    "eslint": "9.39.1",
+    "eslint-config-next": "16.0.1",
+    "@eslint/js": "9.39.1",
+    "typescript": "5.9.3",
+    "@types/node": "22.7.0",
+    "@types/pg": "8.6.6",
+    "@types/react": "19.0.1",
+    "@types/react-dom": "19.0.1",
     "autoprefixer": "10.4.0",
     "postcss": "8.4.0",
     "postcss-loader": "7.0.0",
-    "eslint": "8.57.0",
-    "eslint-config-next": "16.0.1",
-    "tailwindcss": "4.0.0",
-    "typescript": "5.4.0",
-    "@types/node": "20.12.7",
-    "@types/pg": "8.6.6",
-    "@types/react": "19.0.1",
-    "@types/react-dom": "19.0.1"
+    "tailwindcss": "4.0.0"
   }
 }
