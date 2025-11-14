@@ -7,6 +7,10 @@ export default function Callback() {
 
   useEffect(() => {
     async function finishLogin() {
+      // 1️⃣ Create a session from the magic link
+      await supabase.auth.exchangeCodeForSession(window.location.href);
+
+      // 2️⃣ Now the session exists, fetch it
       const {
         data: { session },
       } = await supabase.auth.getSession();
@@ -16,15 +20,17 @@ export default function Callback() {
         return;
       }
 
+      // 3️⃣ Store locally for UI
       localStorage.setItem("sb_session", JSON.stringify(session));
 
-      // Sync Supabase user → Neon DB
+      // 4️⃣ Sync user to Neon DB
       await fetch("/api/auth/sync-user", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ user: session.user }),
       });
 
+      // 5️⃣ Redirect to dashboard
       router.push("/dashboard");
     }
 
