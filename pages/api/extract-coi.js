@@ -41,16 +41,20 @@ export default async function handler(req, res) {
     const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
     const systemPrompt = `
-You are a COI (Certificate of Insurance) parser. 
+You are a COI (Certificate of Insurance) parser.
 Your job is to extract ONLY the following fields:
 
 {
+  "vendor_name": string | null,
   "policy_number": string | null,
   "carrier": string | null,
   "effective_date": string | null,
   "expiration_date": string | null,
   "coverage_type": string | null
 }
+
+"vendor_name" should be the insured party or named insured on the certificate
+(e.g. "Beachside Construction LLC", "Chris Gilbert", etc.)
 
 Rules:
 - Return ONLY valid JSON.
@@ -88,9 +92,10 @@ Rules:
 
     await client.query(
       `INSERT INTO public.policies
-        (policy_number, carrier, effective_date, expiration_date, coverage_type, status)
-       VALUES ($1, $2, $3, $4, $5, 'active')`,
+        (vendor_name, policy_number, carrier, effective_date, expiration_date, coverage_type, status)
+       VALUES ($1, $2, $3, $4, $5, $6, 'active')`,
       [
+        jsonData.vendor_name || null,
         jsonData.policy_number || null,
         jsonData.carrier || null,
         jsonData.effective_date || null,
@@ -115,6 +120,11 @@ Rules:
         await client.end();
       } catch (_) {}
     }
+
+    return res.status(500).json({ ok: false, error: err.message });
+  }
+}
+
 
     return res.status(500).json({ ok: false, error: err.message });
   }
