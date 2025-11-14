@@ -1,8 +1,8 @@
-// ✅ FINAL — Vercel Node.js Server API (Correct Runtime Placement)
+// 🟢 FINAL — Vercel Node.js API Route (Stable + JSON-Safe + Production Ready)
 
 export const config = {
-  runtime: "nodejs",          // MUST be here (not inside api)
-  api: { bodyParser: false }, // Required for formidable
+  runtime: "nodejs",
+  api: { bodyParser: false }, // Required for formidable to handle PDF uploads
 };
 
 import OpenAI from "openai";
@@ -16,62 +16,80 @@ export default async function handler(req, res) {
     return res.status(405).json({ ok: false, error: "Method not allowed" });
   }
 
+  let client = null;
+
   try {
-    // Parse form-data
+    // 🟢 Parse form-data (file upload)
     const form = formidable({});
     const [fields, files] = await form.parse(req);
 
     const file = files.file?.[0];
     if (!file) throw new Error("No file uploaded");
 
-    // Read and parse PDF
+    // 🟢 Read PDF buffer
     const buffer = fs.readFileSync(file.filepath);
     const pdfData = await pdfParse(buffer);
-    if (!pdfData.text) throw new Error("Could not read PDF text");
 
-    const text = pdfData.text.trim().slice(0, 3500);
+    if (!pdfData.text || pdfData.text.trim().length === 0) {
+      throw new Error("PDF contains no readable text");
+    }
 
-    // OpenAI JSON extraction
+    // 🟢 Limit size to avoid sending huge PDFs to OpenAI
+    const text = pdfData.text.trim().slice(0, 5000);
+
+    // 🟢 OpenAI client
     const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
-    const prompt = `
-Extract the following fields from this Certificate of Insurance:
+    const systemPrompt = `
+You are a COI (Certificate of Insurance) parser. 
+Your job is to extract ONLY the following fields:
 
-- policy_number
-- carrier
-- effective_date
-- expiration_date
-- coverage_type
+{
+  "policy_number": string | null,
+  "carrier": string | null,
+  "effective_date": string | null,
+  "expiration_date": string | null,
+  "coverage_type": string | null
+}
 
-Return ONLY valid JSON. No commentary.
-
-PDF TEXT:
-${text}
+Rules:
+- Return ONLY valid JSON.
+- No explanations.
+- If a field is missing, set it to null.
 `;
+
+    const userPrompt = `Extract these fields from the PDF text:\n\n${text}`;
 
     const completion = await openai.chat.completions.create({
       model: "gpt-4o-mini",
+      temperature: 0,
       messages: [
-        { role: "system", content: "Return ONLY a valid JSON object." },
-        { role: "user", content: prompt }
+        { role: "system", content: systemPrompt },
+        { role: "user", content: userPrompt }
       ],
     });
 
-    const raw = completion.choices[0]?.message?.content || "{}";
+    const aiOutput = completion.choices[0]?.message?.content || "";
 
-    const match = raw.match(/\{[\s\S]*\}/);
-    if (!match) throw new Error("AI did not return JSON");
+    // 🟢 Extract ONLY the JSON portion
+    const jsonMatch = aiOutput.match(/\{[\s\S]*\}/);
+    if (!jsonMatch) throw new Error("AI did not return valid JSON");
 
-    const jsonData = JSON.parse(match[0]);
+    let jsonData;
+    try {
+      jsonData = JSON.parse(jsonMatch[0]);
+    } catch (e) {
+      throw new Error("Failed to parse JSON from AI output");
+    }
 
-    // Save to PostgreSQL
-    const client = new Client({ connectionString: process.env.DATABASE_URL });
+    // 🟢 Insert into PostgreSQL
+    client = new Client({ connectionString: process.env.DATABASE_URL });
     await client.connect();
 
     await client.query(
       `INSERT INTO public.policies
-      (policy_number, carrier, effective_date, expiration_date, coverage_type, status)
-      VALUES ($1,$2,$3,$4,$5,'active')`,
+        (policy_number, carrier, effective_date, expiration_date, coverage_type, status)
+       VALUES ($1, $2, $3, $4, $5, 'active')`,
       [
         jsonData.policy_number || null,
         jsonData.carrier || null,
@@ -86,11 +104,18 @@ ${text}
     return res.status(200).json({
       ok: true,
       json: jsonData,
-      message: "COI extracted successfully"
+      message: "COI extracted successfully",
     });
 
   } catch (err) {
     console.error("extract-coi.js ERROR:", err);
+
+    if (client) {
+      try {
+        await client.end();
+      } catch (_) {}
+    }
+
     return res.status(500).json({ ok: false, error: err.message });
   }
 }
