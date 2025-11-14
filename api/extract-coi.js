@@ -1,8 +1,10 @@
-// Final Clean Node-only Extract COI API
+// ✅ FINAL — Node.js Server Function (Vercel Compatible)
 
 export const config = {
-  api: { bodyParser: false },
-  runtime: "nodejs"   // ✅ Required so we do NOT run on Edge
+  api: {
+    bodyParser: false,   // Must be false for formidable
+    runtime: "nodejs"    // Force Node, NOT Edge
+  },
 };
 
 import OpenAI from "openai";
@@ -17,80 +19,82 @@ export default async function handler(req, res) {
   }
 
   try {
-    // 🧩 Parse file upload
-    const form = formidable({ multiples: false });
+    // 🧩 Parse form-data
+    const form = formidable({});
     const [fields, files] = await form.parse(req);
+
     const file = files.file?.[0];
+    if (!file) throw new Error("No file uploaded");
 
-    if (!file) {
-      return res.status(400).json({ ok: false, error: "No file uploaded" });
-    }
-
-    // 📄 Read PDF into Buffer
+    // Read PDF file buffer
     const buffer = fs.readFileSync(file.filepath);
-
-    // 🔍 Extract text from PDF
     const pdfData = await pdfParse(buffer);
-    const text = pdfData.text?.trim() || "";
 
-    if (!text.length) {
-      return res.status(400).json({ ok: false, error: "PDF text is empty" });
-    }
+    if (!pdfData.text) throw new Error("Could not read PDF text");
 
-    // 🤖 Extract structured data using OpenAI
+    const text = pdfData.text.trim().slice(0, 3500);
+
+    // 🧠 Call OpenAI
     const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+
+    const prompt = `
+Extract the following fields from this Certificate of Insurance:
+
+- policy_number
+- carrier
+- effective_date
+- expiration_date
+- coverage_type
+
+Return ONLY valid JSON. No commentary.
+
+PDF TEXT:
+${text}
+    `;
 
     const completion = await openai.chat.completions.create({
       model: "gpt-4o-mini",
       messages: [
-        { role: "system", content: "Return ONLY valid JSON." },
-        {
-          role: "user",
-          content: `Extract insurance details as JSON with keys:
-          policy_number, carrier, effective_date, expiration_date, coverage_type.
-          
-          Text:
-          ${text.slice(0, 4000)}`
-        }
-      ]
+        { role: "system", content: "Return ONLY a valid JSON object." },
+        { role: "user", content: prompt }
+      ],
     });
 
     const raw = completion.choices[0]?.message?.content || "{}";
+
+    // Extract ONLY JSON
     const match = raw.match(/\{[\s\S]*\}/);
-    const jsonData = match ? JSON.parse(match[0]) : {};
+    if (!match) throw new Error("AI did not return JSON");
 
-    // 🗃 Save results to PostgreSQL
-    const client = new Client({
-      connectionString: process.env.DATABASE_URL,
-    });
+    const jsonData = JSON.parse(match[0]);
 
+    // 💾 Insert into PostgreSQL
+    const client = new Client({ connectionString: process.env.DATABASE_URL });
     await client.connect();
+
     await client.query(
       `INSERT INTO public.policies
       (policy_number, carrier, effective_date, expiration_date, coverage_type, status)
-      VALUES ($1, $2, $3, $4, $5, 'active')`,
+      VALUES ($1,$2,$3,$4,$5,'active')`,
       [
         jsonData.policy_number || null,
         jsonData.carrier || null,
         jsonData.effective_date || null,
         jsonData.expiration_date || null,
-        jsonData.coverage_type || null,
+        jsonData.coverage_type || null
       ]
     );
+
     await client.end();
 
-    // 🎉 Success response
     return res.status(200).json({
       ok: true,
-      message: "COI extracted successfully",
-      json: jsonData
+      json: jsonData,
+      message: "COI extracted successfully"
     });
 
   } catch (err) {
-    console.error("❌ extract-coi error:", err);
-    return res.status(500).json({
-      ok: false,
-      error: err.message || "Unknown error"
-    });
+    console.error("extract-coi.js ERROR:", err);
+    return res.status(500).json({ ok: false, error: err.message });
   }
 }
