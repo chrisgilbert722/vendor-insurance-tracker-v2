@@ -14,7 +14,9 @@ export default function Login() {
     const { error } = await supabase.auth.signInWithOtp({
       email,
       options: {
-        emailRedirectTo: `${window.location.origin}/auth/callback`,
+        // ALWAYS redirect to hosted production callback URL
+        emailRedirectTo:
+          "https://vendor-insurance-tracker-v2.vercel.app/auth/callback",
       },
     });
 
@@ -36,7 +38,11 @@ export default function Login() {
             value={email}
             onChange={(e) => setEmail(e.target.value)}
             required
-            style={{ width: "100%", padding: "10px", marginBottom: "12px" }}
+            style={{
+              width: "100%",
+              padding: "10px",
+              marginBottom: "12px",
+            }}
           />
 
           <button type="submit" style={{ width: "100%", padding: "10px" }}>
