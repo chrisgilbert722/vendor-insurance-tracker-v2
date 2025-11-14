@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import Header from "../components/Header";
 
 function statusStyles(level) {
   switch (level) {
@@ -28,12 +29,11 @@ export default function Dashboard() {
         const res = await fetch("/api/get-policies");
         const data = await res.json();
 
-        if (data.ok) {
-          setPolicies(data.policies);
-        }
+        if (data.ok) setPolicies(data.policies);
       } catch (err) {
         console.error("Failed to load policies:", err);
       }
+
       setLoading(false);
     }
 
@@ -51,18 +51,10 @@ export default function Dashboard() {
     );
   });
 
-  function openDetails(p) {
-    setSelectedPolicy(p);
-    setShowModal(true);
-  }
-
-  function closeDetails() {
-    setShowModal(false);
-    setSelectedPolicy(null);
-  }
-
   return (
     <div style={{ padding: "40px" }}>
+      <Header />
+
       <h1>Vendor Insurance Tracker Dashboard</h1>
       <p>Welcome! Choose an action below:</p>
 
@@ -72,26 +64,23 @@ export default function Dashboard() {
 
       <h2>Saved Policies</h2>
 
-      <div style={{ marginBottom: "16px", marginTop: "8px" }}>
-        <input
-          type="text"
-          placeholder="Search by vendor, carrier, policy #, coverage..."
-          value={filterText}
-          onChange={(e) => setFilterText(e.target.value)}
-          style={{
-            padding: "8px",
-            width: "320px",
-            borderRadius: "4px",
-            border: "1px solid #ccc",
-          }}
-        />
-      </div>
+      <input
+        type="text"
+        placeholder="Search by vendor, carrier, policy #, coverage..."
+        value={filterText}
+        onChange={(e) => setFilterText(e.target.value)}
+        style={{
+          padding: "8px",
+          width: "320px",
+          borderRadius: "4px",
+          border: "1px solid #ccc",
+          marginBottom: "16px",
+        }}
+      />
 
       {loading && <p>Loading...</p>}
 
-      {!loading && filtered.length === 0 && (
-        <p>No matching policies. Try a different search or upload a new COI.</p>
-      )}
+      {!loading && filtered.length === 0 && <p>No matching policies.</p>}
 
       {filtered.length > 0 && (
         <table
@@ -103,48 +92,32 @@ export default function Dashboard() {
         >
           <thead>
             <tr>
-              <th style={{ border: "1px solid #ccc", padding: "8px" }}>Vendor</th>
-              <th style={{ border: "1px solid #ccc", padding: "8px" }}>Policy #</th>
-              <th style={{ border: "1px solid #ccc", padding: "8px" }}>Carrier</th>
-              <th style={{ border: "1px solid #ccc", padding: "8px" }}>Coverage</th>
-              <th style={{ border: "1px solid #ccc", padding: "8px" }}>Effective</th>
-              <th style={{ border: "1px solid #ccc", padding: "8px" }}>Expires</th>
-              <th style={{ border: "1px solid #ccc", padding: "8px" }}>Status</th>
+              <th>Vendor</th>
+              <th>Policy #</th>
+              <th>Carrier</th>
+              <th>Coverage</th>
+              <th>Effective</th>
+              <th>Expires</th>
+              <th>Status</th>
             </tr>
           </thead>
           <tbody>
             {filtered.map((p) => (
               <tr
                 key={p.id}
-                onClick={() => openDetails(p)}
+                onClick={() => {
+                  setSelectedPolicy(p);
+                  setShowModal(true);
+                }}
                 style={{ cursor: "pointer" }}
               >
-                <td style={{ border: "1px solid #ccc", padding: "8px" }}>
-                  {p.vendor_name || "–"}
-                </td>
-                <td style={{ border: "1px solid #ccc", padding: "8px" }}>
-                  {p.policy_number}
-                </td>
-                <td style={{ border: "1px solid #ccc", padding: "8px" }}>
-                  {p.carrier}
-                </td>
-                <td style={{ border: "1px solid #ccc", padding: "8px" }}>
-                  {p.coverage_type}
-                </td>
-                <td style={{ border: "1px solid #ccc", padding: "8px" }}>
-                  {p.effective_date}
-                </td>
-                <td style={{ border: "1px solid #ccc", padding: "8px" }}>
-                  {p.expiration_date}
-                </td>
-                <td
-                  style={{
-                    border: "1px solid #ccc",
-                    padding: "8px",
-                    textAlign: "center",
-                    ...statusStyles(p.computedStatus?.level),
-                  }}
-                >
+                <td>{p.vendor_name || "—"}</td>
+                <td>{p.policy_number}</td>
+                <td>{p.carrier}</td>
+                <td>{p.coverage_type}</td>
+                <td>{p.effective_date}</td>
+                <td>{p.expiration_date}</td>
+                <td style={{ ...statusStyles(p.computedStatus?.level) }}>
                   {p.computedStatus?.label || "unknown"}
                 </td>
               </tr>
@@ -153,10 +126,9 @@ export default function Dashboard() {
         </table>
       )}
 
-      {/* Simple details modal */}
       {showModal && selectedPolicy && (
         <div
-          onClick={closeDetails}
+          onClick={() => setShowModal(false)}
           style={{
             position: "fixed",
             inset: 0,
@@ -164,7 +136,7 @@ export default function Dashboard() {
             display: "flex",
             alignItems: "center",
             justifyContent: "center",
-            zIndex: 9999,
+            zIndex: 999,
           }}
         >
           <div
@@ -173,35 +145,21 @@ export default function Dashboard() {
               background: "#fff",
               padding: "24px",
               borderRadius: "8px",
-              maxWidth: "600px",
-              width: "100%",
-              boxShadow: "0 10px 30px rgba(0,0,0,0.2)",
+              width: "500px",
             }}
           >
             <h3>Policy Details</h3>
-            <p><strong>Vendor:</strong> {selectedPolicy.vendor_name || "–"}</p>
-            <p><strong>Policy #:</strong> {selectedPolicy.policy_number}</p>
-            <p><strong>Carrier:</strong> {selectedPolicy.carrier}</p>
-            <p><strong>Coverage:</strong> {selectedPolicy.coverage_type}</p>
-            <p><strong>Effective:</strong> {selectedPolicy.effective_date}</p>
-            <p><strong>Expires:</strong> {selectedPolicy.expiration_date}</p>
-            <p>
-              <strong>Status:</strong>{" "}
-              {selectedPolicy.computedStatus?.label || "unknown"}
-            </p>
-            <p><strong>Created:</strong> {new Date(selectedPolicy.created_at).toLocaleString()}</p>
+
+            <p><b>Vendor:</b> {selectedPolicy.vendor_name || "—"}</p>
+            <p><b>Policy #:</b> {selectedPolicy.policy_number}</p>
+            <p><b>Carrier:</b> {selectedPolicy.carrier}</p>
+            <p><b>Coverage:</b> {selectedPolicy.coverage_type}</p>
+            <p><b>Effective:</b> {selectedPolicy.effective_date}</p>
+            <p><b>Expires:</b> {selectedPolicy.expiration_date}</p>
 
             <button
-              onClick={closeDetails}
-              style={{
-                marginTop: "16px",
-                padding: "8px 16px",
-                borderRadius: "4px",
-                border: "none",
-                background: "#333",
-                color: "#fff",
-                cursor: "pointer",
-              }}
+              onClick={() => setShowModal(false)}
+              style={{ marginTop: "12px", padding: "8px 16px" }}
             >
               Close
             </button>
