@@ -8,7 +8,6 @@ export default function Login() {
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
 
-  // Send OTP Code
   async function handleSendCode(e) {
     e.preventDefault();
     setError("");
@@ -27,7 +26,6 @@ export default function Login() {
     else setStep("code");
   }
 
-  // Verify OTP Code
   async function handleVerifyCode(e) {
     e.preventDefault();
     setError("");
@@ -46,17 +44,13 @@ export default function Login() {
       return;
     }
 
-    // Sync the user (Neon DB)
+    // Sync user to Neon
     if (data?.session?.user) {
-      try {
-        await fetch("/api/auth/sync-user", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ user: data.session.user }),
-        });
-      } catch (err) {
-        console.error("sync-user failed:", err);
-      }
+      await fetch("/api/auth/sync-user", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ user: data.session.user }),
+      });
     }
 
     window.location.href = "/dashboard";
@@ -68,10 +62,7 @@ export default function Login() {
 
       {step === "email" ? (
         <>
-          <p style={{ marginBottom: "12px" }}>
-            Enter your email and we'll send you a login code.
-          </p>
-
+          <p>Enter your email and we'll send you a login code.</p>
           <form onSubmit={handleSendCode}>
             <input
               type="email"
@@ -87,18 +78,16 @@ export default function Login() {
                 border: "1px solid #ccc",
               }}
             />
-
             <button
               type="submit"
               disabled={loading}
               style={{
                 width: "100%",
                 padding: "10px",
-                borderRadius: "4px",
-                border: "none",
                 background: "#111827",
                 color: "#fff",
-                cursor: "pointer",
+                border: "none",
+                borderRadius: "4px",
               }}
             >
               {loading ? "Sending..." : "Send Login Code"}
@@ -107,15 +96,11 @@ export default function Login() {
         </>
       ) : (
         <>
-          <p style={{ marginBottom: "12px" }}>
-            Enter the code we emailed to <strong>{email}</strong>.
-          </p>
-
+          <p>Enter the code we emailed to <b>{email}</b>.</p>
           <form onSubmit={handleVerifyCode}>
             <input
               type="text"
-              inputMode="numeric"
-              placeholder="6–8 digit code"
+              placeholder="Code"
               value={code}
               onChange={(e) => setCode(e.target.value)}
               required
@@ -125,34 +110,28 @@ export default function Login() {
                 marginBottom: "12px",
                 borderRadius: "4px",
                 border: "1px solid #ccc",
-                letterSpacing: "4px",
-                fontFamily: "monospace",
               }}
             />
-
             <button
               type="submit"
               disabled={loading}
               style={{
                 width: "100%",
                 padding: "10px",
-                borderRadius: "4px",
-                border: "none",
                 background: "#111827",
                 color: "#fff",
-                cursor: "pointer",
+                border: "none",
+                borderRadius: "4px",
               }}
             >
               {loading ? "Verifying..." : "Verify Code & Sign In"}
             </button>
           </form>
-
           <button
             type="button"
             onClick={() => {
               setStep("email");
               setCode("");
-              setError("");
             }}
             style={{
               marginTop: "10px",
@@ -167,7 +146,7 @@ export default function Login() {
         </>
       )}
 
-      {error && <p style={{ color: "red", marginTop: "12px" }}>❌ {error}</p>}
+      {error && <p style={{ color: "red" }}>❌ {error}</p>}
     </div>
   );
 }
