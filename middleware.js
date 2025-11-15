@@ -4,22 +4,14 @@ export function middleware(req) {
   const url = req.nextUrl.clone();
   const pathname = url.pathname;
 
-  // Allow vendor uploads without login
-  if (pathname.startsWith("/vendor-upload")) {
-    return NextResponse.next();
-  }
+  const protectedRoutes = ["/dashboard", "/vendors", "/upload-coi"];
 
-  // Protected pages (require login)
-  const protectedRoutes = [
-    "/dashboard",
-    "/vendors",
-    "/upload-coi"
-  ];
-
-  const sessionToken = req.cookies.get("sb-access-token")?.value;
+  const token =
+    req.cookies.get("sb-access-token")?.value ||
+    req.cookies.get("sb-refresh-token")?.value;
 
   if (protectedRoutes.some((route) => pathname.startsWith(route))) {
-    if (!sessionToken) {
+    if (!token) {
       url.pathname = "/auth/login";
       return NextResponse.redirect(url);
     }
@@ -27,12 +19,3 @@ export function middleware(req) {
 
   return NextResponse.next();
 }
-
-export const config = {
-  matcher: [
-    "/dashboard/:path*",
-    "/vendors/:path*",
-    "/upload-coi/:path*",
-    "/vendor-upload/:path*"
-  ]
-};
