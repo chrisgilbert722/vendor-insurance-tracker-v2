@@ -1,23 +1,22 @@
 import { NextResponse } from "next/server";
 
 export function middleware(req) {
-  const session = req.cookies.get("sb-access-token");
+  const url = req.nextUrl.clone();
+  const token = req.cookies.get("sb-access-token")?.value;
 
-  const publicPaths = [
-    "/auth/login",
-    "/auth/callback",
-    "/auth/reset",  
-    "/favicon.ico",
-    "/_next",
-    "/"
+  const protectedRoutes = [
+    "/dashboard",
+    "/vendors",
+    "/upload-coi",
+    "/vendor-upload",
+    "/api",
   ];
 
-  if (publicPaths.some(path => req.nextUrl.pathname.startsWith(path))) {
-    return NextResponse.next();
-  }
-
-  if (!session) {
-    return NextResponse.redirect(new URL("/auth/login", req.url));
+  if (protectedRoutes.some((r) => url.pathname.startsWith(r))) {
+    if (!token) {
+      url.pathname = "/auth/login";
+      return NextResponse.redirect(url);
+    }
   }
 
   return NextResponse.next();
