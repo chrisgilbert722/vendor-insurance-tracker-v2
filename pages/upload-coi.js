@@ -1,11 +1,23 @@
-import { useState } from "react";
-import Header from "../components/Header";
+import { useState, useEffect } from "react";
+import { useRouter } from "next/router";
+import { supabase } from "../lib/supabaseClient";
 
 export default function UploadCOI() {
+  const router = useRouter();
+
   const [file, setFile] = useState(null);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
   const [debugResponse, setDebugResponse] = useState("");
+
+  // 🚨 Route protection
+  useEffect(() => {
+    async function checkAuth() {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) router.push("/auth/login");
+    }
+    checkAuth();
+  }, [router]);
 
   async function handleUpload() {
     setError("");
@@ -13,7 +25,7 @@ export default function UploadCOI() {
     setDebugResponse("");
 
     if (!file) {
-      setError("Please select a file first.");
+      setError("Please select a PDF first.");
       return;
     }
 
@@ -30,43 +42,31 @@ export default function UploadCOI() {
 
       if (contentType.includes("application/json")) {
         const data = await res.json();
-
-        if (!res.ok) {
-          throw new Error(data.error || "Upload failed");
-        }
+        if (!res.ok) throw new Error(data.error);
 
         setSuccess("Upload successful!");
         setDebugResponse(JSON.stringify(data, null, 2));
       } else {
         const text = await res.text();
-        setDebugResponse(text);
-        throw new Error("Server returned non-JSON response.");
+        setDebugResponse(text.slice(0, 500));
+        throw new Error("Server returned invalid data.");
       }
     } catch (err) {
-      setError(err.message || "Unknown error");
+      setError(err.message || "Unknown upload error");
     }
   }
 
   return (
     <div style={{ padding: "40px" }}>
-      <Header />
-
       <h1>Upload Certificate of Insurance</h1>
 
-      <input
-        type="file"
-        onChange={(e) => setFile(e.target.files?.[0] || null)}
-        style={{ marginBottom: "10px" }}
-      />
-
-      <button onClick={handleUpload} style={{ padding: "8px 16px" }}>
+      <input type="file" accept="application/pdf" onChange={(e) => setFile(e.target.files[0])} />
+      <button onClick={handleUpload} style={{ marginLeft: "12px" }}>
         Upload COI
       </button>
 
-      {error && <p style={{ color: "red", marginTop: "10px" }}>❌ {error}</p>}
-      {success && (
-        <p style={{ color: "green", marginTop: "10px" }}>✅ {success}</p>
-      )}
+      {error && <p style={{ color: "red" }}>❌ {error}</p>}
+      {success && <p style={{ color: "green" }}>✅ {success}</p>}
 
       {debugResponse && (
         <pre
@@ -74,9 +74,8 @@ export default function UploadCOI() {
             marginTop: "20px",
             padding: "12px",
             border: "1px solid #ccc",
-            background: "#f7f7f7",
-            maxWidth: "800px",
             whiteSpace: "pre-wrap",
+            background: "#f7f7f7",
             fontSize: "12px",
           }}
         >
@@ -84,9 +83,8 @@ export default function UploadCOI() {
         </pre>
       )}
 
-      <br />
-      <br />
-      <a href="/dashboard">Go to Dashboard →</a>
+      <br /><br />
+      <a href="/dashboard">← Back to Dashboard</a>
     </div>
   );
 }
