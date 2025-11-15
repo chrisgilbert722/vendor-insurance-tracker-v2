@@ -16,7 +16,6 @@ export default function Login() {
 
     const { error } = await supabase.auth.signInWithOtp({
       email,
-      // absolutely REQUIRED for Supabase OTP redirects
       options: {
         emailRedirectTo: "https://vendor-insurance-tracker-v2.vercel.app/auth/callback",
       },
@@ -24,14 +23,11 @@ export default function Login() {
 
     setLoading(false);
 
-    if (error) {
-      setError(error.message);
-    } else {
-      setStep("code");
-    }
+    if (error) setError(error.message);
+    else setStep("code");
   }
 
-  // Verify the OTP Code
+  // Verify OTP Code
   async function handleVerifyCode(e) {
     e.preventDefault();
     setError("");
@@ -50,7 +46,7 @@ export default function Login() {
       return;
     }
 
-    // Sync user to Neon
+    // Sync the user (Neon DB)
     if (data?.session?.user) {
       try {
         await fetch("/api/auth/sync-user", {
@@ -171,9 +167,7 @@ export default function Login() {
         </>
       )}
 
-      {error && (
-        <p style={{ color: "red", marginTop: "12px" }}>❌ {error}</p>
-      )}
+      {error && <p style={{ color: "red", marginTop: "12px" }}>❌ {error}</p>}
     </div>
   );
 }
