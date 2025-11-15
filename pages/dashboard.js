@@ -1,6 +1,9 @@
 import { useEffect, useState } from "react";
+import { useRouter } from "next/router";
 import Header from "../components/Header";
+import { supabase } from "../lib/supabaseClient";
 
+// Status color styling
 function statusStyles(level) {
   switch (level) {
     case "expired":
@@ -17,12 +20,28 @@ function statusStyles(level) {
 }
 
 export default function Dashboard() {
+  const router = useRouter();
+
   const [policies, setPolicies] = useState([]);
   const [loading, setLoading] = useState(true);
   const [filterText, setFilterText] = useState("");
   const [showModal, setShowModal] = useState(false);
   const [selectedPolicy, setSelectedPolicy] = useState(null);
 
+  // ✅ NEW: Protect dashboard using client-side Supabase session
+  useEffect(() => {
+    async function checkAuth() {
+      const { data: { session } } = await supabase.auth.getSession();
+
+      if (!session) {
+        router.push("/auth/login");
+      }
+    }
+
+    checkAuth();
+  }, [router]);
+
+  // Load policies
   useEffect(() => {
     async function load() {
       try {
