@@ -2,14 +2,14 @@ import { useState, useEffect } from "react";
 import { useRouter } from "next/router";
 import { supabase } from "../lib/supabaseClient";
 
-// ⭐ REPLACED LUCIDE WITH TABLER ICONS
+// ⭐ PHOSPHOR ICONS (React 19 compatible, no peer deps)
 import {
-  IconUpload,
-  IconLoader2,
-  IconAlertTriangle,
-  IconCircleCheck,
-  IconFileText,
-} from "@tabler/icons-react";
+  UploadSimple,
+  SpinnerGap,
+  WarningCircle,
+  CheckCircle,
+  FileText as FileTextIcon,
+} from "@phosphor-icons/react";
 
 const STEP_LABELS = [
   "Uploading file",
@@ -82,7 +82,7 @@ export default function UploadCOI() {
         if (!res.ok) throw new Error(data.error || "Extraction failed");
       } else {
         const text = await res.text();
-        throw new Error("Server returned invalid data:\n" + text.slice(0, 200));
+        throw new Error("Invalid server response:\n" + text.slice(0, 200));
       }
 
       setDebugResponse(JSON.stringify(data, null, 2));
@@ -128,6 +128,7 @@ export default function UploadCOI() {
   return (
     <div className="min-h-screen bg-slate-50 py-10 px-4">
       <div className="max-w-5xl mx-auto space-y-8">
+
         {/* HEADER */}
         <header className="space-y-1">
           <p className="text-xs uppercase tracking-[0.18em] text-slate-500">
@@ -145,6 +146,7 @@ export default function UploadCOI() {
         <div className="grid md:grid-cols-[3fr_2fr] gap-6">
           {/* LEFT SIDE */}
           <section className="bg-white rounded-2xl border border-slate-200 shadow-sm p-6 space-y-6">
+
             {/* Upload Box */}
             <div
               onDragEnter={(e) => {
@@ -171,8 +173,9 @@ export default function UploadCOI() {
             >
               <label htmlFor="fileInput" className="flex flex-col items-center gap-3">
                 <div className="h-12 w-12 bg-blue-600 rounded-full text-white flex items-center justify-center shadow-sm">
-                  <IconUpload className="h-6 w-6" />
+                  <UploadSimple size={24} weight="bold" />
                 </div>
+
                 <div className="text-center">
                   <p className="font-medium text-slate-900">
                     Drag &amp; drop PDF here
@@ -185,7 +188,8 @@ export default function UploadCOI() {
                   </p>
                   {fileName && (
                     <p className="text-xs text-slate-500 mt-1">
-                      Selected: <span className="font-semibold">{fileName}</span>
+                      Selected:{" "}
+                      <span className="font-semibold">{fileName}</span>
                     </p>
                   )}
                 </div>
@@ -209,6 +213,7 @@ export default function UploadCOI() {
                 {STEP_LABELS.map((label, idx) => {
                   const active = stepIndex === idx && status === "working";
                   const done = stepIndex > idx && status === "done";
+
                   return (
                     <li key={label} className="flex items-center justify-between text-sm">
                       <div className="flex items-center gap-3">
@@ -223,11 +228,12 @@ export default function UploadCOI() {
                           }`}
                         >
                           {done ? (
-                            <IconCircleCheck className="h-4 w-4" />
+                            <CheckCircle size={16} weight="bold" />
                           ) : (
                             idx + 1
                           )}
                         </div>
+
                         <span
                           className={
                             active
@@ -240,8 +246,9 @@ export default function UploadCOI() {
                           {label}
                         </span>
                       </div>
+
                       {active && (
-                        <IconLoader2 className="h-4 w-4 animate-spin text-blue-500" />
+                        <SpinnerGap size={16} className="animate-spin text-blue-500" />
                       )}
                     </li>
                   );
@@ -249,17 +256,17 @@ export default function UploadCOI() {
               </ol>
             </div>
 
-            {/* Statuses */}
+            {/* Status */}
             {status === "working" && (
               <div className="flex items-center gap-2 text-xs text-slate-500">
-                <IconLoader2 className="h-3 w-3 animate-spin" />
+                <SpinnerGap size={14} className="animate-spin" />
                 <span>AI engine is processing your certificate…</span>
               </div>
             )}
 
             {error && (
               <div className="bg-red-50 border border-red-200 text-red-700 p-3 rounded-xl text-sm flex items-start gap-2">
-                <IconAlertTriangle className="h-4 w-4 mt-0.5" />
+                <WarningCircle size={16} weight="bold" className="mt-0.5" />
                 <div>
                   <p className="font-semibold">Upload failed</p>
                   <p>{error}</p>
@@ -269,53 +276,50 @@ export default function UploadCOI() {
 
             {success && (
               <p className="text-sm text-emerald-600 flex items-center gap-2">
-                <IconCircleCheck className="h-4 w-4" /> {success}
+                <CheckCircle size={16} weight="bold" /> {success}
               </p>
             )}
           </section>
 
-          {/* RIGHT SIDE SUMMARY */}
+          {/* RIGHT SUMMARY */}
           <section className="bg-white rounded-2xl border border-slate-200 shadow-sm p-6 space-y-4">
             <div className="flex items-center gap-3">
               <div className="h-9 w-9 rounded-xl bg-slate-900 text-white flex items-center justify-center">
-                <IconFileText className="h-5 w-5" />
+                <FileTextIcon size={20} weight="bold" />
               </div>
               <div>
                 <p className="text-sm font-semibold text-slate-900">
                   COI Summary
                 </p>
                 <p className="text-xs text-slate-500">
-                  AI-parsed carrier, policy, coverage, and risk snapshot.
+                  AI-parsed carrier, policy, coverage, and risk.
                 </p>
               </div>
             </div>
 
-            {/* EMPTY */}
             {!result && status === "idle" && (
               <p className="text-sm text-slate-500">
-                Upload a certificate to see extracted details and risk scoring.
+                Upload a certificate to see the details.
               </p>
             )}
 
-            {/* LOADING */}
             {!result && status === "working" && (
               <div className="space-y-3">
-                <div className="h-4 w-40 rounded-full bg-slate-100 animate-pulse" />
+                <div className="h-4 w-40 bg-slate-100 animate-pulse rounded" />
                 <div className="grid grid-cols-2 gap-3">
-                  <div className="h-16 rounded-xl bg-slate-100 animate-pulse" />
-                  <div className="h-16 rounded-xl bg-slate-100 animate-pulse" />
-                  <div className="h-16 rounded-xl bg-slate-100 animate-pulse" />
-                  <div className="h-16 rounded-xl bg-slate-100 animate-pulse" />
+                  <div className="h-16 bg-slate-100 animate-pulse rounded-xl" />
+                  <div className="h-16 bg-slate-100 animate-pulse rounded-xl" />
+                  <div className="h-16 bg-slate-100 animate-pulse rounded-xl" />
+                  <div className="h-16 bg-slate-100 animate-pulse rounded-xl" />
                 </div>
               </div>
             )}
 
-            {/* RESULT */}
             {result && (
               <div className="space-y-4 text-sm">
 
-                {/* Top line */}
-                <div className="flex flex-wrap items-center justify-between gap-3">
+                {/* Top Line */}
+                <div className="flex items-center justify-between">
                   <div>
                     <p className="text-xs uppercase tracking-[0.18em] text-slate-500">
                       Carrier · Policy
@@ -328,7 +332,7 @@ export default function UploadCOI() {
 
                   {typeof result.riskScore === "number" && (
                     <div
-                      className={`inline-flex items-center gap-2 rounded-full border px-3 py-1 text-xs font-medium ${riskColor(
+                      className={`inline-flex items-center gap-2 px-3 py-1 rounded-full border text-xs font-medium ${riskColor(
                         result.riskScore
                       )}`}
                     >
@@ -338,16 +342,10 @@ export default function UploadCOI() {
                   )}
                 </div>
 
-                {/* Field grid */}
+                {/* Field Grid */}
                 <div className="grid grid-cols-2 gap-3">
-                  <Field
-                    label="Coverage"
-                    value={result.coverage_type || result.coverageType || "—"}
-                  />
-                  <Field
-                    label="Named insured"
-                    value={result.vendor_name || result.namedInsured || "—"}
-                  />
+                  <Field label="Coverage" value={result.coverage_type || result.coverageType} />
+                  <Field label="Named insured" value={result.vendor_name || result.namedInsured} />
                   <Field
                     label="Additional insured"
                     value={
@@ -356,34 +354,16 @@ export default function UploadCOI() {
                         : "—"
                     }
                   />
-                  <Field
-                    label="Waiver status"
-                    value={result.waiverStatus || "—"}
-                  />
-                  <Field
-                    label="Effective date"
-                    value={result.effective_date || "—"}
-                  />
-                  <Field
-                    label="Expiration"
-                    value={
-                      result.expiration_date ||
-                      result.expiration ||
-                      "—"
-                    }
-                  />
-                  <Field
-                    label="Completeness"
-                    value={result.completenessRating || "—"}
-                  />
+                  <Field label="Waiver status" value={result.waiverStatus} />
+                  <Field label="Effective date" value={result.effective_date} />
+                  <Field label="Expiration" value={result.expiration_date || result.expiration} />
+                  <Field label="Completeness" value={result.completenessRating} />
                 </div>
 
                 {/* Limits */}
                 {result.limits && (
-                  <div className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-3">
-                    <p className="text-xs font-semibold text-slate-700 mb-1.5">
-                      Limits
-                    </p>
+                  <div className="mt-3 border border-slate-200 bg-slate-50 rounded-xl p-3">
+                    <p className="text-xs font-semibold text-slate-800 mb-1">Limits</p>
                     <pre className="text-[11px] text-slate-700 whitespace-pre-wrap">
                       {typeof result.limits === "string"
                         ? result.limits
@@ -393,12 +373,10 @@ export default function UploadCOI() {
                 )}
 
                 {/* Flags & Missing */}
-                <div className="grid md:grid-cols-2 gap-3">
-                  {result.flags?.length > 0 && (
-                    <div className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-3">
-                      <p className="text-xs font-semibold text-amber-800 mb-1.5">
-                        Flags
-                      </p>
+                <div className="grid grid-cols-2 gap-3">
+                  {Array.isArray(result.flags) && result.flags.length > 0 && (
+                    <div className="border border-amber-200 bg-amber-50 rounded-xl p-3">
+                      <p className="text-xs font-semibold text-amber-800 mb-1">Flags</p>
                       <ul className="list-disc list-inside text-[11px] text-amber-900">
                         {result.flags.map((f, i) => (
                           <li key={i}>{f}</li>
@@ -407,23 +385,24 @@ export default function UploadCOI() {
                     </div>
                   )}
 
-                  {result.missingFields?.length > 0 && (
-                    <div className="rounded-xl border border-rose-200 bg-rose-50 px-3 py-3">
-                      <p className="text-xs font-semibold text-rose-800 mb-1.5">
-                        Missing required fields
-                      </p>
-                      <ul className="list-disc list-inside text-[11px] text-rose-900">
-                        {result.missingFields.map((m, i) => (
-                          <li key={i}>{m}</li>
-                        ))}
-                      </ul>
-                    </div>
-                  )}
+                  {Array.isArray(result.missingFields) &&
+                    result.missingFields.length > 0 && (
+                      <div className="border border-rose-200 bg-rose-50 rounded-xl p-3">
+                        <p className="text-xs font-semibold text-rose-800 mb-1">
+                          Missing required fields
+                        </p>
+                        <ul className="list-disc list-inside text-[11px] text-rose-900">
+                          {result.missingFields.map((m, i) => (
+                            <li key={i}>{m}</li>
+                          ))}
+                        </ul>
+                      </div>
+                    )}
                 </div>
 
-                {/* Debug JSON */}
+                {/* Debug */}
                 {debugResponse && (
-                  <pre className="text-[11px] bg-slate-100 p-2 rounded border mt-4 max-h-64 overflow-auto">
+                  <pre className="bg-slate-100 text-[11px] border rounded p-2 mt-4 max-h-64 overflow-auto">
                     {debugResponse}
                   </pre>
                 )}
@@ -432,7 +411,6 @@ export default function UploadCOI() {
           </section>
         </div>
 
-        {/* Back link */}
         <a href="/dashboard" className="text-sm text-blue-600">
           ← Back to Dashboard
         </a>
@@ -443,7 +421,7 @@ export default function UploadCOI() {
 
 function Field({ label, value }) {
   return (
-    <div className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5">
+    <div className="border border-slate-200 bg-slate-50 rounded-xl px-3 py-2.5">
       <p className="text-[11px] uppercase tracking-[0.16em] text-slate-500 mb-0.5">
         {label}
       </p>
