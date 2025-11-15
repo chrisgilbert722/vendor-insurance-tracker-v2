@@ -1,6 +1,4 @@
 import { useEffect, useState } from "react";
-import { useRouter } from "next/router";
-import { supabase } from "../lib/supabaseClient";
 import Header from "../components/Header";
 
 // Badge Style
@@ -20,26 +18,13 @@ function badgeStyle(level) {
 }
 
 export default function Dashboard() {
-  const router = useRouter();
-
   const [policies, setPolicies] = useState([]);
   const [loading, setLoading] = useState(true);
-
   const [filterText, setFilterText] = useState("");
-
   const [metrics, setMetrics] = useState(null);
   const [deltas, setDeltas] = useState(null);
 
-  // AUTH PROTECT
-  useEffect(() => {
-    async function checkAuth() {
-      const { data: { session } } = await supabase.auth.getSession();
-      if (!session) router.push("/auth/login");
-    }
-    checkAuth();
-  }, [router]);
-
-  // LOAD POLICIES
+  // 🔹 Load policies
   useEffect(() => {
     async function loadPolicies() {
       try {
@@ -54,7 +39,7 @@ export default function Dashboard() {
     loadPolicies();
   }, []);
 
-  // LOAD METRICS SUMMARY
+  // 🔹 Load metrics summary
   useEffect(() => {
     async function loadSummary() {
       try {
@@ -71,7 +56,7 @@ export default function Dashboard() {
     loadSummary();
   }, []);
 
-  // SEARCH FILTER
+  // 🔹 Filtered policies for table
   const filtered = policies.filter((p) => {
     const t = filterText.toLowerCase();
     if (!t) return true;
@@ -94,7 +79,7 @@ export default function Dashboard() {
 
       <hr style={{ margin: "30px 0" }} />
 
-      {/* ⭐⭐⭐ RISK SUMMARY BAR ⭐⭐⭐ */}
+      {/* ⭐ Risk Summary Bar (no auth logic, no redirects) */}
       <div
         style={{
           display: "flex",
@@ -123,7 +108,7 @@ export default function Dashboard() {
           label="Warning"
           icon="🟡"
           color="#b59b00"
-          count={metrics?.warning_count ?? 0}
+          count={metrics?.warning ?? 0}
           delta={deltas?.warning ?? 0}
         />
         <RiskItem
@@ -133,10 +118,7 @@ export default function Dashboard() {
           count={metrics?.ok_count ?? 0}
           delta={deltas?.ok ?? 0}
         />
-        <ScoreItem
-          avgScore={metrics?.avg_score}
-          delta={deltas?.avg_score}
-        />
+        <ScoreItem avgScore={metrics?.avg_score} delta={deltas?.avg_score} />
       </div>
 
       <h2>Policies</h2>
@@ -150,7 +132,7 @@ export default function Dashboard() {
           padding: "8px",
           width: "320px",
           borderRadius: "4px",
-          border: "1px solid #ccc", // FIXED BUG
+          border: "1px solid #ccc", // ← fixed bug here
           marginBottom: "16px",
         }}
       />
@@ -190,20 +172,20 @@ export default function Dashboard() {
                 <td style={td}>{p.carrier}</td>
                 <td style={td}>{p.coverage_type}</td>
                 <td style={td}>{p.expiration_date}</td>
-                <td style={td}>{p.expiration.daysRemaining ?? "—"}</td>
+                <td style={td}>{p.expiration?.daysRemaining ?? "—"}</td>
 
                 <td
                   style={{
                     ...td,
-                    ...badgeStyle(p.expiration.level),
+                    ...badgeStyle(p.expiration?.level),
                     textAlign: "center",
                   }}
                 >
-                  {p.expiration.label}
+                  {p.expiration?.label || "Unknown"}
                 </td>
 
                 <td style={{ ...td, fontWeight: "bold", textAlign: "center" }}>
-                  {p.complianceScore}
+                  {p.complianceScore ?? "—"}
                 </td>
               </tr>
             ))}
@@ -214,25 +196,23 @@ export default function Dashboard() {
   );
 }
 
-// RISK ITEM BOX (with icon + delta arrow)
+// Risk item box
 function RiskItem({ label, icon, color, count, delta }) {
   let arrow = "➖";
   let arrowColor = "#555";
 
   if (delta > 0) {
     arrow = "⬆️";
-    arrowColor = "#b20000"; // more risk
+    arrowColor = "#b20000";
   } else if (delta < 0) {
     arrow = "⬇️";
-    arrowColor = "#1b5e20"; // less risk
+    arrowColor = "#1b5e20";
   }
 
   return (
     <div style={{ textAlign: "center", minWidth: "80px" }}>
       <div style={{ fontSize: "24px" }}>{icon}</div>
-      <div
-        style={{ fontSize: "22px", fontWeight: "bold", color: color }}
-      >
+      <div style={{ fontSize: "22px", fontWeight: "bold", color }}>
         {count}
       </div>
       <div style={{ fontSize: "13px", color: "#333" }}>{label}</div>
@@ -243,9 +223,9 @@ function RiskItem({ label, icon, color, count, delta }) {
   );
 }
 
-// SCORE BOX (Avg Score)
+// Avg score box
 function ScoreItem({ avgScore, delta }) {
-  if (avgScore == null)
+  if (avgScore == null) {
     return (
       <div style={{ textAlign: "center", minWidth: "80px" }}>
         <div style={{ fontSize: "24px" }}>📊</div>
@@ -254,6 +234,7 @@ function ScoreItem({ avgScore, delta }) {
         <div style={{ fontSize: "12px", color: "#555" }}>No data</div>
       </div>
     );
+  }
 
   let arrow = "➖";
   let arrowColor = "#555";
@@ -266,32 +247,29 @@ function ScoreItem({ avgScore, delta }) {
     arrowColor = "#b20000";
   }
 
+  const color =
+    avgScore >= 80 ? "#1b5e20" : avgScore >= 60 ? "#b59b00" : "#b20000";
+
   return (
     <div style={{ textAlign: "center", minWidth: "80px" }}>
       <div style={{ fontSize: "24px" }}>📊</div>
-      <div
-        style={{
-          fontSize: "22px",
-          fontWeight: "bold",
-          color:
-            avgScore >= 80
-              ? "#1b5e20"
-              : avgScore >= 60
-              ? "#b59b00"
-              : "#b20000",
-        }}
-      >
+      <div style={{ fontSize: "22px", fontWeight: "bold", color }}>
         {Math.round(avgScore)}
       </div>
       <div style={{ fontSize: "13px", color: "#333" }}>Avg Score</div>
       <div style={{ fontSize: "12px", color: arrowColor }}>
-        {arrow} {delta > 0 ? `+${delta.toFixed(1)}` : delta?.toFixed?.(1) || "0"}
+        {arrow}{" "}
+        {typeof delta === "number"
+          ? delta > 0
+            ? `+${delta.toFixed(1)}`
+            : delta.toFixed(1)
+          : "0.0"}
       </div>
     </div>
   );
 }
 
-// TABLE STYLES
+// Table styles
 const th = {
   padding: "10px",
   border: "1px solid #ddd",
