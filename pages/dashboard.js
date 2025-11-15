@@ -1,7 +1,32 @@
 import { useEffect, useState } from "react";
 import Header from "../components/Header";
 
-// Badge Style based on expiration level
+/* ========================================================
+   🔥 G-POWER THEME TOKENS  
+======================================================== */
+
+const GP = {
+  primary: "#0057FF",
+  primaryDark: "#003BB3",
+  accent1: "#00E0FF",
+  accent2: "#8A2BFF",
+  red: "#FF3B3B",
+  orange: "#FF9800",
+  yellow: "#FFC107",
+  green: "#00C27A",
+  ink: "#0D1623",
+  inkLight: "#2A3647",
+  surface: "#F7F9FC",
+  panel: "#FFFFFF",
+  radius: "14px",
+  shadow: "0 8px 24px rgba(15,23,42,0.08)",
+  text: "#1f2933",
+  textLight: "#7b8794",
+};
+
+/* ------------------------------------------
+   Risk Badge Styles (status column)
+------------------------------------------- */
 function badgeStyle(level) {
   switch (level) {
     case "expired":
@@ -9,7 +34,7 @@ function badgeStyle(level) {
     case "critical":
       return { background: "#fff3e0", color: "#e65100", fontWeight: "600" };
     case "warning":
-      return { background: "#fff8e1", color: "#f9a825", fontWeight: "600" };
+      return { background: "#fffde7", color: "#f9a825", fontWeight: "600" };
     case "ok":
       return { background: "#e8f5e9", color: "#1b5e20", fontWeight: "600" };
     default:
@@ -17,14 +42,86 @@ function badgeStyle(level) {
   }
 }
 
+/* ------------------------------------------
+   Enterprise Risk Engine Helpers
+------------------------------------------- */
+
+// Parse MM/DD/YYYY → Date
+function parseExpiration(dateStr) {
+  if (!dateStr) return null;
+  const [mm, dd, yyyy] = dateStr.split("/");
+  if (!mm || !dd || !yyyy) return null;
+  return new Date(`${yyyy}-${mm}-${dd}T00:00:00`);
+}
+
+// Compute days remaining until expiry
+function computeDaysLeft(dateStr) {
+  const exp = parseExpiration(dateStr);
+  if (!exp) return null;
+  const today = new Date();
+  const diff = exp.getTime() - today.getTime();
+  return Math.floor(diff / (1000 * 60 * 60 * 24));
+}
+
+// Compute risk tier, score, and flags based ONLY on expiration
+function computeRisk(p) {
+  const daysLeft = computeDaysLeft(p.expiration_date);
+  const flags = [];
+
+  if (daysLeft === null) {
+    return {
+      daysLeft: null,
+      severity: "unknown",
+      score: 0,
+      flags: ["Missing expiration date"],
+      tier: "Unknown",
+    };
+  }
+
+  let severity = "ok";
+  let score = 95;
+
+  if (daysLeft < 0) {
+    severity = "expired";
+    score = 20;
+    flags.push("Policy expired");
+  } else if (daysLeft <= 30) {
+    severity = "critical";
+    score = 40;
+    flags.push("Expires within 30 days");
+  } else if (daysLeft <= 90) {
+    severity = "warning";
+    score = 70;
+    flags.push("Expires within 90 days");
+  }
+
+  const tier =
+    severity === "expired"
+      ? "Severe Risk"
+      : severity === "critical"
+      ? "High Risk"
+      : severity === "warning"
+      ? "Moderate Risk"
+      : "Healthy";
+
+  return {
+    daysLeft,
+    severity,
+    score,
+    flags,
+    tier,
+  };
+}
+
 export default function Dashboard() {
   const [policies, setPolicies] = useState([]);
   const [loading, setLoading] = useState(true);
   const [filterText, setFilterText] = useState("");
+
   const [metrics, setMetrics] = useState(null);
   const [deltas, setDeltas] = useState(null);
 
-  // Load policies from backend
+  // Fetch policies
   useEffect(() => {
     async function loadPolicies() {
       try {
@@ -41,11 +138,10 @@ export default function Dashboard() {
         setLoading(false);
       }
     }
-
     loadPolicies();
   }, []);
 
-  // Load metrics summary (for risk summary bar)
+  // Fetch metrics summary for KPI bar
   useEffect(() => {
     async function loadSummary() {
       try {
@@ -61,11 +157,10 @@ export default function Dashboard() {
         console.error("METRICS FETCH FAILED:", err);
       }
     }
-
     loadSummary();
   }, []);
 
-  // Filtered view for search
+  // Filter policies for search
   const filtered = policies.filter((p) => {
     const t = filterText.toLowerCase();
     if (!t) return true;
@@ -78,120 +173,159 @@ export default function Dashboard() {
   });
 
   return (
-    <div style={{ padding: "40px" }}>
-      <Header />
+    <div
+      style={{
+        display: "flex",
+        minHeight: "100vh",
+        background: GP.surface,
+      }}
+    >
+      {/* Sidebar */}
+      <Sidebar />
 
-      <h1 style={{ marginBottom: "8px" }}>Vendor Insurance Dashboard</h1>
-      <p style={{ color: "#607d8b", marginBottom: "8px" }}>
-        Real-time visibility into vendor insurance compliance, expiration risk,
-        and coverage health.
-      </p>
+      {/* Main Content */}
+      <div style={{ flex: 1, padding: "30px 40px" }}>
+        <Header />
 
-      <a
-        href="/upload-coi"
-        style={{
-          display: "inline-block",
-          marginTop: "8px",
-          marginBottom: "16px",
-          padding: "8px 16px",
-          borderRadius: "999px",
-          background: "#111827",
-          color: "#fff",
-          textDecoration: "none",
-          fontSize: "14px",
-        }}
-      >
-        + Upload New COI
-      </a>
-
-      <hr style={{ margin: "20px 0" }} />
-
-      {/* ELITE HYBRID RISK SUMMARY BAR */}
-      <div
-        style={{
-          display: "flex",
-          gap: "16px",
-          marginBottom: "28px",
-          padding: "20px",
-          background: "#ffffff",
-          borderRadius: "16px",
-          boxShadow: "0 8px 24px rgba(15, 23, 42, 0.08)",
-        }}
-      >
-        <RiskItem
-          label="Expired"
-          icon="🔥"
-          color="#b71c1c"
-          count={metrics?.expired_count ?? 0}
-          delta={deltas?.expired ?? 0}
-        />
-        <RiskItem
-          label="Critical"
-          icon="⚠️"
-          color="#e65100"
-          count={metrics?.critical_count ?? 0}
-          delta={deltas?.critical ?? 0}
-        />
-        <RiskItem
-          label="Warning"
-          icon="🟡"
-          color="#f9a825"
-          count={metrics?.warning ?? 0}
-          delta={deltas?.warning ?? 0}
-        />
-        <RiskItem
-          label="Active"
-          icon="✅"
-          color="#1b5e20"
-          count={metrics?.ok_count ?? 0}
-          delta={deltas?.ok ?? 0}
-        />
-        <ScoreItem
-          avgScore={metrics?.avg_score}
-          delta={deltas?.avg_score}
-        />
-      </div>
-
-      <h2 style={{ marginBottom: "12px" }}>Policies</h2>
-
-      <input
-        type="text"
-        placeholder="Search vendors, carriers, policy #, coverage..."
-        value={filterText}
-        onChange={(e) => setFilterText(e.target.value)}
-        style={{
-          padding: "8px",
-          width: "320px",
-          borderRadius: "4px",
-          border: "1px solid #ccc",
-          marginBottom: "16px",
-          fontSize: "14px",
-        }}
-      />
-
-      {loading && <p>Loading policies...</p>}
-
-      {!loading && filtered.length === 0 && (
-        <p>No matching policies. Try a different search or upload a new COI.</p>
-      )}
-
-      {filtered.length > 0 && (
-        <div
+        {/* Title */}
+        <h1
           style={{
-            borderRadius: "16px",
-            background: "#ffffff",
-            boxShadow: "0 4px 16px rgba(15, 23, 42, 0.04)",
-            overflow: "hidden",
+            fontSize: "36px",
+            margin: "10px 0 0 0",
+            color: GP.ink,
+            fontWeight: "700",
           }}
         >
+          Vendor Insurance Dashboard
+        </h1>
+
+        <p
+          style={{
+            fontSize: "15px",
+            marginTop: "8px",
+            color: GP.inkLight,
+          }}
+        >
+          Real-time visibility into vendor insurance compliance, expiration risk, and coverage health.
+        </p>
+
+        {/* Upload CTA */}
+        <a
+          href="/upload-coi"
+          style={{
+            display: "inline-block",
+            marginTop: "18px",
+            marginBottom: "25px",
+            padding: "9px 16px",
+            background: GP.primary,
+            color: GP.panel,
+            borderRadius: "999px",
+            fontSize: "14px",
+            fontWeight: "600",
+            textDecoration: "none",
+            boxShadow: GP.shadow,
+          }}
+        >
+          + Upload New COI
+        </a>
+
+        <hr style={{ margin: "22px 0" }} />
+
+        {/* ========================= RISK KPI BAR ========================= */}
+        <div
+          style={{
+            display: "flex",
+            gap: "16px",
+            marginBottom: "30px",
+            padding: "22px 26px",
+            background: GP.panel,
+            borderRadius: GP.radius,
+            boxShadow: GP.shadow,
+            border: "1px solid #e3e9f1",
+          }}
+        >
+          <RiskCard
+            label="Expired"
+            icon="🔥"
+            color={GP.red}
+            count={metrics?.expired_count ?? 0}
+            delta={deltas?.expired ?? 0}
+            tooltip="Policies past their expiration date. Immediate action required."
+          />
+          <RiskCard
+            label="Critical (≤30 days)"
+            icon="⚠️"
+            color={GP.orange}
+            count={metrics?.critical_count ?? 0}
+            delta={deltas?.critical ?? 0}
+            tooltip="Policies expiring within 30 days."
+          />
+          <RiskCard
+            label="Warning (≤90 days)"
+            icon="🟡"
+            color={GP.yellow}
+            count={metrics?.warning_count ?? 0}
+            delta={deltas?.warning ?? 0}
+            tooltip="Policies expiring within 30–90 days."
+          />
+          <RiskCard
+            label="Active"
+            icon="✅"
+            color={GP.green}
+            count={metrics?.ok_count ?? 0}
+            delta={deltas?.ok ?? 0}
+            tooltip="Fully compliant and valid policies."
+          />
+          <ScoreCard
+            avgScore={metrics?.avg_score}
+            delta={deltas?.avg_score}
+            tooltip="Average compliance score across all vendors."
+          />
+        </div>
+
+        {/* ========================= POLICIES TABLE ========================= */}
+        <h2
+          style={{
+            marginBottom: "14px",
+            fontSize: "24px",
+            fontWeight: "700",
+            color: GP.ink,
+          }}
+        >
+          Policies
+        </h2>
+
+        <input
+          type="text"
+          placeholder="Search vendors, carriers, policy #, coverage..."
+          value={filterText}
+          onChange={(e) => setFilterText(e.target.value)}
+          style={{
+            padding: "10px",
+            width: "360px",
+            borderRadius: "8px",
+            border: "1px solid #cfd4dc",
+            marginBottom: "18px",
+            fontSize: "14px",
+          }}
+        />
+
+        {loading && <p>Loading policies…</p>}
+
+        {!loading && filtered.length === 0 && (
+          <p>No matching policies. Try a new search or upload a COI.</p>
+        )}
+
+        {!loading && filtered.length > 0 && (
           <table
             style={{
               width: "100%",
-              borderCollapse: "collapse",
-              fontSize: "14px",
+              borderCollapse: "separate",
+              borderSpacing: "0 8px",
+              fontSize: "13px",
             }}
           >
-            <thead style={{ background: "#f5f5f5" }}>
+            <thead>
               <tr>
                 <th style={th}>Vendor</th>
                 <th style={th}>Policy #</th>
@@ -200,72 +334,100 @@ export default function Dashboard() {
                 <th style={th}>Expires</th>
                 <th style={th}>Days Left</th>
                 <th style={th}>Status</th>
-                <th style={th}>Risk</th>
+                <th style={th}>Risk Tier</th>
                 <th style={th}>Score</th>
                 <th style={th}>Flags</th>
               </tr>
             </thead>
             <tbody>
               {filtered.map((p) => {
-                const exp = p.expiration || {};
-                const score = p.complianceScore ?? 0;
-                const riskBucket = p.riskBucket || "Unknown";
-                const flags = Array.isArray(p.flags) ? p.flags : [];
+                const risk = computeRisk(p);
+                const severity = risk.severity;
+                const score = risk.score;
+                const flags = risk.flags || [];
 
                 return (
-                  <tr key={p.id} style={{ borderBottom: "1px solid #eee" }}>
+                  <tr
+                    key={p.id}
+                    style={{
+                      background: "#ffffff",
+                      boxShadow: "0 2px 6px rgba(0,0,0,0.05)",
+                      transition: "0.15s ease",
+                    }}
+                    onMouseEnter={(e) => {
+                      e.currentTarget.style.transform = "scale(1.01)";
+                      e.currentTarget.style.boxShadow =
+                        "0 4px 14px rgba(0,0,0,0.08)";
+                    }}
+                    onMouseLeave={(e) => {
+                      e.currentTarget.style.transform = "scale(1)";
+                      e.currentTarget.style.boxShadow =
+                        "0 2px 6px rgba(0,0,0,0.05)";
+                    }}
+                  >
                     <td style={td}>{p.vendor_name || "—"}</td>
                     <td style={td}>{p.policy_number}</td>
                     <td style={td}>{p.carrier}</td>
                     <td style={td}>{p.coverage_type}</td>
                     <td style={td}>{p.expiration_date || "—"}</td>
                     <td style={td}>
-                      {typeof exp.daysRemaining === "number"
-                        ? `${exp.daysRemaining} days`
-                        : "—"}
+                      {risk.daysLeft === null
+                        ? "—"
+                        : `${risk.daysLeft} days`}
                     </td>
 
-                    <td style={{ ...td, ...badgeStyle(exp.level), textAlign: "center" }}>
-                      {exp.label || "Unknown"}
+                    <td
+                      style={{
+                        ...td,
+                        ...badgeStyle(severity),
+                        textAlign: "center",
+                      }}
+                    >
+                      {severity === "ok"
+                        ? "Active"
+                        : severity.charAt(0).toUpperCase() +
+                          severity.slice(1)}
                     </td>
 
-                    <td style={{ ...td, fontWeight: "500" }}>
+                    {/* Risk Tier */}
+                    <td style={{ ...td, textAlign: "center" }}>
                       <span
                         style={{
                           display: "inline-block",
-                          padding: "2px 8px",
+                          padding: "3px 10px",
                           borderRadius: "999px",
-                          background: "#eceff1",
-                          fontSize: "12px",
+                          background: "#eef0f4",
+                          fontSize: "11px",
+                          fontWeight: "600",
+                          color: GP.inkLight,
                         }}
                       >
-                        {riskBucket}
+                        {risk.tier}
                       </span>
                     </td>
 
-                    <td style={{ ...td, textAlign: "center" }}>
-                      <div
-                        style={{
-                          fontWeight: "700",
-                          color:
-                            score >= 90
-                              ? "#1b5e20"
-                              : score >= 70
-                              ? "#f9a825"
-                              : score >= 40
-                              ? "#e65100"
-                              : "#b71c1c",
-                        }}
-                      >
-                        {score}
-                      </div>
+                    {/* Score + Heatbar */}
+                    <td
+                      style={{
+                        ...td,
+                        textAlign: "center",
+                        fontWeight: "700",
+                        color:
+                          score >= 80
+                            ? GP.green
+                            : score >= 60
+                            ? GP.yellow
+                            : GP.red,
+                      }}
+                    >
+                      <div>{score}</div>
                       <div
                         style={{
                           marginTop: "4px",
                           height: "4px",
                           width: "70px",
-                          background: "#eceff1",
                           borderRadius: "999px",
+                          background: "#eceff1",
                           overflow: "hidden",
                           marginLeft: "auto",
                           marginRight: "auto",
@@ -276,39 +438,36 @@ export default function Dashboard() {
                             width: `${Math.min(score, 100)}%`,
                             height: "100%",
                             background:
-                              score >= 90
-                                ? "#4caf50"
-                                : score >= 70
-                                ? "#ffca28"
-                                : score >= 40
-                                ? "#ff9800"
-                                : "#ef5350",
-                            transition: "width 0.3s ease",
+                              score >= 80
+                                ? GP.green
+                                : score >= 60
+                                ? GP.yellow
+                                : GP.red,
                           }}
-                        />
+                        ></div>
                       </div>
                     </td>
 
-                    {/* Flags with tooltip (Icon + count) */}
+                    {/* Flags column with tooltip */}
                     <td style={{ ...td, textAlign: "center" }}>
-                      {flags.length === 0 ? (
-                        <span style={{ color: "#9e9e9e", fontSize: "12px" }}>
-                          —
-                        </span>
-                      ) : (
+                      {flags.length > 0 ? (
                         <span
                           title={flags.join("\n")}
                           style={{
                             cursor: "help",
+                            fontSize: "13px",
                             display: "inline-flex",
                             alignItems: "center",
-                            gap: "6px",
-                            fontSize: "12px",
+                            gap: "4px",
                           }}
                         >
                           <span>🚩</span>
-                          <span>{flags.length} flag{flags.length > 1 ? "s" : ""}</span>
+                          <span>
+                            {flags.length} flag{flags.length > 1 ? "s" : ""}
+                          </span>
                         </span>
+                      ) : (
+                        <span style={{ opacity: 0.4 }}>—</span>
                       )}
                     </td>
                   </tr>
@@ -316,124 +475,190 @@ export default function Dashboard() {
               })}
             </tbody>
           </table>
-        </div>
-      )}
+        )}
+      </div>
     </div>
   );
 }
 
-// Risk card in summary bar
-function RiskItem({ label, icon, color, count, delta }) {
+/* ========================================================
+   Sidebar Component
+======================================================== */
+function Sidebar() {
+  return (
+    <div
+      style={{
+        width: "220px",
+        background: "#0f172a",
+        color: "#e5e7eb",
+        padding: "24px 18px",
+        display: "flex",
+        flexDirection: "column",
+        gap: "16px",
+      }}
+    >
+      <div style={{ marginBottom: "20px" }}>
+        <div style={{ fontSize: "18px", fontWeight: "700" }}>G-Track</div>
+        <div style={{ fontSize: "11px", opacity: 0.7 }}>
+          Vendor COI Automation
+        </div>
+      </div>
+
+      <SidebarLink href="/dashboard" label="Dashboard" icon="📊" />
+      <SidebarLink href="/vendors" label="Vendors" icon="👥" />
+      <SidebarLink href="/upload-coi" label="Upload COI" icon="📄" />
+      <SidebarLink href="/auth/login" label="Logout / Login" icon="🔐" />
+    </div>
+  );
+}
+
+function SidebarLink({ href, label, icon }) {
+  return (
+    <a
+      href={href}
+      style={{
+        display: "flex",
+        alignItems: "center",
+        gap: "8px",
+        padding: "8px 10px",
+        borderRadius: "8px",
+        color: "#e5e7eb",
+        textDecoration: "none",
+        fontSize: "14px",
+        cursor: "pointer",
+      }}
+    >
+      <span>{icon}</span>
+      <span>{label}</span>
+    </a>
+  );
+}
+
+/* ========================================================
+   KPI Risk Card + Score Card
+======================================================== */
+
+function RiskCard({ label, icon, color, count, delta, tooltip }) {
   let arrow = "➖";
-  let arrowColor = "#90a4ae";
+  let arrowColor = GP.textLight;
 
   if (delta > 0) {
     arrow = "⬆️";
-    arrowColor = "#b71c1c";
+    arrowColor = GP.red;
   } else if (delta < 0) {
     arrow = "⬇️";
-    arrowColor = "#1b5e20";
+    arrowColor = GP.green;
   }
 
   return (
-    <div style={{ textAlign: "center", flex: 1, minWidth: "90px" }}>
+    <div
+      style={{
+        textAlign: "center",
+        flex: 1,
+        cursor: "default",
+      }}
+      title={tooltip}
+    >
       <div style={{ fontSize: "22px" }}>{icon}</div>
-      <div style={{ fontSize: "22px", fontWeight: "700", color }}>
+      <div
+        style={{
+          fontSize: "26px",
+          fontWeight: "700",
+          color,
+          marginTop: "4px",
+        }}
+      >
         {count}
       </div>
-      <div style={{ fontSize: "13px", marginTop: "4px", color: "#37474f" }}>
+      <div style={{ fontSize: "13px", marginTop: "2px", color: GP.text }}>
         {label}
       </div>
-      <div style={{ fontSize: "12px", marginTop: "4px", color: arrowColor }}>
+      <div
+        style={{
+          fontSize: "12px",
+          marginTop: "4px",
+          color: arrowColor,
+          fontWeight: "600",
+        }}
+      >
         {arrow} {delta > 0 ? `+${delta}` : delta}
       </div>
     </div>
   );
 }
 
-// Score card in summary bar
-function ScoreItem({ avgScore, delta }) {
-  if (!avgScore && avgScore !== 0) {
-    return (
-      <div style={{ textAlign: "center", minWidth: "90px" }}>
-        <div style={{ fontSize: "22px" }}>📊</div>
-        <div style={{ fontSize: "22px", fontWeight: "700" }}>—</div>
-        <div style={{ fontSize: "13px", marginTop: "4px", color: "#37474f" }}>
-          Avg Score
-        </div>
-        <div style={{ fontSize: "12px", marginTop: "4px", color: "#90a4ae" }}>
-          No data
-        </div>
-      </div>
-    );
-  }
-
-  const score = Number(avgScore) || 0;
+function ScoreCard({ avgScore, delta, tooltip }) {
+  const hasScore = avgScore !== null && avgScore !== undefined;
+  const score = hasScore ? Number(avgScore) : null;
 
   let arrow = "➖";
-  let arrowColor = "#90a4ae";
+  let arrowColor = GP.textLight;
 
-  if (delta > 0) {
+  if (typeof delta === "number" && delta > 0) {
     arrow = "⬆️";
-    arrowColor = "#1b5e20";
-  } else if (delta < 0) {
+    arrowColor = GP.green;
+  } else if (typeof delta === "number" && delta < 0) {
     arrow = "⬇️";
-    arrowColor = "#b71c1c";
+    arrowColor = GP.red;
   }
 
   const color =
-    score >= 90 ? "#1b5e20" : score >= 70 ? "#b59b00" : score >= 40 ? "#e65100" : "#b20000";
+    score >= 80 ? GP.green : score >= 60 ? GP.yellow : GP.red;
 
   return (
-    <div style={{ textAlign: "center", minWidth: "90px" }}>
+    <div
+      style={{
+        textAlign: "center",
+        flex: 1,
+        cursor: "default",
+      }}
+      title={tooltip}
+    >
       <div style={{ fontSize: "22px" }}>📊</div>
-      <div style={{ fontSize: "22px", fontWeight: "700", color }}>
-        {score.toFixed(0)}
+      <div
+        style={{
+          fontSize: "26px",
+          fontWeight: "700",
+          color: hasScore ? color : GP.textLight,
+          marginTop: "4px",
+        }}
+      >
+        {hasScore ? score.toFixed(0) : "—"}
       </div>
-      <div style={{ fontSize: "13px", marginTop: "4px", color: "#37474f" }}>
+      <div style={{ fontSize: "13px", marginTop: "2px", color: GP.text }}>
         Avg Score
-      </div>
-      <div style={{ fontSize: "12px", marginTop: "4px", color: arrowColor }}>
-        {arrow} {typeof delta === "number" ? delta.toFixed(1) : "0.0"}
       </div>
       <div
         style={{
-          marginTop: "6px",
-          height: "4px",
-          width: "80px",
-          background: "#eceff1",
-          borderRadius: "999px",
-          overflow: "hidden",
-          marginLeft: "auto",
-          marginRight: "auto",
+          fontSize: "12px",
+          marginTop: "4px",
+          color: arrowColor,
+          fontWeight: "600",
         }}
       >
-        <div
-          style={{
-            width: `${Math.min(score, 100)}%`,
-            height: "100%",
-            background: color,
-            transition: "width 0.3s ease",
-          }}
-        />
+        {arrow}{" "}
+        {typeof delta === "number" ? delta.toFixed(1) : "0.0"}
       </div>
     </div>
   );
 }
 
-// TABLE STYLES
+/* ========================================================
+   Table Styles
+======================================================== */
+
 const th = {
-  padding: "10px",
-  border: "1px solid #e0e0e0",
+  padding: "10px 12px",
+  background: "#f5f7fb",
+  color: "#64748b",
   fontWeight: "600",
   textAlign: "left",
-  fontSize: "13px",
-  color: "#546e7a",
+  fontSize: "12px",
 };
 
 const td = {
-  padding: "10px",
-  borderBottom: "1px solid #f0f0f0",
+  padding: "10px 12px",
+  borderBottom: "1px solid #e5e7eb",
   fontSize: "13px",
-  color: "#37474f",
+  color: "#111827",
 };
