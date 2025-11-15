@@ -4,10 +4,11 @@ import { supabase } from "../../lib/supabaseClient";
 export default function Login() {
   const [email, setEmail] = useState("");
   const [code, setCode] = useState("");
-  const [step, setStep] = useState("email"); // FIXED: removed TypeScript generics
+  const [step, setStep] = useState("email");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
 
+  // 1️⃣ Send OTP code
   async function handleSendCode(e) {
     e.preventDefault();
     setError("");
@@ -15,10 +16,6 @@ export default function Login() {
 
     const { error } = await supabase.auth.signInWithOtp({
       email,
-      options: {
-        emailRedirectTo:
-          "https://vendor-insurance-tracker-v2.vercel.app/auth/callback",
-      },
     });
 
     setLoading(false);
@@ -27,6 +24,7 @@ export default function Login() {
     else setStep("code");
   }
 
+  // 2️⃣ Verify OTP code
   async function handleVerifyCode(e) {
     e.preventDefault();
     setError("");
@@ -35,7 +33,7 @@ export default function Login() {
     const { data, error } = await supabase.auth.verifyOtp({
       email,
       token: code,
-      type: "email", // OTP for email login
+      type: "email",
     });
 
     setLoading(false);
@@ -45,7 +43,7 @@ export default function Login() {
       return;
     }
 
-    // Sync to Neon (optional but recommended)
+    // 3️⃣ Sync to Neon (optional but recommended)
     if (data?.session?.user) {
       try {
         await fetch("/api/auth/sync-user", {
@@ -58,6 +56,7 @@ export default function Login() {
       }
     }
 
+    // 4️⃣ Redirect to dashboard
     window.location.href = "/dashboard";
   }
 
@@ -144,25 +143,25 @@ export default function Login() {
             >
               {loading ? "Verifying..." : "Verify Code & Sign In"}
             </button>
-          </form>
 
-          <button
-            type="button"
-            onClick={() => {
-              setStep("email");
-              setCode("");
-              setError("");
-            }}
-            style={{
-              marginTop: "10px",
-              background: "none",
-              border: "none",
-              color: "#2563eb",
-              cursor: "pointer",
-            }}
-          >
-            ← Use a different email
-          </button>
+            <button
+              type="button"
+              onClick={() => {
+                setStep("email");
+                setCode("");
+                setError("");
+              }}
+              style={{
+                marginTop: "10px",
+                background: "none",
+                border: "none",
+                color: "#2563eb",
+                cursor: "pointer",
+              }}
+            >
+              ← Use a different email
+            </button>
+          </form>
         </>
       )}
 
