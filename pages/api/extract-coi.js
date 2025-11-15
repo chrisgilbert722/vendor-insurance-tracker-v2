@@ -1,126 +1,142 @@
-// 🟢 FINAL — Vercel Node.js API Route (Stable + JSON-Safe + Production Ready)
+// A2.3 — AI Extraction Engine (DB-Compatible Version)
 
 export const config = {
-  runtime: "nodejs",
   api: { bodyParser: false },
 };
 
 import OpenAI from "openai";
-import { Client } from "pg";
 import formidable from "formidable";
 import fs from "fs";
 import pdfParse from "pdf-parse";
+import { Client } from "pg";
 
+// Vercel runtime auto-detects Node
 export default async function handler(req, res) {
   if (req.method !== "POST") {
-    return res.status(405).json({ ok: false, error: "Method not allowed" });
+    return res.status(405).json({ error: "Method not allowed" });
   }
 
-  let client = null;
+  let db = null;
 
   try {
-    // Parse form-data
+    // 1) Parse uploaded file
     const form = formidable({});
     const [fields, files] = await form.parse(req);
 
-    const file = files.file?.[0];
-    if (!file) throw new Error("No file uploaded");
+    const uploaded = files.file?.[0] || files.file;
+    if (!uploaded) throw new Error("No PDF uploaded");
 
-    // Read PDF
-    const buffer = fs.readFileSync(file.filepath);
+    const buffer = fs.readFileSync(uploaded.filepath);
     const pdfData = await pdfParse(buffer);
 
-    if (!pdfData.text || pdfData.text.trim().length === 0) {
+    if (!pdfData.text) {
       throw new Error("PDF contains no readable text");
     }
 
-    const text = pdfData.text.trim().slice(0, 5000);
+    const text = pdfData.text.slice(0, 20000);
 
-    // OpenAI extraction
+    // 2) AI extraction (advanced JSON)
     const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
     const systemPrompt = `
-You are a COI (Certificate of Insurance) parser.
-Your job is to extract ONLY the following fields:
+You are an advanced COI extraction engine.
+
+Extract EVERYTHING into STRICT JSON only:
 
 {
   "vendor_name": string | null,
   "policy_number": string | null,
   "carrier": string | null,
+  "coverage_type": string | null,
   "effective_date": string | null,
   "expiration_date": string | null,
-  "coverage_type": string | null
+
+  "namedInsured": string | null,
+  "additionalInsured": boolean | null,
+  "waiverStatus": string | null,
+
+  "limits": string,
+  "riskScore": number,
+  "flags": string[],
+  "missingFields": string[],
+  "completenessRating": "High" | "Medium" | "Low"
 }
 
-"vendor_name" should be the insured party or named insured on the certificate.
-
 Rules:
-- Return ONLY valid JSON.
-- No explanations.
-- If a field is missing, return null.
-`;
-
-    const userPrompt = `Extract these fields from the PDF text:\n\n${text}`;
+- Respond with STRICT VALID JSON ONLY
+- Never add explanations
+- If unsure, use null
+- "limits" should summarize coverage limits in human-readable form
+- "riskScore" = 0–100 (higher = better)
+- "missingFields" lists required fields that appear missing
+- "flags" lists any coverage concerns
+    `.trim();
 
     const completion = await openai.chat.completions.create({
       model: "gpt-4o-mini",
       temperature: 0,
       messages: [
         { role: "system", content: systemPrompt },
-        { role: "user", content: userPrompt }
-      ]
+        { role: "user", content: text },
+      ],
     });
 
-    const aiOutput = completion.choices[0]?.message?.content || "";
-    const jsonMatch = aiOutput.match(/\{[\s\S]*\}/);
+    let raw = completion.choices[0]?.message?.content || "";
 
-    if (!jsonMatch) throw new Error("AI did not return valid JSON");
-
-    let jsonData;
-    try {
-      jsonData = JSON.parse(jsonMatch[0]);
-    } catch (err) {
-      throw new Error("Failed to parse JSON");
+    // attempt to extract JSON
+    const first = raw.indexOf("{");
+    const last = raw.lastIndexOf("}");
+    if (first === -1 || last === -1) {
+      throw new Error("AI returned non-JSON response");
     }
 
-    // Save to PostgreSQL
-    client = new Client({
-      connectionString: process.env.DATABASE_URL
-    });
+    const parsed = JSON.parse(raw.slice(first, last + 1));
 
-    await client.connect();
+    // Normalize for DB insert
+    const dbRecord = {
+      vendor_name: parsed.vendor_name ?? parsed.namedInsured ?? null,
+      policy_number: parsed.policy_number ?? null,
+      carrier: parsed.carrier ?? null,
+      effective_date: parsed.effective_date ?? null,
+      expiration_date: parsed.expiration_date ?? null,
+      coverage_type: parsed.coverage_type ?? null,
+    };
 
-    const result = await client.query(
+    // 3) Insert into DB ONLY the fields your table supports
+    db = new Client({ connectionString: process.env.DATABASE_URL });
+    await db.connect();
+
+    const result = await db.query(
       `INSERT INTO public.policies
-        (vendor_name, policy_number, carrier, effective_date, expiration_date, coverage_type, status)
+       (vendor_name, policy_number, carrier, effective_date, expiration_date, coverage_type, status)
        VALUES ($1, $2, $3, $4, $5, $6, 'active')
        RETURNING id`,
       [
-        jsonData.vendor_name || null,
-        jsonData.policy_number || null,
-        jsonData.carrier || null,
-        jsonData.effective_date || null,
-        jsonData.expiration_date || null,
-        jsonData.coverage_type || null
+        dbRecord.vendor_name,
+        dbRecord.policy_number,
+        dbRecord.carrier,
+        dbRecord.effective_date,
+        dbRecord.expiration_date,
+        dbRecord.coverage_type,
       ]
     );
 
-    await client.end();
+    await db.end();
 
+    // 4) Return ALL AI fields back to frontend
     return res.status(200).json({
-      ok: true,
       id: result.rows[0].id,
-      json: jsonData,
-      message: "COI extracted successfully"
+      ...parsed, // full AI extraction payload
     });
-
   } catch (err) {
-    console.error("extract-coi.js ERROR:", err);
+    console.error("A2.3 ERROR:", err);
 
-    if (client) {
-      try { await client.end(); } catch (_) {}
+    if (db) {
+      try {
+        await db.end();
+      } catch (_) {}
     }
 
-    return res.status(500).json({ ok: false, error: err.message });
+    return res.status(500).json({ error: err.message });
   }
 }
