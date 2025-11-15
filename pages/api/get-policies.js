@@ -1,77 +1,64 @@
-// pages/api/get-policies.js
 import { Client } from "pg";
 
-// 🔥 Master expiration + scoring engine
+// ---- Risk + Score Engine (Enterprise Mode) ---- //
+
 function computeExpiration(expiration_date_str) {
   if (!expiration_date_str)
-    return {
-      label: "Unknown",
-      level: "unknown",
-      daysRemaining: null,
-      scorePenalty: 50,
-    };
+    return { daysRemaining: null, label: "Unknown", level: "unknown" };
 
   const [mm, dd, yyyy] = expiration_date_str.split("/");
-  if (!mm || !dd || !yyyy)
-    return {
-      label: "Unknown",
-      level: "unknown",
-      daysRemaining: null,
-      scorePenalty: 50,
-    };
-
   const expDate = new Date(`${yyyy}-${mm}-${dd}T00:00:00`);
   const today = new Date();
+
   const diffMs = expDate.getTime() - today.getTime();
-  const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
+  const daysRemaining = Math.floor(diffMs / (1000 * 60 * 60 * 24));
 
-  if (diffDays < 0)
-    return {
-      label: "Expired",
-      level: "expired",
-      daysRemaining: diffDays,
-      scorePenalty: 100,
-    };
+  if (daysRemaining < 0)
+    return { daysRemaining, label: "Expired", level: "expired" };
 
-  if (diffDays <= 15)
-    return {
-      label: "Critical",
-      level: "critical",
-      daysRemaining: diffDays,
-      scorePenalty: 60,
-    };
+  if (daysRemaining <= 30)
+    return { daysRemaining, label: "Critical", level: "critical" };
 
-  if (diffDays <= 45)
-    return {
-      label: "Warning",
-      level: "warning",
-      daysRemaining: diffDays,
-      scorePenalty: 30,
-    };
+  if (daysRemaining <= 90)
+    return { daysRemaining, label: "Warning", level: "warning" };
 
-  return {
-    label: "Active",
-    level: "ok",
-    daysRemaining: diffDays,
-    scorePenalty: 0,
-  };
+  return { daysRemaining, label: "Active", level: "ok" };
 }
 
-// 🔥 Compliance Score (0–100)
-function computeScore(policy) {
-  let score = 100;
+function computeComplianceScore(expiration) {
+  if (!expiration.daysRemaining && expiration.daysRemaining !== 0) return 0;
 
-  score -= policy.expiration.scorePenalty;
+  if (expiration.level === "expired") return 20;
+  if (expiration.level === "critical") return 40;
+  if (expiration.level === "warning") return 70;
+  if (expiration.level === "ok") return 100;
 
-  // Future expansions:
-  // - Missing endorsements
-  // - Carrier rating
-  // - Additional insured
-  // - COI completeness
-  // - Multi-policy consistency
+  return 0;
+}
 
-  if (score < 0) score = 0;
-  return score;
+function computeRiskBucket(score) {
+  if (score >= 90) return "Low Risk";
+  if (score >= 70) return "Moderate Risk";
+  if (score >= 40) return "High Risk";
+  return "Severe Risk";
+}
+
+function computeUnderwriterColor(score) {
+  if (score >= 90) return "#1b5e20"; // green
+  if (score >= 70) return "#b59b00"; // yellow
+  if (score >= 40) return "#cc5200"; // orange
+  return "#b20000"; // red
+}
+
+// Flags that go beyond expiration:
+function computeFlags(expiration) {
+  const flags = [];
+
+  if (expiration.level === "expired") flags.push("Expired policy");
+  if (expiration.level === "critical") flags.push("Expires in ≤30 days");
+  if (expiration.level === "warning") flags.push("Expires in ≤90 days");
+
+  return flags;
 }
 
 export default async function handler(req, res) {
@@ -81,41 +68,40 @@ export default async function handler(req, res) {
 
   let client;
   try {
-    client = new Client({
-      connectionString: process.env.DATABASE_URL,
-    });
+    client = new Client({ connectionString: process.env.DATABASE_URL });
     await client.connect();
 
-    const result = await client.query(
-      `SELECT id, vendor_name, policy_number, carrier, effective_date, expiration_date, coverage_type, status, created_at
-       FROM policies
-       ORDER BY created_at DESC`
-    );
+    const result = await client.query(`
+      SELECT id, vendor_name, policy_number, carrier,
+             effective_date, expiration_date, coverage_type,
+             status, created_at
+      FROM policies
+      ORDER BY created_at DESC
+    `);
 
-    const policies = result.rows.map((p) => {
-      const expiration = computeExpiration(p.expiration_date);
-      const complianceScore = computeScore({ expiration });
+    const policies = result.rows.map((row) => {
+      const expiration = computeExpiration(row.expiration_date);
+      const complianceScore = computeComplianceScore(expiration);
+      const riskBucket = computeRiskBucket(complianceScore);
+      const underwriterColor = computeUnderwriterColor(complianceScore);
+      const flags = computeFlags(expiration);
 
       return {
-        ...p,
+        ...row,
         expiration,
         complianceScore,
+        riskBucket,
+        underwriterColor,
+        flags,
       };
     });
 
     await client.end();
 
-    return res.status(200).json({
-      ok: true,
-      policies,
-    });
+    return res.status(200).json({ ok: true, policies });
   } catch (err) {
     console.error("GET POLICIES ERROR:", err);
-    if (client) {
-      try {
-        await client.end();
-      } catch {}
-    }
+    if (client) await client.end();
     return res.status(500).json({ ok: false, error: err.message });
   }
 }
