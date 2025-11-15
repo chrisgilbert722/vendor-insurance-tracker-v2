@@ -8,10 +8,9 @@ function computeExpiration(expiration_date_str) {
       label: "Unknown",
       level: "unknown",
       daysRemaining: null,
-      scorePenalty: 50, // huge penalty
+      scorePenalty: 50,
     };
 
-  // Expecting MM/DD/YYYY
   const [mm, dd, yyyy] = expiration_date_str.split("/");
   if (!mm || !dd || !yyyy)
     return {
@@ -33,6 +32,7 @@ function computeExpiration(expiration_date_str) {
       daysRemaining: diffDays,
       scorePenalty: 100,
     };
+
   if (diffDays <= 15)
     return {
       label: "Critical",
@@ -40,6 +40,7 @@ function computeExpiration(expiration_date_str) {
       daysRemaining: diffDays,
       scorePenalty: 60,
     };
+
   if (diffDays <= 45)
     return {
       label: "Warning",
@@ -56,19 +57,18 @@ function computeExpiration(expiration_date_str) {
   };
 }
 
-// 🔥 Compute compliance score (0–100)
+// 🔥 Compliance Score (0–100)
 function computeScore(policy) {
   let score = 100;
 
-  // Penalty based on expiration risk
   score -= policy.expiration.scorePenalty;
 
-  // Future scoring rules:
-  // - Missing endorsements  ( -15 )
-  // - Weak carrier rating   ( -10 )
-  // - Missing fields        ( -5 each )
-  // - Incomplete extraction ( -20 )
-  // - Missing additional insured ( -25 )
+  // Future expansions:
+  // - Missing endorsements
+  // - Carrier rating
+  // - Additional insured
+  // - COI completeness
+  // - Multi-policy consistency
 
   if (score < 0) score = 0;
   return score;
@@ -92,7 +92,6 @@ export default async function handler(req, res) {
        ORDER BY created_at DESC`
     );
 
-    // 🔥 Apply the full risk & score engine to each policy
     const policies = result.rows.map((p) => {
       const expiration = computeExpiration(p.expiration_date);
       const complianceScore = computeScore({ expiration });
@@ -116,7 +115,7 @@ export default async function handler(req, res) {
       try {
         await client.end();
       } catch {}
-      return res.status(500).json({ ok: false, error: err.message });
     }
+    return res.status(500).json({ ok: false, error: err.message });
   }
 }
