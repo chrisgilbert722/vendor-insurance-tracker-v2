@@ -6,42 +6,40 @@ export default function Callback() {
   const router = useRouter();
 
   useEffect(() => {
-    async function finalizeLogin() {
+    async function finalize() {
+      console.log("🔄 Running callback flow...");
 
-      console.log("CALLBACK: Checking Supabase session…");
-
-      const {
-        data: { session },
-        error,
-      } = await supabase.auth.getSession();
-
-      console.log("CALLBACK SESSION:", session);
-      console.log("CALLBACK ERROR:", error);
+      const { data: { session } } = await supabase.auth.getSession();
 
       if (!session) {
-        console.log("No session → redirecting to login");
+        console.log("❌ No session — redirecting to login");
         router.replace("/auth/login");
         return;
       }
 
-      console.log("Session found, syncing to Neon...");
+      console.log("✅ Session found in callback:", session);
 
-      await fetch("/api/auth/sync-user", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ user: session.user }),
-      });
+      // Sync user to Neon  
+      try {
+        await fetch("/api/auth/sync-user", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ user: session.user }),
+        });
+        console.log("✅ User synced from callback");
+      } catch (err) {
+        console.error("❌ sync-user failed in callback:", err);
+      }
 
-      console.log("Sync complete → redirecting to dashboard");
       router.replace("/dashboard");
     }
 
-    finalizeLogin();
-  }, []);
+    finalize();
+  }, [router]);
 
   return (
-    <div style={{ padding: 40 }}>
-      <h2>Signing you in…</h2>
+    <div style={{ padding: "40px" }}>
+      <p>Signing you in...</p>
     </div>
   );
 }
