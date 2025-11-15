@@ -8,7 +8,9 @@ export default function Login() {
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
 
-  // 1️⃣ Send OTP code
+  // -------------------------------
+  // SEND LOGIN CODE
+  // -------------------------------
   async function handleSendCode(e) {
     e.preventDefault();
     setError("");
@@ -16,6 +18,11 @@ export default function Login() {
 
     const { error } = await supabase.auth.signInWithOtp({
       email,
+      options: {
+        shouldCreateUser: true,
+        emailRedirectTo:
+          "https://vendor-insurance-tracker-v2.vercel.app/auth/callback",
+      },
     });
 
     setLoading(false);
@@ -24,7 +31,9 @@ export default function Login() {
     else setStep("code");
   }
 
-  // 2️⃣ Verify OTP code
+  // -------------------------------
+  // VERIFY LOGIN CODE
+  // -------------------------------
   async function handleVerifyCode(e) {
     e.preventDefault();
     setError("");
@@ -43,20 +52,24 @@ export default function Login() {
       return;
     }
 
-    // 3️⃣ Sync to Neon (optional but recommended)
-    if (data?.session?.user) {
-      try {
-        await fetch("/api/auth/sync-user", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ user: data.session.user }),
-        });
-      } catch (err) {
-        console.error("sync-user failed:", err);
-      }
+    // store session cookie
+    if (data?.session) {
+      document.cookie = `sb-access-token=${data.session.access_token}; path=/; max-age=86400;`;
+      document.cookie = `sb-refresh-token=${data.session.refresh_token}; path=/; max-age=86400;`;
     }
 
-    // 4️⃣ Redirect to dashboard
+    // sync user to DB
+    try {
+      await fetch("/api/auth/sync-user", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ user: data.session.user }),
+      });
+    } catch (err) {
+      console.error("sync-user failed:", err);
+    }
+
+    // redirect
     window.location.href = "/dashboard";
   }
 
@@ -67,7 +80,7 @@ export default function Login() {
       {step === "email" ? (
         <>
           <p style={{ marginBottom: "12px" }}>
-            Enter your email and we&apos;ll send you a login code.
+            Enter your email and we'll send you a login code.
           </p>
 
           <form onSubmit={handleSendCode}>
@@ -143,25 +156,25 @@ export default function Login() {
             >
               {loading ? "Verifying..." : "Verify Code & Sign In"}
             </button>
-
-            <button
-              type="button"
-              onClick={() => {
-                setStep("email");
-                setCode("");
-                setError("");
-              }}
-              style={{
-                marginTop: "10px",
-                background: "none",
-                border: "none",
-                color: "#2563eb",
-                cursor: "pointer",
-              }}
-            >
-              ← Use a different email
-            </button>
           </form>
+
+          <button
+            type="button"
+            onClick={() => {
+              setStep("email");
+              setCode("");
+              setError("");
+            }}
+            style={{
+              marginTop: "10px",
+              background: "none",
+              border: "none",
+              color: "#2563eb",
+              cursor: "pointer",
+            }}
+          >
+            ← Use a different email
+          </button>
         </>
       )}
 
