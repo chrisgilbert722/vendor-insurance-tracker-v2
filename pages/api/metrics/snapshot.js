@@ -1,39 +1,9 @@
 // pages/api/metrics/snapshot.js
 import { Client } from "pg";
 
-// expiration engine
-function computeExpiration(expiration_date_str) {
-  if (!expiration_date_str)
-    return { level: "unknown", daysRemaining: null, scorePenalty: 50 };
-
-  const [mm, dd, yyyy] = expiration_date_str.split("/");
-  if (!mm || !dd || !yyyy)
-    return { level: "unknown", daysRemaining: null, scorePenalty: 50 };
-
-  const expDate = new Date(`${yyyy}-${mm}-${dd}T00:00:00`);
-  const today = new Date();
-  const diffMs = expDate - today;
-  const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
-
-  if (diffDays < 0)
-    return { level: "expired", daysRemaining: diffDays, scorePenalty: 100 };
-  if (diffDays <= 15)
-    return { level: "critical", daysRemaining: diffDays, scorePenalty: 60 };
-  if (diffDays <= 45)
-    return { level: "warning", daysRemaining: diffDays, scorePenalty: 30 };
-
-  return { level: "ok", daysRemaining: diffDays, scorePenalty: 0 };
-}
-
-function computeScore(exp) {
-  let score = 100;
-  score -= exp.scorePenalty;
-  return Math.max(score, 0);
-}
-
 export default async function handler(req, res) {
-  if (req.method !== "POST" && req.method !== "GET") {
-    return res.status(405).json({ ok: false, error: "Method not allowed" });
+  if (req.method !== "POST") {
+    return res.status(405).json({ ok: false, error: "POST only" });
   }
 
   let client;
@@ -43,50 +13,64 @@ export default async function handler(req, res) {
     });
     await client.connect();
 
-    const result = await client.query(
-      `SELECT expiration_date FROM policies`
-    );
+    // Fetch current policy statuses
+    const result = await client.query(`
+      SELECT
+        SUM( CASE WHEN status = 'expired' THEN 1 ELSE 0 END ) AS expired_count,
+        SUM( CASE WHEN status = 'critical' THEN 1 ELSE 0 END ) AS critical_count,
+        SUM( CASE WHEN status = 'warning' THEN 1 ELSE 0 END ) AS warning_count,
+        SUM( CASE WHEN status = 'ok' THEN 1 ELSE 0 END ) AS ok_count
+      FROM policies;
+    `);
 
-    let expired = 0, critical = 0, warning = 0, ok = 0;
-    let totalScore = 0, scoredCount = 0;
+    const row = result.rows[0];
 
-    for (const row of result.rows) {
-      const exp = computeExpiration(row.expiration_date);
-      const score = computeScore(exp);
+    // Compute simple score (0–100)
+    const total = 
+      Number(row.expired_count) +
+      Number(row.critical_count) +
+      Number(row.warning_count) +
+      Number(row.ok_count);
 
-      switch (exp.level) {
-        case "expired": expired++; break;
-        case "critical": critical++; break;
-        case "warning": warning++; break;
-        case "ok": ok++; break;
-      }
+    const score = total === 0
+      ? 0
+      : Math.round(
+          (Number(row.ok_count) / total) * 100 -
+            Number(row.expired_count) * 5 -
+            Number(row.critical_count) * 2
+        );
 
-      totalScore += score;
-      scoredCount++;
-    }
-
-    const avgScore = scoredCount ? totalScore / scoredCount : null;
-
+    // Save snapshot
     await client.query(
-      `INSERT INTO dashboard_metrics 
+      `INSERT INTO dashboard_metrics
        (expired_count, critical_count, warning_count, ok_count, avg_score)
-       VALUES ($1, $2, $3, $4, $5)`,
-      [expired, critical, warning, ok, avgScore]
+       VALUES ($1, $2, $3, $4, $5);`,
+      [
+        row.expired_count,
+        row.critical_count,
+        row.warning_count,
+        row.ok_count,
+        score
+      ]
     );
 
     await client.end();
 
     return res.status(200).json({
       ok: true,
-      expired,
-      critical,
-      warning,
-      ok,
-      avgScore,
+      snapshot: {
+        expired: row.expired_count,
+        critical: row.critical_count,
+        warning: row.warning_count,
+        ok: row.ok_count,
+        score,
+      },
     });
   } catch (err) {
     console.error("METRICS SNAPSHOT ERROR:", err);
-    try { client?.end(); } catch {}
+    if (client) {
+      try { await client.end(); } catch {}
+    }
     return res.status(500).json({ ok: false, error: err.message });
   }
 }
