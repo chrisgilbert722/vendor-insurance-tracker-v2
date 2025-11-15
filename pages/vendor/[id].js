@@ -1,14 +1,87 @@
 import React from "react";
 import Link from "next/link";
 import { Client } from "pg";
+import {
+  ShieldCheck,
+  WarningCircle,
+  FileText,
+  ClockCountdown,
+} from "@phosphor-icons/react";
 
-// Server-side: fetch vendor + policies for this vendor
+// --------- Risk helper (reuse dashboard logic) ----------
+function parseExpiration(dateStr) {
+  if (!dateStr) return null;
+  const [mm, dd, yyyy] = dateStr.split("/");
+  if (!mm || !dd || !yyyy) return null;
+  return new Date(`${yyyy}-${mm}-${dd}T00:00:00`);
+}
+
+function computeDaysLeft(dateStr) {
+  const d = parseExpiration(dateStr);
+  if (!d) return null;
+  return Math.floor((d - new Date()) / (1000 * 60 * 60 * 24));
+}
+
+function computeRiskSummary(policies) {
+  if (!policies || policies.length === 0) {
+    return {
+      total: 0,
+      expired: 0,
+      expSoon: 0,
+      latestExpiration: null,
+      baseRiskScore: 0,
+      riskTier: "Unknown",
+    };
+  }
+
+  const now = new Date();
+  let expired = 0;
+  let expSoon = 0;
+  const validDates = [];
+
+  policies.forEach((p) => {
+    if (!p.expiration_date) return;
+    const d = parseExpiration(p.expiration_date);
+    if (!d || Number.isNaN(d.getTime())) return;
+    validDates.push(d);
+
+    if (d < now) {
+      expired++;
+    } else {
+      const diffDays = Math.floor((d - now) / (1000 * 60 * 60 * 24));
+      if (diffDays <= 60) expSoon++;
+    }
+  });
+
+  let baseRiskScore = 85;
+  if (expired > 0) baseRiskScore = 25;
+  else if (expSoon > 0) baseRiskScore = 55;
+
+  const riskTier =
+    baseRiskScore >= 80
+      ? "Low"
+      : baseRiskScore >= 50
+      ? "Moderate"
+      : "High";
+
+  const latestExpiration = validDates.length
+    ? validDates.sort((a, b) => b - a)[0].toISOString().slice(0, 10)
+    : null;
+
+  return {
+    total: policies.length,
+    expired,
+    expSoon,
+    latestExpiration,
+    baseRiskScore,
+    riskTier,
+  };
+}
+
+// --------- SSR: fetch vendor + policies ----------
 export async function getServerSideProps({ params }) {
   const vendorId = parseInt(params.id, 10);
-
-  if (Number.isNaN(vendorId)) {
-    return { notFound: true };
-  }
+  if (Number.isNaN(vendorId)) return { notFound: true };
 
   const client = new Client({
     connectionString: process.env.DATABASE_URL,
@@ -16,7 +89,6 @@ export async function getServerSideProps({ params }) {
 
   await client.connect();
 
-  // get vendor
   const vendorRes = await client.query(
     `SELECT id, org_id, name, email, phone, address, created_at
      FROM public.vendors
@@ -29,16 +101,15 @@ export async function getServerSideProps({ params }) {
     return { notFound: true };
   }
 
-  const vendor = vendorRes.rows[0];
-
-  // get all policies for that vendor
   const policiesRes = await client.query(
     `SELECT id,
+            vendor_id,
+            vendor_name,
             policy_number,
             carrier,
-            effective_date,
-            expiration_date,
             coverage_type,
+            expiration_date,
+            effective_date,
             status,
             created_at
      FROM public.policies
@@ -49,109 +120,61 @@ export async function getServerSideProps({ params }) {
 
   await client.end();
 
+  const vendor = vendorRes.rows[0];
   const policies = policiesRes.rows;
 
-  // simple derived metrics for now
-  const totalPolicies = policies.length;
-  const now = new Date();
-
-  const expiredCount = policies.filter((p) => {
-    if (!p.expiration_date) return false;
-    const d = new Date(p.expiration_date);
-    return !Number.isNaN(d.getTime()) && d < now;
-  }).length;
-
-  const expiringSoonCount = policies.filter((p) => {
-    if (!p.expiration_date) return false;
-    const d = new Date(p.expiration_date);
-    if (Number.isNaN(d.getTime())) return false;
-    const diffDays = Math.floor((d - now) / (1000 * 60 * 60 * 24));
-    return diffDays >= 0 && diffDays <= 60;
-  }).length;
-
-  const latestExpiration = (() => {
-    const validDates = policies
-      .map((p) => new Date(p.expiration_date))
-      .filter((d) => !Number.isNaN(d.getTime()))
-      .sort((a, b) => b - a);
-    return validDates[0]?.toISOString().slice(0, 10) || null;
-  })();
-
-  // basic risk placeholder for now – we’ll replace with AI risk in the next phase
-  const baseRiskScore = (() => {
-    if (totalPolicies === 0) return 0;
-    if (expiredCount > 0) return 25;
-    if (expiringSoonCount > 0) return 55;
-    return 85;
-  })();
+  const risk = computeRiskSummary(policies);
 
   return {
     props: {
       vendor,
       policies,
-      metrics: {
-        totalPolicies,
-        expiredCount,
-        expiringSoonCount,
-        latestExpiration,
-        baseRiskScore,
-      },
+      risk,
     },
   };
 }
 
-export default function VendorProfilePage({ vendor, policies, metrics }) {
-  const {
-    totalPolicies,
-    expiredCount,
-    expiringSoonCount,
-    latestExpiration,
-    baseRiskScore,
-  } = metrics;
+// --------- React Page ----------
+export default function VendorProfilePage({ vendor, policies, risk }) {
+  const { total, expired, expSoon, latestExpiration, baseRiskScore, riskTier } =
+    risk;
 
-  const riskTier =
+  const riskPillColor =
     baseRiskScore >= 80
-      ? "Low"
+      ? "bg-emerald-500/10 text-emerald-300 border-emerald-500/50"
       : baseRiskScore >= 50
-      ? "Moderate"
-      : "High";
-
-  const riskColor =
-    baseRiskScore >= 80
-      ? "bg-emerald-50 text-emerald-700 border-emerald-200"
-      : baseRiskScore >= 50
-      ? "bg-amber-50 text-amber-800 border-amber-200"
-      : "bg-rose-50 text-rose-800 border-rose-200";
+      ? "bg-amber-500/10 text-amber-300 border-amber-500/50"
+      : "bg-rose-500/10 text-rose-300 border-rose-500/50";
 
   return (
     <div className="min-h-screen bg-slate-950 text-slate-50">
-      {/* top gradient bar */}
+      {/* top accent bar */}
       <div className="h-1 bg-gradient-to-r from-sky-500 via-violet-500 to-emerald-400" />
 
       <div className="max-w-6xl mx-auto px-4 py-8 space-y-8">
-        {/* breadcrumb */}
+        {/* Breadcrumb */}
         <div className="text-xs text-slate-400 flex items-center gap-2">
-          <Link href="/dashboard" className="hover:text-slate-200">
+          <Link href="/dashboard" className="hover:text-slate-100">
             Dashboard
           </Link>
           <span>›</span>
-          <Link href="/vendors" className="hover:text-slate-200">
+          <Link href="/vendors" className="hover:text-slate-100">
             Vendors
           </Link>
           <span>›</span>
           <span className="text-slate-200">{vendor.name}</span>
         </div>
 
-        {/* header */}
+        {/* Header row */}
         <header className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
-          <div className="space-y-1">
-            <p className="text-xs uppercase tracking-[0.2em] text-slate-400">
+          <div className="space-y-2">
+            <p className="text-xs uppercase tracking-[0.2em] text-slate-500">
               Vendor Profile
             </p>
             <h1 className="text-3xl md:text-4xl font-semibold tracking-tight">
               {vendor.name}
             </h1>
-            <div className="flex flex-wrap gap-2 text-sm text-slate-300">
+            <div className="flex flex-wrap items-center gap-2 text-xs text-slate-400">
               {vendor.email && <span>{vendor.email}</span>}
               {vendor.phone && (
                 <>
@@ -162,9 +185,7 @@ export default function VendorProfilePage({ vendor, policies, metrics }) {
               {vendor.address && (
                 <>
                   <span className="opacity-40">•</span>
-                  <span className="truncate max-w-xs">
-                    {vendor.address}
-                  </span>
+                  <span className="truncate max-w-xs">{vendor.address}</span>
                 </>
               )}
             </div>
@@ -172,42 +193,45 @@ export default function VendorProfilePage({ vendor, policies, metrics }) {
 
           <div className="flex flex-col items-start md:items-end gap-2">
             <div
-              className={`inline-flex items-center gap-3 rounded-full border px-4 py-1.5 text-xs font-medium ${riskColor}`}
+              className={`inline-flex items-center gap-3 rounded-full border px-4 py-1.5 text-xs font-medium ${riskPillColor}`}
             >
+              <ShieldCheck size={16} weight="bold" />
               <span className="uppercase tracking-[0.15em] text-[10px]">
                 Risk
               </span>
               <span className="text-sm font-semibold">
-                {baseRiskScore}
+                {baseRiskScore || 0}
               </span>
               <span className="text-[11px] opacity-80">{riskTier} risk</span>
             </div>
-            <p className="text-[11px] text-slate-400">
-              {totalPolicies === 0
+            <p className="text-[11px] text-slate-500">
+              {total === 0
                 ? "No policies on file yet."
-                : `Tracking ${totalPolicies} policies for this vendor.`}
+                : `Tracking ${total} polic${
+                    total === 1 ? "y" : "ies"
+                  } for this vendor.`}
             </p>
           </div>
         </header>
 
-        {/* metrics row */}
+        {/* Metrics row */}
         <section className="grid grid-cols-2 md:grid-cols-4 gap-4">
           <MetricCard
             label="Total policies"
-            value={totalPolicies}
+            value={total}
             description="All COIs on file"
           />
           <MetricCard
             label="Expired"
-            value={expiredCount}
+            value={expired}
             description="Policies past expiration"
-            tone={expiredCount > 0 ? "bad" : "neutral"}
+            tone={expired > 0 ? "bad" : "neutral"}
           />
           <MetricCard
             label="Expiring ≤ 60 days"
-            value={expiringSoonCount}
+            value={expSoon}
             description="Renewal attention needed"
-            tone={expiringSoonCount > 0 ? "warn" : "neutral"}
+            tone={expSoon > 0 ? "warn" : "neutral"}
           />
           <MetricCard
             label="Latest expiration"
@@ -216,28 +240,34 @@ export default function VendorProfilePage({ vendor, policies, metrics }) {
           />
         </section>
 
-        {/* layout: left summary, right table */}
-        <section className="grid lg:grid-cols-[minmax(0,2fr)_minmax(0,3fr)] gap-6">
-          {/* left column: AI summary placeholder & details */}
+        {/* Two-column layout */}
+        <section className="grid lg:grid-cols-[minmax(0,2.1fr)_minmax(0,3fr)] gap-6">
+          {/* LEFT: snapshot + details */}
           <div className="space-y-4">
-            <div className="rounded-2xl border border-slate-800 bg-gradient-to-br from-slate-900/60 via-slate-950 to-slate-950/90 p-5 shadow-[0_18px_45px_rgba(0,0,0,0.7)]">
-              <h2 className="text-sm font-semibold text-slate-50 mb-1">
-                Risk & Coverage Snapshot
-              </h2>
+            {/* AI-like Risk Snapshot */}
+            <div className="rounded-2xl border border-slate-800 bg-gradient-to-br from-slate-900/70 via-slate-950 to-slate-950/95 p-5 shadow-[0_18px_45px_rgba(0,0,0,0.7)]">
+              <div className="flex items-center justify-between mb-3">
+                <div className="flex items-center gap-2">
+                  <WarningCircle size={18} weight="bold" className="text-amber-400" />
+                  <h2 className="text-sm font-semibold text-slate-50">
+                    Risk & Coverage Snapshot
+                  </h2>
+                </div>
+                <ClockCountdown size={16} className="text-slate-400" />
+              </div>
               <p className="text-xs text-slate-400 mb-3">
-                This section will be powered by AI in the next phase — giving
-                you a written summary of coverage gaps, trends, and next best
-                actions for this vendor.
+                This section will be backed by AI soon — summarizing coverage gaps,
+                renewal risk, and recommended actions in plain English.
               </p>
               <ul className="space-y-1.5 text-xs text-slate-300">
                 <li>
-                  • Current baseline risk score:{" "}
-                  <span className="font-medium">{baseRiskScore}</span>{" "}
+                  • Baseline risk score:{" "}
+                  <span className="font-semibold">{baseRiskScore || 0}</span>{" "}
                   ({riskTier} risk).
                 </li>
                 <li>
-                  • {expiredCount} expired and {expiringSoonCount} expiring
-                  soon policies.
+                  • {expired} expired and {expSoon} expiring soon (≤ 60 days)
+                  polic{expired + expSoon === 1 ? "y" : "ies"}.
                 </li>
                 <li>
                   • Latest expiration date:{" "}
@@ -249,16 +279,14 @@ export default function VendorProfilePage({ vendor, policies, metrics }) {
               </ul>
             </div>
 
+            {/* Vendor details card */}
             <div className="rounded-2xl border border-slate-800 bg-slate-950/80 p-5">
               <h3 className="text-sm font-semibold text-slate-50 mb-2">
                 Vendor Details
               </h3>
               <dl className="space-y-2 text-xs text-slate-300">
                 <DetailRow label="Vendor ID" value={vendor.id} />
-                <DetailRow
-                  label="Organization ID"
-                  value={vendor.org_id ?? "—"}
-                />
+                <DetailRow label="Organization ID" value={vendor.org_id ?? "—"} />
                 <DetailRow
                   label="Created"
                   value={
@@ -274,21 +302,24 @@ export default function VendorProfilePage({ vendor, policies, metrics }) {
             </div>
           </div>
 
-          {/* right column: policies table */}
+          {/* RIGHT: Policy table */}
           <div className="rounded-2xl border border-slate-800 bg-slate-950/80 p-5 overflow-hidden">
             <div className="flex items-center justify-between mb-3">
-              <h2 className="text-sm font-semibold text-slate-50">
-                Policy History
-              </h2>
+              <div className="flex items-center gap-2">
+                <FileText size={18} className="text-slate-200" />
+                <h2 className="text-sm font-semibold text-slate-50">
+                  Policy History
+                </h2>
+              </div>
               <span className="text-[11px] text-slate-500">
-                {totalPolicies} record{totalPolicies === 1 ? "" : "s"}
+                {total} record{total === 1 ? "" : "s"}
               </span>
             </div>
 
             {policies.length === 0 ? (
               <p className="text-xs text-slate-500">
-                No policies yet for this vendor. Upload a COI from the
-                dashboard to see it here.
+                No policies yet for this vendor. Upload a COI from the dashboard
+                to see it here.
               </p>
             ) : (
               <div className="overflow-x-auto">
@@ -305,12 +336,15 @@ export default function VendorProfilePage({ vendor, policies, metrics }) {
                   </thead>
                   <tbody>
                     {policies.map((p) => {
-                      const expired = isExpired(p.expiration_date);
-                      const expSoon = isExpiringSoon(p.expiration_date);
+                      const daysLeft = computeDaysLeft(p.expiration_date);
+                      const expired = daysLeft !== null && daysLeft < 0;
+                      const expSoon =
+                        daysLeft !== null && daysLeft >= 0 && daysLeft <= 60;
+
                       return (
                         <tr
                           key={p.id}
-                          className="border-b border-slate-850/60 last:border-0 hover:bg-slate-900/60 transition"
+                          className="border-b border-slate-900/60 last:border-0 hover:bg-slate-900/60 transition"
                         >
                           <td className="py-2 pr-3 text-slate-100">
                             {p.policy_number || "—"}
@@ -343,10 +377,19 @@ export default function VendorProfilePage({ vendor, policies, metrics }) {
             )}
           </div>
         </section>
+
+        {/* Back link */}
+        <div className="pt-4">
+          <Link href="/dashboard" className="text-xs text-slate-400 hover:text-slate-100">
+            ← Back to Dashboard
+          </Link>
+        </div>
       </div>
     </div>
   );
 }
+
+// ---------- Small components ----------
 
 function MetricCard({ label, value, description, tone = "neutral" }) {
   const base =
@@ -357,6 +400,7 @@ function MetricCard({ label, value, description, tone = "neutral" }) {
       : tone === "warn"
       ? "border-amber-500/40 bg-gradient-to-br from-amber-950/80 via-slate-950 to-slate-950"
       : "border-slate-800/80";
+
   return (
     <div className={`${base} ${toneClass}`}>
       <p className="text-[11px] uppercase tracking-[0.18em] text-slate-400">
@@ -377,21 +421,6 @@ function DetailRow({ label, value }) {
       </span>
     </div>
   );
-}
-
-function isExpired(expirationDate) {
-  if (!expirationDate) return false;
-  const d = new Date(expirationDate);
-  if (Number.isNaN(d.getTime())) return false;
-  return d < new Date();
-}
-
-function isExpiringSoon(expirationDate) {
-  if (!expirationDate) return false;
-  const d = new Date(expirationDate);
-  if (Number.isNaN(d.getTime())) return false;
-  const diffDays = Math.floor((d - new Date()) / (1000 * 60 * 60 * 24));
-  return diffDays >= 0 && diffDays <= 60;
 }
 
 function StatusPill({ expired, expSoon, rawStatus }) {
