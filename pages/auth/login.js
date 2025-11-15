@@ -4,7 +4,7 @@ import { supabase } from "../../lib/supabaseClient";
 export default function Login() {
   const [email, setEmail] = useState("");
   const [code, setCode] = useState("");
-  const [step, setStep] = useState<"email" | "code">("email");
+  const [step, setStep] = useState("email"); // FIXED: removed TypeScript generics
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
 
@@ -16,7 +16,6 @@ export default function Login() {
     const { error } = await supabase.auth.signInWithOtp({
       email,
       options: {
-        // This redirect is mostly for Supabase; the actual login happens on verifyOtp
         emailRedirectTo:
           "https://vendor-insurance-tracker-v2.vercel.app/auth/callback",
       },
@@ -24,11 +23,8 @@ export default function Login() {
 
     setLoading(false);
 
-    if (error) {
-      setError(error.message);
-    } else {
-      setStep("code");
-    }
+    if (error) setError(error.message);
+    else setStep("code");
   }
 
   async function handleVerifyCode(e) {
@@ -39,7 +35,7 @@ export default function Login() {
     const { data, error } = await supabase.auth.verifyOtp({
       email,
       token: code,
-      type: "email", // OTP for email auth
+      type: "email", // OTP for email login
     });
 
     setLoading(false);
@@ -49,8 +45,7 @@ export default function Login() {
       return;
     }
 
-    // At this point, the session cookie is set.
-    // Optionally sync user to Neon via /api/auth/sync-user
+    // Sync to Neon (optional but recommended)
     if (data?.session?.user) {
       try {
         await fetch("/api/auth/sync-user", {
@@ -58,9 +53,8 @@ export default function Login() {
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ user: data.session.user }),
         });
-      } catch (e) {
-        // non-fatal – just log
-        console.error("sync-user failed:", e);
+      } catch (err) {
+        console.error("sync-user failed:", err);
       }
     }
 
@@ -74,7 +68,7 @@ export default function Login() {
       {step === "email" ? (
         <>
           <p style={{ marginBottom: "12px" }}>
-            Enter your email and we&apos;ll send you a one-time login code.
+            Enter your email and we&apos;ll send you a login code.
           </p>
 
           <form onSubmit={handleSendCode}>
@@ -92,6 +86,7 @@ export default function Login() {
                 border: "1px solid #ccc",
               }}
             />
+
             <button
               type="submit"
               disabled={loading}
@@ -112,8 +107,7 @@ export default function Login() {
       ) : (
         <>
           <p style={{ marginBottom: "12px" }}>
-            We sent a code to <strong>{email}</strong>. Enter it below to sign
-            in.
+            Enter the code we emailed to <strong>{email}</strong>.
           </p>
 
           <form onSubmit={handleVerifyCode}>
@@ -134,6 +128,7 @@ export default function Login() {
                 fontFamily: "monospace",
               }}
             />
+
             <button
               type="submit"
               disabled={loading}
