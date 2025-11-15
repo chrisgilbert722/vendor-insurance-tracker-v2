@@ -7,8 +7,10 @@ export function middleware(req) {
   // Protected routes
   const protectedRoutes = ["/dashboard", "/vendors", "/upload-coi"];
 
+  // Supabase sets this cookie after OTP login
   const sessionToken = req.cookies.get("sb-access-token")?.value;
 
+  // Protect all authenticated routes
   if (protectedRoutes.some((route) => pathname.startsWith(route))) {
     if (!sessionToken) {
       url.pathname = "/auth/login";
