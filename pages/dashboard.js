@@ -1,7 +1,8 @@
 import { useEffect, useState } from "react";
+import { useRouter } from "next/router";
+import { supabase } from "../lib/supabaseClient";
 import Header from "../components/Header";
 
-// Badge Style
 function badgeStyle(level) {
   switch (level) {
     case "expired":
@@ -18,30 +19,42 @@ function badgeStyle(level) {
 }
 
 export default function Dashboard() {
+  const router = useRouter();
   const [policies, setPolicies] = useState([]);
   const [loading, setLoading] = useState(true);
   const [filterText, setFilterText] = useState("");
+
   const [metrics, setMetrics] = useState(null);
   const [deltas, setDeltas] = useState(null);
+  const [metricsLoading, setMetricsLoading] = useState(true);
 
-  // 🔹 Load policies
+  // Protect dashboard
   useEffect(() => {
-    async function loadPolicies() {
+    async function checkAuth() {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) router.push("/auth/login");
+    }
+    checkAuth();
+  }, [router]);
+
+  // Load policies
+  useEffect(() => {
+    async function load() {
       try {
         const res = await fetch("/api/get-policies");
         const data = await res.json();
         if (data.ok) setPolicies(data.policies);
       } catch (err) {
-        console.error("FAILED TO LOAD POLICIES:", err);
+        console.error("Failed to load policies:", err);
       }
       setLoading(false);
     }
-    loadPolicies();
+    load();
   }, []);
 
-  // 🔹 Load metrics summary
+  // Load metrics summary
   useEffect(() => {
-    async function loadSummary() {
+    async function loadMetrics() {
       try {
         const res = await fetch("/api/metrics/summary");
         const data = await res.json();
@@ -50,13 +63,14 @@ export default function Dashboard() {
           setDeltas(data.deltas);
         }
       } catch (err) {
-        console.error("METRICS FETCH FAILED:", err);
+        console.error("Failed to load metrics:", err);
       }
+      setMetricsLoading(false);
     }
-    loadSummary();
+    loadMetrics();
   }, []);
 
-  // 🔹 Filtered policies for table
+  // Filtered policies for table
   const filtered = policies.filter((p) => {
     const t = filterText.toLowerCase();
     if (!t) return true;
@@ -73,13 +87,13 @@ export default function Dashboard() {
       <Header />
 
       <h1>Vendor Insurance Dashboard</h1>
-      <p>Track vendor insurance compliance in real-time.</p>
+      <p>Track vendor insurance compliance and expirations in real-time.</p>
 
       <a href="/upload-coi">Upload New COI →</a>
 
       <hr style={{ margin: "30px 0" }} />
 
-      {/* ⭐ Risk Summary Bar (no auth logic, no redirects) */}
+      {/* RISK SUMMARY BAR (METRICS-DRIVEN) */}
       <div
         style={{
           display: "flex",
@@ -108,7 +122,7 @@ export default function Dashboard() {
           label="Warning"
           icon="🟡"
           color="#b59b00"
-          count={metrics?.warning ?? 0}
+          count={metrics?.warning_count ?? 0}
           delta={deltas?.warning ?? 0}
         />
         <RiskItem
@@ -118,7 +132,10 @@ export default function Dashboard() {
           count={metrics?.ok_count ?? 0}
           delta={deltas?.ok ?? 0}
         />
-        <ScoreItem avgScore={metrics?.avg_score} delta={deltas?.avg_score} />
+        <ScoreItem
+          avgScore={metrics?.avg_score}
+          delta={deltas?.avg_score}
+        />
       </div>
 
       <h2>Policies</h2>
@@ -132,7 +149,7 @@ export default function Dashboard() {
           padding: "8px",
           width: "320px",
           borderRadius: "4px",
-          border: "1px solid #ccc", // ← fixed bug here
+          border: "1px solid "#ccc",
           marginBottom: "16px",
         }}
       />
@@ -172,20 +189,14 @@ export default function Dashboard() {
                 <td style={td}>{p.carrier}</td>
                 <td style={td}>{p.coverage_type}</td>
                 <td style={td}>{p.expiration_date}</td>
-                <td style={td}>{p.expiration?.daysRemaining ?? "—"}</td>
+                <td style={td}>{p.expiration.daysRemaining ?? "—"}</td>
 
-                <td
-                  style={{
-                    ...td,
-                    ...badgeStyle(p.expiration?.level),
-                    textAlign: "center",
-                  }}
-                >
-                  {p.expiration?.label || "Unknown"}
+                <td style={{ ...td, ...badgeStyle(p.expiration.level), textAlign: "center" }}>
+                  {p.expiration.label}
                 </td>
 
                 <td style={{ ...td, fontWeight: "bold", textAlign: "center" }}>
-                  {p.complianceScore ?? "—"}
+                  {p.complianceScore}
                 </td>
               </tr>
             ))}
@@ -196,42 +207,53 @@ export default function Dashboard() {
   );
 }
 
-// Risk item box
+// Risk item with icon + trend arrow
 function RiskItem({ label, icon, color, count, delta }) {
   let arrow = "➖";
   let arrowColor = "#555";
 
   if (delta > 0) {
     arrow = "⬆️";
-    arrowColor = "#b20000";
+    arrowColor = "#b20000"; // more risk
   } else if (delta < 0) {
     arrow = "⬇️";
-    arrowColor = "#1b5e20";
+    arrowColor = "#1b5e20"; // less risk
   }
 
   return (
     <div style={{ textAlign: "center", minWidth: "80px" }}>
       <div style={{ fontSize: "24px" }}>{icon}</div>
-      <div style={{ fontSize: "22px", fontWeight: "bold", color }}>
+      <div
+        style={{
+          fontSize: "22px",
+          fontWeight: "bold",
+          color,
+          marginTop: "4px",
+        }}
+      >
         {count}
       </div>
       <div style={{ fontSize: "13px", color: "#333" }}>{label}</div>
-      <div style={{ fontSize: "12px", color: arrowColor }}>
-        {arrow} {delta > 0 ? `+${delta}` : delta}
+      <div style={{ fontSize: "12px", marginTop: "2px", color: arrowColor }}>
+        {arrow} {delta ? (delta > 0 ? `+${delta}` : delta) : "0"}
       </div>
     </div>
   );
 }
 
-// Avg score box
+// Compliance score panel
 function ScoreItem({ avgScore, delta }) {
   if (avgScore == null) {
     return (
       <div style={{ textAlign: "center", minWidth: "80px" }}>
         <div style={{ fontSize: "24px" }}>📊</div>
-        <div style={{ fontSize: "22px", fontWeight: "bold" }}>—</div>
+        <div style={{ fontSize: "22px", fontWeight: "bold", color: "#555" }}>
+          —
+        </div>
         <div style={{ fontSize: "13px", color: "#333" }}>Avg Score</div>
-        <div style={{ fontSize: "12px", color: "#555" }}>No data</div>
+        <div style={{ fontSize: "12px", marginTop: "2px", color: "#555" }}>
+          No data yet
+        </div>
       </div>
     );
   }
@@ -247,23 +269,21 @@ function ScoreItem({ avgScore, delta }) {
     arrowColor = "#b20000";
   }
 
-  const color =
-    avgScore >= 80 ? "#1b5e20" : avgScore >= 60 ? "#b59b00" : "#b20000";
-
   return (
     <div style={{ textAlign: "center", minWidth: "80px" }}>
       <div style={{ fontSize: "24px" }}>📊</div>
-      <div style={{ fontSize: "22px", fontWeight: "bold", color }}>
+      <div
+        style={{
+          fontSize: "22px",
+          fontWeight: "bold",
+          color: avgScore >= 80 ? "#1b5e20" : avgScore >= 60 ? "#b59b00" : "#b20000",
+        }}
+      >
         {Math.round(avgScore)}
       </div>
       <div style={{ fontSize: "13px", color: "#333" }}>Avg Score</div>
-      <div style={{ fontSize: "12px", color: arrowColor }}>
-        {arrow}{" "}
-        {typeof delta === "number"
-          ? delta > 0
-            ? `+${delta.toFixed(1)}`
-            : delta.toFixed(1)
-          : "0.0"}
+      <div style={{ fontSize: "12px", marginTop: "2px", color: arrowColor }}>
+        {arrow} {delta ? (delta > 0 ? `+${delta.toFixed(1)}` : delta.toFixed(1)) : "0.0"}
       </div>
     </div>
   );
@@ -279,5 +299,5 @@ const th = {
 
 const td = {
   padding: "10px",
-  border: "1px solid #ddd",
+  border: "1px solid "#ddd",
 };
