@@ -13,12 +13,16 @@ export default function Login() {
     setError("");
     setLoading(true);
 
+    console.log("📨 SENDING OTP TO:", email);
+
     const { error } = await supabase.auth.signInWithOtp({
       email,
       options: {
         emailRedirectTo: "https://vendor-insurance-tracker-v2.vercel.app/auth/callback",
       },
     });
+
+    console.log("📩 OTP SEND RESULT:", error || "Success");
 
     setLoading(false);
     if (error) setError(error.message);
@@ -30,21 +34,30 @@ export default function Login() {
     setError("");
     setLoading(true);
 
-    // 🟢 VERIFY OTP WITH SUPABASE
+    console.log("🔍 VERIFYING OTP NOW…");
+    console.log("📧 Email:", email);
+    console.log("🔢 Code entered:", code);
+
+    // 🟢 VERIFY OTP WITH SUPABASE — WITH LOGGING
     const { data, error } = await supabase.auth.verifyOtp({
       email,
       token: code,
       type: "email",
     });
 
+    console.log("🧪 OTP VERIFY RESULT:", { data, error });
+
     setLoading(false);
 
     if (error) {
+      console.log("❌ OTP ERROR:", error);
       setError(error.message || "Invalid code.");
       return;
     }
 
     // 🟢 SUPER IMPORTANT: STORE SESSION
+    console.log("📦 STORING SESSION:", data.session);
+
     if (data.session) {
       await supabase.auth.setSession({
         access_token: data.session.access_token,
@@ -52,20 +65,25 @@ export default function Login() {
       });
     }
 
-    // 🟢 Sync user to Neon
+    // 🟢 Sync user to Neon — WITH LOGS
     if (data.session?.user) {
+      console.log("🔄 SYNCING USER TO NEON…", data.session.user);
+
       try {
         await fetch("/api/auth/sync-user", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ user: data.session.user }),
         });
+
+        console.log("✅ SYNC COMPLETED");
       } catch (err) {
-        console.error("sync-user failed:", err);
+        console.error("❌ sync-user failed:", err);
       }
     }
 
     // 🟢 Redirect in-app
+    console.log("➡️ REDIRECTING TO /dashboard");
     window.location.href = "/dashboard";
   }
 
