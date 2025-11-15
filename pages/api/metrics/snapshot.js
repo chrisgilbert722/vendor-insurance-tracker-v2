@@ -1,7 +1,7 @@
 // pages/api/metrics/snapshot.js
 import { Client } from "pg";
 
-// same expiration engine as get-policies
+// expiration engine
 function computeExpiration(expiration_date_str) {
   if (!expiration_date_str)
     return { level: "unknown", daysRemaining: null, scorePenalty: 50 };
@@ -12,7 +12,7 @@ function computeExpiration(expiration_date_str) {
 
   const expDate = new Date(`${yyyy}-${mm}-${dd}T00:00:00`);
   const today = new Date();
-  const diffMs = expDate.getTime() - today.getTime();
+  const diffMs = expDate - today;
   const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
 
   if (diffDays < 0)
@@ -25,11 +25,10 @@ function computeExpiration(expiration_date_str) {
   return { level: "ok", daysRemaining: diffDays, scorePenalty: 0 };
 }
 
-function computeScore(expiration) {
+function computeScore(exp) {
   let score = 100;
-  score -= expiration.scorePenalty;
-  if (score < 0) score = 0;
-  return score;
+  score -= exp.scorePenalty;
+  return Math.max(score, 0);
 }
 
 export default async function handler(req, res) {
@@ -39,52 +38,38 @@ export default async function handler(req, res) {
 
   let client;
   try {
-    client = new Client({ connectionString: process.env.DATABASE_URL });
+    client = new Client({
+      connectionString: process.env.DATABASE_URL,
+    });
     await client.connect();
 
     const result = await client.query(
-      `SELECT expiration_date
-       FROM policies`
+      `SELECT expiration_date FROM policies`
     );
 
-    let expired = 0;
-    let critical = 0;
-    let warning = 0;
-    let ok = 0;
-
-    let totalScore = 0;
-    let scoredCount = 0;
+    let expired = 0, critical = 0, warning = 0, ok = 0;
+    let totalScore = 0, scoredCount = 0;
 
     for (const row of result.rows) {
-      const expiration = computeExpiration(row.expiration_date);
-      const score = computeScore(expiration);
+      const exp = computeExpiration(row.expiration_date);
+      const score = computeScore(exp);
 
-      switch (expiration.level) {
-        case "expired":
-          expired++;
-          break;
-        case "critical":
-          critical++;
-          break;
-        case "warning":
-          warning++;
-          break;
-        case "ok":
-          ok++;
-          break;
-        default:
-          break;
+      switch (exp.level) {
+        case "expired": expired++; break;
+        case "critical": critical++; break;
+        case "warning": warning++; break;
+        case "ok": ok++; break;
       }
 
       totalScore += score;
       scoredCount++;
     }
 
-    const avgScore = scoredCount > 0 ? totalScore / scoredCount : null;
+    const avgScore = scoredCount ? totalScore / scoredCount : null;
 
     await client.query(
-      `INSERT INTO dashboard_metrics
-        (expired_count, critical_count, warning_count, ok_count, avg_score)
+      `INSERT INTO dashboard_metrics 
+       (expired_count, critical_count, warning_count, ok_count, avg_score)
        VALUES ($1, $2, $3, $4, $5)`,
       [expired, critical, warning, ok, avgScore]
     );
@@ -101,9 +86,7 @@ export default async function handler(req, res) {
     });
   } catch (err) {
     console.error("METRICS SNAPSHOT ERROR:", err);
-    if (client) {
-      try { await client.end(); } catch {}
-    }
+    try { client?.end(); } catch {}
     return res.status(500).json({ ok: false, error: err.message });
   }
 }
