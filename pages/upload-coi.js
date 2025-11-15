@@ -1,13 +1,15 @@
 import { useState, useEffect } from "react";
 import { useRouter } from "next/router";
 import { supabase } from "../lib/supabaseClient";
+
+// ⭐ REPLACED LUCIDE WITH TABLER ICONS
 import {
-  UploadCloud,
-  Loader2,
-  AlertTriangle,
-  CheckCircle2,
-  FileText,
-} from "lucide-react";
+  IconUpload,
+  IconLoader2,
+  IconAlertTriangle,
+  IconCircleCheck,
+  IconFileText,
+} from "@tabler/icons-react";
 
 const STEP_LABELS = [
   "Uploading file",
@@ -19,20 +21,18 @@ const STEP_LABELS = [
 export default function UploadCOI() {
   const router = useRouter();
 
-  // original-style states (kept)
   const [file, setFile] = useState(null);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
   const [debugResponse, setDebugResponse] = useState("");
 
-  // new UI states
   const [dragActive, setDragActive] = useState(false);
-  const [stepIndex, setStepIndex] = useState(-1); // -1 = idle
-  const [status, setStatus] = useState("idle"); // idle | working | done | error
+  const [stepIndex, setStepIndex] = useState(-1);
+  const [status, setStatus] = useState("idle");
   const [result, setResult] = useState(null);
   const [fileName, setFileName] = useState("");
 
-  // 🔐 Supabase auth check
+  // 🔐 Auth check
   useEffect(() => {
     async function checkAuth() {
       const {
@@ -61,13 +61,12 @@ export default function UploadCOI() {
     setFile(selectedFile);
     setFileName(selectedFile.name);
     setStatus("working");
-    setStepIndex(0); // Uploading…
+    setStepIndex(0);
 
     try {
       const form = new FormData();
       form.append("file", selectedFile);
 
-      // move to "Extracting..." quickly for UX
       setTimeout(() => setStepIndex(1), 250);
 
       const res = await fetch("/api/extract-coi", {
@@ -80,21 +79,17 @@ export default function UploadCOI() {
 
       if (contentType.includes("application/json")) {
         data = await res.json();
-        if (!res.ok) {
-          throw new Error(data.error || "Extraction failed");
-        }
+        if (!res.ok) throw new Error(data.error || "Extraction failed");
       } else {
         const text = await res.text();
         throw new Error("Server returned invalid data:\n" + text.slice(0, 200));
       }
 
-      // debug JSON (your old behavior)
       setDebugResponse(JSON.stringify(data, null, 2));
 
-      // smooth step transitions
-      setTimeout(() => setStepIndex(2), 350); // validating…
+      setTimeout(() => setStepIndex(2), 350);
       setTimeout(() => {
-        setStepIndex(3); // analyzing risk…
+        setStepIndex(3);
         setTimeout(() => {
           setSuccess("Upload successful!");
           setStatus("done");
@@ -102,8 +97,8 @@ export default function UploadCOI() {
         }, 350);
       }, 700);
     } catch (err) {
-      console.error("Upload / extraction error:", err);
-      setError(err.message || "Unknown upload error");
+      console.error("Upload error:", err);
+      setError(err.message || "Unknown error");
       setStatus("error");
       setStepIndex(-1);
     }
@@ -123,7 +118,8 @@ export default function UploadCOI() {
   };
 
   const riskColor = (score) => {
-    if (typeof score !== "number") return "bg-slate-100 text-slate-700 border-slate-200";
+    if (typeof score !== "number")
+      return "bg-slate-100 text-slate-700 border-slate-200";
     if (score >= 80) return "bg-green-100 text-green-700 border-green-200";
     if (score >= 50) return "bg-yellow-100 text-yellow-800 border-yellow-200";
     return "bg-red-100 text-red-700 border-red-200";
@@ -132,7 +128,7 @@ export default function UploadCOI() {
   return (
     <div className="min-h-screen bg-slate-50 py-10 px-4">
       <div className="max-w-5xl mx-auto space-y-8">
-        {/* Header */}
+        {/* HEADER */}
         <header className="space-y-1">
           <p className="text-xs uppercase tracking-[0.18em] text-slate-500">
             G-Track · Vendor COI Automation
@@ -142,12 +138,12 @@ export default function UploadCOI() {
           </h1>
           <p className="text-slate-600 text-sm max-w-2xl">
             Drag &amp; drop a COI PDF. AI will extract carrier, limits,
-            expiration, flags, and risk score in seconds.
+            expiration, flags, and risk score.
           </p>
         </header>
 
         <div className="grid md:grid-cols-[3fr_2fr] gap-6">
-          {/* LEFT: Upload + steps */}
+          {/* LEFT SIDE */}
           <section className="bg-white rounded-2xl border border-slate-200 shadow-sm p-6 space-y-6">
             {/* Upload Box */}
             <div
@@ -173,12 +169,9 @@ export default function UploadCOI() {
                     : "border-slate-300 bg-slate-100/70 hover:bg-slate-200/60"
                 }`}
             >
-              <label
-                htmlFor="fileInput"
-                className="flex flex-col items-center gap-3"
-              >
+              <label htmlFor="fileInput" className="flex flex-col items-center gap-3">
                 <div className="h-12 w-12 bg-blue-600 rounded-full text-white flex items-center justify-center shadow-sm">
-                  <UploadCloud className="h-6 w-6" />
+                  <IconUpload className="h-6 w-6" />
                 </div>
                 <div className="text-center">
                   <p className="font-medium text-slate-900">
@@ -207,7 +200,7 @@ export default function UploadCOI() {
               />
             </div>
 
-            {/* Steps */}
+            {/* Pipeline */}
             <div>
               <h2 className="text-sm font-semibold text-slate-800 mb-2">
                 AI Processing Pipeline
@@ -217,10 +210,7 @@ export default function UploadCOI() {
                   const active = stepIndex === idx && status === "working";
                   const done = stepIndex > idx && status === "done";
                   return (
-                    <li
-                      key={label}
-                      className="flex items-center justify-between text-sm"
-                    >
+                    <li key={label} className="flex items-center justify-between text-sm">
                       <div className="flex items-center gap-3">
                         <div
                           className={`h-6 w-6 rounded-full border flex items-center justify-center text-[11px]
@@ -233,7 +223,7 @@ export default function UploadCOI() {
                           }`}
                         >
                           {done ? (
-                            <CheckCircle2 className="h-4 w-4" />
+                            <IconCircleCheck className="h-4 w-4" />
                           ) : (
                             idx + 1
                           )}
@@ -251,7 +241,7 @@ export default function UploadCOI() {
                         </span>
                       </div>
                       {active && (
-                        <Loader2 className="h-4 w-4 animate-spin text-blue-500" />
+                        <IconLoader2 className="h-4 w-4 animate-spin text-blue-500" />
                       )}
                     </li>
                   );
@@ -259,17 +249,17 @@ export default function UploadCOI() {
               </ol>
             </div>
 
-            {/* Status / errors */}
+            {/* Statuses */}
             {status === "working" && (
               <div className="flex items-center gap-2 text-xs text-slate-500">
-                <Loader2 className="h-3 w-3 animate-spin" />
+                <IconLoader2 className="h-3 w-3 animate-spin" />
                 <span>AI engine is processing your certificate…</span>
               </div>
             )}
 
             {error && (
               <div className="bg-red-50 border border-red-200 text-red-700 p-3 rounded-xl text-sm flex items-start gap-2">
-                <AlertTriangle className="h-4 w-4 mt-0.5" />
+                <IconAlertTriangle className="h-4 w-4 mt-0.5" />
                 <div>
                   <p className="font-semibold">Upload failed</p>
                   <p>{error}</p>
@@ -279,16 +269,16 @@ export default function UploadCOI() {
 
             {success && (
               <p className="text-sm text-emerald-600 flex items-center gap-2">
-                <CheckCircle2 className="h-4 w-4" /> {success}
+                <IconCircleCheck className="h-4 w-4" /> {success}
               </p>
             )}
           </section>
 
-          {/* RIGHT: COI Summary */}
+          {/* RIGHT SIDE SUMMARY */}
           <section className="bg-white rounded-2xl border border-slate-200 shadow-sm p-6 space-y-4">
             <div className="flex items-center gap-3">
               <div className="h-9 w-9 rounded-xl bg-slate-900 text-white flex items-center justify-center">
-                <FileText className="h-5 w-5" />
+                <IconFileText className="h-5 w-5" />
               </div>
               <div>
                 <p className="text-sm font-semibold text-slate-900">
@@ -300,12 +290,14 @@ export default function UploadCOI() {
               </div>
             </div>
 
+            {/* EMPTY */}
             {!result && status === "idle" && (
               <p className="text-sm text-slate-500">
                 Upload a certificate to see extracted details and risk scoring.
               </p>
             )}
 
+            {/* LOADING */}
             {!result && status === "working" && (
               <div className="space-y-3">
                 <div className="h-4 w-40 rounded-full bg-slate-100 animate-pulse" />
@@ -315,25 +307,25 @@ export default function UploadCOI() {
                   <div className="h-16 rounded-xl bg-slate-100 animate-pulse" />
                   <div className="h-16 rounded-xl bg-slate-100 animate-pulse" />
                 </div>
-                <div className="h-24 rounded-xl bg-slate-100 animate-pulse" />
               </div>
             )}
 
+            {/* RESULT */}
             {result && (
               <div className="space-y-4 text-sm">
-                {/* Top line: Carrier / Policy + Risk */}
+
+                {/* Top line */}
                 <div className="flex flex-wrap items-center justify-between gap-3">
                   <div>
                     <p className="text-xs uppercase tracking-[0.18em] text-slate-500">
                       Carrier · Policy
                     </p>
                     <p className="text-sm font-semibold text-slate-900">
-                      {(result.carrier || "").toString() || "—"} ·{" "}
-                      {result.policy_number ||
-                        result.policyNumber ||
-                        "—"}
+                      {result.carrier || "—"} ·{" "}
+                      {result.policy_number || result.policyNumber || "—"}
                     </p>
                   </div>
+
                   {typeof result.riskScore === "number" && (
                     <div
                       className={`inline-flex items-center gap-2 rounded-full border px-3 py-1 text-xs font-medium ${riskColor(
@@ -346,31 +338,21 @@ export default function UploadCOI() {
                   )}
                 </div>
 
-                {/* Main fields grid */}
+                {/* Field grid */}
                 <div className="grid grid-cols-2 gap-3">
                   <Field
                     label="Coverage"
-                    value={
-                      result.coverage_type ||
-                      result.coverageType ||
-                      "—"
-                    }
+                    value={result.coverage_type || result.coverageType || "—"}
                   />
                   <Field
                     label="Named insured"
-                    value={
-                      result.vendor_name ||
-                      result.namedInsured ||
-                      "—"
-                    }
+                    value={result.vendor_name || result.namedInsured || "—"}
                   />
                   <Field
                     label="Additional insured"
                     value={
                       typeof result.additionalInsured === "boolean"
-                        ? result.additionalInsured
-                          ? "Yes"
-                          : "No"
+                        ? result.additionalInsured ? "Yes" : "No"
                         : "—"
                     }
                   />
@@ -402,7 +384,7 @@ export default function UploadCOI() {
                     <p className="text-xs font-semibold text-slate-700 mb-1.5">
                       Limits
                     </p>
-                    <pre className="text-[11px] leading-relaxed text-slate-700 whitespace-pre-wrap">
+                    <pre className="text-[11px] text-slate-700 whitespace-pre-wrap">
                       {typeof result.limits === "string"
                         ? result.limits
                         : JSON.stringify(result.limits, null, 2)}
@@ -410,38 +392,36 @@ export default function UploadCOI() {
                   </div>
                 )}
 
-                {/* Flags + missing fields */}
+                {/* Flags & Missing */}
                 <div className="grid md:grid-cols-2 gap-3">
-                  {Array.isArray(result.flags) &&
-                    result.flags.length > 0 && (
-                      <div className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-3">
-                        <p className="text-xs font-semibold text-amber-800 mb-1.5">
-                          Flags
-                        </p>
-                        <ul className="list-disc list-inside text-[11px] text-amber-900 space-y-0.5">
-                          {result.flags.map((f, i) => (
-                            <li key={i}>{f}</li>
-                          ))}
-                        </ul>
-                      </div>
-                    )}
+                  {result.flags?.length > 0 && (
+                    <div className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-3">
+                      <p className="text-xs font-semibold text-amber-800 mb-1.5">
+                        Flags
+                      </p>
+                      <ul className="list-disc list-inside text-[11px] text-amber-900">
+                        {result.flags.map((f, i) => (
+                          <li key={i}>{f}</li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
 
-                  {Array.isArray(result.missingFields) &&
-                    result.missingFields.length > 0 && (
-                      <div className="rounded-xl border border-rose-200 bg-rose-50 px-3 py-3">
-                        <p className="text-xs font-semibold text-rose-800 mb-1.5">
-                          Missing required fields
-                        </p>
-                        <ul className="list-disc list-inside text-[11px] text-rose-900 space-y-0.5">
-                          {result.missingFields.map((m, i) => (
-                            <li key={i}>{m}</li>
-                          ))}
-                        </ul>
-                      </div>
-                    )}
+                  {result.missingFields?.length > 0 && (
+                    <div className="rounded-xl border border-rose-200 bg-rose-50 px-3 py-3">
+                      <p className="text-xs font-semibold text-rose-800 mb-1.5">
+                        Missing required fields
+                      </p>
+                      <ul className="list-disc list-inside text-[11px] text-rose-900">
+                        {result.missingFields.map((m, i) => (
+                          <li key={i}>{m}</li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
                 </div>
 
-                {/* Debug JSON (your original helper) */}
+                {/* Debug JSON */}
                 {debugResponse && (
                   <pre className="text-[11px] bg-slate-100 p-2 rounded border mt-4 max-h-64 overflow-auto">
                     {debugResponse}
@@ -467,9 +447,7 @@ function Field({ label, value }) {
       <p className="text-[11px] uppercase tracking-[0.16em] text-slate-500 mb-0.5">
         {label}
       </p>
-      <p className="text-sm text-slate-900 truncate">
-        {value || "—"}
-      </p>
+      <p className="text-sm text-slate-900 truncate">{value || "—"}</p>
     </div>
   );
 }
