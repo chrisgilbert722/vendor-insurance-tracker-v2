@@ -6,11 +6,9 @@ export function middleware(req) {
 
   const protectedRoutes = ["/dashboard", "/vendors", "/upload-coi"];
 
-  const token =
-    req.cookies.get("sb-access-token")?.value ||
-    req.cookies.get("sb-refresh-token")?.value;
+  const token = req.cookies.get("sb-access-token")?.value;
 
-  if (protectedRoutes.some((route) => pathname.startsWith(route))) {
+  if (protectedRoutes.some((r) => pathname.startsWith(r))) {
     if (!token) {
       url.pathname = "/auth/login";
       return NextResponse.redirect(url);
