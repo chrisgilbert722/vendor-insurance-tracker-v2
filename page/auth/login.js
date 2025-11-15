@@ -8,9 +8,7 @@ export default function Login() {
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
 
-  // -------------------------------
-  // SEND LOGIN CODE
-  // -------------------------------
+  // Send OTP Code
   async function handleSendCode(e) {
     e.preventDefault();
     setError("");
@@ -18,22 +16,22 @@ export default function Login() {
 
     const { error } = await supabase.auth.signInWithOtp({
       email,
+      // absolutely REQUIRED for Supabase OTP redirects
       options: {
-        shouldCreateUser: true,
-        emailRedirectTo:
-          "https://vendor-insurance-tracker-v2.vercel.app/auth/callback",
+        emailRedirectTo: "https://vendor-insurance-tracker-v2.vercel.app/auth/callback",
       },
     });
 
     setLoading(false);
 
-    if (error) setError(error.message);
-    else setStep("code");
+    if (error) {
+      setError(error.message);
+    } else {
+      setStep("code");
+    }
   }
 
-  // -------------------------------
-  // VERIFY LOGIN CODE
-  // -------------------------------
+  // Verify the OTP Code
   async function handleVerifyCode(e) {
     e.preventDefault();
     setError("");
@@ -52,24 +50,19 @@ export default function Login() {
       return;
     }
 
-    // store session cookie
-    if (data?.session) {
-      document.cookie = `sb-access-token=${data.session.access_token}; path=/; max-age=86400;`;
-      document.cookie = `sb-refresh-token=${data.session.refresh_token}; path=/; max-age=86400;`;
+    // Sync user to Neon
+    if (data?.session?.user) {
+      try {
+        await fetch("/api/auth/sync-user", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ user: data.session.user }),
+        });
+      } catch (err) {
+        console.error("sync-user failed:", err);
+      }
     }
 
-    // sync user to DB
-    try {
-      await fetch("/api/auth/sync-user", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ user: data.session.user }),
-      });
-    } catch (err) {
-      console.error("sync-user failed:", err);
-    }
-
-    // redirect
     window.location.href = "/dashboard";
   }
 
