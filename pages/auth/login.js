@@ -13,7 +13,7 @@ export default function Login() {
     setError("");
     setLoading(true);
 
-    console.log("📨 SENDING OTP TO:", email);
+    console.log("📨 Sending OTP to:", email);
 
     const { error } = await supabase.auth.signInWithOtp({
       email,
@@ -22,11 +22,15 @@ export default function Login() {
       },
     });
 
-    console.log("📩 OTP SEND RESULT:", error || "Success");
-
     setLoading(false);
-    if (error) setError(error.message);
-    else setStep("code");
+
+    if (error) {
+      console.error("❌ OTP Send Error:", error);
+      setError(error.message);
+    } else {
+      console.log("✅ OTP Sent Successfully");
+      setStep("code");
+    }
   }
 
   async function handleVerifyCode(e) {
@@ -34,30 +38,24 @@ export default function Login() {
     setError("");
     setLoading(true);
 
-    console.log("🔍 VERIFYING OTP NOW…");
-    console.log("📧 Email:", email);
-    console.log("🔢 Code entered:", code);
+    console.log("🔐 Verifying code:", code);
 
-    // 🟢 VERIFY OTP WITH SUPABASE — WITH LOGGING
     const { data, error } = await supabase.auth.verifyOtp({
       email,
       token: code,
       type: "email",
     });
 
-    console.log("🧪 OTP VERIFY RESULT:", { data, error });
-
-    setLoading(false);
-
     if (error) {
-      console.log("❌ OTP ERROR:", error);
+      console.error("❌ OTP Verification Error:", error);
       setError(error.message || "Invalid code.");
+      setLoading(false);
       return;
     }
 
-    // 🟢 SUPER IMPORTANT: STORE SESSION
-    console.log("📦 STORING SESSION:", data.session);
+    console.log("✅ OTP Verified:", data.session);
 
+    // Store session in Supabase
     if (data.session) {
       await supabase.auth.setSession({
         access_token: data.session.access_token,
@@ -65,25 +63,23 @@ export default function Login() {
       });
     }
 
-    // 🟢 Sync user to Neon — WITH LOGS
+    // Sync user to Neon
     if (data.session?.user) {
-      console.log("🔄 SYNCING USER TO NEON…", data.session.user);
-
       try {
+        console.log("🌐 Syncing user to NEON...");
         await fetch("/api/auth/sync-user", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ user: data.session.user }),
         });
-
-        console.log("✅ SYNC COMPLETED");
+        console.log("✅ User synced to Neon");
       } catch (err) {
         console.error("❌ sync-user failed:", err);
       }
     }
 
-    // 🟢 Redirect in-app
-    console.log("➡️ REDIRECTING TO /dashboard");
+    // Redirect
+    console.log("➡️ Redirecting to dashboard...");
     window.location.href = "/dashboard";
   }
 
@@ -93,14 +89,14 @@ export default function Login() {
 
       {step === "email" ? (
         <>
-          <p>Enter your email and we’ll send you a login code.</p>
+          <p>Enter your email and we'll send you a login code.</p>
 
           <form onSubmit={handleSendCode}>
             <input
               type="email"
+              placeholder="you@example.com"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
-              placeholder="you@example.com"
               required
               style={{
                 width: "100%",
@@ -110,6 +106,7 @@ export default function Login() {
                 border: "1px solid #ccc",
               }}
             />
+
             <button
               type="submit"
               disabled={loading}
@@ -117,9 +114,10 @@ export default function Login() {
                 width: "100%",
                 padding: "10px",
                 borderRadius: "4px",
-                background: "#111827",
-                color: "white",
                 border: "none",
+                background: "#111827",
+                color: "#fff",
+                cursor: "pointer",
               }}
             >
               {loading ? "Sending..." : "Send Login Code"}
@@ -133,9 +131,9 @@ export default function Login() {
           <form onSubmit={handleVerifyCode}>
             <input
               type="text"
+              placeholder="Enter your code"
               value={code}
               onChange={(e) => setCode(e.target.value)}
-              placeholder="Enter your code"
               required
               style={{
                 width: "100%",
@@ -147,6 +145,7 @@ export default function Login() {
                 fontFamily: "monospace",
               }}
             />
+
             <button
               type="submit"
               disabled={loading}
@@ -154,9 +153,10 @@ export default function Login() {
                 width: "100%",
                 padding: "10px",
                 borderRadius: "4px",
-                background: "#111827",
-                color: "white",
                 border: "none",
+                background: "#111827",
+                color: "#fff",
+                cursor: "pointer",
               }}
             >
               {loading ? "Verifying..." : "Verify Code & Sign In"}
@@ -164,17 +164,17 @@ export default function Login() {
           </form>
 
           <button
+            onClick={() => {
+              setStep("email");
+              setError("");
+              setCode("");
+            }}
             style={{
               marginTop: "10px",
               background: "none",
               border: "none",
               color: "#2563eb",
               cursor: "pointer",
-            }}
-            onClick={() => {
-              setStep("email");
-              setCode("");
-              setError("");
             }}
           >
             ← Use a different email
