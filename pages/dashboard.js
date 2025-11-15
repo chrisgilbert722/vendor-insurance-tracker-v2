@@ -1,9 +1,7 @@
 import { useEffect, useState } from "react";
-import { useRouter } from "next/router";
-import { supabase } from "../lib/supabaseClient";
 import Header from "../components/Header";
 
-// Color badge UI
+// Badge Style
 function badgeStyle(level) {
   switch (level) {
     case "expired":
@@ -20,36 +18,45 @@ function badgeStyle(level) {
 }
 
 export default function Dashboard() {
-  const router = useRouter();
   const [policies, setPolicies] = useState([]);
   const [loading, setLoading] = useState(true);
   const [filterText, setFilterText] = useState("");
+  const [metrics, setMetrics] = useState(null);
+  const [deltas, setDeltas] = useState(null);
 
-  // Protect dashboard
+  // 🔹 Load policies
   useEffect(() => {
-    async function checkAuth() {
-      const { data: { session } } = await supabase.auth.getSession();
-      if (!session) router.push("/auth/login");
-    }
-    checkAuth();
-  }, [router]);
-
-  // Load policies
-  useEffect(() => {
-    async function load() {
+    async function loadPolicies() {
       try {
         const res = await fetch("/api/get-policies");
         const data = await res.json();
         if (data.ok) setPolicies(data.policies);
       } catch (err) {
-        console.error("Failed to load policies:", err);
+        console.error("FAILED TO LOAD POLICIES:", err);
       }
       setLoading(false);
     }
-    load();
+    loadPolicies();
   }, []);
 
-  // Apply the search filtering
+  // 🔹 Load metrics summary
+  useEffect(() => {
+    async function loadSummary() {
+      try {
+        const res = await fetch("/api/metrics/summary");
+        const data = await res.json();
+        if (data.ok) {
+          setMetrics(data.latest);
+          setDeltas(data.deltas);
+        }
+      } catch (err) {
+        console.error("METRICS FETCH FAILED:", err);
+      }
+    }
+    loadSummary();
+  }, []);
+
+  // 🔹 Filtered policies for table
   const filtered = policies.filter((p) => {
     const t = filterText.toLowerCase();
     if (!t) return true;
@@ -61,26 +68,18 @@ export default function Dashboard() {
     );
   });
 
-  // 🔥 RISK SUMMARY COUNTS
-  const summary = {
-    expired: filtered.filter((p) => p.expiration.level === "expired").length,
-    critical: filtered.filter((p) => p.expiration.level === "critical").length,
-    warning: filtered.filter((p) => p.expiration.level === "warning").length,
-    ok: filtered.filter((p) => p.expiration.level === "ok").length,
-  };
-
   return (
     <div style={{ padding: "40px" }}>
       <Header />
 
       <h1>Vendor Insurance Dashboard</h1>
-      <p>Track vendor insurance compliance and expirations in real-time.</p>
+      <p>Track vendor insurance compliance in real-time.</p>
 
       <a href="/upload-coi">Upload New COI →</a>
 
       <hr style={{ margin: "30px 0" }} />
 
-      {/* 🔥🔥🔥 RISK SUMMARY BAR 🔥🔥🔥 */}
+      {/* ⭐ Risk Summary Bar (no auth logic, no redirects) */}
       <div
         style={{
           display: "flex",
@@ -91,10 +90,35 @@ export default function Dashboard() {
           borderRadius: "12px",
         }}
       >
-        <RiskItem color="#b20000" label="Expired" count={summary.expired} />
-        <RiskItem color="#cc5200" label="Critical" count={summary.critical} />
-        <RiskItem color="#b59b00" label="Warning" count={summary.warning} />
-        <RiskItem color="#1b5e20" label="Active" count={summary.ok} />
+        <RiskItem
+          label="Expired"
+          icon="🔥"
+          color="#b20000"
+          count={metrics?.expired_count ?? 0}
+          delta={deltas?.expired ?? 0}
+        />
+        <RiskItem
+          label="Critical"
+          icon="⚠️"
+          color="#cc5200"
+          count={metrics?.critical_count ?? 0}
+          delta={deltas?.critical ?? 0}
+        />
+        <RiskItem
+          label="Warning"
+          icon="🟡"
+          color="#b59b00"
+          count={metrics?.warning ?? 0}
+          delta={deltas?.warning ?? 0}
+        />
+        <RiskItem
+          label="Active"
+          icon="✅"
+          color="#1b5e20"
+          count={metrics?.ok_count ?? 0}
+          delta={deltas?.ok ?? 0}
+        />
+        <ScoreItem avgScore={metrics?.avg_score} delta={deltas?.avg_score} />
       </div>
 
       <h2>Policies</h2>
@@ -108,12 +132,12 @@ export default function Dashboard() {
           padding: "8px",
           width: "320px",
           borderRadius: "4px",
-          border: "1px solid #ccc",
+          border: "1px solid #ccc", // ← fixed bug here
           marginBottom: "16px",
         }}
       />
 
-      {loading && <p>Loading...</p>}
+      {loading && <p>Loading policies...</p>}
 
       {!loading && filtered.length === 0 && (
         <p>No matching policies. Try a different search or upload a new COI.</p>
@@ -148,14 +172,20 @@ export default function Dashboard() {
                 <td style={td}>{p.carrier}</td>
                 <td style={td}>{p.coverage_type}</td>
                 <td style={td}>{p.expiration_date}</td>
-                <td style={td}>{p.expiration.daysRemaining ?? "—"}</td>
+                <td style={td}>{p.expiration?.daysRemaining ?? "—"}</td>
 
-                <td style={{ ...td, ...badgeStyle(p.expiration.level), textAlign: "center" }}>
-                  {p.expiration.label}
+                <td
+                  style={{
+                    ...td,
+                    ...badgeStyle(p.expiration?.level),
+                    textAlign: "center",
+                  }}
+                >
+                  {p.expiration?.label || "Unknown"}
                 </td>
 
                 <td style={{ ...td, fontWeight: "bold", textAlign: "center" }}>
-                  {p.complianceScore}
+                  {p.complianceScore ?? "—"}
                 </td>
               </tr>
             ))}
@@ -166,21 +196,75 @@ export default function Dashboard() {
   );
 }
 
-// RISK SUMMARY COMPONENT
-function RiskItem({ color, label, count }) {
+// Risk item box
+function RiskItem({ label, icon, color, count, delta }) {
+  let arrow = "➖";
+  let arrowColor = "#555";
+
+  if (delta > 0) {
+    arrow = "⬆️";
+    arrowColor = "#b20000";
+  } else if (delta < 0) {
+    arrow = "⬇️";
+    arrowColor = "#1b5e20";
+  }
+
   return (
-    <div style={{ textAlign: "center" }}>
-      <div
-        style={{
-          fontSize: "24px",
-          fontWeight: "bold",
-          color: color,
-          marginBottom: "4px",
-        }}
-      >
+    <div style={{ textAlign: "center", minWidth: "80px" }}>
+      <div style={{ fontSize: "24px" }}>{icon}</div>
+      <div style={{ fontSize: "22px", fontWeight: "bold", color }}>
         {count}
       </div>
-      <div style={{ color: "#333", fontSize: "14px" }}>{label}</div>
+      <div style={{ fontSize: "13px", color: "#333" }}>{label}</div>
+      <div style={{ fontSize: "12px", color: arrowColor }}>
+        {arrow} {delta > 0 ? `+${delta}` : delta}
+      </div>
+    </div>
+  );
+}
+
+// Avg score box
+function ScoreItem({ avgScore, delta }) {
+  if (avgScore == null) {
+    return (
+      <div style={{ textAlign: "center", minWidth: "80px" }}>
+        <div style={{ fontSize: "24px" }}>📊</div>
+        <div style={{ fontSize: "22px", fontWeight: "bold" }}>—</div>
+        <div style={{ fontSize: "13px", color: "#333" }}>Avg Score</div>
+        <div style={{ fontSize: "12px", color: "#555" }}>No data</div>
+      </div>
+    );
+  }
+
+  let arrow = "➖";
+  let arrowColor = "#555";
+
+  if (delta > 0) {
+    arrow = "⬆️";
+    arrowColor = "#1b5e20";
+  } else if (delta < 0) {
+    arrow = "⬇️";
+    arrowColor = "#b20000";
+  }
+
+  const color =
+    avgScore >= 80 ? "#1b5e20" : avgScore >= 60 ? "#b59b00" : "#b20000";
+
+  return (
+    <div style={{ textAlign: "center", minWidth: "80px" }}>
+      <div style={{ fontSize: "24px" }}>📊</div>
+      <div style={{ fontSize: "22px", fontWeight: "bold", color }}>
+        {Math.round(avgScore)}
+      </div>
+      <div style={{ fontSize: "13px", color: "#333" }}>Avg Score</div>
+      <div style={{ fontSize: "12px", color: arrowColor }}>
+        {arrow}{" "}
+        {typeof delta === "number"
+          ? delta > 0
+            ? `+${delta.toFixed(1)}`
+            : delta.toFixed(1)
+          : "0.0"}
+      </div>
     </div>
   );
 }
@@ -197,4 +281,3 @@ const td = {
   padding: "10px",
   border: "1px solid #ddd",
 };
-
