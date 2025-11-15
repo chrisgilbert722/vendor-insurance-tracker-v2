@@ -7,30 +7,42 @@ export default function Callback() {
 
   useEffect(() => {
     async function finalizeLogin() {
-      const {
-        data: { session },
-      } = await supabase.auth.getSession();
+      try {
+        // 1️⃣ Finish the OTP login by exchanging the code
+        await supabase.auth.exchangeCodeForSession(window.location.href);
 
-      if (!session) {
+        // 2️⃣ Now get the active session
+        const {
+          data: { session },
+        } = await supabase.auth.getSession();
+
+        if (!session) {
+          router.replace("/auth/login");
+          return;
+        }
+
+        // 3️⃣ Sync user to your database
+        await fetch("/api/auth/sync-user", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ user: session.user }),
+        });
+
+        // 4️⃣ Redirect to dashboard
+        router.replace("/dashboard");
+      } catch (err) {
+        console.error("Callback error:", err);
         router.replace("/auth/login");
-        return;
       }
-
-      await fetch("/api/auth/sync-user", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ user: session.user }),
-      });
-
-      router.replace("/dashboard");
     }
 
     finalizeLogin();
-  }, []);
+  }, [router]);
 
   return (
     <div style={{ padding: "40px" }}>
-      <h2>Signing you in...</h2>
+      <h2>Finishing sign in...</h2>
+      <p>Please wait.</p>
     </div>
   );
 }
