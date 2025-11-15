@@ -1,143 +1,47 @@
-import { useState } from "react";
+import { useEffect } from "react";
+import { useRouter } from "next/router";
 import { supabase } from "../../lib/supabaseClient";
 
-export default function Login() {
-  const [email, setEmail] = useState("");
-  const [code, setCode] = useState("");
-  const [step, setStep] = useState("email");
-  const [error, setError] = useState("");
-  const [loading, setLoading] = useState(false);
+export default function Callback() {
+  const router = useRouter();
 
-  async function handleSendCode(e) {
-    e.preventDefault();
-    setError("");
-    setLoading(true);
+  useEffect(() => {
+    async function finalizeLogin() {
 
-    const { error } = await supabase.auth.signInWithOtp({
-      email,
-      options: {
-        emailRedirectTo:
-          "https://vendor-insurance-tracker-v2.vercel.app/auth/callback",
-      },
-    });
+      console.log("CALLBACK: Checking Supabase session…");
 
-    setLoading(false);
+      const {
+        data: { session },
+        error,
+      } = await supabase.auth.getSession();
 
-    if (error) setError(error.message);
-    else setStep("code");
-  }
+      console.log("CALLBACK SESSION:", session);
+      console.log("CALLBACK ERROR:", error);
 
-  async function handleVerifyCode(e) {
-    e.preventDefault();
-    setError("");
-    setLoading(true);
+      if (!session) {
+        console.log("No session → redirecting to login");
+        router.replace("/auth/login");
+        return;
+      }
 
-    const { data, error } = await supabase.auth.verifyOtp({
-      email,
-      token: code,
-      type: "email",
-    });
+      console.log("Session found, syncing to Neon...");
 
-    setLoading(false);
+      await fetch("/api/auth/sync-user", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ user: session.user }),
+      });
 
-    if (error) {
-      setError("Invalid code. Try again.");
-      return;
+      console.log("Sync complete → redirecting to dashboard");
+      router.replace("/dashboard");
     }
 
-    window.location.href = "/auth/callback";
-  }
+    finalizeLogin();
+  }, []);
 
   return (
-    <div style={{ padding: "40px", maxWidth: "420px", margin: "0 auto" }}>
-      <h2>Sign In</h2>
-
-      {step === "email" ? (
-        <>
-          <p>Enter your email and we’ll send you a login code.</p>
-
-          <form onSubmit={handleSendCode}>
-            <input
-              type="email"
-              placeholder="you@example.com"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              required
-              style={{ width: "100%", padding: "10px", marginBottom: "12px" }}
-            />
-
-            <button
-              type="submit"
-              disabled={loading}
-              style={{
-                width: "100%",
-                padding: "10px",
-                background: "#111827",
-                color: "#fff",
-                border: "none",
-                cursor: "pointer",
-              }}
-            >
-              {loading ? "Sending..." : "Send Login Code"}
-            </button>
-          </form>
-
-          {error && <p style={{ color: "red" }}>❌ {error}</p>}
-        </>
-      ) : (
-        <>
-          <p>Enter the code we emailed to <b>{email}</b>.</p>
-
-          <form onSubmit={handleVerifyCode}>
-            <input
-              type="text"
-              placeholder="6–8 digit code"
-              value={code}
-              onChange={(e) => setCode(e.target.value)}
-              required
-              style={{
-                width: "100%",
-                padding: "10px",
-                marginBottom: "12px",
-                letterSpacing: "4px",
-                fontFamily: "monospace",
-              }}
-            />
-
-            <button
-              type="submit"
-              disabled={loading}
-              style={{
-                width: "100%",
-                padding: "10px",
-                background: "#111827",
-                color: "#fff",
-                border: "none",
-                cursor: "pointer",
-              }}
-            >
-              {loading ? "Verifying..." : "Verify Code & Sign In"}
-            </button>
-          </form>
-
-          <button
-            onClick={() => {
-              setStep("email");
-              setCode("");
-            }}
-            style={{
-              marginTop: "10px",
-              background: "none",
-              color: "#2563eb",
-              cursor: "pointer",
-            }}
-          >
-            ← Use a different email
-          </button>
-
-          {error && <p style={{ color: "red" }}>❌ {error}</p>}
-        </>
-      )}
+    <div style={{ padding: 40 }}>
+      <h2>Signing you in…</h2>
     </div>
   );
 }
