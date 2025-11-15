@@ -21,7 +21,6 @@ export default function Login() {
     });
 
     setLoading(false);
-
     if (error) setError(error.message);
     else setStep("code");
   }
@@ -31,6 +30,7 @@ export default function Login() {
     setError("");
     setLoading(true);
 
+    // 🟢 VERIFY OTP WITH SUPABASE
     const { data, error } = await supabase.auth.verifyOtp({
       email,
       token: code,
@@ -44,15 +44,28 @@ export default function Login() {
       return;
     }
 
-    // Sync user to Neon
-    if (data?.session?.user) {
-      await fetch("/api/auth/sync-user", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ user: data.session.user }),
+    // 🟢 SUPER IMPORTANT: STORE SESSION
+    if (data.session) {
+      await supabase.auth.setSession({
+        access_token: data.session.access_token,
+        refresh_token: data.session.refresh_token,
       });
     }
 
+    // 🟢 Sync user to Neon
+    if (data.session?.user) {
+      try {
+        await fetch("/api/auth/sync-user", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ user: data.session.user }),
+        });
+      } catch (err) {
+        console.error("sync-user failed:", err);
+      }
+    }
+
+    // 🟢 Redirect in-app
     window.location.href = "/dashboard";
   }
 
@@ -62,13 +75,14 @@ export default function Login() {
 
       {step === "email" ? (
         <>
-          <p>Enter your email and we'll send you a login code.</p>
+          <p>Enter your email and we’ll send you a login code.</p>
+
           <form onSubmit={handleSendCode}>
             <input
               type="email"
-              placeholder="you@example.com"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
+              placeholder="you@example.com"
               required
               style={{
                 width: "100%",
@@ -84,10 +98,10 @@ export default function Login() {
               style={{
                 width: "100%",
                 padding: "10px",
-                background: "#111827",
-                color: "#fff",
-                border: "none",
                 borderRadius: "4px",
+                background: "#111827",
+                color: "white",
+                border: "none",
               }}
             >
               {loading ? "Sending..." : "Send Login Code"}
@@ -97,12 +111,13 @@ export default function Login() {
       ) : (
         <>
           <p>Enter the code we emailed to <b>{email}</b>.</p>
+
           <form onSubmit={handleVerifyCode}>
             <input
               type="text"
-              placeholder="Code"
               value={code}
               onChange={(e) => setCode(e.target.value)}
+              placeholder="Enter your code"
               required
               style={{
                 width: "100%",
@@ -110,6 +125,8 @@ export default function Login() {
                 marginBottom: "12px",
                 borderRadius: "4px",
                 border: "1px solid #ccc",
+                letterSpacing: "4px",
+                fontFamily: "monospace",
               }}
             />
             <button
@@ -118,21 +135,17 @@ export default function Login() {
               style={{
                 width: "100%",
                 padding: "10px",
-                background: "#111827",
-                color: "#fff",
-                border: "none",
                 borderRadius: "4px",
+                background: "#111827",
+                color: "white",
+                border: "none",
               }}
             >
               {loading ? "Verifying..." : "Verify Code & Sign In"}
             </button>
           </form>
+
           <button
-            type="button"
-            onClick={() => {
-              setStep("email");
-              setCode("");
-            }}
             style={{
               marginTop: "10px",
               background: "none",
@@ -140,13 +153,20 @@ export default function Login() {
               color: "#2563eb",
               cursor: "pointer",
             }}
+            onClick={() => {
+              setStep("email");
+              setCode("");
+              setError("");
+            }}
           >
             ← Use a different email
           </button>
         </>
       )}
 
-      {error && <p style={{ color: "red" }}>❌ {error}</p>}
+      {error && (
+        <p style={{ color: "red", marginTop: "12px" }}>❌ {error}</p>
+      )}
     </div>
   );
 }
