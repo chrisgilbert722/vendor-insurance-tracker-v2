@@ -7,22 +7,13 @@ export function middleware(req) {
   // Protected routes
   const protectedRoutes = ["/dashboard", "/vendors", "/upload-coi"];
 
-  // Supabase always sets *both* of these cookies on OTP login
-  const accessToken = req.cookies.get("sb-access-token");
-  const refreshToken = req.cookies.get("sb-refresh-token");
+  // Supabase no longer uses cookies for PKCE sessions.
+  // So we ALWAYS allow the request through — UI pages check localStorage instead.
 
-  const isLoggedIn = accessToken?.value && refreshToken?.value;
-
-  if (protectedRoutes.some(route => pathname.startsWith(route))) {
-    if (!isLoggedIn) {
-      url.pathname = "/auth/login";
-      return NextResponse.redirect(url);
-    }
+  if (protectedRoutes.some((route) => pathname.startsWith(route))) {
+    // Let Next.js continue to the page.
+    return NextResponse.next();
   }
 
   return NextResponse.next();
 }
-
-export const config = {
-  matcher: ["/dashboard/:path*", "/vendors/:path*", "/upload-coi/:path*"]
-};
