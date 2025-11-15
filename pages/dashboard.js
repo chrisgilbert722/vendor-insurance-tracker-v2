@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import Header from "../components/Header";
+import VendorDrawer from "../components/VendorDrawer";
 
 /* ========================================================
    🔥 G-POWER THEME TOKENS  
@@ -120,6 +121,32 @@ export default function Dashboard() {
 
   const [metrics, setMetrics] = useState(null);
   const [deltas, setDeltas] = useState(null);
+
+  // ⭐ Drawer state
+  const [drawerOpen, setDrawerOpen] = useState(false);
+  const [drawerVendor, setDrawerVendor] = useState(null);
+  const [drawerPolicies, setDrawerPolicies] = useState([]);
+
+  async function openDrawer(vendorId) {
+    if (!vendorId) return;
+    try {
+      const res = await fetch(`/api/vendor/${vendorId}`);
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Failed to load vendor");
+
+      setDrawerVendor(data.vendor);
+      setDrawerPolicies(data.policies);
+      setDrawerOpen(true);
+    } catch (err) {
+      console.error("FAILED TO LOAD VENDOR:", err);
+    }
+  }
+
+  function closeDrawer() {
+    setDrawerOpen(false);
+    setDrawerVendor(null);
+    setDrawerPolicies([]);
+  }
 
   // Fetch policies
   useEffect(() => {
@@ -340,6 +367,7 @@ export default function Dashboard() {
               </tr>
             </thead>
             <tbody>
+            <tbody>
               {filtered.map((p) => {
                 const risk = computeRisk(p);
                 const severity = risk.severity;
@@ -349,8 +377,10 @@ export default function Dashboard() {
                 return (
                   <tr
                     key={p.id}
+                    onClick={() => openDrawer(p.vendor_id)}
                     style={{
                       background: "#ffffff",
+                      cursor: "pointer",
                       boxShadow: "0 2px 6px rgba(0,0,0,0.05)",
                       transition: "0.15s ease",
                     }}
@@ -375,7 +405,6 @@ export default function Dashboard() {
                         ? "—"
                         : `${risk.daysLeft} days`}
                     </td>
-
                     <td
                       style={{
                         ...td,
@@ -388,8 +417,6 @@ export default function Dashboard() {
                         : severity.charAt(0).toUpperCase() +
                           severity.slice(1)}
                     </td>
-
-                    {/* Risk Tier */}
                     <td style={{ ...td, textAlign: "center" }}>
                       <span
                         style={{
@@ -405,8 +432,6 @@ export default function Dashboard() {
                         {risk.tier}
                       </span>
                     </td>
-
-                    {/* Score + Heatbar */}
                     <td
                       style={{
                         ...td,
@@ -447,8 +472,6 @@ export default function Dashboard() {
                         ></div>
                       </div>
                     </td>
-
-                    {/* Flags column with tooltip */}
                     <td style={{ ...td, textAlign: "center" }}>
                       {flags.length > 0 ? (
                         <span
@@ -475,6 +498,15 @@ export default function Dashboard() {
               })}
             </tbody>
           </table>
+        )}
+
+        {/* ⭐ Vendor Drawer Render */}
+        {drawerOpen && drawerVendor && (
+          <VendorDrawer
+            vendor={drawerVendor}
+            policies={drawerPolicies}
+            onClose={closeDrawer}
+          />
         )}
       </div>
     </div>
@@ -533,7 +565,6 @@ function SidebarLink({ href, label, icon }) {
     </a>
   );
 }
-
 /* ========================================================
    KPI Risk Card + Score Card
 ======================================================== */
@@ -551,14 +582,7 @@ function RiskCard({ label, icon, color, count, delta, tooltip }) {
   }
 
   return (
-    <div
-      style={{
-        textAlign: "center",
-        flex: 1,
-        cursor: "default",
-      }}
-      title={tooltip}
-    >
+    <div style={{ textAlign: "center", flex: 1 }} title={tooltip}>
       <div style={{ fontSize: "22px" }}>{icon}</div>
       <div
         style={{
@@ -606,14 +630,7 @@ function ScoreCard({ avgScore, delta, tooltip }) {
     score >= 80 ? GP.green : score >= 60 ? GP.yellow : GP.red;
 
   return (
-    <div
-      style={{
-        textAlign: "center",
-        flex: 1,
-        cursor: "default",
-      }}
-      title={tooltip}
-    >
+    <div style={{ textAlign: "center", flex: 1 }} title={tooltip}>
       <div style={{ fontSize: "22px" }}>📊</div>
       <div
         style={{
@@ -636,8 +653,7 @@ function ScoreCard({ avgScore, delta, tooltip }) {
           fontWeight: "600",
         }}
       >
-        {arrow}{" "}
-        {typeof delta === "number" ? delta.toFixed(1) : "0.0"}
+        {arrow} {typeof delta === "number" ? delta.toFixed(1) : "0.0"}
       </div>
     </div>
   );
