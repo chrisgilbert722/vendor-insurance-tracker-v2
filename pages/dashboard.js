@@ -519,52 +519,46 @@ export default function Dashboard() {
                             severity.slice(1)}
                       </td>
 
-                      <td style={{ ...td, textAlign: "center" }}>
-                        <span
-                          style={{
-                            display: "inline-block",
-                            padding: "3px 10px",
-                            borderRadius: "999px",
-                            background: "#eef0f4",
-                            fontSize: "11px",
-                            fontWeight: "600",
-                            color: GP.inkLight,
-                          }}
-                        >
-                          {risk.tier}
-                        </span>
-                      </td>
-
                       <td
-                        style={{
-                          ...td,
-                          textAlign: "center",
-                          fontWeight: "700",
-                          color:
-                            score >= 80
-                              ? GP.green
-                              : score >= 60
-                              ? GP.yellow
-                              : GP.red,
-                        }}
-                      >
-                        <div>{score}</div>
-                        <div
-                          style={{
-                            marginTop: "4px",
-                            height: "4px",
-                                                        width: `${Math.min(score, 100)}%`,
-                            height: "100%",
-                            background:
-                              score >= 80
-                                ? GP.green
-                                : score >= 60
-                                ? GP.yellow
-                                : GP.red,
-                          }}
-                        ></div>
-                      </div>
-                    </td>
+  style={{
+    ...td,
+    textAlign: "center",
+    fontWeight: "700",
+    color:
+      score >= 80
+        ? GP.green
+        : score >= 60
+        ? GP.yellow
+        : GP.red,
+  }}
+
+  <div
+    style={{
+      marginTop: "4px",
+      height: "4px",
+      width: "70px",
+      borderRadius: "999px",
+      background: "#eceff1",
+      overflow: "hidden",
+      marginLeft: "auto",
+      marginRight: "auto",
+    }}
+  >
+    <div
+      style={{
+        width: `${Math.min(score, 100)}%`,
+        height: "100%",
+        background:
+          score >= 80
+            ? GP.green
+            : score >= 60
+            ? GP.yellow
+            : GP.red,
+      }}
+    ></div>
+  </div>
+</td>
+
 
                     {/* COMPLIANCE COLUMN */}
                     <td style={{ ...td, textAlign: "center" }}>
