@@ -175,6 +175,7 @@ function renderComplianceBadge(vendorId, complianceMap) {
   );
 }
 
+/* MAIN DASHBOARD */
 export default function Dashboard() {
   const [policies, setPolicies] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -247,7 +248,10 @@ export default function Dashboard() {
                   hasRequirements: (data.requirements || []).length > 0,
                   missingCount: (data.missing || []).length,
                 }
-              : { loading: false, error: data.error || "Compliance check failed" },
+              : {
+                  loading: false,
+                  error: data.error || "Compliance check failed",
+                },
           }));
         })
         .catch((err) => {
@@ -258,7 +262,7 @@ export default function Dashboard() {
           }));
         });
     });
-  }, [policies]);
+  }, [policies, complianceMap]);
 
   async function openDrawer(vendorId) {
     try {
@@ -292,7 +296,7 @@ export default function Dashboard() {
 
   return (
     <div style={{ minHeight: "100vh", background: GP.surface }}>
-      {/* ❗ REMOVED THE DUPLICATE <Header /> */}
+      {/* Header is global now via Layout — no <Header /> here */}
 
       <div style={{ padding: "30px 40px" }}>
         <h1
@@ -591,9 +595,109 @@ function RiskCard({ label, icon, color, count, delta }) {
   return (
     <div style={{ textAlign: "center", flex: 1 }}>
       <div style={{ fontSize: "22px" }}>{icon}</div>
-
       <div
         style={{
           fontSize: "26px",
-          fontWeight: "700
+          fontWeight: "700",
+          color,
+          marginTop: "4px",
+        }}
+      >
+        {count}
+      </div>
+      <div
+        style={{
+          fontSize: "13px",
+          marginTop: "2px",
+          color: GP.text,
+        }}
+      >
+        {label}
+      </div>
+      <div
+        style={{
+          fontSize: "12px",
+          marginTop: "4px",
+          color: arrowColor,
+          fontWeight: "600",
+        }}
+      >
+        {arrow} {delta}
+      </div>
+    </div>
+  );
+}
+
+function ScoreCard({ avgScore, delta }) {
+  const hasScore = avgScore !== null && avgScore !== undefined;
+  const score = hasScore ? Number(avgScore) : 0;
+
+  let arrow = "➖";
+  let arrowColor = GP.textLight;
+
+  if (typeof delta === "number" && delta > 0) {
+    arrow = "⬆️";
+    arrowColor = GP.green;
+  } else if (typeof delta === "number" && delta < 0) {
+    arrow = "⬇️";
+    arrowColor = GP.red;
+  }
+
+  const color =
+    score >= 80 ? GP.green : score >= 60 ? GP.yellow : GP.red;
+
+  return (
+    <div style={{ textAlign: "center", flex: 1 }}>
+      <div style={{ fontSize: "22px" }}>📊</div>
+      <div
+        style={{
+          fontSize: "26px",
+          fontWeight: "700",
+          color: hasScore ? color : GP.textLight,
+          marginTop: "4px",
+        }}
+      >
+        {hasScore ? score.toFixed(0) : "—"}
+      </div>
+      <div
+        style={{
+          fontSize: "13px",
+          marginTop: "2px",
+          color: GP.text,
+        }}
+      >
+        Avg Score
+      </div>
+      <div
+        style={{
+          fontSize: "12px",
+          marginTop: "4px",
+          color: arrowColor,
+          fontWeight: "600",
+        }}
+      >
+        {arrow}{" "}
+        {typeof delta === "number" ? delta.toFixed(1) : "0.0"}
+      </div>
+    </div>
+  );
+}
+
+/* TABLE STYLES */
+const th = {
+  padding: "10px 12px",
+  background: "#f5f7fb",
+  color: "#64748b",
+  fontWeight: "600",
+  textAlign: "left",
+  fontSize: "12px",
+};
+
+const td = {
+  padding: "10px 12px",
+  borderBottom: "1px solid #e5e7eb",
+  fontSize: "13px",
+  color: "#111827",
+};
+
 
