@@ -190,7 +190,6 @@ function renderComplianceBadge(vendorId, complianceMap) {
     </span>
   );
 }
-
 export default function Dashboard() {
   const [policies, setPolicies] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -198,18 +197,14 @@ export default function Dashboard() {
   const [metrics, setMetrics] = useState(null);
   const [deltas, setDeltas] = useState(null);
 
-  // Drawer
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [drawerVendor, setDrawerVendor] = useState(null);
   const [drawerPolicies, setDrawerPolicies] = useState([]);
 
-  // Compliance map: vendorId -> { hasRequirements, missingCount, error }
   const [complianceMap, setComplianceMap] = useState({});
 
   const router = useRouter();
-  const pathname = router.pathname;
-
-  const { isAdmin, isManager, isViewer } = useRole();
+  const { isAdmin, isManager } = useRole();
 
   async function openDrawer(vendorId) {
     try {
@@ -320,12 +315,10 @@ export default function Dashboard() {
   });
 
   return (
-    <div style={{ display: "flex", minHeight: "100vh", background: GP.surface }}>
-      <Sidebar pathname={pathname} isAdmin={isAdmin} isManager={isManager} />
+    <div style={{ minHeight: "100vh", background: GP.surface }}>
+      <Header />
 
-      <div style={{ flex: 1, padding: "30px 40px" }}>
-        <Header />
-
+      <div style={{ padding: "30px 40px" }}>
         <h1
           style={{
             fontSize: "36px",
@@ -336,8 +329,15 @@ export default function Dashboard() {
         >
           Vendor Insurance Dashboard
         </h1>
-        <p style={{ fontSize: "15px", marginTop: "8px", color: GP.inkLight }}>
-          Real-time visibility into vendor insurance compliance, expiration risk, and coverage health.
+        <p
+          style={{
+            fontSize: "15px",
+            marginTop: "8px",
+            color: GP.inkLight,
+          }}
+        >
+          Real-time visibility into vendor insurance compliance, expiration
+          risk, and coverage health.
         </p>
 
         {(isAdmin || isManager) && (
@@ -505,7 +505,6 @@ export default function Dashboard() {
                       <td style={td}>{p.coverage_type}</td>
                       <td style={td}>{p.expiration_date || "—"}</td>
                       <td style={td}>{risk.daysLeft ?? "—"}</td>
-
                       <td
                         style={{
                           ...td,
@@ -519,180 +518,110 @@ export default function Dashboard() {
                             severity.slice(1)}
                       </td>
 
-                      <td
-  style={{
-    ...td,
-    textAlign: "center",
-    fontWeight: "700",
-    color:
-      score >= 80
-        ? GP.green
-        : score >= 60
-        ? GP.yellow
-        : GP.red,
-  }}
-
-  <div
-    style={{
-      marginTop: "4px",
-      height: "4px",
-      width: "70px",
-      borderRadius: "999px",
-      background: "#eceff1",
-      overflow: "hidden",
-      marginLeft: "auto",
-      marginRight: "auto",
-    }}
-  >
-    <div
-      style={{
-        width: `${Math.min(score, 100)}%`,
-        height: "100%",
-        background:
-          score >= 80
-            ? GP.green
-            : score >= 60
-            ? GP.yellow
-            : GP.red,
-      }}
-    ></div>
-  </div>
-</td>
-
-
-                    {/* COMPLIANCE COLUMN */}
-                    <td style={{ ...td, textAlign: "center" }}>
-                      {renderComplianceBadge(p.vendor_id, complianceMap)}
-                    </td>
-
-                    {/* FLAGS */}
-                    <td style={{ ...td, textAlign: "center" }}>
-                      {flags.length > 0 ? (
+                      {/* RISK TIER */}
+                      <td style={{ ...td, textAlign: "center" }}>
                         <span
-                          title={flags.join("\n")}
                           style={{
-                            cursor: "help",
-                            fontSize: "13px",
-                            display: "inline-flex",
-                            alignItems: "center",
-                            gap: "4px",
+                            display: "inline-block",
+                            padding: "3px 10px",
+                            borderRadius: "999px",
+                            background: "#eef0f4",
+                            fontSize: "11px",
+                            fontWeight: "600",
+                            color: GP.inkLight,
                           }}
                         >
-                          <span>🚩</span>
-                          <span>
-                            {flags.length} flag{flags.length > 1 ? "s" : ""}
-                          </span>
+                          {risk.tier}
                         </span>
-                      ) : (
-                        <span style={{ opacity: 0.4 }}>—</span>
-                      )}
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
+                      </td>
 
-          {/* Drawer */}
-          {drawerOpen && drawerVendor && (
-            <VendorDrawer
-              vendor={drawerVendor}
-              policies={drawerPolicies}
-              onClose={closeDrawer}
-            />
-          )}
-        </>
-      )}
-    </div>
-  </div>
-);
+                      {/* SCORE + BAR */}
+                      <td
+                        style={{
+                          ...td,
+                          textAlign: "center",
+                          fontWeight: "700",
+                          color:
+                            score >= 80
+                              ? GP.green
+                              : score >= 60
+                              ? GP.yellow
+                              : GP.red,
+                        }}
+                      >
+                        <div>{score}</div>
+                        <div
+                          style={{
+                            marginTop: "4px",
+                            height: "4px",
+                            width: "70px",
+                            borderRadius: "999px",
+                            background: "#eceff1",
+                            overflow: "hidden",
+                            marginLeft: "auto",
+                            marginRight: "auto",
+                          }}
+                        >
+                          <div
+                            style={{
+                              width: `${Math.min(score, 100)}%`,
+                              height: "100%",
+                              background:
+                                score >= 80
+                                  ? GP.green
+                                  : score >= 60
+                                  ? GP.yellow
+                                  : GP.red,
+                            }}
+                          ></div>
+                        </div>
+                      </td>
 
-/* ========================================================
-   SIDEBAR WITH ROLE + HIGHLIGHT
-======================================================== */
-function Sidebar({ pathname, isAdmin, isManager }) {
-  return (
-    <div
-      style={{
-        width: "220px",
-        background: "#0f172a",
-        color: "#e5e7eb",
-        padding: "24px 18px",
-        display: "flex",
-        flexDirection: "column",
-        gap: "16px",
-      }}
-    >
-      <div style={{ marginBottom: "20px" }}>
-        <div style={{ fontSize: "18px", fontWeight: "700" }}>G-Track</div>
-        <div style={{ fontSize: "11px", opacity: 0.7 }}>
-          Vendor COI Automation
-        </div>
+                      {/* COMPLIANCE */}
+                      <td style={{ ...td, textAlign: "center" }}>
+                        {renderComplianceBadge(p.vendor_id, complianceMap)}
+                      </td>
+
+                      {/* FLAGS */}
+                      <td style={{ ...td, textAlign: "center" }}>
+                        {flags.length > 0 ? (
+                          <span
+                            title={flags.join("\n")}
+                            style={{
+                              cursor: "help",
+                              fontSize: "13px",
+                              display: "inline-flex",
+                              alignItems: "center",
+                              gap: "4px",
+                            }}
+                          >
+                            <span>🚩</span>
+                            <span>
+                              {flags.length} flag{flags.length > 1 ? "s" : ""}
+                            </span>
+                          </span>
+                        ) : (
+                          <span style={{ opacity: 0.4 }}>—</span>
+                        )}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+
+            {/* Drawer */}
+            {drawerOpen && drawerVendor && (
+              <VendorDrawer
+                vendor={drawerVendor}
+                policies={drawerPolicies}
+                onClose={closeDrawer}
+              />
+            )}
+          </>
+        )}
       </div>
-
-      <SidebarLink
-        href="/dashboard"
-        label="Dashboard"
-        icon="📊"
-        active={pathname === "/dashboard"}
-      />
-
-      <SidebarLink
-        href="/vendors"
-        label="Vendors"
-        icon="👥"
-        active={pathname === "/vendors"}
-      />
-
-      {(isAdmin || isManager) && (
-        <SidebarLink
-          href="/upload-coi"
-          label="Upload COI"
-          icon="📄"
-          active={pathname === "/upload-coi"}
-        />
-      )}
-
-      {isAdmin && (
-        <SidebarLink
-          href="/organization"
-          label="Organization"
-          icon="🏢"
-          active={pathname === "/organization"}
-        />
-      )}
-
-      <SidebarLink
-        href="/auth/login"
-        label="Logout / Login"
-        icon="🔐"
-        active={pathname === "/auth/login"}
-      />
     </div>
-  );
-}
-
-function SidebarLink({ href, label, icon, active }) {
-  return (
-    <a
-      href={href}
-      style={{
-        display: "flex",
-        alignItems: "center",
-        gap: "8px",
-        padding: "10px 12px",
-        borderRadius: "8px",
-        color: active ? "#ffffff" : "#e5e7eb",
-        background: active ? "#1e293b" : "transparent",
-        textDecoration: "none",
-        fontSize: "14px",
-        fontWeight: active ? "600" : "400",
-        cursor: "pointer",
-      }}
-    >
-      <span>{icon}</span>
-      <span>{label}</span>
-    </a>
   );
 }
 
@@ -757,11 +686,7 @@ function ScoreCard({ avgScore, delta, tooltip }) {
   }
 
   const color =
-    score >= 80
-      ? GP.green
-      : score >= 60
-      ? GP.yellow
-      : GP.red;
+    score >= 80 ? GP.green : score >= 60 ? GP.yellow : GP.red;
 
   return (
     <div style={{ textAlign: "center", flex: 1 }} title={tooltip}>
@@ -794,7 +719,7 @@ function ScoreCard({ avgScore, delta, tooltip }) {
 }
 
 /* ========================================================
-   TABLE CELLS
+   TABLE STYLES
 ======================================================== */
 const th = {
   padding: "10px 12px",
@@ -811,5 +736,3 @@ const td = {
   fontSize: "13px",
   color: "#111827",
 };
-
-export { Sidebar };
