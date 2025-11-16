@@ -7,307 +7,233 @@ import {
   WarningCircle,
   FileText,
   ListBullets,
+  EnvelopeSimple,
+  ClipboardText,
 } from "@phosphor-icons/react";
 
 /**
  * VendorDrawer
- * - Props:
- *    vendor: { id, name, email, phone, address, org_id, ... }
- *    policies: [ { id, policy_number, carrier, coverage_type, expiration_date, status, ... }, ... ]
- *    onClose: () => void
- *
- * This is an INTERNAL VIEW ONLY. G-Mode tone is for your team, NOT sent to vendors.
+ * INTERNAL USE ONLY
  */
+
 export default function VendorDrawer({ vendor, policies, onClose }) {
   const [compliance, setCompliance] = useState(null);
-  const [complianceLoading, setComplianceLoading] = useState(true);
-  const [complianceError, setComplianceError] = useState("");
+  const [loading, setLoading] = useState(true);
+
+  // Renewal Email Modal
+  const [emailModal, setEmailModal] = useState(false);
+  const [emailLoading, setEmailLoading] = useState(false);
+  const [emailError, setEmailError] = useState("");
+  const [emailData, setEmailData] = useState(null);
 
   useEffect(() => {
-    if (!vendor?.id) return;
-
     async function loadCompliance() {
-      setComplianceLoading(true);
-      setComplianceError("");
       try {
-        const res = await fetch(`/api/requirements/check?vendorId=${vendor.id}`);
+        const res = await fetch(`/api/compliance/vendor/${vendor.id}`);
         const data = await res.json();
-        if (!res.ok || !data.ok) {
-          throw new Error(data.error || "Failed to load compliance");
-        }
+        if (!res.ok) throw new Error(data.error);
         setCompliance(data);
       } catch (err) {
-        console.error("VendorDrawer compliance error:", err);
-        setComplianceError(err.message || "Compliance check failed");
+        console.error("Compliance error:", err);
       } finally {
-        setComplianceLoading(false);
+        setLoading(false);
       }
     }
 
     loadCompliance();
-  }, [vendor?.id]);
+  }, [vendor.id]);
 
-  if (!vendor) return null;
+  async function generateRenewalEmail() {
+    setEmailLoading(true);
+    setEmailError("");
+    setEmailData(null);
 
-  const missingCount = compliance?.missing?.length || 0;
-  const totalReqs = compliance?.requirements?.length || 0;
-  const hasReqs = totalReqs > 0;
-  const passedCount = hasReqs ? totalReqs - missingCount : 0;
-  const complianceScore = hasReqs
-    ? Math.round((passedCount / totalReqs) * 100)
-    : null;
+    try {
+      const res = await fetch("/api/vendor/email-renewal", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ vendorId: vendor.id }),
+      });
 
-  const isCompliant = hasReqs && missingCount === 0;
+      const data = await res.json();
+      if (!res.ok || !data.ok) throw new Error(data.error);
+
+      setEmailData(data);
+    } catch (err) {
+      console.error("Email generation error:", err);
+      setEmailError(err.message || "Failed to generate email.");
+    } finally {
+      setEmailLoading(false);
+    }
+  }
+
+  function copyToClipboard(text) {
+    navigator.clipboard.writeText(text);
+  }
 
   return (
-    <div className="fixed inset-0 z-[100] flex">
-      {/* Dimmed backdrop */}
+    <>
+      {/* BACKDROP */}
       <div
-        className="flex-1 bg-black/40 backdrop-blur-sm"
+        className="fixed inset-0 bg-black/40 z-40"
         onClick={onClose}
       />
 
-      {/* Drawer Panel */}
-      <div className="relative w-full max-w-md bg-slate-950 text-slate-50 shadow-2xl border-l border-slate-800 flex flex-col">
-        {/* Header */}
-        <div className="flex items-center justify-between px-5 py-4 border-b border-slate-800 bg-slate-950/90">
-          <div>
-            <p className="text-xs uppercase tracking-[0.16em] text-slate-500">
-              Vendor
-            </p>
-            <h2 className="text-lg font-semibold">{vendor.name}</h2>
-            <p className="text-[11px] text-slate-500">
-              ID: {vendor.id} {vendor.org_id ? `· Org: ${vendor.org_id}` : ""}
-            </p>
-          </div>
+      {/* DRAWER */}
+      <div className="fixed right-0 top-0 h-full w-[420px] bg-slate-950 text-slate-100 border-l border-slate-800 shadow-xl z-50 p-6 overflow-y-auto">
+        <div className="flex justify-between items-center mb-6">
+          <h2 className="text-lg font-semibold">Vendor Overview</h2>
           <button
             onClick={onClose}
-            className="text-slate-400 hover:text-slate-100 transition"
+            className="text-slate-400 hover:text-slate-200"
           >
-            <XIcon size={20} weight="bold" />
+            <XIcon size={22} />
           </button>
         </div>
 
-        {/* Scrollable content */}
-        <div className="flex-1 overflow-y-auto px-5 py-4 space-y-4">
+        {/* Vendor Header */}
+        <div className="space-y-2">
+          <h3 className="text-xl font-bold">{vendor.name}</h3>
+          <p className="text-sm text-slate-400">
+            {vendor.email ? vendor.email : "No email on file"}
+          </p>
+        </div>
 
-          {/* COMPLIANCE BADGE SUMMARY */}
-          <div className="flex items-center justify-between gap-3">
-            <div className="flex items-center gap-2">
-              {isCompliant ? (
-                <ShieldCheck className="text-emerald-400" size={18} weight="fill" />
-              ) : (
-                <ShieldWarning className="text-rose-400" size={18} weight="fill" />
-              )}
-              <div>
-                <p className="text-xs font-semibold">
-                  {isCompliant
-                    ? "Compliant with org requirements"
-                    : hasReqs && missingCount > 0
-                    ? "Non-compliant vendor"
-                    : "No requirements configured"}
-                </p>
-                {hasReqs && (
-                  <p className="text-[11px] text-slate-500">
-                    {passedCount} / {totalReqs} coverages satisfied
-                  </p>
-                )}
-              </div>
-            </div>
+        <hr className="my-4 border-slate-800" />
 
-            {hasReqs && (
-              <span
-                className={`px-2 py-1 rounded-full text-[11px] font-semibold border ${
-                  isCompliant
-                    ? "border-emerald-500/50 bg-emerald-500/10 text-emerald-300"
-                    : "border-rose-500/50 bg-rose-500/10 text-rose-300"
-                }`}
-              >
-                {complianceScore}%
-              </span>
-            )}
-          </div>
+        {/* Compliance Section */}
+        <div className="space-y-3">
+          <h3 className="text-sm font-semibold flex items-center gap-2">
+            <ShieldWarning size={16} className="text-amber-400" />
+            Compliance Summary
+          </h3>
 
-          {/* G-MODE COMPLIANCE WARNING (if non-compliant) */}
-          {hasReqs && !isCompliant && (
-            <div className="rounded-xl border border-rose-800 bg-rose-950/40 p-3">
-              <h3 className="text-xs font-semibold text-rose-200 mb-1">
-                🚨 G-MODE WARNING
-              </h3>
-              <p className="text-[11px] text-rose-200 mb-2">
-                This vendor fails <strong>{missingCount}</strong> required coverage{" "}
-                rule{missingCount > 1 ? "s" : ""}. Treat this vendor as a{" "}
-                <strong>high-risk</strong> option until updated COIs close these gaps.
-              </p>
-              <div className="space-y-2">
-                {compliance?.missing?.map((m) => (
-                  <div
-                    key={m.id}
-                    className="rounded-lg border border-rose-700 bg-rose-900/40 p-2"
-                  >
-                    <p className="text-[11px] text-rose-200 font-semibold">
-                      Missing: {m.coverage_type}
-                    </p>
-                    {m.minimum_limit && (
-                      <p className="text-[10px] text-rose-300">
-                        Required minimum: ${m.minimum_limit.toLocaleString()}
-                      </p>
-                    )}
-                    <p className="text-[10px] text-rose-400 mt-1 italic">
-                      Internal note: Do not allow this vendor onsite until this coverage
-                      is documented at or above the required limit.
-                    </p>
-                  </div>
+          {loading ? (
+            <p className="text-xs text-slate-500">Loading compliance...</p>
+          ) : compliance?.missing?.length > 0 ? (
+            <div className="text-xs text-rose-400">
+              Missing required coverage:
+              <ul className="list-disc ml-4 mt-1 space-y-1">
+                {compliance.missing.map((m, idx) => (
+                  <li key={idx}>{m.coverage_type}</li>
                 ))}
-              </div>
+              </ul>
             </div>
+          ) : (
+            <p className="text-xs text-emerald-400">Fully compliant.</p>
           )}
+        </div>
 
-          {complianceLoading && (
-            <p className="text-[11px] text-slate-500">
-              Checking requirements compliance…
-            </p>
-          )}
-          {complianceError && (
-            <p className="text-[11px] text-rose-400">
-              ⚠ Compliance engine error: {complianceError}
-            </p>
-          )}
+        <hr className="my-4 border-slate-800" />
 
-          {/* CONTACT & META */}
-          <div className="rounded-xl border border-slate-800 bg-slate-950/80 p-3">
-            <div className="flex items-center gap-2 mb-2">
-              <ListBullets size={16} className="text-slate-300" />
-              <p className="text-xs font-semibold text-slate-100">
-                Contact & Details
-              </p>
-            </div>
-            <dl className="space-y-1 text-[11px] text-slate-300">
-              <DetailRow label="Email" value={vendor.email || "—"} />
-              <DetailRow label="Phone" value={vendor.phone || "—"} />
-              <DetailRow label="Address" value={vendor.address || "—"} />
-              <DetailRow
-                label="Created"
-                value={
-                  vendor.created_at
-                    ? new Date(vendor.created_at).toLocaleString()
-                    : "—"
-                }
-              />
-            </dl>
-          </div>
+        {/* Renewal Email Button */}
+        <button
+          onClick={() => {
+            setEmailModal(true);
+            generateRenewalEmail();
+          }}
+          className="w-full flex items-center justify-center gap-2 px-3 py-2 bg-sky-600 hover:bg-sky-500 text-slate-950 text-sm font-semibold rounded-lg shadow transition"
+        >
+          <EnvelopeSimple size={16} />
+          Generate Renewal Email
+        </button>
 
-          {/* POLICIES LIST */}
-          <div className="rounded-xl border border-slate-800 bg-slate-950/80 p-3">
-            <div className="flex items-center justify-between mb-2">
-              <div className="flex items-center gap-2">
-                <FileText size={16} className="text-slate-200" />
-                <p className="text-xs font-semibold text-slate-100">
-                  Policy Snapshot
+        <hr className="my-4 border-slate-800" />
+
+        {/* Policies */}
+        <div>
+          <h3 className="text-sm font-semibold flex items-center gap-2 mb-2">
+            <ListBullets size={16} className="text-slate-300" />
+            Policies
+          </h3>
+
+          <div className="space-y-3">
+            {policies.map((p) => (
+              <div
+                key={p.id}
+                className="p-3 bg-slate-900/40 border border-slate-800 rounded-lg"
+              >
+                <p className="text-sm font-semibold text-slate-200">
+                  {p.coverage_type}
+                </p>
+                <p className="text-xs text-slate-400">
+                  {p.carrier || "Unknown carrier"}
+                </p>
+                <p className="text-xs text-slate-500 mt-1">
+                  Policy #: {p.policy_number || "—"}
+                </p>
+                <p className="text-xs text-slate-500">
+                  Expires: {p.expiration_date}
                 </p>
               </div>
-              <p className="text-[11px] text-slate-500">
-                {policies?.length || 0} record{(policies?.length || 0) === 1 ? "" : "s"}
-              </p>
-            </div>
-
-            {(!policies || policies.length === 0) ? (
-              <p className="text-[11px] text-slate-500">
-                No policies on file for this vendor.
-              </p>
-            ) : (
-              <div className="space-y-2 max-h-64 overflow-y-auto pr-1">
-                {policies.map((p) => {
-                  const daysLeft = computeDaysLeft(p.expiration_date);
-                  const expired = daysLeft !== null && daysLeft < 0;
-                  const soon =
-                    daysLeft !== null && daysLeft >= 0 && daysLeft <= 60;
-
-                  return (
-                    <div
-                      key={p.id}
-                      className="rounded-lg border border-slate-800 bg-slate-900/70 p-2"
-                    >
-                      <p className="text-xs font-semibold text-slate-100">
-                        {p.policy_number || "Unknown Policy"}
-                      </p>
-                      <p className="text-[11px] text-slate-300">
-                        {p.coverage_type || "Unknown coverage"} ·{" "}
-                        {p.carrier || "Unknown carrier"}
-                      </p>
-                      <p className="text-[10px] text-slate-500 mt-1">
-                        Eff {p.effective_date || "—"} · Exp{" "}
-                        {p.expiration_date || "—"}{" "}
-                        {daysLeft !== null && (
-                          <span>
-                            · {expired
-                              ? `${Math.abs(daysLeft)}d past`
-                              : `${daysLeft}d left`}
-                          </span>
-                        )}
-                      </p>
-                      <p className="text-[10px] mt-1">
-                        <PolicyStatusPill
-                          expired={expired}
-                          expSoon={soon}
-                          status={p.status}
-                        />
-                      </p>
-                    </div>
-                  );
-                })}
-              </div>
-            )}
-          </div>
-
-          {/* VIEW FULL PROFILE */}
-          <div className="pt-1">
-            <Link
-              href={`/vendor/${vendor.id}`}
-              className="inline-flex items-center justify-center w-full text-xs font-semibold bg-slate-100 text-slate-900 py-2 rounded-xl hover:bg-white transition"
-            >
-              View Full Profile →
-            </Link>
+            ))}
           </div>
         </div>
       </div>
-    </div>
-  );
-}
 
-/* ============================================================
-   SMALL INTERNAL COMPONENTS
-============================================================ */
+      {/* EMAIL MODAL */}
+      {emailModal && (
+        <div className="fixed inset-0 flex items-center justify-center bg-black/50 z-50">
+          <div className="bg-slate-900 text-slate-100 w-full max-w-lg rounded-xl border border-slate-700 p-6 shadow-xl relative">
 
-function DetailRow({ label, value }) {
-  return (
-    <div className="flex justify-between gap-2">
-      <span className="text-[11px] text-slate-500">{label}</span>
-      <span className="text-[11px] text-slate-200 text-right truncate max-w-[60%]">
-        {value}
-      </span>
-    </div>
-  );
-}
+            <button
+              className="absolute right-4 top-4 text-slate-400 hover:text-slate-200"
+              onClick={() => {
+                setEmailModal(false);
+                setEmailData(null);
+                setEmailError("");
+              }}
+            >
+              <XIcon size={20} />
+            </button>
 
-function PolicyStatusPill({ expired, expSoon, status }) {
-  const label = expired
-    ? "Expired"
-    : expSoon
-    ? "Expiring soon"
-    : status || "Active";
+            <h2 className="text-lg font-bold mb-3 flex items-center gap-2">
+              <EnvelopeSimple size={18} />
+              Renewal Request Email
+            </h2>
 
-  const cls = expired
-    ? "bg-rose-500/10 text-rose-300 border-rose-500/60"
-    : expSoon
-    ? "bg-amber-500/10 text-amber-300 border-amber-500/60"
-    : "bg-emerald-500/10 text-emerald-300 border-emerald-500/60";
+            {emailLoading && (
+              <p className="text-sm text-slate-400">Generating…</p>
+            )}
 
-  return (
-    <span
-      className={`inline-flex items-center px-2 py-0.5 rounded-full border text-[10px] font-medium ${cls}`}
-    >
-      {label}
-    </span>
+            {emailError && (
+              <p className="text-sm text-rose-400">{emailError}</p>
+            )}
+
+            {emailData && (
+              <>
+                <div className="mb-4">
+                  <h3 className="text-sm font-semibold">Subject</h3>
+                  <div className="bg-slate-800 p-3 rounded-lg text-xs border border-slate-700 mt-1">
+                    {emailData.subject}
+                  </div>
+                  <button
+                    onClick={() => copyToClipboard(emailData.subject)}
+                    className="mt-2 flex items-center gap-2 text-xs text-slate-300 bg-slate-800 px-3 py-1 rounded-lg border border-slate-700 hover:bg-slate-700"
+                  >
+                    <ClipboardText size={14} />
+                    Copy Subject
+                  </button>
+                </div>
+
+                <div>
+                  <h3 className="text-sm font-semibold">Body</h3>
+                  <pre className="bg-slate-800 p-3 rounded-lg text-xs border border-slate-700 whitespace-pre-wrap mt-1">
+                    {emailData.body}
+                  </pre>
+                  <button
+                    onClick={() => copyToClipboard(emailData.body)}
+                    className="mt-2 flex items-center gap-2 text-xs text-slate-300 bg-slate-800 px-3 py-1 rounded-lg border border-slate-700 hover:bg-slate-700"
+                  >
+                    <ClipboardText size={14} />
+                    Copy Body
+                  </button>
+                </div>
+              </>
+            )}
+          </div>
+        </div>
+      )}
+    </>
   );
 }
