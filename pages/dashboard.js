@@ -1,6 +1,8 @@
 import { useEffect, useState } from "react";
 import Header from "../components/Header";
 import VendorDrawer from "../components/VendorDrawer";
+import { useRouter } from "next/router";
+import { useRole } from "../lib/useRole";
 
 /* ========================================================
    🔥 G-POWER THEME TOKENS  
@@ -204,6 +206,11 @@ export default function Dashboard() {
   // Compliance map: vendorId -> { hasRequirements, missingCount, error }
   const [complianceMap, setComplianceMap] = useState({});
 
+  const router = useRouter();
+  const pathname = router.pathname;
+
+  const { isAdmin, isManager, isViewer } = useRole();
+
   async function openDrawer(vendorId) {
     try {
       const res = await fetch(`/api/vendor/${vendorId}`);
@@ -256,25 +263,18 @@ export default function Dashboard() {
     loadSummary();
   }, []);
 
-  // Load compliance per vendor (org-wide requirements)
+  // Load compliance per vendor
   useEffect(() => {
     if (!policies || policies.length === 0) return;
 
-    const vendorIds = Array.from(
-      new Set(
-        policies
-          .map((p) => p.vendor_id)
-          .filter((id) => typeof id === "number" || typeof id === "string")
-      )
-    );
+    const vendorIds = [...new Set(policies.map((p) => p.vendor_id))];
 
     vendorIds.forEach((id) => {
-      if (complianceMap[id]) return; // already loaded or in progress
+      if (complianceMap[id]) return;
 
-      // Mark as loading and then fetch
       setComplianceMap((prev) => ({
         ...prev,
-        [id]: { ...prev[id], loading: true },
+        [id]: { loading: true },
       }));
 
       fetch(`/api/requirements/check?vendorId=${id}`)
@@ -285,48 +285,43 @@ export default function Dashboard() {
             [id]: data.ok
               ? {
                   loading: false,
-                  error: null,
                   hasRequirements: (data.requirements || []).length > 0,
                   missingCount: (data.missing || []).length,
                 }
               : {
                   loading: false,
                   error: data.error || "Compliance check failed",
-                  hasRequirements: false,
-                  missingCount: 0,
                 },
           }));
         })
         .catch((err) => {
-          console.error("Compliance fetch error vendor", id, err);
+          console.error("Compliance fetch error", err);
           setComplianceMap((prev) => ({
             ...prev,
             [id]: {
               loading: false,
-              error: err.message || "Compliance check failed",
-              hasRequirements: false,
-              missingCount: 0,
+              error: err.message,
             },
           }));
         });
     });
-  }, [policies, complianceMap]);
+  }, [policies]);
 
   // Filter
   const filtered = policies.filter((p) => {
     const t = filterText.toLowerCase();
     return (
       !t ||
-      (p.vendor_name || "").toLowerCase().includes(t) ||
-      (p.policy_number || "").toLowerCase().includes(t) ||
-      (p.carrier || "").toLowerCase().includes(t) ||
-      (p.coverage_type || "").toLowerCase().includes(t)
+      p.vendor_name?.toLowerCase().includes(t) ||
+      p.policy_number?.toLowerCase().includes(t) ||
+      p.carrier?.toLowerCase().includes(t) ||
+      p.coverage_type?.toLowerCase().includes(t)
     );
   });
 
   return (
     <div style={{ display: "flex", minHeight: "100vh", background: GP.surface }}>
-      <Sidebar />
+      <Sidebar pathname={pathname} isAdmin={isAdmin} isManager={isManager} />
 
       <div style={{ flex: 1, padding: "30px 40px" }}>
         <Header />
@@ -341,29 +336,30 @@ export default function Dashboard() {
         >
           Vendor Insurance Dashboard
         </h1>
-
         <p style={{ fontSize: "15px", marginTop: "8px", color: GP.inkLight }}>
           Real-time visibility into vendor insurance compliance, expiration risk, and coverage health.
         </p>
 
-        <a
-          href="/upload-coi"
-          style={{
-            display: "inline-block",
-            marginTop: "18px",
-            marginBottom: "25px",
-            padding: "9px 16px",
-            background: GP.primary,
-            color: GP.panel,
-            borderRadius: "999px",
-            fontSize: "14px",
-            fontWeight: "600",
-            textDecoration: "none",
-            boxShadow: GP.shadow,
-          }}
-        >
-          + Upload New COI
-        </a>
+        {(isAdmin || isManager) && (
+          <a
+            href="/upload-coi"
+            style={{
+              display: "inline-block",
+              marginTop: "18px",
+              marginBottom: "25px",
+              padding: "9px 16px",
+              background: GP.primary,
+              color: GP.panel,
+              borderRadius: "999px",
+              fontSize: "14px",
+              fontWeight: "600",
+              textDecoration: "none",
+              boxShadow: GP.shadow,
+            }}
+          >
+            + Upload New COI
+          </a>
+        )}
 
         <hr style={{ margin: "22px 0" }} />
 
@@ -557,80 +553,70 @@ export default function Dashboard() {
                           style={{
                             marginTop: "4px",
                             height: "4px",
-                            width: "70px",
-                            borderRadius: "999px",
-                            background: "#eceff1",
-                            overflow: "hidden",
-                            marginLeft: "auto",
-                            marginRight: "auto",
+                                                        width: `${Math.min(score, 100)}%`,
+                            height: "100%",
+                            background:
+                              score >= 80
+                                ? GP.green
+                                : score >= 60
+                                ? GP.yellow
+                                : GP.red,
+                          }}
+                        ></div>
+                      </div>
+                    </td>
+
+                    {/* COMPLIANCE COLUMN */}
+                    <td style={{ ...td, textAlign: "center" }}>
+                      {renderComplianceBadge(p.vendor_id, complianceMap)}
+                    </td>
+
+                    {/* FLAGS */}
+                    <td style={{ ...td, textAlign: "center" }}>
+                      {flags.length > 0 ? (
+                        <span
+                          title={flags.join("\n")}
+                          style={{
+                            cursor: "help",
+                            fontSize: "13px",
+                            display: "inline-flex",
+                            alignItems: "center",
+                            gap: "4px",
                           }}
                         >
-                          <div
-                            style={{
-                              width: `${Math.min(score, 100)}%`,
-                              height: "100%",
-                              background:
-                                score >= 80
-                                  ? GP.green
-                                  : score >= 60
-                                  ? GP.yellow
-                                  : GP.red,
-                            }}
-                          ></div>
-                        </div>
-                      </td>
-
-                      {/* NEW: COMPLIANCE COLUMN */}
-                      <td style={{ ...td, textAlign: "center" }}>
-                        {renderComplianceBadge(p.vendor_id, complianceMap)}
-                      </td>
-
-                      <td style={{ ...td, textAlign: "center" }}>
-                        {flags.length > 0 ? (
-                          <span
-                            title={flags.join("\n")}
-                            style={{
-                              cursor: "help",
-                              fontSize: "13px",
-                              display: "inline-flex",
-                              alignItems: "center",
-                              gap: "4px",
-                            }}
-                          >
-                            <span>🚩</span>
-                            <span>
-                              {flags.length} flag{flags.length > 1 ? "s" : ""}
-                            </span>
+                          <span>🚩</span>
+                          <span>
+                            {flags.length} flag{flags.length > 1 ? "s" : ""}
                           </span>
-                        ) : (
-                          <span style={{ opacity: 0.4 }}>—</span>
-                        )}
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
+                        </span>
+                      ) : (
+                        <span style={{ opacity: 0.4 }}>—</span>
+                      )}
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
 
-            {/* Drawer Render */}
-            {drawerOpen && drawerVendor && (
-              <VendorDrawer
-                vendor={drawerVendor}
-                policies={drawerPolicies}
-                onClose={closeDrawer}
-              />
-            )}
-          </>
-        )}
-      </div>
+          {/* Drawer */}
+          {drawerOpen && drawerVendor && (
+            <VendorDrawer
+              vendor={drawerVendor}
+              policies={drawerPolicies}
+              onClose={closeDrawer}
+            />
+          )}
+        </>
+      )}
     </div>
-  );
-}
+  </div>
+);
 
 /* ========================================================
-   Sidebar Component
+   SIDEBAR WITH ROLE + HIGHLIGHT
 ======================================================== */
-function Sidebar() {
+function Sidebar({ pathname, isAdmin, isManager }) {
   return (
     <div
       style={{
@@ -650,15 +636,49 @@ function Sidebar() {
         </div>
       </div>
 
-      <SidebarLink href="/dashboard" label="Dashboard" icon="📊" />
-      <SidebarLink href="/vendors" label="Vendors" icon="👥" />
-      <SidebarLink href="/upload-coi" label="Upload COI" icon="📄" />
-      <SidebarLink href="/auth/login" label="Logout / Login" icon="🔐" />
+      <SidebarLink
+        href="/dashboard"
+        label="Dashboard"
+        icon="📊"
+        active={pathname === "/dashboard"}
+      />
+
+      <SidebarLink
+        href="/vendors"
+        label="Vendors"
+        icon="👥"
+        active={pathname === "/vendors"}
+      />
+
+      {(isAdmin || isManager) && (
+        <SidebarLink
+          href="/upload-coi"
+          label="Upload COI"
+          icon="📄"
+          active={pathname === "/upload-coi"}
+        />
+      )}
+
+      {isAdmin && (
+        <SidebarLink
+          href="/organization"
+          label="Organization"
+          icon="🏢"
+          active={pathname === "/organization"}
+        />
+      )}
+
+      <SidebarLink
+        href="/auth/login"
+        label="Logout / Login"
+        icon="🔐"
+        active={pathname === "/auth/login"}
+      />
     </div>
   );
 }
 
-function SidebarLink({ href, label, icon }) {
+function SidebarLink({ href, label, icon, active }) {
   return (
     <a
       href={href}
@@ -666,11 +686,13 @@ function SidebarLink({ href, label, icon }) {
         display: "flex",
         alignItems: "center",
         gap: "8px",
-        padding: "8px 10px",
+        padding: "10px 12px",
         borderRadius: "8px",
-        color: "#e5e7eb",
+        color: active ? "#ffffff" : "#e5e7eb",
+        background: active ? "#1e293b" : "transparent",
         textDecoration: "none",
         fontSize: "14px",
+        fontWeight: active ? "600" : "400",
         cursor: "pointer",
       }}
     >
@@ -681,9 +703,8 @@ function SidebarLink({ href, label, icon }) {
 }
 
 /* ========================================================
-   KPI Risk Card + Score Card
+   KPI + SCORE CARDS
 ======================================================== */
-
 function RiskCard({ label, icon, color, count, delta, tooltip }) {
   let arrow = "➖";
   let arrowColor = GP.textLight;
@@ -742,7 +763,11 @@ function ScoreCard({ avgScore, delta, tooltip }) {
   }
 
   const color =
-    score >= 80 ? GP.green : score >= 60 ? GP.yellow : GP.red;
+    score >= 80
+      ? GP.green
+      : score >= 60
+      ? GP.yellow
+      : GP.red;
 
   return (
     <div style={{ textAlign: "center", flex: 1 }} title={tooltip}>
@@ -775,9 +800,8 @@ function ScoreCard({ avgScore, delta, tooltip }) {
 }
 
 /* ========================================================
-   Table Styles
+   TABLE CELLS
 ======================================================== */
-
 const th = {
   padding: "10px 12px",
   background: "#f5f7fb",
@@ -793,3 +817,5 @@ const td = {
   fontSize: "13px",
   color: "#111827",
 };
+
+export { Sidebar };
