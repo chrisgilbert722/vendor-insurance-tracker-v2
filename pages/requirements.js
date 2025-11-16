@@ -1,21 +1,37 @@
 // pages/requirements.js
 import { useEffect, useState } from "react";
 import Link from "next/link";
+import { useOrg } from "../context/OrgContext";
+import { useRole } from "../lib/useRole";
 
 export default function RequirementsPage() {
+  const { activeOrgId, loadingOrgs } = useOrg();
+  const { isAdmin, loading: loadingRole } = useRole();
+
   const [requirements, setRequirements] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
 
+  // Form fields (hybrid: your simple UX + richer schema)
   const [coverageType, setCoverageType] = useState("");
-  const [minimumLimit, setMinimumLimit] = useState("");
-  const [required, setRequired] = useState(true);
+  const [minEach, setMinEach] = useState("");
+  const [minAgg, setMinAgg] = useState("");
+  const [requireAdditionalInsured, setRequireAdditionalInsured] = useState(false);
+  const [requireWaiver, setRequireWaiver] = useState(false);
+  const [minRiskScore, setMinRiskScore] = useState("");
+  const [notes, setNotes] = useState("");
   const [saving, setSaving] = useState(false);
 
+  // Load requirements for active org
   useEffect(() => {
+    if (!activeOrgId) return;
+
     async function loadRequirements() {
+      setLoading(true);
+      setError("");
+
       try {
-        const res = await fetch("/api/requirements");
+        const res = await fetch(`/api/requirements?orgId=${activeOrgId}`);
         const data = await res.json();
         if (!res.ok || !data.ok) {
           throw new Error(data.error || "Failed to load requirements");
@@ -28,12 +44,29 @@ export default function RequirementsPage() {
         setLoading(false);
       }
     }
+
     loadRequirements();
-  }, []);
+  }, [activeOrgId]);
+
+  function resetForm() {
+    setCoverageType("");
+    setMinEach("");
+    setMinAgg("");
+    setRequireAdditionalInsured(false);
+    setRequireWaiver(false);
+    setMinRiskScore("");
+    setNotes("");
+  }
 
   async function handleCreate(e) {
     e.preventDefault();
     setError("");
+
+    if (!activeOrgId) {
+      setError("No active organization selected.");
+      return;
+    }
+
     if (!coverageType.trim()) {
       setError("Coverage type is required.");
       return;
@@ -45,23 +78,86 @@ export default function RequirementsPage() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          coverage_type: coverageType,
-          minimum_limit: minimumLimit ? parseInt(minimumLimit, 10) : null,
-          required,
+          orgId: activeOrgId,
+          coverage_type: coverageType.trim(),
+          min_limit_each_occurrence: minEach ? Number(minEach) : null,
+          min_limit_aggregate: minAgg ? Number(minAgg) : null,
+          require_additional_insured: requireAdditionalInsured,
+          require_waiver: requireWaiver,
+          min_risk_score: minRiskScore ? Number(minRiskScore) : null,
+          notes: notes || null,
         }),
       });
 
       const data = await res.json();
       if (!res.ok || !data.ok) {
-        throw new Error(data.error || "Failed to create rule");
+        throw new Error(data.error || "Failed to create requirement");
       }
 
       setRequirements((prev) => [...prev, data.requirement]);
-      setCoverageType("");
-      setMinimumLimit("");
-      setRequired(true);
+      resetForm();
     } catch (err) {
       console.error("CREATE REQUIREMENT ERROR:", err);
+      setError(err.message || "Unknown error");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  function updateField(index, field, value) {
+    setRequirements((prev) => {
+      const copy = [...prev];
+      copy[index] = { ...copy[index], [field]: value };
+      return copy;
+    });
+  }
+
+  async function handleSaveRow(index) {
+    const rule = requirements[index];
+    if (!activeOrgId) return;
+
+    if (!rule.coverage_type || !rule.coverage_type.trim()) {
+      alert("Coverage type is required.");
+      return;
+    }
+
+    setSaving(true);
+    setError("");
+
+    try {
+      const res = await fetch("/api/requirements", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          id: rule.id,
+          orgId: activeOrgId,
+          coverage_type: rule.coverage_type.trim(),
+          min_limit_each_occurrence: rule.min_limit_each_occurrence
+            ? Number(rule.min_limit_each_occurrence)
+            : null,
+          min_limit_aggregate: rule.min_limit_aggregate
+            ? Number(rule.min_limit_aggregate)
+            : null,
+          require_additional_insured: !!rule.require_additional_insured,
+          require_waiver: !!rule.require_waiver,
+          min_risk_score: rule.min_risk_score ? Number(rule.min_risk_score) : null,
+          notes: rule.notes || null,
+        }),
+      });
+
+      const data = await res.json();
+      if (!res.ok || !data.ok) {
+        throw new Error(data.error || "Failed to save requirement");
+      }
+
+      // Replace row with updated server version
+      setRequirements((prev) => {
+        const copy = [...prev];
+        copy[index] = data.requirement;
+        return copy;
+      });
+    } catch (err) {
+      console.error("SAVE REQUIREMENT ERROR:", err);
       setError(err.message || "Unknown error");
     } finally {
       setSaving(false);
@@ -71,8 +167,9 @@ export default function RequirementsPage() {
   async function handleDelete(id) {
     if (!window.confirm("Delete this requirement?")) return;
     setError("");
+
     try {
-      const res = await fetch(`/api/requirements/${id}`, {
+      const res = await fetch(`/api/requirements?id=${id}`, {
         method: "DELETE",
       });
       const data = await res.json();
@@ -86,38 +183,57 @@ export default function RequirementsPage() {
     }
   }
 
-  async function handleToggleRequired(rule) {
-    setError("");
-    try {
-      const res = await fetch(`/api/requirements/${rule.id}`, {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ required: !rule.required }),
-      });
-      const data = await res.json();
-      if (!res.ok || !data.ok) {
-        throw new Error(data.error || "Failed to update requirement");
-      }
-      setRequirements((prev) =>
-        prev.map((r) => (r.id === rule.id ? data.requirement : r))
-      );
-    } catch (err) {
-      console.error("TOGGLE REQUIRED ERROR:", err);
-      setError(err.message || "Unknown error");
-    }
+  const locked = loadingOrgs || loadingRole;
+
+  // Non-admins: read-only message
+  if (!loadingRole && !isAdmin) {
+    return (
+      <div style={{ padding: "30px 40px" }}>
+        <div style={{ maxWidth: "960px", margin: "0 auto" }}>
+          <p
+            style={{
+              fontSize: "11px",
+              textTransform: "uppercase",
+              letterSpacing: "0.18em",
+              color: "#6b7280",
+            }}
+          >
+            G-Track · Requirements
+          </p>
+          <h1
+            style={{
+              fontSize: "28px",
+              marginTop: "6px",
+              marginBottom: "8px",
+              fontWeight: 700,
+              color: "#111827",
+            }}
+          >
+            Coverage Requirements (Org-wide)
+          </h1>
+          <p style={{ fontSize: "14px", color: "#4b5563", marginBottom: "16px" }}>
+            Only administrators can edit organization-wide coverage requirements.  
+            You have read-only access.
+          </p>
+          <Link
+            href="/dashboard"
+            style={{
+              fontSize: "12px",
+              color: "#2563eb",
+              textDecoration: "none",
+            }}
+          >
+            ← Back to Dashboard
+          </Link>
+        </div>
+      </div>
+    );
   }
 
   return (
-    <div
-      style={{
-        minHeight: "100vh",
-        background: "#f3f4f6",
-        padding: "30px 40px",
-        fontFamily:
-          "system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif",
-      }}
-    >
+    <div style={{ padding: "30px 40px" }}>
       <div style={{ maxWidth: "960px", margin: "0 auto" }}>
+        {/* HEADER */}
         <p
           style={{
             fontSize: "11px",
@@ -140,8 +256,8 @@ export default function RequirementsPage() {
           Coverage Requirements (Org-wide)
         </h1>
         <p style={{ fontSize: "14px", color: "#4b5563", marginBottom: "16px" }}>
-          Define which coverages your vendors must carry and the minimum limits
-          you expect. This engine will be used to evaluate vendor COIs.
+          Define which coverages your vendors must carry, minimum limits, endorsement
+          rules, and risk thresholds. This engine powers vendor COI evaluations.
         </p>
 
         <Link
@@ -167,7 +283,23 @@ export default function RequirementsPage() {
           </p>
         )}
 
-        {/* Form */}
+        {(loading || locked || !activeOrgId) && (
+          <p
+            style={{
+              marginTop: "12px",
+              fontSize: "12px",
+              color: "#6b7280",
+            }}
+          >
+            {locked
+              ? "Loading organization and role…"
+              : !activeOrgId
+              ? "Select an organization from the top bar to configure requirements."
+              : "Loading requirements…"}
+          </p>
+        )}
+
+        {/* FORM CARD (your original structure, upgraded fields) */}
         <form
           onSubmit={handleCreate}
           style={{
@@ -176,7 +308,6 @@ export default function RequirementsPage() {
             borderRadius: "12px",
             background: "#ffffff",
             border: "1px solid #e5e7eb",
-            maxWidth: "520px",
           }}
         >
           <h2
@@ -190,6 +321,7 @@ export default function RequirementsPage() {
             Add Requirement
           </h2>
 
+          {/* Coverage Type */}
           <div style={{ marginBottom: "10px" }}>
             <label
               style={{
@@ -205,43 +337,68 @@ export default function RequirementsPage() {
               type="text"
               value={coverageType}
               onChange={(e) => setCoverageType(e.target.value)}
-              style={{
-                width: "100%",
-                padding: "8px",
-                fontSize: "13px",
-                borderRadius: "8px",
-                border: "1px solid #d1d5db",
-              }}
+              style={input}
             />
           </div>
 
-          <div style={{ marginBottom: "10px" }}>
-            <label
-              style={{
-                display: "block",
-                fontSize: "12px",
-                color: "#111827",
-                marginBottom: "4px",
-              }}
-            >
-              Minimum Limit (optional, in dollars)
-            </label>
-            <input
-              type="number"
-              value={minimumLimit}
-              onChange={(e) => setMinimumLimit(e.target.value)}
-              placeholder="1000000"
-              style={{
-                width: "100%",
-                padding: "8px",
-                fontSize: "13px",
-                borderRadius: "8px",
-                border: "1px solid #d1d5db",
-              }}
-            />
+          {/* Limits row */}
+          <div
+            style={{
+              display: "grid",
+              gridTemplateColumns: "1fr 1fr",
+              gap: "10px",
+              marginBottom: "10px",
+            }}
+          >
+            <div>
+              <label
+                style={{
+                  display: "block",
+                  fontSize: "12px",
+                  color: "#111827",
+                  marginBottom: "4px",
+                }}
+              >
+                Min Each Occurrence (optional, in dollars)
+              </label>
+              <input
+                type="number"
+                value={minEach}
+                onChange={(e) => setMinEach(e.target.value)}
+                placeholder="1000000"
+                style={input}
+              />
+            </div>
+            <div>
+              <label
+                style={{
+                  display: "block",
+                  fontSize: "12px",
+                  color: "#111827",
+                  marginBottom: "4px",
+                }}
+              >
+                Min Aggregate (optional, in dollars)
+              </label>
+              <input
+                type="number"
+                value={minAgg}
+                onChange={(e) => setMinAgg(e.target.value)}
+                placeholder="2000000"
+                style={input}
+              />
+            </div>
           </div>
 
-          <div style={{ marginBottom: "12px" }}>
+          {/* Endorsement toggles */}
+          <div
+            style={{
+              display: "flex",
+              flexWrap: "wrap",
+              gap: "16px",
+              marginBottom: "10px",
+            }}
+          >
             <label
               style={{
                 display: "inline-flex",
@@ -253,16 +410,82 @@ export default function RequirementsPage() {
             >
               <input
                 type="checkbox"
-                checked={required}
-                onChange={(e) => setRequired(e.target.checked)}
+                checked={requireAdditionalInsured}
+                onChange={(e) => setRequireAdditionalInsured(e.target.checked)}
               />
-              Required coverage (if unchecked, treated as optional)
+              Require Additional Insured
             </label>
+
+            <label
+              style={{
+                display: "inline-flex",
+                alignItems: "center",
+                gap: "6px",
+                fontSize: "12px",
+                color: "#111827",
+              }}
+            >
+              <input
+                type="checkbox"
+                checked={requireWaiver}
+                onChange={(e) => setRequireWaiver(e.target.checked)}
+              />
+              Require Waiver of Subrogation
+            </label>
+          </div>
+
+          {/* Min Risk + Notes */}
+          <div
+            style={{
+              display: "grid",
+              gridTemplateColumns: "1fr 2fr",
+              gap: "10px",
+              marginBottom: "12px",
+            }}
+          >
+            <div>
+              <label
+                style={{
+                  display: "block",
+                  fontSize: "12px",
+                  color: "#111827",
+                  marginBottom: "4px",
+                }}
+              >
+                Min Risk Score (0–100, optional)
+              </label>
+              <input
+                type="number"
+                value={minRiskScore}
+                onChange={(e) => setMinRiskScore(e.target.value)}
+                placeholder="80"
+                style={input}
+              />
+            </div>
+            <div>
+              <label
+                style={{
+                  display: "block",
+                  fontSize: "12px",
+                  color: "#111827",
+                  marginBottom: "4px",
+                }}
+              >
+                Notes (optional)
+              </label>
+              <input
+                type="text"
+                value={notes}
+                onChange={(e) => setNotes(e.target.value)}
+                placeholder="e.g. Follow ISO form CG 00 01"
+                style={input}
+              />
+            </div>
           </div>
 
           <button
             type="submit"
-            disabled={saving}
+            disabled={saving || !activeOrgId}
             style={{
               padding: "8px 16px",
               borderRadius: "999px",
@@ -271,14 +494,14 @@ export default function RequirementsPage() {
               color: "#f9fafb",
               fontSize: "13px",
               fontWeight: 600,
-              cursor: saving ? "not-allowed" : "pointer",
+              cursor: saving || !activeOrgId ? "not-allowed" : "pointer",
             }}
           >
             {saving ? "Saving…" : "Add Requirement"}
           </button>
         </form>
 
-        {/* List */}
+        {/* LIST CARD */}
         <div
           style={{
             marginTop: "24px",
@@ -299,7 +522,9 @@ export default function RequirementsPage() {
             Current Requirements
           </h2>
 
-          {loading && <p style={{ fontSize: "13px" }}>Loading…</p>}
+          {loading && (
+            <p style={{ fontSize: "13px", color: "#6b7280" }}>Loading…</p>
+          )}
 
           {!loading && requirements.length === 0 && (
             <p style={{ fontSize: "13px", color: "#6b7280" }}>
@@ -318,49 +543,145 @@ export default function RequirementsPage() {
               <thead>
                 <tr>
                   <th style={th}>Coverage Type</th>
-                  <th style={th}>Minimum Limit</th>
-                  <th style={th}>Required</th>
+                  <th style={th}>Min Each Occ</th>
+                  <th style={th}>Min Aggregate</th>
+                  <th style={th}>Add'l Insured</th>
+                  <th style={th}>Waiver</th>
+                  <th style={th}>Min Risk</th>
+                  <th style={th}>Notes</th>
                   <th style={th}>Actions</th>
                 </tr>
               </thead>
               <tbody>
-                {requirements.map((r) => (
+                {requirements.map((r, index) => (
                   <tr key={r.id}>
-                    <td style={td}>{r.coverage_type}</td>
                     <td style={td}>
-                      {r.minimum_limit ? `$${r.minimum_limit.toLocaleString()}` : "—"}
+                      <input
+                        type="text"
+                        value={r.coverage_type || ""}
+                        onChange={(e) =>
+                          updateField(index, "coverage_type", e.target.value)
+                        }
+                        style={rowInput}
+                      />
                     </td>
                     <td style={td}>
-                      <button
-                        onClick={() => handleToggleRequired(r)}
-                        style={{
-                          fontSize: "11px",
-                          padding: "4px 10px",
-                          borderRadius: "999px",
-                          border: "none",
-                          cursor: "pointer",
-                          background: r.required ? "#22c55e" : "#e5e7eb",
-                          color: r.required ? "#022c22" : "#374151",
-                        }}
-                      >
-                        {r.required ? "Required" : "Optional"}
-                      </button>
+                      <input
+                        type="number"
+                        value={r.min_limit_each_occurrence ?? ""}
+                        onChange={(e) =>
+                          updateField(
+                            index,
+                            "min_limit_each_occurrence",
+                            e.target.value
+                          )
+                        }
+                        style={rowInput}
+                        placeholder="1000000"
+                      />
                     </td>
                     <td style={td}>
-                      <button
-                        onClick={() => handleDelete(r.id)}
+                      <input
+                        type="number"
+                        value={r.min_limit_aggregate ?? ""}
+                        onChange={(e) =>
+                          updateField(
+                            index,
+                            "min_limit_aggregate",
+                            e.target.value
+                          )
+                        }
+                        style={rowInput}
+                        placeholder="2000000"
+                      />
+                    </td>
+                    <td style={td}>
+                      <input
+                        type="checkbox"
+                        checked={!!r.require_additional_insured}
+                        onChange={(e) =>
+                          updateField(
+                            index,
+                            "require_additional_insured",
+                            e.target.checked
+                          )
+                        }
+                      />
+                    </td>
+                    <td style={td}>
+                      <input
+                        type="checkbox"
+                        checked={!!r.require_waiver}
+                        onChange={(e) =>
+                          updateField(
+                            index,
+                            "require_waiver",
+                            e.target.checked
+                          )
+                        }
+                      />
+                    </td>
+                    <td style={td}>
+                      <input
+                        type="number"
+                        value={r.min_risk_score ?? ""}
+                        onChange={(e) =>
+                          updateField(index, "min_risk_score", e.target.value)
+                        }
+                        style={rowInput}
+                        placeholder="80"
+                      />
+                    </td>
+                    <td style={td}>
+                      <input
+                        type="text"
+                        value={r.notes || ""}
+                        onChange={(e) =>
+                          updateField(index, "notes", e.target.value)
+                        }
+                        style={rowInput}
+                        placeholder="Optional notes"
+                      />
+                    </td>
+                    <td style={td}>
+                      <div
                         style={{
-                          fontSize: "11px",
-                          padding: "4px 10px",
-                          borderRadius: "999px",
-                          border: "none",
-                          cursor: "pointer",
-                          background: "#fee2e2",
-                          color: "#b91c1c",
+                          display: "flex",
+                          gap: "6px",
+                          flexWrap: "wrap",
                         }}
                       >
-                        Delete
-                      </button>
+                        <button
+                          onClick={() => handleSaveRow(index)}
+                          disabled={saving}
+                          style={{
+                            fontSize: "11px",
+                            padding: "4px 10px",
+                            borderRadius: "999px",
+                            border: "none",
+                            cursor: saving ? "not-allowed" : "pointer",
+                            background: "#111827",
+                            color: "#f9fafb",
+                            fontWeight: 600,
+                          }}
+                        >
+                          Save
+                        </button>
+                        <button
+                          onClick={() => handleDelete(r.id)}
+                          style={{
+                            fontSize: "11px",
+                            padding: "4px 10px",
+                            borderRadius: "999px",
+                            border: "none",
+                            cursor: "pointer",
+                            background: "#fee2e2",
+                            color: "#b91c1c",
+                          }}
+                        >
+                          Delete
+                        </button>
+                      </div>
                     </td>
                   </tr>
                 ))}
@@ -372,6 +693,22 @@ export default function RequirementsPage() {
     </div>
   );
 }
+
+const input = {
+  width: "100%",
+  padding: "8px",
+  fontSize: "13px",
+  borderRadius: "8px",
+  border: "1px solid #d1d5db",
+};
+
+const rowInput = {
+  width: "100%",
+  padding: "4px 6px",
+  fontSize: "12px",
+  borderRadius: "6px",
+  border: "1px solid #d1d5db",
+};
 
 const th = {
   textAlign: "left",
