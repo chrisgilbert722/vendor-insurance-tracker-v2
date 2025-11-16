@@ -1,6 +1,4 @@
 // pages/_app.js
-import "../styles/globals.css";
-
 import { OrgProvider } from "../context/OrgContext";
 import Layout from "../components/Layout";
 
