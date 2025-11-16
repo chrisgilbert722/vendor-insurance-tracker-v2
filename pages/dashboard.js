@@ -1,8 +1,11 @@
+// pages/dashboard.js
 import { useEffect, useState } from "react";
 import Header from "../components/Header";
 import VendorDrawer from "../components/VendorDrawer";
 import { useRouter } from "next/router";
-import { useRole } from "../lib/useRole";
+
+// ❗ FIXED PATH
+import { useRole } from "../../lib/useRole";
 
 /* ========================================================
    🔥 G-POWER THEME TOKENS  
@@ -58,7 +61,7 @@ function parseExpiration(dateStr) {
 function computeDaysLeft(dateStr) {
   const exp = parseExpiration(dateStr);
   if (!exp) return null;
-  return Math.floor((exp - new Date()) / (1000 * 60 * 60 * 24));
+  return Math.floor((exp - new Date()) / 86400000);
 }
 
 function computeRisk(p) {
@@ -109,12 +112,12 @@ function computeRisk(p) {
 }
 
 /* ------------------------------------------
-   Quick Compliance Badge Helper
+   Compliance Badge Helper
 ------------------------------------------- */
 function renderComplianceBadge(vendorId, complianceMap) {
   const data = complianceMap[vendorId];
 
-  const baseStyle = {
+  const base = {
     display: "inline-flex",
     alignItems: "center",
     justifyContent: "center",
@@ -127,7 +130,7 @@ function renderComplianceBadge(vendorId, complianceMap) {
 
   if (!data) {
     return (
-      <span style={{ ...baseStyle, borderColor: "#e5e7eb", color: "#6b7280" }}>
+      <span style={{ ...base, borderColor: "#e5e7eb", color: "#6b7280" }}>
         …
       </span>
     );
@@ -136,7 +139,7 @@ function renderComplianceBadge(vendorId, complianceMap) {
   if (data.error) {
     return (
       <span
-        style={{ ...baseStyle, borderColor: GP.red, color: GP.red }}
+        style={{ ...base, borderColor: GP.red, color: GP.red }}
         title={data.error}
       >
         ? Error
@@ -148,12 +151,11 @@ function renderComplianceBadge(vendorId, complianceMap) {
     return (
       <span
         style={{
-          ...baseStyle,
+          ...base,
           borderColor: "#e5e7eb",
           color: "#6b7280",
           background: "#f9fafb",
         }}
-        title="No org-wide requirements configured yet."
       >
         No rules
       </span>
@@ -164,12 +166,11 @@ function renderComplianceBadge(vendorId, complianceMap) {
     return (
       <span
         style={{
-          ...baseStyle,
+          ...base,
           borderColor: GP.green,
           color: GP.green,
           background: "#ecfdf3",
         }}
-        title="Vendor meets all current organizational coverage requirements."
       >
         🛡️ Compliant
       </span>
@@ -179,12 +180,11 @@ function renderComplianceBadge(vendorId, complianceMap) {
   return (
     <span
       style={{
-        ...baseStyle,
+        ...base,
         borderColor: GP.red,
         color: GP.red,
         background: "#fef2f2",
       }}
-      title={`Fails ${data.missingCount} requirement(s). High compliance risk until COIs updated.`}
     >
       🛡️ Non-compliant
     </span>
@@ -211,6 +211,7 @@ export default function Dashboard() {
       const res = await fetch(`/api/vendor/${vendorId}`);
       const data = await res.json();
       if (!res.ok) throw new Error(data.error);
+
       setDrawerVendor(data.vendor);
       setDrawerPolicies(data.policies);
       setDrawerOpen(true);
@@ -225,7 +226,7 @@ export default function Dashboard() {
     setDrawerPolicies([]);
   }
 
-  // Load policies
+  /* Load policies */
   useEffect(() => {
     async function loadPolicies() {
       try {
@@ -241,7 +242,7 @@ export default function Dashboard() {
     loadPolicies();
   }, []);
 
-  // Load metrics
+  /* Load metrics */
   useEffect(() => {
     async function loadSummary() {
       try {
@@ -258,9 +259,9 @@ export default function Dashboard() {
     loadSummary();
   }, []);
 
-  // Load compliance per vendor
+  /* Load compliance */
   useEffect(() => {
-    if (!policies || policies.length === 0) return;
+    if (policies.length === 0) return;
 
     const vendorIds = [...new Set(policies.map((p) => p.vendor_id))];
 
@@ -273,8 +274,8 @@ export default function Dashboard() {
       }));
 
       fetch(`/api/requirements/check?vendorId=${id}`)
-        .then((res) => res.json())
-        .then((data) => {
+        .then((r) => r.json())
+        .then((data) =>
           setComplianceMap((prev) => ({
             ...prev,
             [id]: data.ok
@@ -283,30 +284,22 @@ export default function Dashboard() {
                   hasRequirements: (data.requirements || []).length > 0,
                   missingCount: (data.missing || []).length,
                 }
-              : {
-                  loading: false,
-                  error: data.error || "Compliance check failed",
-                },
-          }));
-        })
-        .catch((err) => {
-          console.error("Compliance fetch error", err);
+              : { loading: false, error: data.error },
+          }))
+        )
+        .catch((err) =>
           setComplianceMap((prev) => ({
             ...prev,
-            [id]: {
-              loading: false,
-              error: err.message,
-            },
-          }));
-        });
+            [id]: { loading: false, error: err.message },
+          }))
+        );
     });
   }, [policies]);
 
-  // Filter
+  /* Filter */
   const filtered = policies.filter((p) => {
     const t = filterText.toLowerCase();
     return (
-      !t ||
       p.vendor_name?.toLowerCase().includes(t) ||
       p.policy_number?.toLowerCase().includes(t) ||
       p.carrier?.toLowerCase().includes(t) ||
@@ -319,25 +312,12 @@ export default function Dashboard() {
       <Header />
 
       <div style={{ padding: "30px 40px" }}>
-        <h1
-          style={{
-            fontSize: "36px",
-            marginTop: "10px",
-            color: GP.ink,
-            fontWeight: "700",
-          }}
-        >
+        <h1 style={{ fontSize: "36px", marginTop: "10px", fontWeight: "700", color: GP.ink }}>
           Vendor Insurance Dashboard
         </h1>
-        <p
-          style={{
-            fontSize: "15px",
-            marginTop: "8px",
-            color: GP.inkLight,
-          }}
-        >
-          Real-time visibility into vendor insurance compliance, expiration
-          risk, and coverage health.
+
+        <p style={{ fontSize: "15px", marginTop: "8px", color: GP.inkLight }}>
+          Real-time visibility into vendor insurance compliance, expiration risk, and coverage health.
         </p>
 
         {(isAdmin || isManager) && (
@@ -353,7 +333,6 @@ export default function Dashboard() {
               borderRadius: "999px",
               fontSize: "14px",
               fontWeight: "600",
-              textDecoration: "none",
               boxShadow: GP.shadow,
             }}
           >
@@ -376,54 +355,15 @@ export default function Dashboard() {
             border: "1px solid #e3e9f1",
           }}
         >
-          <RiskCard
-            label="Expired"
-            icon="🔥"
-            color={GP.red}
-            count={metrics?.expired_count ?? 0}
-            delta={deltas?.expired ?? 0}
-            tooltip="Policies past expiration"
-          />
-          <RiskCard
-            label="Critical (≤30 days)"
-            icon="⚠️"
-            color={GP.orange}
-            count={metrics?.critical_count ?? 0}
-            delta={deltas?.critical ?? 0}
-            tooltip="Expiring within 30 days"
-          />
-          <RiskCard
-            label="Warning (≤90 days)"
-            icon="🟡"
-            color={GP.yellow}
-            count={metrics?.warning_count ?? 0}
-            delta={deltas?.warning ?? 0}
-            tooltip="Expiring within 90 days"
-          />
-          <RiskCard
-            label="Active"
-            icon="✅"
-            color={GP.green}
-            count={metrics?.ok_count ?? 0}
-            delta={deltas?.ok ?? 0}
-            tooltip="Valid policies"
-          />
-          <ScoreCard
-            avgScore={metrics?.avg_score}
-            delta={deltas?.avg_score}
-            tooltip="Average compliance score"
-          />
+          <RiskCard label="Expired" icon="🔥" color={GP.red} count={metrics?.expired_count ?? 0} delta={deltas?.expired ?? 0} />
+          <RiskCard label="Critical (≤30 days)" icon="⚠️" color={GP.orange} count={metrics?.critical_count ?? 0} delta={deltas?.critical ?? 0} />
+          <RiskCard label="Warning (≤90 days)" icon="🟡" color={GP.yellow} count={metrics?.warning_count ?? 0} delta={deltas?.warning ?? 0} />
+          <RiskCard label="Active" icon="✅" color={GP.green} count={metrics?.ok_count ?? 0} delta={deltas?.ok ?? 0} />
+          <ScoreCard avgScore={metrics?.avg_score} delta={deltas?.avg_score} />
         </div>
 
-        {/* POLICIES TABLE */}
-        <h2
-          style={{
-            marginBottom: "14px",
-            fontSize: "24px",
-            fontWeight: "700",
-            color: GP.ink,
-          }}
-        >
+        {/* TABLE */}
+        <h2 style={{ marginBottom: "14px", fontSize: "24px", fontWeight: "700", color: GP.ink }}>
           Policies
         </h2>
 
@@ -438,118 +378,11 @@ export default function Dashboard() {
             borderRadius: "8px",
             border: "1px solid #cfd4dc",
             marginBottom: "18px",
-            fontSize: "14px",
           }}
         />
 
         {loading && <p>Loading policies…</p>}
         {!loading && filtered.length === 0 && <p>No matching policies.</p>}
-
-        {!loading && filtered.length > 0 && (
-          <>
-            <table
-              style={{
-                width: "100%",
-                borderCollapse: "separate",
-                borderSpacing: "0 8px",
-                fontSize: "13px",
-              }}
-            >
-              <thead>
-                <tr>
-                  <th style={th}>Vendor</th>
-                  <th style={th}>Policy #</th>
-                  <th style={th}>Carrier</th>
-                  <th style={th}>Coverage</th>
-                  <th style={th}>Expires</th>
-                  <th style={th}>Days Left</th>
-                  <th style={th}>Status</th>
-                  <th style={th}>Risk Tier</th>
-                  <th style={th}>Score</th>
-                  <th style={th}>Compliance</th>
-                  <th style={th}>Flags</th>
-                </tr>
-              </thead>
-
-              <tbody>
-                {filtered.map((p) => {
-                  const risk = computeRisk(p);
-                  const severity = risk.severity;
-                  const score = risk.score;
-                  const flags = risk.flags || [];
-
-                  return (
-                    <tr
-                      key={p.id}
-                      onClick={() => openDrawer(p.vendor_id)}
-                      style={{
-                        background: "#ffffff",
-                        cursor: "pointer",
-                        boxShadow: "0 2px 6px rgba(0,0,0,0.05)",
-                        transition: "0.15s ease",
-                      }}
-                      onMouseEnter={(e) => {
-                        e.currentTarget.style.transform = "scale(1.01)";
-                        e.currentTarget.style.boxShadow =
-                          "0 4px 14px rgba(0,0,0,0.08)";
-                      }}
-                      onMouseLeave={(e) => {
-                        e.currentTarget.style.transform = "scale(1)";
-                        e.currentTarget.style.boxShadow =
-                          "0 2px 6px rgba(0,0,0,0.05)";
-                      }}
-                    >
-                      <td style={td}>{p.vendor_name || "—"}</td>
-                      <td style={td}>{p.policy_number}</td>
-                      <td style={td}>{p.carrier}</td>
-                      <td style={td}>{p.coverage_type}</td>
-                      <td style={td}>{p.expiration_date || "—"}</td>
-                      <td style={td}>{risk.daysLeft ?? "—"}</td>
-                      <td
-                        style={{
-                          ...td,
-                          ...badgeStyle(severity),
-                          textAlign: "center",
-                        }}
-                      >
-                        {severity === "ok"
-                          ? "Active"
-                          : severity.charAt(0).toUpperCase() +
-                            severity.slice(1)}
-                      </td>
-
-                      {/* RISK TIER */}
-                      <td style={{ ...td, textAlign: "center" }}>
-                        <span
-                          style={{
-                            display: "inline-block",
-                            padding: "3px 10px",
-                            borderRadius: "999px",
-                            background: "#eef0f4",
-                            fontSize: "11px",
-                            fontWeight: "600",
-                            color: GP.inkLight,
-                          }}
-                        >
-                          {risk.tier}
-                        </span>
-                      </td>
-
-                      {/* SCORE + BAR */}
-                      <td
-                        style={{
-                          ...td,
-                          textAlign: "center",
-                          fontWeight: "700",
-                          color:
-                            score >= 80
-                              ? GP.green
-                              : score >= 60
-                              ? GP.yellow
-                              : GP.red,
-                        }}
-                      >
-                        <div>{score}</div>
                         <div
                           style={{
                             marginTop: "4px",
@@ -610,7 +443,7 @@ export default function Dashboard() {
               </tbody>
             </table>
 
-            {/* Drawer */}
+            {/* DRAWER */}
             {drawerOpen && drawerVendor && (
               <VendorDrawer
                 vendor={drawerVendor}
@@ -626,8 +459,9 @@ export default function Dashboard() {
 }
 
 /* ========================================================
-   KPI + SCORE CARDS
+   KPI CARDS + SCORE CARD
 ======================================================== */
+
 function RiskCard({ label, icon, color, count, delta, tooltip }) {
   let arrow = "➖";
   let arrowColor = GP.textLight;
@@ -643,6 +477,7 @@ function RiskCard({ label, icon, color, count, delta, tooltip }) {
   return (
     <div style={{ textAlign: "center", flex: 1 }} title={tooltip}>
       <div style={{ fontSize: "22px" }}>{icon}</div>
+
       <div
         style={{
           fontSize: "26px",
@@ -653,9 +488,11 @@ function RiskCard({ label, icon, color, count, delta, tooltip }) {
       >
         {count}
       </div>
+
       <div style={{ fontSize: "13px", marginTop: "2px", color: GP.text }}>
         {label}
       </div>
+
       <div
         style={{
           fontSize: "12px",
@@ -691,6 +528,7 @@ function ScoreCard({ avgScore, delta, tooltip }) {
   return (
     <div style={{ textAlign: "center", flex: 1 }} title={tooltip}>
       <div style={{ fontSize: "22px" }}>📊</div>
+
       <div
         style={{
           fontSize: "26px",
@@ -701,9 +539,11 @@ function ScoreCard({ avgScore, delta, tooltip }) {
       >
         {hasScore ? score.toFixed(0) : "—"}
       </div>
+
       <div style={{ fontSize: "13px", marginTop: "2px", color: GP.text }}>
         Avg Score
       </div>
+
       <div
         style={{
           fontSize: "12px",
@@ -712,7 +552,8 @@ function ScoreCard({ avgScore, delta, tooltip }) {
           fontWeight: "600",
         }}
       >
-        {arrow} {typeof delta === "number" ? delta.toFixed(1) : "0.0"}
+        {arrow}{" "}
+        {typeof delta === "number" ? delta.toFixed(1) : "0.0"}
       </div>
     </div>
   );
@@ -721,6 +562,7 @@ function ScoreCard({ avgScore, delta, tooltip }) {
 /* ========================================================
    TABLE STYLES
 ======================================================== */
+
 const th = {
   padding: "10px 12px",
   background: "#f5f7fb",
