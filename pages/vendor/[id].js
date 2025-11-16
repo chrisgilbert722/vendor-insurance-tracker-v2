@@ -1,6 +1,7 @@
 import React from "react";
 import Link from "next/link";
 import { Client } from "pg";
+import OpenAI from "openai";
 import {
   ShieldCheck,
   WarningCircle,
@@ -8,7 +9,10 @@ import {
   ClockCountdown,
 } from "@phosphor-icons/react";
 
-// --------- Risk helper (reuse dashboard logic) ----------
+/* ============================================================
+   HELPERS — EXPIRATION + RISK
+============================================================ */
+
 function parseExpiration(dateStr) {
   if (!dateStr) return null;
   const [mm, dd, yyyy] = dateStr.split("/");
@@ -37,35 +41,26 @@ function computeRiskSummary(policies) {
   const now = new Date();
   let expired = 0;
   let expSoon = 0;
-  const validDates = [];
+  const validExp = [];
 
-  policies.forEach((p) => {
-    if (!p.expiration_date) return;
-    const d = parseExpiration(p.expiration_date);
-    if (!d || Number.isNaN(d.getTime())) return;
-    validDates.push(d);
+  for (const p of policies) {
+    if (!p.expiration_date) continue;
+    const exp = parseExpiration(p.expiration_date);
+    if (!exp) continue;
 
-    if (d < now) {
-      expired++;
-    } else {
-      const diffDays = Math.floor((d - now) / (1000 * 60 * 60 * 24));
-      if (diffDays <= 60) expSoon++;
-    }
-  });
+    validExp.push(exp);
 
-  let baseRiskScore = 85;
-  if (expired > 0) baseRiskScore = 25;
-  else if (expSoon > 0) baseRiskScore = 55;
+    if (exp < now) expired++;
+    else if ((exp - now) / (1000 * 60 * 60 * 24) <= 60) expSoon++;
+  }
 
+  let baseRiskScore = expired > 0 ? 25 : expSoon > 0 ? 55 : 85;
   const riskTier =
-    baseRiskScore >= 80
-      ? "Low"
-      : baseRiskScore >= 50
-      ? "Moderate"
-      : "High";
+    baseRiskScore >= 80 ? "Low" : baseRiskScore >= 50 ? "Moderate" : "High";
 
-  const latestExpiration = validDates.length
-    ? validDates.sort((a, b) => b - a)[0].toISOString().slice(0, 10)
+  const sorted = validExp.sort((a, b) => b - a);
+  const latestExpiration = sorted[0]
+    ? sorted[0].toISOString().slice(0, 10)
     : null;
 
   return {
@@ -78,7 +73,10 @@ function computeRiskSummary(policies) {
   };
 }
 
-// --------- SSR: fetch vendor + policies ----------
+/* ============================================================
+   SERVER-SIDE LOADING + AI SUMMARY
+============================================================ */
+
 export async function getServerSideProps({ params }) {
   const vendorId = parseInt(params.id, 10);
   if (Number.isNaN(vendorId)) return { notFound: true };
@@ -102,16 +100,9 @@ export async function getServerSideProps({ params }) {
   }
 
   const policiesRes = await client.query(
-    `SELECT id,
-            vendor_id,
-            vendor_name,
-            policy_number,
-            carrier,
-            coverage_type,
-            expiration_date,
-            effective_date,
-            status,
-            created_at
+    `SELECT id, vendor_id, vendor_name, policy_number,
+            carrier, coverage_type, expiration_date,
+            effective_date, status, created_at
      FROM public.policies
      WHERE vendor_id = $1
      ORDER BY created_at DESC`,
@@ -122,36 +113,100 @@ export async function getServerSideProps({ params }) {
 
   const vendor = vendorRes.rows[0];
   const policies = policiesRes.rows;
-
   const risk = computeRiskSummary(policies);
+
+  /* ============================================================
+     AI RISK ANALYST (G-MODE)
+  ============================================================ */
+  let aiSummary = null;
+
+  try {
+    const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+
+    const prompt = `
+You are a ruthless but accurate commercial insurance risk analyst.
+Your tone is direct, blunt, no-fluff, professional, and urgent when needed.
+
+Summarize the vendor’s insurance risk in 4–6 sentences MAX.
+No bullet points, no headings.
+
+Facts:
+- Vendor name: ${vendor.name}
+- Total policies: ${risk.total}
+- Expired: ${risk.expired}
+- Expiring soon: ${risk.expSoon}
+- Latest expiration: ${risk.latestExpiration}
+- Risk tier: ${risk.riskTier}
+- Base risk score: ${risk.baseRiskScore}
+
+Policies:
+${JSON.stringify(
+  policies.map((p) => ({
+    policy_number: p.policy_number,
+    carrier: p.carrier,
+    type: p.coverage_type,
+    exp: p.expiration_date,
+    status: p.status,
+  })),
+  null,
+  2
+)}
+
+Write in this exact tone:
+“This vendor is a compliance grenade waiting to blow. Expired policies, missing coverage, and sloppy renewals. Fix this before it becomes a claim.”
+
+Now: produce ONE paragraph in this tone, but based only on the real data.
+    `.trim();
+
+    const completion = await openai.chat.completions.create({
+      model: "gpt-4.1-mini",
+      temperature: 0.3,
+      messages: [
+        {
+          role: "system",
+          content:
+            "You are a sharp, no-bullshit insurance analyst. You NEVER hallucinate missing coverage.",
+        },
+        { role: "user", content: prompt },
+      ],
+    });
+
+    aiSummary = completion.choices[0]?.message?.content?.trim() || null;
+  } catch (err) {
+    console.error("AI summary error:", err);
+  }
 
   return {
     props: {
       vendor,
       policies,
       risk,
+      aiSummary,
     },
   };
 }
 
-// --------- React Page ----------
-export default function VendorProfilePage({ vendor, policies, risk }) {
+/* ============================================================
+   MAIN COMPONENT — HYBRID DARK PROFILE PAGE
+============================================================ */
+
+export default function VendorProfilePage({ vendor, policies, risk, aiSummary }) {
   const { total, expired, expSoon, latestExpiration, baseRiskScore, riskTier } =
     risk;
 
-  const riskPillColor =
+  const riskColor =
     baseRiskScore >= 80
-      ? "bg-emerald-500/10 text-emerald-300 border-emerald-500/50"
+      ? "bg-emerald-500/10 text-emerald-300 border-emerald-500/40"
       : baseRiskScore >= 50
-      ? "bg-amber-500/10 text-amber-300 border-amber-500/50"
-      : "bg-rose-500/10 text-rose-300 border-rose-500/50";
+      ? "bg-amber-500/10 text-amber-300 border-amber-500/40"
+      : "bg-rose-500/10 text-rose-300 border-rose-500/40";
 
   return (
     <div className="min-h-screen bg-slate-950 text-slate-50">
-      {/* top accent bar */}
-      <div className="h-1 bg-gradient-to-r from-sky-500 via-violet-500 to-emerald-400" />
+      {/* Top Accent Bar */}
+      <div className="h-1 bg-gradient-to-r from-sky-500 via-purple-500 to-emerald-400" />
 
-      <div className="max-w-6xl mx-auto px-4 py-8 space-y-8">
+      <div className="max-w-6xl mx-auto px-4 py-8 space-y-10">
         {/* Breadcrumb */}
         <div className="text-xs text-slate-400 flex items-center gap-2">
           <Link href="/dashboard" className="hover:text-slate-100">
@@ -165,135 +220,74 @@ export default function VendorProfilePage({ vendor, policies, risk }) {
           <span className="text-slate-200">{vendor.name}</span>
         </div>
 
-        {/* Header row */}
-        <header className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
-          <div className="space-y-2">
+        {/* Header */}
+        <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-6">
+          <div className="space-y-1">
             <p className="text-xs uppercase tracking-[0.2em] text-slate-500">
               Vendor Profile
             </p>
-            <h1 className="text-3xl md:text-4xl font-semibold tracking-tight">
-              {vendor.name}
-            </h1>
+            <h1 className="text-4xl font-semibold">{vendor.name}</h1>
+
             <div className="flex flex-wrap items-center gap-2 text-xs text-slate-400">
               {vendor.email && <span>{vendor.email}</span>}
-              {vendor.phone && (
-                <>
-                  <span className="opacity-40">•</span>
-                  <span>{vendor.phone}</span>
-                </>
-              )}
+              {vendor.phone && <span>• {vendor.phone}</span>}
               {vendor.address && (
-                <>
-                  <span className="opacity-40">•</span>
-                  <span className="truncate max-w-xs">{vendor.address}</span>
-                </>
+                <span className="truncate max-w-sm">• {vendor.address}</span>
               )}
             </div>
           </div>
 
-          <div className="flex flex-col items-start md:items-end gap-2">
-            <div
-              className={`inline-flex items-center gap-3 rounded-full border px-4 py-1.5 text-xs font-medium ${riskPillColor}`}
-            >
-              <ShieldCheck size={16} weight="bold" />
-              <span className="uppercase tracking-[0.15em] text-[10px]">
-                Risk
-              </span>
-              <span className="text-sm font-semibold">
-                {baseRiskScore || 0}
-              </span>
-              <span className="text-[11px] opacity-80">{riskTier} risk</span>
-            </div>
-            <p className="text-[11px] text-slate-500">
-              {total === 0
-                ? "No policies on file yet."
-                : `Tracking ${total} polic${
-                    total === 1 ? "y" : "ies"
-                  } for this vendor.`}
-            </p>
+          {/* Risk Pill */}
+          <div
+            className={`inline-flex items-center gap-2 px-4 py-1.5 rounded-full border ${riskColor}`}
+          >
+            <ShieldCheck size={16} weight="bold" />
+            <span className="uppercase tracking-[0.15em] text-[10px]">
+              Risk
+            </span>
+            <span className="text-sm font-semibold">{baseRiskScore}</span>
+            <span className="text-[11px] opacity-70">{riskTier} Risk</span>
           </div>
-        </header>
+        </div>
 
-        {/* Metrics row */}
+        {/* Stats */}
         <section className="grid grid-cols-2 md:grid-cols-4 gap-4">
-          <MetricCard
-            label="Total policies"
-            value={total}
-            description="All COIs on file"
-          />
-          <MetricCard
-            label="Expired"
-            value={expired}
-            description="Policies past expiration"
-            tone={expired > 0 ? "bad" : "neutral"}
-          />
-          <MetricCard
-            label="Expiring ≤ 60 days"
-            value={expSoon}
-            description="Renewal attention needed"
-            tone={expSoon > 0 ? "warn" : "neutral"}
-          />
-          <MetricCard
-            label="Latest expiration"
-            value={latestExpiration || "—"}
-            description="Most recent expiration date"
-          />
+          <MetricCard label="Total policies" value={total} />
+          <MetricCard label="Expired" value={expired} tone={expired > 0 ? "bad" : "neutral"} />
+          <MetricCard label="Expiring ≤ 60 days" value={expSoon} tone={expSoon > 0 ? "warn" : "neutral"} />
+          <MetricCard label="Latest expiration" value={latestExpiration || "—"} />
         </section>
 
-        {/* Two-column layout */}
-        <section className="grid lg:grid-cols-[minmax(0,2.1fr)_minmax(0,3fr)] gap-6">
-          {/* LEFT: snapshot + details */}
-          <div className="space-y-4">
-            {/* AI-like Risk Snapshot */}
-            <div className="rounded-2xl border border-slate-800 bg-gradient-to-br from-slate-900/70 via-slate-950 to-slate-950/95 p-5 shadow-[0_18px_45px_rgba(0,0,0,0.7)]">
-              <div className="flex items-center justify-between mb-3">
-                <div className="flex items-center gap-2">
-                  <WarningCircle size={18} weight="bold" className="text-amber-400" />
-                  <h2 className="text-sm font-semibold text-slate-50">
-                    Risk & Coverage Snapshot
-                  </h2>
-                </div>
-                <ClockCountdown size={16} className="text-slate-400" />
+        {/* Layout */}
+        <section className="grid lg:grid-cols-[1.8fr_2.2fr] gap-8">
+          {/* LEFT */}
+          <div className="space-y-6">
+            {/* AI Summary */}
+            <div className="rounded-2xl border border-slate-800 bg-slate-950/80 p-5 shadow-xl">
+              <div className="flex items-center gap-2 mb-2">
+                <WarningCircle size={18} className="text-amber-400" />
+                <h2 className="text-sm font-semibold">G-Mode Analyst</h2>
               </div>
-              <p className="text-xs text-slate-400 mb-3">
-                This section will be backed by AI soon — summarizing coverage gaps,
-                renewal risk, and recommended actions in plain English.
-              </p>
-              <ul className="space-y-1.5 text-xs text-slate-300">
-                <li>
-                  • Baseline risk score:{" "}
-                  <span className="font-semibold">{baseRiskScore || 0}</span>{" "}
-                  ({riskTier} risk).
-                </li>
-                <li>
-                  • {expired} expired and {expSoon} expiring soon (≤ 60 days)
-                  polic{expired + expSoon === 1 ? "y" : "ies"}.
-                </li>
-                <li>
-                  • Latest expiration date:{" "}
-                  <span className="font-medium">
-                    {latestExpiration || "No date on file"}
-                  </span>
-                  .
-                </li>
-              </ul>
+
+              {/* AI TEXT */}
+              {aiSummary ? (
+                <p className="text-sm leading-relaxed text-slate-200">{aiSummary}</p>
+              ) : (
+                <p className="text-xs text-slate-500">
+                  AI summary unavailable. Using baseline metrics.
+                </p>
+              )}
             </div>
 
-            {/* Vendor details card */}
+            {/* Vendor details */}
             <div className="rounded-2xl border border-slate-800 bg-slate-950/80 p-5">
-              <h3 className="text-sm font-semibold text-slate-50 mb-2">
-                Vendor Details
-              </h3>
+              <h3 className="text-sm font-semibold mb-3">Vendor Details</h3>
               <dl className="space-y-2 text-xs text-slate-300">
                 <DetailRow label="Vendor ID" value={vendor.id} />
-                <DetailRow label="Organization ID" value={vendor.org_id ?? "—"} />
+                <DetailRow label="Org ID" value={vendor.org_id || "—"} />
                 <DetailRow
                   label="Created"
-                  value={
-                    vendor.created_at
-                      ? new Date(vendor.created_at).toLocaleString()
-                      : "—"
-                  }
+                  value={new Date(vendor.created_at).toLocaleString()}
                 />
                 <DetailRow label="Email" value={vendor.email || "—"} />
                 <DetailRow label="Phone" value={vendor.phone || "—"} />
@@ -302,71 +296,48 @@ export default function VendorProfilePage({ vendor, policies, risk }) {
             </div>
           </div>
 
-          {/* RIGHT: Policy table */}
+          {/* RIGHT — Policy Table */}
           <div className="rounded-2xl border border-slate-800 bg-slate-950/80 p-5 overflow-hidden">
-            <div className="flex items-center justify-between mb-3">
-              <div className="flex items-center gap-2">
-                <FileText size={18} className="text-slate-200" />
-                <h2 className="text-sm font-semibold text-slate-50">
-                  Policy History
-                </h2>
-              </div>
-              <span className="text-[11px] text-slate-500">
-                {total} record{total === 1 ? "" : "s"}
-              </span>
+            <div className="flex items-center gap-2 mb-3">
+              <FileText size={20} className="text-slate-200" />
+              <h2 className="text-sm font-semibold">Policy History</h2>
             </div>
 
             {policies.length === 0 ? (
-              <p className="text-xs text-slate-500">
-                No policies yet for this vendor. Upload a COI from the dashboard
-                to see it here.
-              </p>
+              <p className="text-xs text-slate-500">No policies on file.</p>
             ) : (
               <div className="overflow-x-auto">
                 <table className="min-w-full text-xs text-left border-collapse">
                   <thead>
                     <tr className="border-b border-slate-800 text-slate-400">
-                      <th className="py-2 pr-3 font-medium">Policy #</th>
-                      <th className="py-2 pr-3 font-medium">Carrier</th>
-                      <th className="py-2 pr-3 font-medium">Coverage</th>
-                      <th className="py-2 pr-3 font-medium">Effective</th>
-                      <th className="py-2 pr-3 font-medium">Expires</th>
-                      <th className="py-2 pr-3 font-medium">Status</th>
+                      <th className="py-2 pr-4">Policy #</th>
+                      <th className="py-2 pr-4">Carrier</th>
+                      <th className="py-2 pr-4">Coverage</th>
+                      <th className="py-2 pr-4">Effective</th>
+                      <th className="py-2 pr-4">Expires</th>
+                      <th className="py-2 pr-4">Status</th>
                     </tr>
                   </thead>
                   <tbody>
                     {policies.map((p) => {
                       const daysLeft = computeDaysLeft(p.expiration_date);
-                      const expired = daysLeft !== null && daysLeft < 0;
-                      const expSoon =
-                        daysLeft !== null && daysLeft >= 0 && daysLeft <= 60;
+                      const exp = daysLeft !== null && daysLeft < 0;
+                      const soon = daysLeft !== null && daysLeft >= 0 && daysLeft <= 60;
 
                       return (
                         <tr
                           key={p.id}
-                          className="border-b border-slate-900/60 last:border-0 hover:bg-slate-900/60 transition"
+                          className="border-b border-slate-900/60 hover:bg-slate-900/60 transition"
                         >
-                          <td className="py-2 pr-3 text-slate-100">
+                          <td className="py-2 pr-4 text-slate-100">
                             {p.policy_number || "—"}
                           </td>
-                          <td className="py-2 pr-3 text-slate-200">
-                            {p.carrier || "—"}
-                          </td>
-                          <td className="py-2 pr-3 text-slate-200">
-                            {p.coverage_type || "—"}
-                          </td>
-                          <td className="py-2 pr-3 text-slate-300">
-                            {p.effective_date || "—"}
-                          </td>
-                          <td className="py-2 pr-3 text-slate-300">
-                            {p.expiration_date || "—"}
-                          </td>
-                          <td className="py-2 pr-3">
-                            <StatusPill
-                              expired={expired}
-                              expSoon={expSoon}
-                              rawStatus={p.status}
-                            />
+                          <td className="py-2 pr-4 text-slate-200">{p.carrier}</td>
+                          <td className="py-2 pr-4 text-slate-200">{p.coverage_type}</td>
+                          <td className="py-2 pr-4 text-slate-300">{p.effective_date}</td>
+                          <td className="py-2 pr-4 text-slate-300">{p.expiration_date}</td>
+                          <td className="py-2 pr-4">
+                            <StatusPill expired={exp} expSoon={soon} rawStatus={p.status} />
                           </td>
                         </tr>
                       );
@@ -389,36 +360,33 @@ export default function VendorProfilePage({ vendor, policies, risk }) {
   );
 }
 
-// ---------- Small components ----------
+/* ============================================================
+   SMALL COMPONENTS
+============================================================ */
 
-function MetricCard({ label, value, description, tone = "neutral" }) {
-  const base =
-    "rounded-2xl border px-4 py-3 bg-slate-950/70 shadow-sm flex flex-col gap-1";
+function MetricCard({ label, value, tone = "neutral" }) {
   const toneClass =
     tone === "bad"
-      ? "border-rose-500/40 bg-gradient-to-br from-rose-950/80 via-slate-950 to-slate-950"
+      ? "border-rose-500/40 bg-rose-950/50"
       : tone === "warn"
-      ? "border-amber-500/40 bg-gradient-to-br from-amber-950/80 via-slate-950 to-slate-950"
-      : "border-slate-800/80";
+      ? "border-amber-500/40 bg-amber-950/50"
+      : "border-slate-800/80 bg-slate-950/60";
 
   return (
-    <div className={`${base} ${toneClass}`}>
-      <p className="text-[11px] uppercase tracking-[0.18em] text-slate-400">
+    <div className={`rounded-2xl border p-4 ${toneClass}`}>
+      <p className="text-[11px] uppercase tracking-[0.15em] text-slate-400">
         {label}
       </p>
       <p className="text-lg font-semibold text-slate-50">{value}</p>
-      <p className="text-[11px] text-slate-500">{description}</p>
     </div>
   );
 }
 
 function DetailRow({ label, value }) {
   return (
-    <div className="flex justify-between gap-2">
+    <div className="flex justify-between text-xs text-slate-300">
       <span className="text-slate-500">{label}</span>
-      <span className="text-slate-200 text-right max-w-[60%] truncate">
-        {value ?? "—"}
-      </span>
+      <span className="max-w-[60%] text-right truncate">{value}</span>
     </div>
   );
 }
@@ -427,18 +395,19 @@ function StatusPill({ expired, expSoon, rawStatus }) {
   const label = expired
     ? "Expired"
     : expSoon
-    ? "Expiring soon"
+    ? "Expiring Soon"
     : rawStatus || "Active";
 
-  const toneClass = expired
-    ? "bg-rose-500/10 text-rose-300 border-rose-500/50"
-    : expSoon
-    ? "bg-amber-500/10 text-amber-300 border-amber-500/50"
-    : "bg-emerald-500/10 text-emerald-300 border-emerald-500/50";
+  const cls =
+    expired
+      ? "bg-rose-500/10 text-rose-300 border-rose-500/40"
+      : expSoon
+      ? "bg-amber-500/10 text-amber-300 border-amber-500/40"
+      : "bg-emerald-500/10 text-emerald-300 border-emerald-500/40";
 
   return (
     <span
-      className={`inline-flex items-center px-2 py-0.5 rounded-full border text-[10px] font-medium ${toneClass}`}
+      className={`px-2 py-0.5 rounded-full border text-[10px] font-medium ${cls}`}
     >
       {label}
     </span>
