@@ -29,10 +29,11 @@ export default function AlertsPage() {
     <div
       style={{
         minHeight: "100vh",
-        background: "#0b1220",
+        background: "#020617",
         color: "#e5e7eb",
         padding: "30px 40px",
-        fontFamily: "system-ui, -apple-system, BlinkMacSystemFont, sans-serif",
+        fontFamily:
+          "system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif",
       }}
     >
       {/* Header */}
@@ -58,8 +59,8 @@ export default function AlertsPage() {
           Risk & Alerts Center
         </h1>
         <p style={{ fontSize: "14px", color: "#94a3b8", maxWidth: "600px" }}>
-          G-mode analyst view of expired and soon-to-expire coverage so you know
-          exactly which vendors could blow up your risk profile next.
+          G-mode view of expired and soon-to-expire coverage so you know exactly
+          which vendors could blow up your risk profile next.
         </p>
 
         <div style={{ marginTop: "10px" }}>
@@ -84,7 +85,7 @@ export default function AlertsPage() {
 
         {!loading && alerts && (
           <div style={{ display: "grid", gap: "20px", marginTop: "20px" }}>
-            {/* SUMMARY CARDS */}
+            {/* Summary tiles */}
             <div
               style={{
                 display: "grid",
@@ -112,26 +113,24 @@ export default function AlertsPage() {
               />
             </div>
 
-            {/* EXPIRED LIST */}
+            {/* Lists */}
             <AlertList
               title="🔥 Expired Policies"
-              subtitle="These vendors are operating on dead coverage. If they’re on your site, you’re naked."
+              subtitle="These vendors are on dead coverage. If they’re still on site, you’re carrying the risk."
               items={alerts.expired}
               tone="bad"
             />
 
-            {/* CRITICAL LIST */}
             <AlertList
               title="⚠️ Critical — Expires ≤ 30 Days"
-              subtitle="Renewal time bombs. If you don’t chase these, they WILL become today’s expired list."
+              subtitle="Renewal grenades. If you don’t chase these now, they’ll be in the expired bucket next."
               items={alerts.critical}
               tone="warn"
             />
 
-            {/* WARNING LIST */}
             <AlertList
               title="🟡 Warning — Expires ≤ 90 Days"
-              subtitle="Put them on your radar now so they never show up in critical or expired."
+              subtitle="Get these on someone’s radar now so they never hit critical or expired."
               items={alerts.warning}
               tone="soft"
             />
@@ -142,7 +141,7 @@ export default function AlertsPage() {
   );
 }
 
-/* --------- Small Components --------- */
+/* ------------ Summary Card ------------ */
 
 function SummaryCard({ label, icon, count, tone }) {
   const baseStyle = {
@@ -151,23 +150,16 @@ function SummaryCard({ label, icon, count, tone }) {
     border: "1px solid rgba(148,163,184,0.25)",
     background:
       tone === "bad"
-        ? "linear-gradient(135deg, rgba(248,113,113,0.12), rgba(15,23,42,0.9))"
+        ? "linear-gradient(135deg, rgba(248,113,113,0.15), rgba(15,23,42,0.95))"
         : tone === "warn"
-        ? "linear-gradient(135deg, rgba(245,158,11,0.12), rgba(15,23,42,0.9))"
-        : "linear-gradient(135deg, rgba(56,189,248,0.08), rgba(15,23,42,0.9))",
-    boxShadow: "0 14px 40px rgba(15,23,42,0.7)",
+        ? "linear-gradient(135deg, rgba(245,158,11,0.15), rgba(15,23,42,0.95))"
+        : "linear-gradient(135deg, rgba(56,189,248,0.10), rgba(15,23,42,0.95))",
+    boxShadow: "0 18px 40px rgba(15,23,42,0.7)",
   };
 
   return (
     <div style={baseStyle}>
-      <div
-        style={{
-          fontSize: "20px",
-          marginBottom: "4px",
-        }}
-      >
-        {icon}
-      </div>
+      <div style={{ fontSize: "22px", marginBottom: "4px" }}>{icon}</div>
       <div style={{ fontSize: "24px", fontWeight: 700 }}>{count}</div>
       <div style={{ fontSize: "13px", color: "#cbd5f5", marginTop: "2px" }}>
         {label}
@@ -176,13 +168,53 @@ function SummaryCard({ label, icon, count, tone }) {
   );
 }
 
+/* ------------ Alert List with Send Email ------------ */
+
 function AlertList({ title, subtitle, items, tone }) {
+  const [sendingId, setSendingId] = useState(null);
+  const [sentIds, setSentIds] = useState({});
+  const [localError, setLocalError] = useState("");
+
   const borderColor =
     tone === "bad"
-      ? "rgba(248,113,113,0.4)"
+      ? "rgba(248,113,113,0.5)"
       : tone === "warn"
-      ? "rgba(245,158,11,0.5)"
-      : "rgba(148,163,184,0.5)";
+      ? "rgba(245,158,11,0.6)"
+      : "rgba(148,163,184,0.7)";
+
+  async function handleSendEmail(item) {
+    setLocalError("");
+    setSendingId(item.id);
+
+    try {
+      const res = await fetch("/api/alerts/send", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          vendorEmail: item.vendor_email,
+          vendorName: item.vendor_name,
+          policyNumber: item.policy_number,
+          carrier: item.carrier,
+          coverageType: item.coverage_type,
+          expirationDate: item.expiration_date,
+          daysLeft: item.daysLeft,
+          tone: "professional", // keep vendor-facing tone clean
+        }),
+      });
+
+      const data = await res.json();
+      if (!res.ok || !data.ok) {
+        throw new Error(data.error || "Failed to send email");
+      }
+
+      setSentIds((prev) => ({ ...prev, [item.id]: true }));
+    } catch (err) {
+      console.error("Send email failed:", err);
+      setLocalError(err.message || "Failed to send email");
+    } finally {
+      setSendingId(null);
+    }
+  }
 
   return (
     <div
@@ -190,7 +222,7 @@ function AlertList({ title, subtitle, items, tone }) {
         borderRadius: "18px",
         border: `1px solid ${borderColor}`,
         background:
-          "linear-gradient(145deg, rgba(15,23,42,0.95), rgba(15,23,42,0.8))",
+          "linear-gradient(145deg, rgba(15,23,42,0.98), rgba(15,23,42,0.9))",
         padding: "16px 18px",
       }}
     >
@@ -201,15 +233,22 @@ function AlertList({ title, subtitle, items, tone }) {
             fontSize: "12px",
             color: "#94a3b8",
             marginTop: "4px",
-            maxWidth: "600px",
+            maxWidth: "620px",
           }}
         >
           {subtitle}
         </p>
+        {localError && (
+          <p style={{ fontSize: "12px", color: "#fca5a5", marginTop: "4px" }}>
+            ⚠ {localError}
+          </p>
+        )}
       </div>
 
       {(!items || items.length === 0) && (
-        <p style={{ fontSize: "12px", color: "#6b7280" }}>No items in this band.</p>
+        <p style={{ fontSize: "12px", color: "#6b7280" }}>
+          No items in this band.
+        </p>
       )}
 
       {items && items.length > 0 && (
@@ -228,7 +267,7 @@ function AlertList({ title, subtitle, items, tone }) {
               style={{
                 borderRadius: "12px",
                 padding: "10px 12px",
-                background: "rgba(15,23,42,0.9)",
+                background: "rgba(15,23,42,0.96)",
                 border: "1px solid rgba(51,65,85,0.9)",
                 fontSize: "12px",
               }}
@@ -261,8 +300,64 @@ function AlertList({ title, subtitle, items, tone }) {
                 <span style={{ fontWeight: 500 }}>{p.carrier}</span>
               </div>
 
-              <div style={{ fontSize: "11px", color: "#9ca3af" }}>
+              <div
+                style={{
+                  fontSize: "11px",
+                  color: "#9ca3af",
+                  marginBottom: "6px",
+                }}
+              >
                 {renderGModeLine(p)}
+              </div>
+
+              <div
+                style={{
+                  display: "flex",
+                  justifyContent: "space-between",
+                  alignItems: "center",
+                  gap: "8px",
+                }}
+              >
+                <span
+                  style={{
+                    fontSize: "11px",
+                    color: "#64748b",
+                  }}
+                >
+                  {p.vendor_email
+                    ? `Will email: ${p.vendor_email}`
+                    : "No vendor email on file."}
+                </span>
+
+                <button
+                  onClick={() => handleSendEmail(p)}
+                  disabled={
+                    !p.vendor_email || sendingId === p.id || sentIds[p.id]
+                  }
+                  style={{
+                    fontSize: "11px",
+                    padding: "6px 10px",
+                    borderRadius: "999px",
+                    border: "none",
+                    cursor:
+                      !p.vendor_email || sendingId === p.id || sentIds[p.id]
+                        ? "not-allowed"
+                        : "pointer",
+                    opacity:
+                      !p.vendor_email || sendingId === p.id || sentIds[p.id]
+                        ? 0.5
+                        : 1,
+                    background: "#0ea5e9",
+                    color: "#0f172a",
+                    fontWeight: 600,
+                  }}
+                >
+                  {sentIds[p.id]
+                    ? "Email sent"
+                    : sendingId === p.id
+                    ? "Sending…"
+                    : "Send email"}
+                </button>
               </div>
             </li>
           ))}
@@ -272,26 +367,27 @@ function AlertList({ title, subtitle, items, tone }) {
   );
 }
 
+/* ------------ G-Mode Narrative Line ------------ */
+
 function renderGModeLine(p) {
   const { daysLeft, expiration_date } = p;
 
   if (daysLeft === null) {
-    return `No valid expiration date. Treat this as unverified coverage until you see a real COI.`;
+    return `No valid expiration date on this policy. Treat it like unverified coverage until a clean COI shows up.`;
   }
 
   if (daysLeft < 0) {
-    return `Expired ${Math.abs(
-      daysLeft
-    )} day(s) ago on ${expiration_date}. If this vendor is still on your job, you are running them with dead coverage.`;
+    const daysPast = Math.abs(daysLeft);
+    return `Expired ${daysPast} day(s) ago on ${expiration_date}. If this vendor is still on your job with this coverage, you're carrying their risk for them.`;
   }
 
   if (daysLeft <= 30) {
-    return `Expires in ${daysLeft} day(s) on ${expiration_date}. This is a renewal grenade — chase a fresh COI before you let them roll a truck on site.`;
+    return `Expires in ${daysLeft} day(s) on ${expiration_date}. This is a renewal grenade — get a fresh COI before they roll another truck onto your property.`;
   }
 
   if (daysLeft <= 90) {
-    return `Expires in ${daysLeft} day(s) on ${expiration_date}. Not a fire drill yet, but get this on someone's radar so it never hits critical.`;
+    return `Expires in ${daysLeft} day(s) on ${expiration_date}. Not a fire drill yet, but you should have someone on your team chasing this before it drops into critical.`;
   }
 
-  return `Coverage looks stable for now. Set a reminder before ${expiration_date} so this never turns into an expired problem.`;
+  return `Coverage looks stable for now, but set a reminder before ${expiration_date} so this policy never quietly becomes a problem.`;
 }
