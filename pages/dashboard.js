@@ -2,6 +2,7 @@
 import { useEffect, useState } from "react";
 import VendorDrawer from "../components/VendorDrawer";
 import { useRole } from "../lib/useRole";
+import { useOrg } from "../context/OrgContext";
 
 /* THEME TOKENS */
 const GP = {
@@ -95,9 +96,10 @@ function badgeStyle(level) {
   }
 }
 
-/* COMPLIANCE BADGE HELPER */
+/* COMPLIANCE BADGE HELPER — uses real summary/missing/failing from /api/requirements/check */
 function renderComplianceBadge(vendorId, complianceMap) {
   const data = complianceMap[vendorId];
+
   const base = {
     display: "inline-flex",
     alignItems: "center",
@@ -106,13 +108,18 @@ function renderComplianceBadge(vendorId, complianceMap) {
     borderRadius: "999px",
     fontSize: "11px",
     fontWeight: 600,
-    border: "1px solid",
   };
 
-  if (!data) {
+  if (!data || data.loading) {
     return (
-      <span style={{ ...base, borderColor: "#e5e7eb", color: "#6b7280" }}>
-        …
+      <span
+        style={{
+          ...base,
+          background: "#eef0f4",
+          color: "#64748b",
+        }}
+      >
+        Checking…
       </span>
     );
   }
@@ -120,42 +127,44 @@ function renderComplianceBadge(vendorId, complianceMap) {
   if (data.error) {
     return (
       <span
-        style={{ ...base, borderColor: GP.red, color: GP.red }}
+        style={{
+          ...base,
+          background: "#fee2e2",
+          color: "#b91c1c",
+        }}
         title={data.error}
       >
-        ? Error
+        Error
       </span>
     );
   }
 
-  if (!data.hasRequirements) {
+  if (data.missing && data.missing.length > 0) {
     return (
       <span
         style={{
           ...base,
-          borderColor: "#e5e7eb",
-          color: "#6b7280",
-          background: "#f9fafb",
+          background: "#fef3c7",
+          color: "#b45309",
         }}
-        title="No org-wide requirements configured yet."
+        title="Missing required coverage."
       >
-        No rules
+        Missing
       </span>
     );
   }
 
-  if (data.missingCount === 0) {
+  if (data.failing && data.failing.length > 0) {
     return (
       <span
         style={{
           ...base,
-          borderColor: GP.green,
-          color: GP.green,
-          background: "#ecfdf3",
+          background: "#fee2e2",
+          color: "#b91c1c",
         }}
-        title="Vendor meets all current organizational coverage requirements."
+        title="Coverage does not meet requirements."
       >
-        🛡️ Compliant
+        Non-compliant
       </span>
     );
   }
@@ -164,17 +173,15 @@ function renderComplianceBadge(vendorId, complianceMap) {
     <span
       style={{
         ...base,
-        borderColor: GP.red,
-        color: GP.red,
-        background: "#fef2f2",
+        background: "#dcfce7",
+        color: "#166534",
       }}
-      title={`Fails ${data.missingCount} requirement(s). High compliance risk until COIs updated.`}
+      title="Vendor meets all current organizational coverage requirements."
     >
-      🛡️ Non-compliant
+      🛡️ Compliant
     </span>
   );
 }
-
 /* MAIN DASHBOARD */
 export default function Dashboard() {
   const [policies, setPolicies] = useState([]);
@@ -189,6 +196,7 @@ export default function Dashboard() {
   const [drawerPolicies, setDrawerPolicies] = useState([]);
 
   const { isAdmin, isManager } = useRole();
+  const { activeOrgId } = useOrg();
 
   /* LOAD POLICIES */
   useEffect(() => {
@@ -223,30 +231,34 @@ export default function Dashboard() {
     loadSummary();
   }, []);
 
-  /* LOAD COMPLIANCE PER VENDOR */
+  /* LOAD COMPLIANCE PER VENDOR — REAL compliance engine with orgId */
   useEffect(() => {
     if (!policies || policies.length === 0) return;
+    if (!activeOrgId) return;
 
     const vendorIds = [...new Set(policies.map((p) => p.vendor_id))];
 
-    vendorIds.forEach((id) => {
-      if (complianceMap[id]) return;
+    vendorIds.forEach((vendorId) => {
+      // don’t refetch if we already have data
+      if (complianceMap[vendorId]) return;
 
       setComplianceMap((prev) => ({
         ...prev,
-        [id]: { loading: true },
+        [vendorId]: { loading: true },
       }));
 
-      fetch(`/api/requirements/check?vendorId=${id}`)
-        .then((r) => r.json())
+      fetch(`/api/requirements/check?vendorId=${vendorId}&orgId=${activeOrgId}`)
+        .then((res) => res.json())
         .then((data) => {
           setComplianceMap((prev) => ({
             ...prev,
-            [id]: data.ok
+            [vendorId]: data.ok
               ? {
                   loading: false,
-                  hasRequirements: (data.requirements || []).length > 0,
-                  missingCount: (data.missing || []).length,
+                  summary: data.summary,
+                  missing: data.missing || [],
+                  failing: data.failing || [],
+                  passing: data.passing || [],
                 }
               : {
                   loading: false,
@@ -258,11 +270,11 @@ export default function Dashboard() {
           console.error("Compliance fetch error", err);
           setComplianceMap((prev) => ({
             ...prev,
-            [id]: { loading: false, error: err.message },
+            [vendorId]: { loading: false, error: err.message },
           }));
         });
     });
-  }, [policies, complianceMap]);
+  }, [policies, activeOrgId, complianceMap]);
 
   async function openDrawer(vendorId) {
     try {
@@ -297,7 +309,6 @@ export default function Dashboard() {
   return (
     <div style={{ minHeight: "100vh", background: GP.surface }}>
       {/* Header is global now via Layout — no <Header /> here */}
-
       <div style={{ padding: "30px 40px" }}>
         <h1
           style={{
@@ -578,7 +589,6 @@ export default function Dashboard() {
     </div>
   );
 }
-
 /* KPI + SCORE CARDS */
 function RiskCard({ label, icon, color, count, delta }) {
   let arrow = "➖";
@@ -699,5 +709,3 @@ const td = {
   fontSize: "13px",
   color: "#111827",
 };
-
-
