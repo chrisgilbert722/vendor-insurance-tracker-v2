@@ -1,5 +1,4 @@
 // pages/api/org/switch.js
-import { serialize } from "cookie";
 
 export default async function handler(req, res) {
   if (req.method !== "POST") {
@@ -12,13 +11,12 @@ export default async function handler(req, res) {
     return res.status(400).json({ ok: false, error: "orgId required" });
   }
 
-  const cookie = serialize("activeOrgId", String(orgId), {
-    httpOnly: true,
-    secure: process.env.NODE_ENV === "production",
-    maxAge: 60 * 60 * 24 * 365,
-    sameSite: "strict",
-    path: "/",
-  });
+  // Manual cookie header – NO external dependency needed
+  const cookie = `activeOrgId=${orgId}; Path=/; HttpOnly; SameSite=Strict; Max-Age=${
+    60 * 60 * 24 * 365
+  }${
+    process.env.NODE_ENV === "production" ? "; Secure" : ""
+  }`;
 
   res.setHeader("Set-Cookie", cookie);
 
