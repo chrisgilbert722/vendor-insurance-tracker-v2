@@ -6,6 +6,10 @@ export default function AlertsPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
 
+  const [tone, setTone] = useState("professional"); // "professional" | "gmode"
+  const [batchSending, setBatchSending] = useState(false);
+  const [batchMessage, setBatchMessage] = useState("");
+
   useEffect(() => {
     async function loadAlerts() {
       try {
@@ -24,6 +28,35 @@ export default function AlertsPage() {
     }
     loadAlerts();
   }, []);
+
+  async function handleBatchSend(items, label) {
+    setBatchMessage("");
+    if (!items || items.length === 0) {
+      setBatchMessage(`No ${label} alerts to email.`);
+      return;
+    }
+
+    setBatchSending(true);
+    try {
+      const res = await fetch("/api/alerts/send-batch", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ items, tone }),
+      });
+
+      const data = await res.json();
+      if (!res.ok || !data.ok) {
+        throw new Error(data.error || "Batch send failed");
+      }
+
+      setBatchMessage(`Sent ${data.sent} email(s), skipped ${data.skipped}.`);
+    } catch (err) {
+      console.error("BATCH SEND ERROR:", err);
+      setBatchMessage(err.message || "Failed to send batch emails.");
+    } finally {
+      setBatchSending(false);
+    }
+  }
 
   return (
     <div
@@ -63,7 +96,7 @@ export default function AlertsPage() {
           which vendors could blow up your risk profile next.
         </p>
 
-        <div style={{ marginTop: "10px" }}>
+        <div style={{ marginTop: "10px", display: "flex", alignItems: "center", gap: "14px" }}>
           <Link
             href="/dashboard"
             style={{
@@ -74,7 +107,53 @@ export default function AlertsPage() {
           >
             ← Back to Dashboard
           </Link>
+
+          {/* Tone Toggle */}
+          <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+            <span style={{ fontSize: "11px", color: "#94a3b8" }}>Email tone:</span>
+            <button
+              onClick={() => setTone("professional")}
+              style={{
+                fontSize: "11px",
+                padding: "4px 10px",
+                borderRadius: "999px",
+                border: "1px solid #1e293b",
+                background:
+                  tone === "professional" ? "#0ea5e9" : "transparent",
+                color: tone === "professional" ? "#0f172a" : "#e5e7eb",
+                cursor: "pointer",
+              }}
+            >
+              Professional
+            </button>
+            <button
+              onClick={() => setTone("gmode")}
+              style={{
+                fontSize: "11px",
+                padding: "4px 10px",
+                borderRadius: "999px",
+                border: "1px solid #1e293b",
+                background: tone === "gmode" ? "#f97316" : "transparent",
+                color: tone === "gmode" ? "#0f172a" : "#e5e7eb",
+                cursor: "pointer",
+              }}
+            >
+              G-Mode
+            </button>
+          </div>
         </div>
+
+        {batchMessage && (
+          <div
+            style={{
+              marginTop: "10px",
+              fontSize: "12px",
+              color: "#a5b4fc",
+            }}
+          >
+            {batchMessage}
+          </div>
+        )}
       </div>
 
       <div style={{ maxWidth: "960px", margin: "0 auto" }}>
@@ -116,23 +195,38 @@ export default function AlertsPage() {
             {/* Lists */}
             <AlertList
               title="🔥 Expired Policies"
-              subtitle="These vendors are on dead coverage. If they’re still on site, you’re carrying the risk."
+              subtitle="These vendors are on dead coverage. If they’re still on site, you’re carrying their risk."
               items={alerts.expired}
-              tone="bad"
+              tone={tone}
+              bandLabel="expired"
+              batchSending={batchSending}
+              onBatchSend={() =>
+                handleBatchSend(alerts.expired, "expired policies")
+              }
             />
 
             <AlertList
               title="⚠️ Critical — Expires ≤ 30 Days"
               subtitle="Renewal grenades. If you don’t chase these now, they’ll be in the expired bucket next."
               items={alerts.critical}
-              tone="warn"
+              tone={tone}
+              bandLabel="critical"
+              batchSending={batchSending}
+              onBatchSend={() =>
+                handleBatchSend(alerts.critical, "critical policies")
+              }
             />
 
             <AlertList
               title="🟡 Warning — Expires ≤ 90 Days"
               subtitle="Get these on someone’s radar now so they never hit critical or expired."
               items={alerts.warning}
-              tone="soft"
+              tone={tone}
+              bandLabel="warning"
+              batchSending={batchSending}
+              onBatchSend={() =>
+                handleBatchSend(alerts.warning, "warning policies")
+              }
             />
           </div>
         )}
@@ -142,7 +236,6 @@ export default function AlertsPage() {
 }
 
 /* ------------ Summary Card ------------ */
-
 function SummaryCard({ label, icon, count, tone }) {
   const baseStyle = {
     borderRadius: "16px",
@@ -150,10 +243,10 @@ function SummaryCard({ label, icon, count, tone }) {
     border: "1px solid rgba(148,163,184,0.25)",
     background:
       tone === "bad"
-        ? "linear-gradient(135deg, rgba(248,113,113,0.15), rgba(15,23,42,0.95))"
+        ? "linear-gradient(135deg, rgba(248,113,113,0.15), rgba(15,23,42,0.98))"
         : tone === "warn"
-        ? "linear-gradient(135deg, rgba(245,158,11,0.15), rgba(15,23,42,0.95))"
-        : "linear-gradient(135deg, rgba(56,189,248,0.10), rgba(15,23,42,0.95))",
+        ? "linear-gradient(135deg, rgba(245,158,11,0.15), rgba(15,23,42,0.98))"
+        : "linear-gradient(135deg, rgba(56,189,248,0.10), rgba(15,23,42,0.98))",
     boxShadow: "0 18px 40px rgba(15,23,42,0.7)",
   };
 
@@ -168,17 +261,24 @@ function SummaryCard({ label, icon, count, tone }) {
   );
 }
 
-/* ------------ Alert List with Send Email ------------ */
-
-function AlertList({ title, subtitle, items, tone }) {
+/* ------------ Alert List (single + bulk sends) ------------ */
+function AlertList({
+  title,
+  subtitle,
+  items,
+  tone,
+  bandLabel,
+  batchSending,
+  onBatchSend,
+}) {
   const [sendingId, setSendingId] = useState(null);
   const [sentIds, setSentIds] = useState({});
   const [localError, setLocalError] = useState("");
 
   const borderColor =
-    tone === "bad"
+    bandLabel === "expired"
       ? "rgba(248,113,113,0.5)"
-      : tone === "warn"
+      : bandLabel === "critical"
       ? "rgba(245,158,11,0.6)"
       : "rgba(148,163,184,0.7)";
 
@@ -198,7 +298,7 @@ function AlertList({ title, subtitle, items, tone }) {
           coverageType: item.coverage_type,
           expirationDate: item.expiration_date,
           daysLeft: item.daysLeft,
-          tone: "professional", // keep vendor-facing tone clean
+          tone, // use selected tone
         }),
       });
 
@@ -226,23 +326,64 @@ function AlertList({ title, subtitle, items, tone }) {
         padding: "16px 18px",
       }}
     >
-      <div style={{ marginBottom: "10px" }}>
-        <h2 style={{ fontSize: "15px", fontWeight: 600 }}>{title}</h2>
-        <p
+      <div
+        style={{
+          marginBottom: "10px",
+          display: "flex",
+          justifyContent: "space-between",
+          alignItems: "flex-start",
+          gap: "12px",
+        }}
+      >
+        <div>
+          <h2 style={{ fontSize: "15px", fontWeight: 600 }}>{title}</h2>
+          <p
+            style={{
+              fontSize: "12px",
+              color: "#94a3b8",
+              marginTop: "4px",
+              maxWidth: "620px",
+            }}
+          >
+            {subtitle}
+          </p>
+          {localError && (
+            <p
+              style={{
+                fontSize: "12px",
+                color: "#fca5a5",
+                marginTop: "4px",
+              }}
+            >
+              ⚠ {localError}
+            </p>
+          )}
+        </div>
+
+        <button
+          onClick={onBatchSend}
+          disabled={batchSending || !items || items.length === 0}
           style={{
-            fontSize: "12px",
-            color: "#94a3b8",
-            marginTop: "4px",
-            maxWidth: "620px",
+            fontSize: "11px",
+            padding: "6px 12px",
+            borderRadius: "999px",
+            border: "none",
+            cursor:
+              batchSending || !items || items.length === 0
+                ? "not-allowed"
+                : "pointer",
+            opacity:
+              batchSending || !items || items.length === 0
+                ? 0.5
+                : 1,
+            background: "#22c55e",
+            color: "#020617",
+            fontWeight: 600,
+            whiteSpace: "nowrap",
           }}
         >
-          {subtitle}
-        </p>
-        {localError && (
-          <p style={{ fontSize: "12px", color: "#fca5a5", marginTop: "4px" }}>
-            ⚠ {localError}
-          </p>
-        )}
+          {batchSending ? "Sending batch…" : "Send all emails"}
+        </button>
       </div>
 
       {(!items || items.length === 0) && (
