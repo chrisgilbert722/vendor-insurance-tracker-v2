@@ -3,10 +3,12 @@ import { useState } from "react";
 import { supabase } from "../lib/supabaseClient";
 import { CaretDown } from "@phosphor-icons/react";
 import { useOrg } from "../context/OrgContext";
+import { useRole } from "../lib/useRole";
 
 export default function Header() {
   const [open, setOpen] = useState(false);
   const { orgs, activeOrgId, switchOrg, loadingOrgs } = useOrg();
+  const { isLoadingRole } = useRole();
 
   async function handleLogout() {
     await supabase.auth.signOut();
@@ -14,6 +16,8 @@ export default function Header() {
   }
 
   const activeOrg = orgs.find((o) => o.id == activeOrgId);
+
+  const loading = loadingOrgs || isLoadingRole;
 
   return (
     <div
@@ -33,7 +37,10 @@ export default function Header() {
       {/* ORG SWITCHER */}
       <div style={{ position: "relative" }}>
         <button
-          onClick={() => setOpen(!open)}
+          onClick={() => {
+            if (loading) return; // prevent opening during load
+            setOpen(!open);
+          }}
           style={{
             padding: "8px 14px",
             background: "#0f172a",
@@ -43,17 +50,18 @@ export default function Header() {
             display: "flex",
             alignItems: "center",
             gap: "6px",
-            cursor: "pointer",
+            cursor: loading ? "default" : "pointer",
             fontSize: "14px",
+            opacity: loading ? 0.6 : 1,
           }}
         >
-          {loadingOrgs
+          {loading
             ? "Loading..."
             : activeOrg?.name || "Select Organization"}
           <CaretDown size={14} />
         </button>
 
-        {open && (
+        {!!open && !loading && (
           <div
             style={{
               position: "absolute",
@@ -125,4 +133,3 @@ export default function Header() {
     </div>
   );
 }
- 
