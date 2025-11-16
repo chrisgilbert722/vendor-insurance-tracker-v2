@@ -1,172 +1,204 @@
+// pages/api/vendor-upload.js
+
 export const config = {
-  runtime: "nodejs",
-  api: { bodyParser: false },
+  api: {
+    bodyParser: false,
+  },
 };
 
-import OpenAI from "openai";
-import { Client } from "pg";
 import formidable from "formidable";
 import fs from "fs";
 import pdfParse from "pdf-parse";
+import { Client } from "pg";
+import OpenAI from "openai";
+
+function parseExpiration(dateStr) {
+  if (!dateStr) return null;
+  // Try MM/DD/YYYY first
+  const parts = dateStr.split("/");
+  if (parts.length === 3) {
+    const [mm, dd, yyyy] = parts;
+    if (mm && dd && yyyy) {
+      return `${mm}/${dd}/${yyyy}`;
+    }
+  }
+  return dateStr;
+}
+
+async function parseForm(req) {
+  const form = formidable({ multiples: false });
+  return new Promise((resolve, reject) => {
+    form.parse(req, (err, fields, files) => {
+      if (err) return reject(err);
+      resolve({ fields, files });
+    });
+  });
+}
 
 export default async function handler(req, res) {
   if (req.method !== "POST") {
     return res.status(405).json({ ok: false, error: "Method not allowed" });
   }
 
-  let client = null;
+  let pgClient = null;
 
   try {
-    // Parse form-data (file + token)
-    const form = formidable({});
-    const [fields, files] = await form.parse(req);
+    const { fields, files } = await parseForm(req);
+    const uploaded = files.file?.[0] || files.file;
 
-    const file = files.file?.[0];
-    if (!file) throw new Error("No file uploaded");
+    const vendorIdParam =
+      fields.vendorId?.[0] ||
+      fields.vendor_id?.[0] ||
+      req.query.vendor ||
+      req.query.vendorId;
 
-    const token =
-      fields.token?.[0] ||
-      fields.token ||
-      fields.vendorToken?.[0] ||
-      fields.vendorToken ||
-      null;
-
-    if (!token) {
-      throw new Error("Missing vendor upload token");
+    const vendorId = parseInt(vendorIdParam, 10);
+    if (!uploaded || Number.isNaN(vendorId)) {
+      return res
+        .status(400)
+        .json({ ok: false, error: "Missing file or vendor id." });
     }
 
     // Connect to DB
-    client = new Client({ connectionString: process.env.DATABASE_URL });
-    await client.connect();
+    pgClient = new Client({
+      connectionString: process.env.DATABASE_URL,
+    });
+    await pgClient.connect();
 
-    // Validate vendor token
-    const vendorResult = await client.query(
-      `SELECT id, name, org_id
-       FROM vendors
-       WHERE upload_token = $1
-         AND (upload_token_expires_at IS NULL OR upload_token_expires_at > NOW())
-       LIMIT 1`,
-      [token]
+    // Get vendor row
+    const vendorRes = await pgClient.query(
+      `SELECT id, name, org_id FROM public.vendors WHERE id = $1`,
+      [vendorId]
     );
 
-    if (vendorResult.rowCount === 0) {
-      throw new Error("Invalid or expired upload link");
+    if (vendorRes.rows.length === 0) {
+      return res
+        .status(404)
+        .json({ ok: false, error: "Vendor not found for this upload link." });
     }
 
-    const vendor = vendorResult.rows[0];
-    const orgId = vendor.org_id || 1;
+    const vendor = vendorRes.rows[0];
 
-    // Read + parse PDF
-    const buffer = fs.readFileSync(file.filepath);
+    // Read PDF
+    const buffer = fs.readFileSync(uploaded.filepath);
     const pdfData = await pdfParse(buffer);
 
-    if (!pdfData.text || pdfData.text.trim().length === 0) {
-      throw new Error("PDF contains no readable text");
+    if (!pdfData.text || !pdfData.text.trim()) {
+      throw new Error("Uploaded PDF has no readable text.");
     }
 
-    const text = pdfData.text.trim().slice(0, 5000);
+    const text = pdfData.text.slice(0, 20000);
 
-    // OpenAI extraction
+    // AI extraction
     const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
-    const systemPrompt = `
-You are a COI (Certificate of Insurance) parser.
-Your job is to extract ONLY the following fields:
+    const prompt = `
+You are an insurance COI (Certificate of Insurance) extraction engine.
+
+Given the raw text of a COI, extract the following fields if possible:
 
 {
-  "vendor_name": string | null,
-  "policy_number": string | null,
   "carrier": string | null,
+  "policy_number": string | null,
+  "coverage_type": string | null,
   "effective_date": string | null,
-  "expiration_date": string | null,
-  "coverage_type": string | null
+  "expiration_date": string | null
 }
 
-"vendor_name" should be the insured party or named insured on the certificate
-(e.g. "Beachside Construction LLC", "Chris Gilbert", etc.)
-
 Rules:
-- Return ONLY valid JSON.
-- No explanations.
-- If a field is missing, set it to null.
-`;
+- ONLY return valid JSON.
+- If you cannot find something, return null for that field.
+- "coverage_type" can be a short label e.g. "GL", "General Liability", "Auto", "Umbrella", etc.
 
-    const userPrompt = `Extract these fields from the PDF text:\n\n${text}`;
+COI TEXT:
+${text}
+    `.trim();
 
     const completion = await openai.chat.completions.create({
-      model: "gpt-4o-mini",
+      model: "gpt-4.1-mini",
       temperature: 0,
       messages: [
-        { role: "system", content: systemPrompt },
-        { role: "user", content: userPrompt },
+        {
+          role: "system",
+          content:
+            "You are a precise JSON-only COI parser. You only respond with JSON.",
+        },
+        { role: "user", content: prompt },
       ],
     });
 
-    const aiOutput = completion.choices[0]?.message?.content || "";
-    const jsonMatch = aiOutput.match(/\{[\s\S]*\}/);
+    let raw = completion.choices[0]?.message?.content || "";
+    raw = raw.trim();
 
-    if (!jsonMatch) throw new Error("AI did not return valid JSON");
-
-    let jsonData;
+    let parsed;
     try {
-      jsonData = JSON.parse(jsonMatch[0]);
-    } catch (e) {
-      throw new Error("Failed to parse JSON from AI output");
+      const first = raw.indexOf("{");
+      const last = raw.lastIndexOf("}");
+      if (first === -1 || last === -1) {
+        throw new Error("AI did not return JSON.");
+      }
+      parsed = JSON.parse(raw.slice(first, last + 1));
+    } catch (err) {
+      throw new Error("Failed to parse AI JSON: " + err.message);
     }
 
-    // Prefer the vendor.name from DB as the canonical name
-    const finalVendorName = vendor.name || jsonData.vendor_name || null;
+    const carrier = parsed.carrier ?? null;
+    const policyNumber = parsed.policy_number ?? null;
+    const coverageType = parsed.coverage_type ?? null;
+    const effectiveDate = parsed.effective_date
+      ? parseExpiration(parsed.effective_date)
+      : null;
+    const expirationDate = parsed.expiration_date
+      ? parseExpiration(parsed.expiration_date)
+      : null;
 
-    // Insert into documents table (for multi-doc support)
-    const docResult = await client.query(
-      `INSERT INTO documents
-        (vendor_id, org_id, document_type, file_url, raw_text, ai_json, status)
-       VALUES ($1, $2, $3, $4, $5, $6, 'processed')
+    // Insert policy
+    const insertRes = await pgClient.query(
+      `INSERT INTO public.policies
+       (vendor_id, vendor_name, org_id, policy_number, carrier, effective_date, expiration_date, coverage_type, status)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'active')
        RETURNING id`,
       [
         vendor.id,
-        orgId,
-        "COI",
-        null, // file_url (we'll add storage later)
-        pdfData.text.trim().slice(0, 10000),
-        JSON.stringify(jsonData),
+        vendor.name,
+        vendor.org_id || null,
+        policyNumber,
+        carrier,
+        effectiveDate,
+        expirationDate,
+        coverageType,
       ]
     );
 
-    const documentId = docResult.rows[0].id;
-
-    // Insert into policies table
-    await client.query(
-      `INSERT INTO public.policies
-        (vendor_id, org_id, vendor_name, policy_number, carrier, effective_date, expiration_date, coverage_type, status)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'active')`,
-      [
-        vendor.id,
-        orgId,
-        finalVendorName,
-        jsonData.policy_number || null,
-        jsonData.carrier || null,
-        jsonData.effective_date || null,
-        jsonData.expiration_date || null,
-        jsonData.coverage_type || null,
-      ]
-    );
-
-    await client.end();
+    const policyId = insertRes.rows[0].id;
 
     return res.status(200).json({
       ok: true,
-      json: { ...jsonData, vendor_name: finalVendorName },
-      documentId,
-      message: "Vendor COI uploaded and extracted successfully",
+      policyId,
+      vendor: {
+        id: vendor.id,
+        name: vendor.name,
+      },
+      extracted: {
+        carrier,
+        policy_number: policyNumber,
+        coverage_type: coverageType,
+        effective_date: effectiveDate,
+        expiration_date: expirationDate,
+      },
     });
   } catch (err) {
-    console.error("vendor-upload-coi ERROR:", err);
-    if (client) {
+    console.error("vendor-upload error:", err);
+    return res
+      .status(500)
+      .json({ ok: false, error: err.message || "Upload failed." });
+  } finally {
+    if (pgClient) {
       try {
-        await client.end();
-      } catch (_) {}
+        await pgClient.end();
+      } catch {
+        // ignore
+      }
     }
-    return res.status(500).json({ ok: false, error: err.message });
   }
 }
