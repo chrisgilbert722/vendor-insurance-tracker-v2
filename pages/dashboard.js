@@ -1,6 +1,5 @@
 // pages/dashboard.js
 import { useEffect, useState } from "react";
-import Header from "../components/Header";
 import VendorDrawer from "../components/VendorDrawer";
 import { useRole } from "../lib/useRole";
 
@@ -31,14 +30,17 @@ function parseExpiration(dateStr) {
   if (!mm || !dd || !yyyy) return null;
   return new Date(`${yyyy}-${mm}-${dd}T00:00:00`);
 }
+
 function computeDaysLeft(dateStr) {
   const d = parseExpiration(dateStr);
   if (!d) return null;
   return Math.floor((d - new Date()) / (1000 * 60 * 60 * 24));
 }
+
 function computeRisk(p) {
   const daysLeft = computeDaysLeft(p.expiration_date);
   const flags = [];
+
   if (daysLeft === null) {
     return {
       daysLeft: null,
@@ -48,8 +50,10 @@ function computeRisk(p) {
       tier: "Unknown",
     };
   }
+
   let severity = "ok";
   let score = 95;
+
   if (daysLeft < 0) {
     severity = "expired";
     score = 20;
@@ -63,6 +67,7 @@ function computeRisk(p) {
     score = 70;
     flags.push("Expires within 90 days");
   }
+
   const tier =
     severity === "expired"
       ? "Severe Risk"
@@ -71,10 +76,10 @@ function computeRisk(p) {
       : severity === "warning"
       ? "Moderate Risk"
       : "Healthy";
+
   return { daysLeft, severity, score, flags, tier };
 }
 
-/* RISK BADGE STYLE */
 function badgeStyle(level) {
   switch (level) {
     case "expired":
@@ -169,6 +174,7 @@ function renderComplianceBadge(vendorId, complianceMap) {
     </span>
   );
 }
+
 export default function Dashboard() {
   const [policies, setPolicies] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -286,7 +292,7 @@ export default function Dashboard() {
 
   return (
     <div style={{ minHeight: "100vh", background: GP.surface }}>
-      <Header />
+      {/* ❗ REMOVED THE DUPLICATE <Header /> */}
 
       <div style={{ padding: "30px 40px" }}>
         <h1
@@ -365,7 +371,7 @@ export default function Dashboard() {
             label="Warning (≤90 days)"
             icon="🟡"
             color={GP.yellow}
-            count={metrics?.warning_count ?? 0}
+            count={metrics?.warning ?? 0}
             delta={deltas?.warning ?? 0}
           />
           <RiskCard
@@ -443,6 +449,7 @@ export default function Dashboard() {
                   const severity = risk.severity;
                   const score = risk.score;
                   const flags = risk.flags || [];
+
                   return (
                     <tr
                       key={p.id}
@@ -460,6 +467,7 @@ export default function Dashboard() {
                       <td style={td}>{p.coverage_type}</td>
                       <td style={td}>{p.expiration_date || "—"}</td>
                       <td style={td}>{risk.daysLeft ?? "—"}</td>
+
                       <td
                         style={{
                           ...td,
@@ -472,6 +480,7 @@ export default function Dashboard() {
                           : severity.charAt(0).toUpperCase() +
                             severity.slice(1)}
                       </td>
+
                       <td style={{ ...td, textAlign: "center" }}>
                         <span
                           style={{
@@ -487,6 +496,7 @@ export default function Dashboard() {
                           {risk.tier}
                         </span>
                       </td>
+
                       <td
                         style={{
                           ...td,
@@ -501,6 +511,7 @@ export default function Dashboard() {
                         }}
                       >
                         <div>{score}</div>
+
                         <div
                           style={{
                             marginTop: "4px",
@@ -568,6 +579,7 @@ export default function Dashboard() {
 function RiskCard({ label, icon, color, count, delta }) {
   let arrow = "➖";
   let arrowColor = GP.textLight;
+
   if (delta > 0) {
     arrow = "⬆️";
     arrowColor = GP.red;
@@ -575,96 +587,13 @@ function RiskCard({ label, icon, color, count, delta }) {
     arrow = "⬇️";
     arrowColor = GP.green;
   }
+
   return (
     <div style={{ textAlign: "center", flex: 1 }}>
       <div style={{ fontSize: "22px" }}>{icon}</div>
+
       <div
         style={{
           fontSize: "26px",
-          fontWeight: "700",
-          color,
-          marginTop: "4px",
-        }}
-      >
-        {count}
-      </div>
-      <div style={{ fontSize: "13px", marginTop: "2px", color: GP.text }}>
-        {label}
-      </div>
-      <div
-        style={{
-          fontSize: "12px",
-          marginTop: "4px",
-          color: arrowColor,
-          fontWeight: "600",
-        }}
-      >
-        {arrow} {delta}
-      </div>
-    </div>
-  );
-}
+          fontWeight: "700
 
-function ScoreCard({ avgScore, delta }) {
-  const hasScore = avgScore !== null && avgScore !== undefined;
-  const score = hasScore ? Number(avgScore) : 0;
-
-  let arrow = "➖";
-  let arrowColor = GP.textLight;
-  if (typeof delta === "number" && delta > 0) {
-    arrow = "⬆️";
-    arrowColor = GP.green;
-  } else if (typeof delta === "number" && delta < 0) {
-    arrow = "⬇️";
-    arrowColor = GP.red;
-  }
-
-  const color =
-    score >= 80 ? GP.green : score >= 60 ? GP.yellow : GP.red;
-
-  return (
-    <div style={{ textAlign: "center", flex: 1 }}>
-      <div style={{ fontSize: "22px" }}>📊</div>
-      <div
-        style={{
-          fontSize: "26px",
-          fontWeight: "700",
-          color: hasScore ? color : GP.textLight,
-          marginTop: "4px",
-        }}
-      >
-        {hasScore ? score.toFixed(0) : "—"}
-      </div>
-      <div style={{ fontSize: "13px", marginTop: "2px", color: GP.text }}>
-        Avg Score
-      </div>
-      <div
-        style={{
-          fontSize: "12px",
-          marginTop: "4px",
-          color: arrowColor,
-          fontWeight: "600",
-        }}
-      >
-        {arrow}{" "}
-        {typeof delta === "number" ? delta.toFixed(1) : "0.0"}
-      </div>
-    </div>
-  );
-}
-
-/* TABLE STYLES */
-const th = {
-  padding: "10px 12px",
-  background: "#f5f7fb",
-  color: "#64748b",
-  fontWeight: "600",
-  textAlign: "left",
-  fontSize: "12px",
-};
-const td = {
-  padding: "10px 12px",
-  borderBottom: "1px solid #e5e7eb",
-  fontSize: "13px",
-  color: "#111827",
-};
