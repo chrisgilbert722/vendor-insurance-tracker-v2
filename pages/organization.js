@@ -1,8 +1,7 @@
 // pages/organization.js
-
 import { useEffect, useState } from "react";
-import { supabase } from "../lib/supabaseClient";
 import Link from "next/link";
+import { supabase } from "../lib/supabaseClient";
 
 export default function OrganizationPage() {
   const [org, setOrg] = useState(null);
@@ -13,18 +12,23 @@ export default function OrganizationPage() {
   const [error, setError] = useState("");
   const [created, setCreated] = useState(false);
 
+  // Invite form state
+  const [inviteEmail, setInviteEmail] = useState("");
+  const [inviteRole, setInviteRole] = useState("member");
+  const [inviteLoading, setInviteLoading] = useState(false);
+  const [inviteError, setInviteError] = useState("");
+  const [inviteLink, setInviteLink] = useState("");
+
   useEffect(() => {
     async function init() {
       setError("");
       setLoading(true);
       try {
-        // Get current session from Supabase
         const {
           data: { session },
         } = await supabase.auth.getSession();
 
         if (!session) {
-          // Not logged in — redirect to login
           window.location.href = "/auth/login";
           return;
         }
@@ -32,7 +36,7 @@ export default function OrganizationPage() {
         const userId = session.user.id;
         const email = session.user.email;
 
-        // Ensure org + membership exists
+        // Ensure org
         const res = await fetch("/api/org/ensure", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -46,14 +50,13 @@ export default function OrganizationPage() {
         setMembership(data.membership);
         setCreated(data.created);
 
-        // Now load members
+        // Load members
         setMembersLoading(true);
         const memRes = await fetch(
           `/api/org/members?orgId=${data.organization.id}`
         );
         const memData = await memRes.json();
         if (!memRes.ok || !memData.ok) throw new Error(memData.error);
-
         setMembers(memData.members || []);
       } catch (err) {
         console.error("Organization init error:", err);
@@ -67,6 +70,44 @@ export default function OrganizationPage() {
     init();
   }, []);
 
+  async function handleInvite(e) {
+    e.preventDefault();
+    if (!org) return;
+
+    setInviteError("");
+    setInviteLoading(true);
+    setInviteLink("");
+
+    try {
+      const res = await fetch("/api/org/invite", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          orgId: org.id,
+          email: inviteEmail,
+          role: inviteRole,
+        }),
+      });
+
+      const data = await res.json();
+      if (!res.ok || !data.ok) throw new Error(data.error);
+
+      setInviteLink(data.invite.acceptUrl);
+      setInviteEmail("");
+      setInviteRole("member");
+    } catch (err) {
+      console.error("Invite error:", err);
+      setInviteError(err.message || "Failed to send invite.");
+    } finally {
+      setInviteLoading(false);
+    }
+  }
+
+  function copyLink() {
+    if (!inviteLink) return;
+    navigator.clipboard.writeText(inviteLink);
+  }
+
   return (
     <div
       style={{
@@ -74,8 +115,6 @@ export default function OrganizationPage() {
         background: "#0f172a",
         color: "#e5e7eb",
         padding: "30px 40px",
-        fontFamily:
-          "system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif",
       }}
     >
       <div style={{ maxWidth: "960px", margin: "0 auto" }}>
@@ -135,11 +174,11 @@ export default function OrganizationPage() {
                   fontSize: "12px",
                 }}
               >
-                ✅ We created a new organization for you. You’re the admin.
+                ✅ New organization created. You are the admin.
               </div>
             )}
 
-            {/* Org meta */}
+            {/* ORG META */}
             {org && (
               <div
                 style={{
@@ -173,7 +212,157 @@ export default function OrganizationPage() {
               </div>
             )}
 
-            {/* Members */}
+            {/* INVITE FORM */}
+            <form
+              onSubmit={handleInvite}
+              style={{
+                marginTop: "24px",
+                padding: "16px",
+                borderRadius: "12px",
+                background: "#020617",
+                border: "1px solid #1f2937",
+                maxWidth: "420px",
+              }}
+            >
+              <h2
+                style={{
+                  fontSize: "14px",
+                  fontWeight: 600,
+                  marginBottom: "10px",
+                }}
+              >
+                Invite a teammate
+              </h2>
+
+              <div style={{ marginBottom: "10px" }}>
+                <label
+                  style={{
+                    display: "block",
+                    fontSize: "12px",
+                    marginBottom: "4px",
+                  }}
+                >
+                  Email
+                </label>
+                <input
+                  type="email"
+                  value={inviteEmail}
+                  onChange={(e) => setInviteEmail(e.target.value)}
+                  required
+                  placeholder="teammate@example.com"
+                  style={{
+                    width: "100%",
+                    padding: "8px",
+                    borderRadius: "8px",
+                    border: "1px solid #4b5563",
+                    fontSize: "13px",
+                    background: "#020617",
+                    color: "#e5e7eb",
+                  }}
+                />
+              </div>
+
+              <div style={{ marginBottom: "10px" }}>
+                <label
+                  style={{
+                    display: "block",
+                    fontSize: "12px",
+                    marginBottom: "4px",
+                  }}
+                >
+                  Role
+                </label>
+                <select
+                  value={inviteRole}
+                  onChange={(e) => setInviteRole(e.target.value)}
+                  style={{
+                    width: "100%",
+                    padding: "8px",
+                    borderRadius: "8px",
+                    border: "1px solid #4b5563",
+                    fontSize: "13px",
+                    background: "#020617",
+                    color: "#e5e7eb",
+                  }}
+                >
+                  <option value="member">Viewer</option>
+                  <option value="manager">Manager</option>
+                  <option value="admin">Admin</option>
+                </select>
+              </div>
+
+              {inviteError && (
+                <p
+                  style={{
+                    fontSize: "12px",
+                    color: "#fecaca",
+                    marginBottom: "8px",
+                  }}
+                >
+                  ⚠ {inviteError}
+                </p>
+              )}
+
+              <button
+                type="submit"
+                disabled={inviteLoading}
+                style={{
+                  padding: "8px 16px",
+                  borderRadius: "999px",
+                  border: "none",
+                  background: inviteLoading ? "#6b7280" : "#2563eb",
+                  color: "#f9fafb",
+                  fontSize: "13px",
+                  fontWeight: 600,
+                  cursor: inviteLoading ? "not-allowed" : "pointer",
+                }}
+              >
+                {inviteLoading ? "Sending…" : "Send Invite"}
+              </button>
+
+              {inviteLink && (
+                <div
+                  style={{
+                    marginTop: "12px",
+                    fontSize: "12px",
+                    color: "#e5e7eb",
+                  }}
+                >
+                  <p style={{ marginBottom: "4px" }}>
+                    Or share this invite link directly:
+                  </p>
+                  <div
+                    style={{
+                      padding: "8px",
+                      background: "#020617",
+                      borderRadius: "8px",
+                      border: "1px solid #4b5563",
+                      wordBreak: "break-all",
+                    }}
+                  >
+                    {inviteLink}
+                  </div>
+                  <button
+                    type="button"
+                    onClick={copyLink}
+                    style={{
+                      marginTop: "6px",
+                      fontSize: "12px",
+                      padding: "6px 10px",
+                      borderRadius: "999px",
+                      border: "none",
+                      background: "#111827",
+                      color: "#e5e7eb",
+                      cursor: "pointer",
+                    }}
+                  >
+                    Copy Link
+                  </button>
+                </div>
+              )}
+            </form>
+
+            {/* MEMBER LIST */}
             <div
               style={{
                 marginTop: "24px",
