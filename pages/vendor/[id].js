@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useState } from "react";
 import Link from "next/link";
 import { Client } from "pg";
 import OpenAI from "openai";
@@ -6,6 +6,9 @@ import {
   ShieldCheck,
   WarningCircle,
   FileText,
+  EnvelopeSimple,
+  X as XIcon,
+  ClipboardText,
 } from "@phosphor-icons/react";
 
 /* ============================================================
@@ -40,27 +43,33 @@ function computeRiskSummary(policies) {
   const now = new Date();
   let expired = 0;
   let expSoon = 0;
-  const validExp = [];
+  const valid = [];
 
   for (const p of policies) {
     if (!p.expiration_date) continue;
     const exp = parseExpiration(p.expiration_date);
     if (!exp) continue;
 
-    validExp.push(exp);
+    valid.push(exp);
 
     if (exp < now) expired++;
     else if ((exp - now) / (1000 * 60 * 60 * 24) <= 60) expSoon++;
   }
 
-  let baseRiskScore = expired > 0 ? 25 : expSoon > 0 ? 55 : 85;
-  const riskTier =
-    baseRiskScore >= 80 ? "Low" : baseRiskScore >= 50 ? "Moderate" : "High";
-
-  const sorted = validExp.sort((a, b) => b - a);
+  const sorted = valid.sort((a, b) => b - a);
   const latestExpiration = sorted[0]
     ? sorted[0].toISOString().slice(0, 10)
     : null;
+
+  const baseRiskScore =
+    expired > 0 ? 25 : expSoon > 0 ? 55 : 85;
+
+  const riskTier =
+    baseRiskScore >= 80
+      ? "Low"
+      : baseRiskScore >= 50
+      ? "Moderate"
+      : "High";
 
   return {
     total: policies.length,
@@ -73,7 +82,7 @@ function computeRiskSummary(policies) {
 }
 
 /* ============================================================
-   SERVER-SIDE LOADING + AI SUMMARY
+   SERVER-SIDE LOAD + AI SUMMARY
 ============================================================ */
 
 export async function getServerSideProps({ params }) {
@@ -87,9 +96,8 @@ export async function getServerSideProps({ params }) {
   await client.connect();
 
   const vendorRes = await client.query(
-    `SELECT id, org_id, name, email, phone, address, created_at
-     FROM public.vendors
-     WHERE id = $1`,
+    `SELECT id, org_id, name, email, phone, address, created_at 
+     FROM public.vendors WHERE id = $1`,
     [vendorId]
   );
 
@@ -98,42 +106,37 @@ export async function getServerSideProps({ params }) {
     return { notFound: true };
   }
 
+  const vendor = vendorRes.rows[0];
+
   const policiesRes = await client.query(
-    `SELECT id, vendor_id, vendor_name, policy_number,
-            carrier, coverage_type, expiration_date,
-            effective_date, status, created_at
-     FROM public.policies
-     WHERE vendor_id = $1
+    `SELECT id, vendor_id, vendor_name, policy_number, carrier, coverage_type,
+            expiration_date, effective_date, status, created_at
+     FROM public.policies WHERE vendor_id = $1
      ORDER BY created_at DESC`,
     [vendorId]
   );
 
   await client.end();
 
-  const vendor = vendorRes.rows[0];
   const policies = policiesRes.rows;
   const risk = computeRiskSummary(policies);
 
-  /* ============================================================
-     AI SUMMARY BLOCK
-  ============================================================ */
-
+  /* AI SUMMARY */
   let aiSummary = null;
 
   try {
     const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
     const prompt = `
-You are a ruthless but accurate commercial insurance risk analyst.
-Your tone is blunt, direct, and focused on preventing risk.
-Never hallucinate coverage.
+You are an internal commercial insurance analyst.
+Tone: blunt, factual, risk-focused (not insulting, internal only).
 
-Summarize this vendor’s insurance posture in 4–6 sentences.
+Summarize this vendor's insurance posture in 4–6 sentences.
 
 Vendor: ${vendor.name}
-Total COIs: ${risk.total}
-Expired: ${risk.expired}
+Expired policies: ${risk.expired}
 Expiring soon: ${risk.expSoon}
+Total policies: ${risk.total}
 Latest expiration: ${risk.latestExpiration}
 Risk tier: ${risk.riskTier}
 
@@ -149,11 +152,6 @@ ${JSON.stringify(
   null,
   2
 )}
-
-Tone example:
-“This vendor is a compliance grenade waiting to blow. Expired policies, missing coverage, and sloppy renewals.”
-
-Now: summarize based ONLY on real data.
     `.trim();
 
     const completion = await openai.chat.completions.create({
@@ -162,8 +160,7 @@ Now: summarize based ONLY on real data.
       messages: [
         {
           role: "system",
-          content:
-            "You are an internal risk analyst. No hallucinations. No vendor-facing tone.",
+          content: "You are an internal risk analyst. No hallucinations.",
         },
         { role: "user", content: prompt },
       ],
@@ -171,40 +168,71 @@ Now: summarize based ONLY on real data.
 
     aiSummary = completion.choices[0]?.message?.content?.trim() || null;
   } catch (err) {
-    console.error("AI summary error:", err);
+    console.error("AI error:", err);
   }
 
   return {
-    props: {
-      vendor,
-      policies,
-      risk,
-      aiSummary,
-    },
+    props: { vendor, policies, risk, aiSummary },
   };
 }
 
 /* ============================================================
-   PAGE COMPONENT — DARK HYBRID
+   MAIN PAGE COMPONENT
 ============================================================ */
 
-export default function VendorProfilePage({ vendor, policies, risk, aiSummary }) {
+export default function VendorProfilePage({
+  vendor,
+  policies,
+  risk,
+  aiSummary,
+}) {
   const { total, expired, expSoon, latestExpiration, baseRiskScore, riskTier } =
     risk;
 
   const riskColor =
     baseRiskScore >= 80
-      ? "bg-emerald-500/10 text-emerald-300 border-emerald-500/40"
+      ? "bg-emerald-500/10 border-emerald-500/40 text-emerald-300"
       : baseRiskScore >= 50
-      ? "bg-amber-500/10 text-amber-300 border-amber-500/40"
-      : "bg-rose-500/10 text-rose-300 border-rose-500/40";
+      ? "bg-amber-500/10 border-amber-500/40 text-amber-300"
+      : "bg-rose-500/10 border-rose-500/40 text-rose-300";
+
+  /* EMAIL MODAL STATE */
+  const [emailModal, setEmailModal] = useState(false);
+  const [emailLoading, setEmailLoading] = useState(false);
+  const [emailError, setEmailError] = useState("");
+  const [emailData, setEmailData] = useState(null);
+
+  async function generateRenewalEmail() {
+    setEmailLoading(true);
+    setEmailError("");
+    setEmailData(null);
+
+    try {
+      const res = await fetch("/api/vendor/email-renewal", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ vendorId: vendor.id }),
+      });
+
+      const data = await res.json();
+      if (!data.ok) throw new Error(data.error);
+      setEmailData(data);
+    } catch (err) {
+      setEmailError(err.message);
+    } finally {
+      setEmailLoading(false);
+    }
+  }
+
+  function copyText(t) {
+    navigator.clipboard.writeText(t);
+  }
 
   return (
     <div className="min-h-screen bg-slate-950 text-slate-50">
       <div className="h-1 bg-gradient-to-r from-sky-500 via-purple-500 to-emerald-400" />
 
       <div className="max-w-6xl mx-auto px-4 py-10 space-y-10">
-        
         {/* Breadcrumb */}
         <div className="text-xs text-slate-400 flex items-center gap-2">
           <Link href="/dashboard" className="hover:text-slate-100">Dashboard</Link>
@@ -217,32 +245,42 @@ export default function VendorProfilePage({ vendor, policies, risk, aiSummary })
         {/* HEADER */}
         <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-6">
           <div>
-            <p className="text-xs uppercase tracking-[0.2em] text-slate-500">
-              Vendor Profile
-            </p>
+            <p className="text-[11px] uppercase tracking-[0.18em] text-slate-500">Vendor Profile</p>
             <h1 className="text-4xl font-semibold">{vendor.name}</h1>
 
             <div className="flex flex-wrap items-center gap-2 text-xs text-slate-400 mt-1">
               {vendor.email && <span>{vendor.email}</span>}
               {vendor.phone && <span>• {vendor.phone}</span>}
-              {vendor.address && <span className="truncate max-w-sm">• {vendor.address}</span>}
+              {vendor.address && <span>• {vendor.address}</span>}
             </div>
 
-            {/* ⭐ AI COI CHAT BUTTON */}
+            {/* AI Chat Button */}
             <Link
               href={`/vendor/chat/${vendor.id}`}
               className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-sky-600 text-slate-950 text-xs font-semibold shadow hover:bg-sky-500 transition mt-3"
             >
               Ask This Vendor’s COIs →
             </Link>
+
+            {/* Renewal Email Button */}
+            <button
+              onClick={() => {
+                setEmailModal(true);
+                generateRenewalEmail();
+              }}
+              className="inline-flex items-center gap-2 px-3 py-1.5 ml-2 rounded-full bg-emerald-600 text-slate-950 text-xs font-semibold shadow hover:bg-emerald-500 transition mt-3"
+            >
+              <EnvelopeSimple size={14} />
+              Generate Renewal Email
+            </button>
           </div>
 
           {/* RISK PILL */}
           <div className={`inline-flex items-center gap-2 px-4 py-1.5 rounded-full border ${riskColor}`}>
             <ShieldCheck size={16} weight="bold" />
-            <span className="uppercase tracking-[0.15em] text-[10px]">Risk</span>
+            <span className="text-[10px] uppercase tracking-[0.15em]">Risk</span>
             <span className="text-sm font-semibold">{baseRiskScore}</span>
-            <span className="text-[11px] opacity-70">{riskTier} Risk</span>
+            <span className="text-xs opacity-70">{riskTier} Risk</span>
           </div>
         </div>
 
@@ -256,25 +294,23 @@ export default function VendorProfilePage({ vendor, policies, risk, aiSummary })
 
         {/* MAIN LAYOUT */}
         <section className="grid lg:grid-cols-[1.8fr_2.2fr] gap-8">
-          
-          {/* LEFT COLUMN */}
+          {/* LEFT */}
           <div className="space-y-6">
-
-            {/* AI SUMMARY */}
+            {/* AI Summary */}
             <div className="rounded-2xl border border-slate-800 bg-slate-950/80 p-5 shadow-xl">
-              <div className="flex items-center gap-2 mb-2">
+              <div className="flex gap-2 items-center mb-2">
                 <WarningCircle size={18} className="text-amber-400" />
                 <h2 className="text-sm font-semibold">G-Mode Analyst</h2>
               </div>
 
               {aiSummary ? (
-                <p className="text-sm leading-relaxed text-slate-200">{aiSummary}</p>
+                <p className="text-sm text-slate-200 leading-relaxed">{aiSummary}</p>
               ) : (
                 <p className="text-xs text-slate-500">AI summary unavailable.</p>
               )}
             </div>
 
-            {/* VENDOR DETAILS */}
+            {/* Vendor Details */}
             <div className="rounded-2xl border border-slate-800 bg-slate-950/80 p-5">
               <h3 className="text-sm font-semibold mb-3">Vendor Details</h3>
               <dl className="space-y-2 text-xs text-slate-300">
@@ -288,7 +324,7 @@ export default function VendorProfilePage({ vendor, policies, risk, aiSummary })
             </div>
           </div>
 
-          {/* RIGHT COLUMN: POLICY HISTORY */}
+          {/* RIGHT — POLICIES */}
           <div className="rounded-2xl border border-slate-800 bg-slate-950/80 p-5 overflow-hidden">
             <div className="flex items-center gap-2 mb-3">
               <FileText size={20} className="text-slate-200" />
@@ -310,21 +346,40 @@ export default function VendorProfilePage({ vendor, policies, risk, aiSummary })
                       <th className="py-2 pr-4">Status</th>
                     </tr>
                   </thead>
+
                   <tbody>
                     {policies.map((p) => {
                       const daysLeft = computeDaysLeft(p.expiration_date);
                       const expired = daysLeft !== null && daysLeft < 0;
-                      const soon = daysLeft !== null && daysLeft >= 0 && daysLeft <= 60;
+                      const soon =
+                        daysLeft !== null && daysLeft >= 0 && daysLeft <= 60;
 
                       return (
-                        <tr key={p.id} className="border-b border-slate-900/60 hover:bg-slate-900/60 transition">
-                          <td className="py-2 pr-4 text-slate-100">{p.policy_number || "—"}</td>
-                          <td className="py-2 pr-4 text-slate-200">{p.carrier}</td>
-                          <td className="py-2 pr-4 text-slate-200">{p.coverage_type}</td>
-                          <td className="py-2 pr-4 text-slate-300">{p.effective_date}</td>
-                          <td className="py-2 pr-4 text-slate-300">{p.expiration_date}</td>
+                        <tr
+                          key={p.id}
+                          className="border-b border-slate-900/60 hover:bg-slate-900/60 transition"
+                        >
+                          <td className="py-2 pr-4 text-slate-100">
+                            {p.policy_number || "—"}
+                          </td>
+                          <td className="py-2 pr-4 text-slate-200">
+                            {p.carrier}
+                          </td>
+                          <td className="py-2 pr-4 text-slate-200">
+                            {p.coverage_type}
+                          </td>
+                          <td className="py-2 pr-4 text-slate-300">
+                            {p.effective_date}
+                          </td>
+                          <td className="py-2 pr-4 text-slate-300">
+                            {p.expiration_date}
+                          </td>
                           <td className="py-2 pr-4">
-                            <StatusPill expired={expired} expSoon={soon} rawStatus={p.status} />
+                            <StatusPill
+                              expired={expired}
+                              expSoon={soon}
+                              rawStatus={p.status}
+                            />
                           </td>
                         </tr>
                       );
@@ -338,11 +393,83 @@ export default function VendorProfilePage({ vendor, policies, risk, aiSummary })
 
         {/* BACK LINK */}
         <div className="pt-4">
-          <Link href="/dashboard" className="text-xs text-slate-400 hover:text-slate-100">
+          <Link
+            href="/dashboard"
+            className="text-xs text-slate-400 hover:text-slate-100"
+          >
             ← Back to Dashboard
           </Link>
         </div>
       </div>
+
+      {/* ==========================
+          RENEWAL EMAIL MODAL
+      ========================== */}
+      {emailModal && (
+        <div className="fixed inset-0 flex items-center justify-center bg-black/50 z-50">
+          <div className="bg-slate-900 text-slate-100 w-full max-w-lg rounded-xl border border-slate-700 p-6 shadow-xl relative">
+            <button
+              className="absolute right-4 top-4 text-slate-400 hover:text-slate-200"
+              onClick={() => {
+                setEmailModal(false);
+                setEmailData(null);
+                setEmailError("");
+              }}
+            >
+              <XIcon size={20} />
+            </button>
+
+            <h2 className="text-lg font-bold mb-3 flex items-center gap-2">
+              <EnvelopeSimple size={18} />
+              Renewal Request Email
+            </h2>
+
+            {emailLoading && (
+              <p className="text-sm text-slate-400">Generating…</p>
+            )}
+
+            {emailError && (
+              <p className="text-sm text-rose-400">{emailError}</p>
+            )}
+
+            {emailData && (
+              <>
+                {/* SUBJECT */}
+                <div className="mb-4">
+                  <h3 className="text-sm font-semibold">Subject</h3>
+                  <div className="bg-slate-800 p-3 rounded-lg text-xs border border-slate-700 mt-1">
+                    {emailData.subject}
+                  </div>
+
+                  <button
+                    onClick={() => copyText(emailData.subject)}
+                    className="mt-2 flex items-center gap-2 text-xs text-slate-300 bg-slate-800 px-3 py-1 rounded-lg border border-slate-700 hover:bg-slate-700"
+                  >
+                    <ClipboardText size={14} />
+                    Copy Subject
+                  </button>
+                </div>
+
+                {/* BODY */}
+                <div>
+                  <h3 className="text-sm font-semibold">Body</h3>
+                  <pre className="bg-slate-800 p-3 rounded-lg text-xs border border-slate-700 whitespace-pre-wrap mt-1">
+                    {emailData.body}
+                  </pre>
+
+                  <button
+                    onClick={() => copyText(emailData.body)}
+                    className="mt-2 flex items-center gap-2 text-xs text-slate-300 bg-slate-800 px-3 py-1 rounded-lg border border-slate-700 hover:bg-slate-700"
+                  >
+                    <ClipboardText size={14} />
+                    Copy Body
+                  </button>
+                </div>
+              </>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -361,7 +488,9 @@ function MetricCard({ label, value, tone = "neutral" }) {
 
   return (
     <div className={`rounded-2xl border p-4 ${toneClass}`}>
-      <p className="text-[11px] uppercase tracking-[0.15em] text-slate-400">{label}</p>
+      <p className="text-[11px] uppercase tracking-[0.15em] text-slate-400">
+        {label}
+      </p>
       <p className="text-lg font-semibold text-slate-50">{value}</p>
     </div>
   );
@@ -391,7 +520,9 @@ function StatusPill({ expired, expSoon, rawStatus }) {
       : "bg-emerald-500/10 text-emerald-300 border-emerald-500/40";
 
   return (
-    <span className={`px-2 py-0.5 rounded-full border text-[10px] font-medium ${cls}`}>
+    <span
+      className={`px-2 py-0.5 rounded-full border text-[10px] font-medium ${cls}`}
+    >
       {label}
     </span>
   );
