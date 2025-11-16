@@ -6,7 +6,6 @@ import {
   ShieldCheck,
   WarningCircle,
   FileText,
-  ClockCountdown,
 } from "@phosphor-icons/react";
 
 /* ============================================================
@@ -116,8 +115,9 @@ export async function getServerSideProps({ params }) {
   const risk = computeRiskSummary(policies);
 
   /* ============================================================
-     AI RISK ANALYST (G-MODE)
+     AI SUMMARY BLOCK
   ============================================================ */
+
   let aiSummary = null;
 
   try {
@@ -125,19 +125,17 @@ export async function getServerSideProps({ params }) {
 
     const prompt = `
 You are a ruthless but accurate commercial insurance risk analyst.
-Your tone is direct, blunt, no-fluff, professional, and urgent when needed.
+Your tone is blunt, direct, and focused on preventing risk.
+Never hallucinate coverage.
 
-Summarize the vendor’s insurance risk in 4–6 sentences MAX.
-No bullet points, no headings.
+Summarize this vendor’s insurance posture in 4–6 sentences.
 
-Facts:
-- Vendor name: ${vendor.name}
-- Total policies: ${risk.total}
-- Expired: ${risk.expired}
-- Expiring soon: ${risk.expSoon}
-- Latest expiration: ${risk.latestExpiration}
-- Risk tier: ${risk.riskTier}
-- Base risk score: ${risk.baseRiskScore}
+Vendor: ${vendor.name}
+Total COIs: ${risk.total}
+Expired: ${risk.expired}
+Expiring soon: ${risk.expSoon}
+Latest expiration: ${risk.latestExpiration}
+Risk tier: ${risk.riskTier}
 
 Policies:
 ${JSON.stringify(
@@ -152,10 +150,10 @@ ${JSON.stringify(
   2
 )}
 
-Write in this exact tone:
-“This vendor is a compliance grenade waiting to blow. Expired policies, missing coverage, and sloppy renewals. Fix this before it becomes a claim.”
+Tone example:
+“This vendor is a compliance grenade waiting to blow. Expired policies, missing coverage, and sloppy renewals.”
 
-Now: produce ONE paragraph in this tone, but based only on the real data.
+Now: summarize based ONLY on real data.
     `.trim();
 
     const completion = await openai.chat.completions.create({
@@ -165,7 +163,7 @@ Now: produce ONE paragraph in this tone, but based only on the real data.
         {
           role: "system",
           content:
-            "You are a sharp, no-bullshit insurance analyst. You NEVER hallucinate missing coverage.",
+            "You are an internal risk analyst. No hallucinations. No vendor-facing tone.",
         },
         { role: "user", content: prompt },
       ],
@@ -187,7 +185,7 @@ Now: produce ONE paragraph in this tone, but based only on the real data.
 }
 
 /* ============================================================
-   MAIN COMPONENT — HYBRID DARK PROFILE PAGE
+   PAGE COMPONENT — DARK HYBRID
 ============================================================ */
 
 export default function VendorProfilePage({ vendor, policies, risk, aiSummary }) {
@@ -203,54 +201,52 @@ export default function VendorProfilePage({ vendor, policies, risk, aiSummary })
 
   return (
     <div className="min-h-screen bg-slate-950 text-slate-50">
-      {/* Top Accent Bar */}
       <div className="h-1 bg-gradient-to-r from-sky-500 via-purple-500 to-emerald-400" />
 
-      <div className="max-w-6xl mx-auto px-4 py-8 space-y-10">
+      <div className="max-w-6xl mx-auto px-4 py-10 space-y-10">
+        
         {/* Breadcrumb */}
         <div className="text-xs text-slate-400 flex items-center gap-2">
-          <Link href="/dashboard" className="hover:text-slate-100">
-            Dashboard
-          </Link>
+          <Link href="/dashboard" className="hover:text-slate-100">Dashboard</Link>
           <span>›</span>
-          <Link href="/vendors" className="hover:text-slate-100">
-            Vendors
-          </Link>
+          <Link href="/vendors" className="hover:text-slate-100">Vendors</Link>
           <span>›</span>
           <span className="text-slate-200">{vendor.name}</span>
         </div>
 
-        {/* Header */}
+        {/* HEADER */}
         <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-6">
-          <div className="space-y-1">
+          <div>
             <p className="text-xs uppercase tracking-[0.2em] text-slate-500">
               Vendor Profile
             </p>
             <h1 className="text-4xl font-semibold">{vendor.name}</h1>
 
-            <div className="flex flex-wrap items-center gap-2 text-xs text-slate-400">
+            <div className="flex flex-wrap items-center gap-2 text-xs text-slate-400 mt-1">
               {vendor.email && <span>{vendor.email}</span>}
               {vendor.phone && <span>• {vendor.phone}</span>}
-              {vendor.address && (
-                <span className="truncate max-w-sm">• {vendor.address}</span>
-              )}
+              {vendor.address && <span className="truncate max-w-sm">• {vendor.address}</span>}
             </div>
+
+            {/* ⭐ AI COI CHAT BUTTON */}
+            <Link
+              href={`/vendor/chat/${vendor.id}`}
+              className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-sky-600 text-slate-950 text-xs font-semibold shadow hover:bg-sky-500 transition mt-3"
+            >
+              Ask This Vendor’s COIs →
+            </Link>
           </div>
 
-          {/* Risk Pill */}
-          <div
-            className={`inline-flex items-center gap-2 px-4 py-1.5 rounded-full border ${riskColor}`}
-          >
+          {/* RISK PILL */}
+          <div className={`inline-flex items-center gap-2 px-4 py-1.5 rounded-full border ${riskColor}`}>
             <ShieldCheck size={16} weight="bold" />
-            <span className="uppercase tracking-[0.15em] text-[10px]">
-              Risk
-            </span>
+            <span className="uppercase tracking-[0.15em] text-[10px]">Risk</span>
             <span className="text-sm font-semibold">{baseRiskScore}</span>
             <span className="text-[11px] opacity-70">{riskTier} Risk</span>
           </div>
         </div>
 
-        {/* Stats */}
+        {/* METRICS */}
         <section className="grid grid-cols-2 md:grid-cols-4 gap-4">
           <MetricCard label="Total policies" value={total} />
           <MetricCard label="Expired" value={expired} tone={expired > 0 ? "bad" : "neutral"} />
@@ -258,37 +254,33 @@ export default function VendorProfilePage({ vendor, policies, risk, aiSummary })
           <MetricCard label="Latest expiration" value={latestExpiration || "—"} />
         </section>
 
-        {/* Layout */}
+        {/* MAIN LAYOUT */}
         <section className="grid lg:grid-cols-[1.8fr_2.2fr] gap-8">
-          {/* LEFT */}
+          
+          {/* LEFT COLUMN */}
           <div className="space-y-6">
-            {/* AI Summary */}
+
+            {/* AI SUMMARY */}
             <div className="rounded-2xl border border-slate-800 bg-slate-950/80 p-5 shadow-xl">
               <div className="flex items-center gap-2 mb-2">
                 <WarningCircle size={18} className="text-amber-400" />
                 <h2 className="text-sm font-semibold">G-Mode Analyst</h2>
               </div>
 
-              {/* AI TEXT */}
               {aiSummary ? (
                 <p className="text-sm leading-relaxed text-slate-200">{aiSummary}</p>
               ) : (
-                <p className="text-xs text-slate-500">
-                  AI summary unavailable. Using baseline metrics.
-                </p>
+                <p className="text-xs text-slate-500">AI summary unavailable.</p>
               )}
             </div>
 
-            {/* Vendor details */}
+            {/* VENDOR DETAILS */}
             <div className="rounded-2xl border border-slate-800 bg-slate-950/80 p-5">
               <h3 className="text-sm font-semibold mb-3">Vendor Details</h3>
               <dl className="space-y-2 text-xs text-slate-300">
                 <DetailRow label="Vendor ID" value={vendor.id} />
                 <DetailRow label="Org ID" value={vendor.org_id || "—"} />
-                <DetailRow
-                  label="Created"
-                  value={new Date(vendor.created_at).toLocaleString()}
-                />
+                <DetailRow label="Created" value={new Date(vendor.created_at).toLocaleString()} />
                 <DetailRow label="Email" value={vendor.email || "—"} />
                 <DetailRow label="Phone" value={vendor.phone || "—"} />
                 <DetailRow label="Address" value={vendor.address || "—"} />
@@ -296,7 +288,7 @@ export default function VendorProfilePage({ vendor, policies, risk, aiSummary })
             </div>
           </div>
 
-          {/* RIGHT — Policy Table */}
+          {/* RIGHT COLUMN: POLICY HISTORY */}
           <div className="rounded-2xl border border-slate-800 bg-slate-950/80 p-5 overflow-hidden">
             <div className="flex items-center gap-2 mb-3">
               <FileText size={20} className="text-slate-200" />
@@ -307,7 +299,7 @@ export default function VendorProfilePage({ vendor, policies, risk, aiSummary })
               <p className="text-xs text-slate-500">No policies on file.</p>
             ) : (
               <div className="overflow-x-auto">
-                <table className="min-w-full text-xs text-left border-collapse">
+                <table className="min-w-full text-xs border-collapse">
                   <thead>
                     <tr className="border-b border-slate-800 text-slate-400">
                       <th className="py-2 pr-4">Policy #</th>
@@ -321,23 +313,18 @@ export default function VendorProfilePage({ vendor, policies, risk, aiSummary })
                   <tbody>
                     {policies.map((p) => {
                       const daysLeft = computeDaysLeft(p.expiration_date);
-                      const exp = daysLeft !== null && daysLeft < 0;
+                      const expired = daysLeft !== null && daysLeft < 0;
                       const soon = daysLeft !== null && daysLeft >= 0 && daysLeft <= 60;
 
                       return (
-                        <tr
-                          key={p.id}
-                          className="border-b border-slate-900/60 hover:bg-slate-900/60 transition"
-                        >
-                          <td className="py-2 pr-4 text-slate-100">
-                            {p.policy_number || "—"}
-                          </td>
+                        <tr key={p.id} className="border-b border-slate-900/60 hover:bg-slate-900/60 transition">
+                          <td className="py-2 pr-4 text-slate-100">{p.policy_number || "—"}</td>
                           <td className="py-2 pr-4 text-slate-200">{p.carrier}</td>
                           <td className="py-2 pr-4 text-slate-200">{p.coverage_type}</td>
                           <td className="py-2 pr-4 text-slate-300">{p.effective_date}</td>
                           <td className="py-2 pr-4 text-slate-300">{p.expiration_date}</td>
                           <td className="py-2 pr-4">
-                            <StatusPill expired={exp} expSoon={soon} rawStatus={p.status} />
+                            <StatusPill expired={expired} expSoon={soon} rawStatus={p.status} />
                           </td>
                         </tr>
                       );
@@ -349,7 +336,7 @@ export default function VendorProfilePage({ vendor, policies, risk, aiSummary })
           </div>
         </section>
 
-        {/* Back link */}
+        {/* BACK LINK */}
         <div className="pt-4">
           <Link href="/dashboard" className="text-xs text-slate-400 hover:text-slate-100">
             ← Back to Dashboard
@@ -374,9 +361,7 @@ function MetricCard({ label, value, tone = "neutral" }) {
 
   return (
     <div className={`rounded-2xl border p-4 ${toneClass}`}>
-      <p className="text-[11px] uppercase tracking-[0.15em] text-slate-400">
-        {label}
-      </p>
+      <p className="text-[11px] uppercase tracking-[0.15em] text-slate-400">{label}</p>
       <p className="text-lg font-semibold text-slate-50">{value}</p>
     </div>
   );
@@ -406,9 +391,7 @@ function StatusPill({ expired, expSoon, rawStatus }) {
       : "bg-emerald-500/10 text-emerald-300 border-emerald-500/40";
 
   return (
-    <span
-      className={`px-2 py-0.5 rounded-full border text-[10px] font-medium ${cls}`}
-    >
+    <span className={`px-2 py-0.5 rounded-full border text-[10px] font-medium ${cls}`}>
       {label}
     </span>
   );
