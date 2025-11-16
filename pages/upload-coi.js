@@ -126,7 +126,8 @@ export default function UploadCOI() {
   };
 
   return (
-    <div className="min-h-screen bg-slate-50 py-10 px-4">
+    // ⭐ FIX: Removed the full-screen wrapper that broke global layout
+    <div style={{ padding: "30px 40px" }}>
       <div className="max-w-5xl mx-auto space-y-8">
 
         {/* HEADER */}
@@ -372,7 +373,7 @@ export default function UploadCOI() {
                   </div>
                 )}
 
-                {/* Flags & Missing */}
+                {/* Flags */}
                 <div className="grid grid-cols-2 gap-3">
                   {Array.isArray(result.flags) && result.flags.length > 0 && (
                     <div className="border border-amber-200 bg-amber-50 rounded-xl p-3">
@@ -385,6 +386,7 @@ export default function UploadCOI() {
                     </div>
                   )}
 
+                  {/* Missing Fields */}
                   {Array.isArray(result.missingFields) &&
                     result.missingFields.length > 0 && (
                       <div className="border border-rose-200 bg-rose-50 rounded-xl p-3">
