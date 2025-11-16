@@ -1,9 +1,8 @@
 // components/Header.js
-"use client";
 import { useState } from "react";
 import { supabase } from "../lib/supabaseClient";
 import { CaretDown } from "@phosphor-icons/react";
-import { useOrg } from "../context/OrgContext"; // <-- IMPORTANT
+import { useOrg } from "../context/OrgContext";
 
 export default function Header() {
   const [open, setOpen] = useState(false);
@@ -22,13 +21,16 @@ export default function Header() {
         width: "100%",
         padding: "12px 24px",
         borderBottom: "1px solid #ddd",
-        marginBottom: "24px",
         display: "flex",
         justifyContent: "space-between",
         alignItems: "center",
+        background: "#fff",
+        position: "sticky",
+        top: 0,
+        zIndex: 100,
       }}
     >
-      {/* LEFT SIDE — ORG SWITCHER */}
+      {/* ORG SWITCHER */}
       <div style={{ position: "relative" }}>
         <button
           onClick={() => setOpen(!open)}
@@ -51,7 +53,6 @@ export default function Header() {
           <CaretDown size={14} />
         </button>
 
-        {/* DROPDOWN */}
         {open && (
           <div
             style={{
@@ -63,7 +64,7 @@ export default function Header() {
               border: "1px solid #1e293b",
               borderRadius: "8px",
               padding: "8px",
-              zIndex: 999,
+              zIndex: 9999,
               boxShadow: "0 6px 20px rgba(0,0,0,0.25)",
             }}
           >
@@ -105,7 +106,7 @@ export default function Header() {
         )}
       </div>
 
-      {/* RIGHT SIDE — SIGN OUT */}
+      {/* SIGN OUT */}
       <button
         onClick={handleLogout}
         style={{
