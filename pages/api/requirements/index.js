@@ -1,68 +1,93 @@
 // pages/api/requirements/index.js
-import { Client } from "pg";
+import { supabase } from "../../../lib/supabaseClient";
 
 export default async function handler(req, res) {
-  const client = new Client({
-    connectionString: process.env.DATABASE_URL,
-  });
+  if (req.method === "GET") {
+    const { orgId } = req.query;
 
-  try {
-    await client.connect();
-
-    if (req.method === "GET") {
-      // For now: org_id is ignored / single-org
-      const result = await client.query(
-        `SELECT id, org_id, coverage_type, minimum_limit, required, created_at
-         FROM public.requirements
-         ORDER BY created_at ASC`
-      );
-
-      return res.status(200).json({ ok: true, requirements: result.rows });
+    if (!orgId) {
+      return res.status(400).json({ ok: false, error: "Missing orgId" });
     }
 
-    if (req.method === "POST") {
-      const { coverage_type, minimum_limit, required } = req.body;
+    const { data, error } = await supabase
+      .from("requirements")
+      .select("*")
+      .eq("org_id", orgId)
+      .order("coverage_type", { ascending: true });
 
-      if (!coverage_type || typeof coverage_type !== "string") {
-        return res
-          .status(400)
-          .json({ ok: false, error: "coverage_type is required." });
-      }
-
-      const minLimitParsed =
-        typeof minimum_limit === "number"
-          ? minimum_limit
-          : minimum_limit
-          ? parseInt(minimum_limit, 10)
-          : null;
-
-      const requiredFlag =
-        typeof required === "boolean" ? required : Boolean(required ?? true);
-
-      const insertResult = await client.query(
-        `INSERT INTO public.requirements
-         (org_id, coverage_type, minimum_limit, required)
-         VALUES ($1, $2, $3, $4)
-         RETURNING id, org_id, coverage_type, minimum_limit, required, created_at`,
-        [null, coverage_type.trim(), minLimitParsed, requiredFlag]
-      );
-
-      return res
-        .status(201)
-        .json({ ok: true, requirement: insertResult.rows[0] });
+    if (error) {
+      console.error("Requirements list error:", error);
+      return res.status(500).json({ ok: false, error: error.message });
     }
 
-    return res.status(405).json({ ok: false, error: "Method not allowed" });
-  } catch (err) {
-    console.error("requirements index error:", err);
-    return res
-      .status(500)
-      .json({ ok: false, error: err.message || "Failed to load requirements" });
-  } finally {
-    try {
-      await client.end();
-    } catch {
-      // ignore
-    }
+    return res.status(200).json({ ok: true, requirements: data || [] });
   }
+
+  if (req.method === "POST") {
+    const {
+      id,
+      orgId,
+      coverage_type,
+      min_limit_each_occurrence,
+      min_limit_aggregate,
+      require_additional_insured,
+      require_waiver,
+      min_risk_score,
+      notes,
+    } = req.body;
+
+    if (!orgId || !coverage_type) {
+      return res
+        .status(400)
+        .json({ ok: false, error: "Missing orgId or coverage_type" });
+    }
+
+    const payload = {
+      org_id: orgId,
+      coverage_type,
+      min_limit_each_occurrence,
+      min_limit_aggregate,
+      require_additional_insured,
+      require_waiver,
+      min_risk_score,
+      notes,
+    };
+
+    if (id) payload.id = id;
+
+    const { data, error } = await supabase
+      .from("requirements")
+      .upsert(payload, { onConflict: "id" })
+      .select()
+      .single();
+
+    if (error) {
+      console.error("Requirements upsert error:", error);
+      return res.status(500).json({ ok: false, error: error.message });
+    }
+
+    return res.status(200).json({ ok: true, requirement: data });
+  }
+
+  if (req.method === "DELETE") {
+    const { id } = req.query;
+
+    if (!id) {
+      return res.status(400).json({ ok: false, error: "Missing id" });
+    }
+
+    const { error } = await supabase
+      .from("requirements")
+      .delete()
+      .eq("id", id);
+
+    if (error) {
+      console.error("Requirements delete error:", error);
+      return res.status(500).json({ ok: false, error: error.message });
+    }
+
+    return res.status(200).json({ ok: true });
+  }
+
+  return res.status(405).json({ ok: false, error: "Method not allowed" });
 }
