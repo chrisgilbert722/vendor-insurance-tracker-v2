@@ -9,7 +9,10 @@ import pdfParse from "pdf-parse";
 import OpenAI from "openai";
 import { Client } from "pg";
 
-// 🔥 MAIN VENDOR UPLOAD API
+// ----------------------------------------------------------
+//  GLOBAL VENDOR COI UPLOAD ENGINE
+//  by G-mode
+// ----------------------------------------------------------
 export default async function handler(req, res) {
   if (req.method !== "POST") {
     return res
@@ -19,18 +22,17 @@ export default async function handler(req, res) {
 
   const vendorId = parseInt(req.query.vendorId, 10);
   if (!vendorId || Number.isNaN(vendorId)) {
-    return res.status(400).json({
-      ok: false,
-      error: "Missing or invalid vendorId.",
-    });
+    return res
+      .status(400)
+      .json({ ok: false, error: "Missing or invalid vendorId." });
   }
 
   let db = null;
 
   try {
-    // -----------------------------
-    // 1) Parse vendor's COI upload
-    // -----------------------------
+    // ------------------------------------------------------
+    // 1) Parse uploaded file (PDF)
+    // ------------------------------------------------------
     const form = formidable({});
     const [fields, files] = await form.parse(req);
 
@@ -39,24 +41,18 @@ export default async function handler(req, res) {
 
     const buffer = fs.readFileSync(uploaded.filepath);
     const pdfData = await pdfParse(buffer);
-    if (!pdfData.text) throw new Error("Unreadable PDF");
+    if (!pdfData.text) throw new Error("Unreadable or empty PDF");
 
-    const text = pdfData.text.slice(0, 20000);
+    const extractedText = pdfData.text.slice(0, 20000);
 
-    // -----------------------------
-    // 2) AI COI Extraction (v4o-mini)
-    // -----------------------------
+    // ------------------------------------------------------
+    // 2) AI COI Extraction using GPT-4o-mini
+    // ------------------------------------------------------
     const openai = new OpenAI({
       apiKey: process.env.OPENAI_API_KEY,
     });
 
-    const completion = await openai.chat.completions.create({
-      model: "gpt-4o-mini",
-      temperature: 0,
-      messages: [
-        {
-          role: "system",
-          content: `
+    const extractionPrompt = `
 Extract ALL COI fields in STRICT JSON ONLY:
 
 {
@@ -77,80 +73,91 @@ Extract ALL COI fields in STRICT JSON ONLY:
   "completenessRating": "High" | "Medium" | "Low"
 }
 
-If unsure, use null. No explanations. JSON ONLY.
-`.trim(),
-        },
-        { role: "user", content: text },
+RULES:
+- JSON ONLY
+- No explanation
+- If unsure → null
+- Extract ALL readable data
+`;
+
+    const completion = await openai.chat.completions.create({
+      model: "gpt-4o-mini",
+      temperature: 0,
+      messages: [
+        { role: "system", content: extractionPrompt },
+        { role: "user", content: extractedText },
       ],
     });
 
     const raw = completion.choices[0]?.message?.content || "";
-    const jsonStart = raw.indexOf("{");
-    const jsonEnd = raw.lastIndexOf("}") + 1;
-    const parsed = JSON.parse(raw.slice(jsonStart, jsonEnd));
+    const start = raw.indexOf("{");
+    const end = raw.lastIndexOf("}") + 1;
+    const parsed = JSON.parse(raw.slice(start, end));
 
-    // -------------------------------------------
-    // 3) Insert or update POLICY in Neon database
-    // -------------------------------------------
+    // ------------------------------------------------------
+    // 3) Insert Policy in Neon DB
+    // ------------------------------------------------------
     db = new Client({
       connectionString: process.env.DATABASE_URL,
     });
     await db.connect();
 
-    const insertPolicy = await db.query(
+    const policyInsert = await db.query(
       `
       INSERT INTO public.policies
-      (vendor_id, policy_number, carrier, coverage_type,
-       effective_date, expiration_date, status, vendor_name)
-      VALUES ($1, $2, $3, $4, $5, $6, 'active', $7)
+      (vendor_id, vendor_name, policy_number, carrier, coverage_type,
+       effective_date, expiration_date, status)
+      VALUES ($1,$2,$3,$4,$5,$6,$7,'active')
       RETURNING id
-    `,
+      `,
       [
         vendorId,
+        parsed.vendor_name || null,
         parsed.policy_number,
         parsed.carrier,
         parsed.coverage_type,
         parsed.effective_date,
         parsed.expiration_date,
-        parsed.vendor_name,
       ]
     );
 
-    const policyId = insertPolicy.rows[0].id;
+    const policyId = policyInsert.rows[0].id;
 
-    // -------------------------------------------
-    // 4) Load vendor to get org_id
-    // -------------------------------------------
+    // ------------------------------------------------------
+    // 4) Fetch Vendor → get org_id
+    // ------------------------------------------------------
     const vendorRes = await db.query(
       `SELECT org_id FROM public.vendors WHERE id=$1`,
       [vendorId]
     );
 
     const orgId = vendorRes.rows[0]?.org_id;
+
     if (!orgId) {
-      throw new Error("Vendor is missing org_id.");
+      throw new Error("Vendor missing org_id — cannot run recheck.");
     }
 
-    // -------------------------------------------
-    // 5) Trigger Auto-Recheck Engine
-    // -------------------------------------------
+    // ------------------------------------------------------
+    // 5) Trigger Auto-Recheck Engine (GLOBAL AI COMPLIANCE)
+    // ------------------------------------------------------
     await fetch(
       `${process.env.NEXT_PUBLIC_BASE_URL}/api/recheck/vendor?vendorId=${vendorId}&orgId=${orgId}`
     );
 
-    // -------------------------------------------
-    // 6) Return success + AI extraction
-    // -------------------------------------------
+    // ------------------------------------------------------
+    // 6) Respond with success
+    // ------------------------------------------------------
     return res.status(200).json({
       ok: true,
       policyId,
       extracted: parsed,
     });
+
   } catch (err) {
     console.error("UPLOAD ERROR:", err);
     return res.status(500).json({
       ok: false,
-      error: err.message || "Upload failed.",
+      error: err.message || "Vendor upload failed.",
     });
   } finally {
     try {
