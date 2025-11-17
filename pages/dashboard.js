@@ -182,6 +182,7 @@ function renderComplianceBadge(vendorId, complianceMap) {
     </span>
   );
 }
+
 /* MAIN DASHBOARD */
 export default function Dashboard() {
   const [policies, setPolicies] = useState([]);
@@ -278,7 +279,7 @@ export default function Dashboard() {
 
   async function openDrawer(vendorId) {
     try {
-      const res = await fetch(`/api/vendor/${vendorId}`);
+      const res = await fetch(`/api/vendors/${vendorId}`);
       const data = await res.json();
       if (!res.ok || !data.ok) throw new Error(data.error);
       setDrawerVendor(data.vendor);
@@ -589,6 +590,7 @@ export default function Dashboard() {
     </div>
   );
 }
+
 /* KPI + SCORE CARDS */
 function RiskCard({ label, icon, color, count, delta }) {
   let arrow = "➖";
