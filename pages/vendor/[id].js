@@ -1,575 +1,372 @@
-// pages/alerts.js
-import { useEffect, useMemo, useState } from "react";
-import { useOrg } from "../context/OrgContext";
-import { useRole } from "../lib/useRole";
-import VendorDrawer from "../components/VendorDrawer";
+// pages/vendor/[id].js
+import { useRouter } from "next/router";
+import { useEffect, useState } from "react";
 
-export default function AlertsPage() {
-  const { activeOrgId, loadingOrgs } = useOrg();
-  const { isAdmin, isManager, isViewer, loading: loadingRole } = useRole();
+export default function VendorPage() {
+  const router = useRouter();
+  const { id } = router.query;
 
-  const [alerts, setAlerts] = useState([]);
-  const [aiSummary, setAiSummary] = useState("");
-  const [loading, setLoading] = useState(true);
-  const [filterSeverity, setFilterSeverity] = useState("all");
-  const [searchText, setSearchText] = useState("");
-  const [vendorFilter, setVendorFilter] = useState("all");
+  const [vendor, setVendor] = useState(null);
+  const [org, setOrg] = useState(null);
+  const [policies, setPolicies] = useState([]);
+  const [compliance, setCompliance] = useState(null);
+
+  const [loadingVendor, setLoadingVendor] = useState(true);
+  const [loadingCompliance, setLoadingCompliance] = useState(true);
   const [error, setError] = useState("");
-  const [acknowledged, setAcknowledged] = useState({});
 
-  const [drawerOpen, setDrawerOpen] = useState(false);
-  const [drawerVendor, setDrawerVendor] = useState(null);
-  const [drawerPolicies, setDrawerPolicies] = useState([]);
+  // Fix Plan State
+  const [fixLoading, setFixLoading] = useState(false);
+  const [fixError, setFixError] = useState("");
+  const [fixSteps, setFixSteps] = useState([]);
+  const [fixSubject, setFixSubject] = useState("");
+  const [fixBody, setFixBody] = useState("");
+  const [fixInternalNotes, setFixInternalNotes] = useState("");
 
-  const [collapsed, setCollapsed] = useState({
-    critical: false,
-    warning: false,
-    info: false,
-  });
-
-  // Load Alerts
+  // ------------- LOAD VENDOR / POLICIES ---------------
   useEffect(() => {
-    if (!activeOrgId) return;
+    if (!id) return;
 
-    async function loadAlerts() {
-      setLoading(true);
-      setError("");
-
+    async function loadVendor() {
       try {
-        const res = await fetch(`/api/alerts?orgId=${activeOrgId}`);
+        setLoadingVendor(true);
+
+        const res = await fetch(`/api/vendors/${id}`);
         const data = await res.json();
 
-        if (!res.ok || !data.ok) {
-          throw new Error(data.error || "Failed to load alerts");
-        }
+        if (!res.ok || !data.ok) throw new Error(data.error);
 
-        setAlerts(data.alerts || []);
-        setAiSummary(data.aiSummary?.summaryText || "");
+        setVendor(data.vendor);
+        setOrg(data.organization);
+        setPolicies(data.policies);
+
+        if (data.vendor && data.vendor.org_id) {
+          await loadCompliance(data.vendor.id, data.vendor.org_id);
+        } else {
+          setLoadingCompliance(false);
+        }
       } catch (err) {
         setError(err.message);
+        setLoadingCompliance(false);
       } finally {
-        setLoading(false);
+        setLoadingVendor(false);
       }
     }
 
-    loadAlerts();
-  }, [activeOrgId]);
+    async function loadCompliance(vendorId, orgId) {
+      try {
+        setLoadingCompliance(true);
 
-  // Severity Badge
-  function severityBadgeStyle(sev) {
-    const base = {
-      padding: "4px 10px",
-      borderRadius: "999px",
-      fontSize: "11px",
-      fontWeight: 600,
-      display: "inline-block",
-    };
+        const res = await fetch(
+          `/api/requirements/check?vendorId=${vendorId}&orgId=${orgId}`
+        );
+        const data = await res.json();
 
-    if (sev === "critical")
-      return { ...base, background: "#fee2e2", color: "#b91c1c" };
-    if (sev === "warning")
-      return { ...base, background: "#fef3c7", color: "#b45309" };
-    return { ...base, background: "#dbeafe", color: "#1d4ed8" };
-  }
+        if (!data.ok) throw new Error(data.error);
 
-  // Suggested Action
-  function suggestedAction(alert) {
-    switch (alert.type) {
-      case "missing_coi":
-        return "Request a current COI from this vendor.";
-      case "missing_required_coverage":
-        return "Request an updated COI including the missing coverage.";
-      case "expired_policy":
-        return "Suspend work until active COI is provided.";
-      case "expiring_30":
-        return "Send renewal reminder.";
-      case "limit_each_occurrence_too_low":
-      case "limit_aggregate_too_low":
-        return "Negotiate updated policy limits.";
-      case "missing_additional_insured":
-        return "Request Additional Insured endorsement.";
-      case "missing_waiver":
-        return "Request Waiver of Subrogation.";
-      case "risk_score_below_min":
-        return "Review vendor risk.";
-      case "incomplete_policy_record":
-        return "Request missing policy details.";
-      case "missing_expiration":
-        return "Request corrected COI with proper dates.";
-      default:
-        return "Monitor this issue.";
+        setCompliance(data);
+      } catch (err) {
+        setCompliance({ error: err.message });
+      } finally {
+        setLoadingCompliance(false);
+      }
     }
-  }
 
-  // Derived Counts
-  const severityCounts = useMemo(() => {
-    const counts = { critical: 0, warning: 0, info: 0 };
-    alerts.forEach((a) => {
-      if (a.severity && counts[a.severity] !== undefined) {
-        counts[a.severity] += 1;
-      }
-    });
-    return counts;
-  }, [alerts]);
+    loadVendor();
+  }, [id]);
 
-  const uniqueVendors = useMemo(() => {
-    const map = new Map();
-    alerts.forEach((a) => {
-      if (a.vendor_id && a.vendor_name) {
-        map.set(a.vendor_id, a.vendor_name);
-      }
-    });
-    return Array.from(map.entries());
-  }, [alerts]);
+  // ------------- FIX PLAN LOADER ---------------
+  async function loadFixPlan() {
+    if (!vendor || !org) return;
 
-  // Filter logic
-  const filteredAlerts = alerts.filter((a, idx) => {
-    if (acknowledged[idx]) return false;
-    if (filterSeverity !== "all" && a.severity !== filterSeverity) return false;
-    if (vendorFilter !== "all" && a.vendor_id !== vendorFilter) return false;
-
-    if (!searchText) return true;
-    const t = searchText.toLowerCase();
-    return (
-      (a.vendor_name || "").toLowerCase().includes(t) ||
-      (a.coverage_type || "").toLowerCase().includes(t) ||
-      (a.message || "").toLowerCase().includes(t) ||
-      (a.type || "").toLowerCase().includes(t)
-    );
-  });
-
-  const groupedAlerts = {
-    critical: filteredAlerts.filter((a) => a.severity === "critical"),
-    warning: filteredAlerts.filter((a) => a.severity === "warning"),
-    info: filteredAlerts.filter((a) => a.severity === "info"),
-  };
-
-  const canView = isAdmin || isManager || isViewer;
-  const canManage = isAdmin || isManager;
-
-  async function openDrawer(vendorId) {
-    if (!vendorId) return;
     try {
-      const res = await fetch(`/api/vendors/${vendorId}`);
-      const data = await res.json();
-      if (!res.ok || !data.ok) throw new Error(data.error);
+      setFixLoading(true);
+      setFixError("");
+      setFixSteps([]);
+      setFixSubject("");
+      setFixBody("");
+      setFixInternalNotes("");
 
-      setDrawerVendor(data.vendor);
-      setDrawerPolicies(data.policies);
-      setDrawerOpen(true);
+      const res = await fetch(
+        `/api/vendor/fix-plan?vendorId=${vendor.id}&orgId=${org.id}`
+      );
+      const data = await res.json();
+
+      if (!data.ok) throw new Error(data.error);
+
+      setFixSteps(data.steps || []);
+      setFixSubject(data.vendorEmailSubject || "");
+      setFixBody(data.vendorEmailBody || "");
+      setFixInternalNotes(data.internalNotes || "");
     } catch (err) {
-      console.error("Drawer Load Error:", err);
+      setFixError(err.message || "Failed to generate fix plan.");
+    } finally {
+      setFixLoading(false);
     }
   }
 
-  function closeDrawer() {
-    setDrawerOpen(false);
-    setDrawerVendor(null);
-    setDrawerPolicies([]);
-  }
+  // AUTO RUN FIX PLAN WHEN OPENED VIA ALERTS
+  useEffect(() => {
+    if (router.query.fixPlan === "1" && vendor && org) {
+      loadFixPlan();
+    }
+  }, [router.query, vendor, org]);
 
-  function toggleCollapse(sev) {
-    setCollapsed((prev) => ({ ...prev, [sev]: !prev[sev] }));
-  }
 
-  function markAcknowledged(idx) {
-    setAcknowledged((prev) => ({ ...prev, [idx]: true }));
-  }
-
-  if (!canView) {
+  // -------------- STATES ---------------
+  if (loadingVendor) {
     return (
-      <div style={{ padding: "30px 40px" }}>
-        <h1 style={{ fontSize: 28, fontWeight: 700 }}>Alerts</h1>
-        <p style={{ color: "#6b7280", fontSize: 14 }}>Access denied.</p>
+      <div style={{ padding: 40 }}>
+        <h1>Loading vendor…</h1>
       </div>
     );
   }
 
+  if (error) {
+    return (
+      <div style={{ padding: 40 }}>
+        <h1>Error</h1>
+        <p style={{ color: "red" }}>{error}</p>
+      </div>
+    );
+  }
+
+  if (!vendor) {
+    return (
+      <div style={{ padding: 40 }}>
+        <h1>Vendor not found</h1>
+      </div>
+    );
+  }
+
+  // -------------- UI ---------------
   return (
-    <div style={{ padding: "30px 40px" }}>
-      <h1
-        style={{
-          fontSize: "32px",
-          fontWeight: 700,
-          marginBottom: 6,
-          color: "#0f172a",
-        }}
-      >
-        Alerts
+    <div style={{ padding: "30px 40px", maxWidth: 900, margin: "0 auto" }}>
+      <h1 style={{ fontSize: 32, fontWeight: 700, marginBottom: 6 }}>
+        {vendor.name}
       </h1>
 
-      <p style={{ fontSize: 14, color: "#64748b", marginBottom: 20 }}>
-        All vendor and policy alerts for this organization.
-      </p>
-
-      {error && (
-        <div
-          style={{
-            marginBottom: 16,
-            padding: 12,
-            borderRadius: 8,
-            border: "1px solid #fecaca",
-            background: "#fef2f2",
-            color: "#b91c1c",
-            fontSize: 13,
-          }}
-        >
-          {error}
-        </div>
-      )}
-
-      {(loading || loadingOrgs || loadingRole) && (
-        <p style={{ marginBottom: 20, color: "#6b7280", fontSize: 14 }}>
-          Loading alerts…
+      {org && (
+        <p style={{ fontSize: 13, color: "#6b7280", marginBottom: 20 }}>
+          Organization: <strong>{org.name}</strong>
         </p>
       )}
 
-      {/* KPIs */}
+      {/* ================= COMPLIANCE ================= */}
       <div
         style={{
-          display: "flex",
-          gap: 12,
-          marginBottom: 18,
-          flexWrap: "wrap",
+          background: "white",
+          border: "1px solid #e5e7eb",
+          borderRadius: 12,
+          padding: 20,
+          marginBottom: 30,
         }}
       >
-        <KpiCard label="Critical" value={severityCounts.critical} color="#b91c1c" />
-        <KpiCard label="Warning" value={severityCounts.warning} color="#b45309" />
-        <KpiCard label="Info" value={severityCounts.info} color="#1d4ed8" />
-        <KpiCard label="Total" value={alerts.length} color="#0f172a" />
+        <h2 style={{ fontSize: 18, fontWeight: 600, marginBottom: 8 }}>
+          Compliance Summary
+        </h2>
+
+        {loadingCompliance && <p>Checking compliance…</p>}
+
+        {compliance?.error && (
+          <p style={{ color: "red" }}>❌ {compliance.error}</p>
+        )}
+
+        {!loadingCompliance && compliance && !compliance.error && (
+          <>
+            <p style={{ fontWeight: 600, marginBottom: 8 }}>
+              {compliance.summary}
+            </p>
+
+            {compliance.missing?.length > 0 && (
+              <>
+                <h4 style={{ color: "#b91c1c" }}>Missing Coverage</h4>
+                <ul>
+                  {compliance.missing.map((m, idx) => (
+                    <li key={idx}>{m.coverage_type}</li>
+                  ))}
+                </ul>
+              </>
+            )}
+
+            {compliance.failing?.length > 0 && (
+              <>
+                <h4 style={{ color: "#b45309", marginTop: 12 }}>
+                  Failing Requirements
+                </h4>
+                <ul>
+                  {compliance.failing.map((f, idx) => (
+                    <li key={idx}>
+                      {f.coverage_type}: {f.reason}
+                    </li>
+                  ))}
+                </ul>
+              </>
+            )}
+
+            {compliance.passing?.length > 0 && (
+              <>
+                <h4 style={{ color: "#15803d", marginTop: 12 }}>Passing</h4>
+                <ul>
+                  {compliance.passing.map((p, idx) => (
+                    <li key={idx}>{p.coverage_type}</li>
+                  ))}
+                </ul>
+              </>
+            )}
+          </>
+        )}
       </div>
 
-      {/* AI SUMMARY */}
-      {aiSummary && (
+      {/* ============== FIX PLAN PANEL ============== */}
+      <div
+        style={{
+          background: "white",
+          border: "1px solid #e5e7eb",
+          borderRadius: 12,
+          padding: 20,
+          marginBottom: 30,
+        }}
+      >
         <div
           style={{
-            marginBottom: 24,
-            padding: "20px",
-            borderRadius: "12px",
-            background: "#ffffff",
-            border: "1px solid #e5e7eb",
+            display: "flex",
+            justifyContent: "space-between",
+            marginBottom: 10,
           }}
         >
-          <h2
+          <div>
+            <h2 style={{ fontSize: 18, fontWeight: 600 }}>AI Fix Plan</h2>
+            <p style={{ fontSize: 13, color: "#6b7280" }}>
+              Hybrid G+Legal remediation steps and vendor email.
+            </p>
+          </div>
+
+          <button
+            onClick={loadFixPlan}
+            disabled={fixLoading}
             style={{
-              fontSize: 16,
-              fontWeight: 700,
-              marginBottom: 10,
-              color: "#0f172a",
+              padding: "8px 14px",
+              borderRadius: 999,
+              border: "none",
+              background: "#0f172a",
+              color: "white",
+              cursor: "pointer",
+              fontSize: 13,
+              fontWeight: 600,
             }}
           >
-            AI Risk Summary
-          </h2>
-          <p style={{ color: "#374151", fontSize: 14, whiteSpace: "pre-line" }}>
-            {aiSummary}
-          </p>
+            {fixLoading ? "Generating…" : "Generate Fix Plan"}
+          </button>
         </div>
-      )}
 
-      {/* FILTERS */}
-      <div
-        style={{
-          display: "flex",
-          gap: 12,
-          marginBottom: 16,
-          flexWrap: "wrap",
-          alignItems: "center",
-        }}
-      >
-        {["all", "critical", "warning", "info"].map((sev) => {
-          const active = filterSeverity === sev;
-          const count =
-            sev === "all" ? alerts.length : severityCounts[sev] ?? 0;
-          const label =
-            sev === "all" ? "All" : sev[0].toUpperCase() + sev.slice(1);
+        {fixError && (
+          <p style={{ color: "red", fontSize: 13 }}>{fixError}</p>
+        )}
 
-          return (
-            <button
-              key={sev}
-              onClick={() => setFilterSeverity(sev)}
+        {fixSteps.length > 0 && (
+          <div style={{ marginBottom: 12 }}>
+            <h3 style={{ fontSize: 14, fontWeight: 600 }}>Action Steps</h3>
+            <ol style={{ paddingLeft: 20 }}>
+              {fixSteps.map((s, i) => (
+                <li key={i} style={{ marginBottom: 4 }}>
+                  {s}
+                </li>
+              ))}
+            </ol>
+          </div>
+        )}
+
+        {fixSubject && (
+          <div style={{ marginBottom: 12 }}>
+            <h3 style={{ fontSize: 14, fontWeight: 600 }}>
+              Vendor Email Subject
+            </h3>
+            <p
               style={{
-                padding: "6px 14px",
-                borderRadius: "999px",
-                border: "1px solid #d1d5db",
-                background: active ? "#0f172a" : "#ffffff",
-                color: active ? "#ffffff" : "#374151",
-                cursor: "pointer",
-                fontSize: 13,
-                fontWeight: 600,
-                display: "flex",
-                alignItems: "center",
-                gap: 6,
+                border: "1px solid #e5e7eb",
+                padding: 8,
+                borderRadius: 8,
+                background: "#f9fafb",
               }}
             >
-              {label}
-              <span
-                style={{
-                  fontSize: 11,
-                  padding: "2px 8px",
-                  borderRadius: 999,
-                  background: active ? "#111827" : "#f3f4f6",
-                }}
-              >
-                {count}
-              </span>
-            </button>
-          );
-        })}
+              {fixSubject}
+            </p>
+          </div>
+        )}
 
-        {/* Search */}
-        <input
-          type="text"
-          placeholder="Search vendor, coverage, message..."
-          value={searchText}
-          onChange={(e) => setSearchText(e.target.value)}
-          style={{
-            padding: "8px 10px",
-            borderRadius: 999,
-            border: "1px solid #d1d5db",
-            fontSize: 13,
-            minWidth: "220px",
-          }}
-        />
+        {fixBody && (
+          <div style={{ marginBottom: 12 }}>
+            <h3 style={{ fontSize: 14, fontWeight: 600 }}>Vendor Email Body</h3>
+            <textarea
+              readOnly
+              value={fixBody}
+              style={{
+                width: "100%",
+                minHeight: 140,
+                border: "1px solid #e5e7eb",
+                padding: 10,
+                borderRadius: 8,
+                fontFamily: "system-ui",
+                whiteSpace: "pre-wrap",
+              }}
+            />
+          </div>
+        )}
 
-        {/* Vendor Filter */}
-        <select
-          value={vendorFilter}
-          onChange={(e) =>
-            setVendorFilter(
-              e.target.value === "all" ? "all" : e.target.value
-            )
-          }
-          style={{
-            padding: "8px 10px",
-            borderRadius: 999,
-            border: "1px solid #d1d5db",
-            fontSize: 13,
-          }}
-        >
-          <option value="all">All vendors</option>
-          {uniqueVendors.map(([id, name]) => (
-            <option key={id} value={id}>
-              {name}
-            </option>
-          ))}
-        </select>
+        {fixInternalNotes && (
+          <div>
+            <h3 style={{ fontSize: 14, fontWeight: 600 }}>Internal Notes</h3>
+            <p style={{ whiteSpace: "pre-wrap" }}>{fixInternalNotes}</p>
+          </div>
+        )}
       </div>
 
-      {/* ALERT GROUPS */}
+      {/* ================= POLICIES ================= */}
       <div
         style={{
-          marginTop: 10,
-          borderRadius: 12,
+          background: "white",
           border: "1px solid #e5e7eb",
-          background: "#ffffff",
+          borderRadius: 12,
+          padding: 20,
+          marginBottom: 30,
         }}
       >
-        {["critical", "warning", "info"].map((sev) => {
-          const list = groupedAlerts[sev];
-          const isCollapsed = collapsed[sev];
-          const label = sev[0].toUpperCase() + sev.slice(1);
+        <h2 style={{ fontSize: 18, fontWeight: 600, marginBottom: 12 }}>
+          Policies
+        </h2>
 
-          return (
-            <div key={sev}>
-              {/* Header */}
-              <div
-                style={{
-                  padding: "10px 16px",
-                  borderBottom: "1px solid #e5e7eb",
-                  background: "#f9fafb",
-                  display: "flex",
-                  justifyContent: "space-between",
-                  cursor: "pointer",
-                }}
-                onClick={() => toggleCollapse(sev)}
-              >
-                <div style={{ display: "flex", gap: 8 }}>
-                  <span style={severityBadgeStyle(sev)}>{label}</span>
-                  <span style={{ fontSize: 12, color: "#6b7280" }}>
-                    {list.length} alert{list.length !== 1 ? "s" : ""}
-                  </span>
-                </div>
-                <span style={{ fontSize: 12, color: "#6b7280" }}>
-                  {isCollapsed ? "Show" : "Hide"}
-                </span>
-              </div>
+        {policies.length === 0 && <p>No policies on file.</p>}
 
-              {!isCollapsed && list.length > 0 && (
-                <table
-                  style={{
-                    width: "100%",
-                    borderCollapse: "collapse",
-                    fontSize: 13,
-                  }}
-                >
-                  <thead>
-                    <tr>
-                      <Th>Vendor</Th>
-                      <Th>Coverage</Th>
-                      <Th>Message</Th>
-                      <Th>Suggested Action</Th>
-                      <Th>Actions</Th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {list.map((a, idx) => {
-                      const globalIndex = alerts.indexOf(a);
-
-                      return (
-                        <tr key={idx}>
-                          <td style={td}>
-                            {a.vendor_id ? (
-                              <button
-                                onClick={() => openDrawer(a.vendor_id)}
-                                style={{
-                                  background: "none",
-                                  border: "none",
-                                  cursor: "pointer",
-                                  color: "#2563eb",
-                                  textDecoration: "underline",
-                                }}
-                              >
-                                {a.vendor_name || "—"}
-                              </button>
-                            ) : (
-                              a.vendor_name || "—"
-                            )}
-                          </td>
-
-                          <td style={td}>{a.coverage_type || "—"}</td>
-                          <td style={td}>{a.message}</td>
-
-                          <td style={td}>
-                            <span style={{ fontSize: 12 }}>
-                              {suggestedAction(a)}
-                            </span>
-                          </td>
-
-                          {/* ⭐⭐ FIX PLAN BUTTON ADDED HERE ⭐⭐ */}
-                          <td style={td}>
-                            <div
-                              style={{
-                                display: "flex",
-                                gap: 8,
-                                flexWrap: "wrap",
-                              }}
-                            >
-                              {canManage && (
-                                <>
-                                  {/* FIX PLAN BUTTON */}
-                                  <button
-                                    onClick={() =>
-                                      (window.location.href =
-                                        `/vendor/${a.vendor_id}?fixPlan=1`)
-                                    }
-                                    style={{
-                                      fontSize: 11,
-                                      padding: "4px 10px",
-                                      borderRadius: 999,
-                                      border: "none",
-                                      cursor: "pointer",
-                                      background: "#0f172a",
-                                      color: "white",
-                                    }}
-                                  >
-                                    Fix Plan
-                                  </button>
-
-                                  {/* MARK REVIEWED */}
-                                  <button
-                                    onClick={() => markAcknowledged(globalIndex)}
-                                    style={{
-                                      fontSize: 11,
-                                      padding: "4px 10px",
-                                      borderRadius: 999,
-                                      border: "none",
-                                      cursor: "pointer",
-                                      background: "#e5e7eb",
-                                      color: "#111827",
-                                    }}
-                                  >
-                                    Mark reviewed
-                                  </button>
-                                </>
-                              )}
-                            </div>
-                          </td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              )}
-
-              {!isCollapsed && list.length === 0 && (
-                <div style={{ padding: 12, fontSize: 13, color: "#9ca3af" }}>
-                  No {label.toLowerCase()} alerts.
-                </div>
-              )}
-            </div>
-          );
-        })}
+        {policies.map((p) => (
+          <div
+            key={p.id}
+            style={{
+              padding: 12,
+              background: "#f9fafb",
+              borderRadius: 10,
+              border: "1px solid #e5e7eb",
+              marginBottom: 10,
+            }}
+          >
+            <p style={{ fontWeight: 600 }}>{p.coverage_type}</p>
+            <p>Policy #: {p.policy_number || "—"}</p>
+            <p>Carrier: {p.carrier || "—"}</p>
+            <p>
+              Effective: {p.effective_date || "—"} — Expires:{" "}
+              {p.expiration_date || "—"}
+            </p>
+            <p>
+              Limits: {p.limit_each_occurrence || "—"} /{" "}
+              {p.limit_aggregate || "—"}
+            </p>
+          </div>
+        ))}
       </div>
 
-      {drawerOpen && drawerVendor && (
-        <VendorDrawer
-          vendor={drawerVendor}
-          policies={drawerPolicies}
-          onClose={closeDrawer}
-        />
-      )}
+      <a href="/dashboard" style={{ color: "#2563eb", fontSize: 14 }}>
+        ← Back to Dashboard
+      </a>
     </div>
   );
 }
-
-/* Helpers */
-function Th({ children }) {
-  return (
-    <th
-      style={{
-        padding: "10px 12px",
-        fontSize: 11,
-        fontWeight: 600,
-        textTransform: "uppercase",
-        letterSpacing: "0.08em",
-        color: "#6b7280",
-        borderBottom: "1px solid #e5e7eb",
-        textAlign: "left",
-      }}
-    >
-      {children}
-    </th>
-  );
-}
-
-const td = {
-  padding: "8px 10px",
-  borderBottom: "1px solid #f3f4f6",
-  verticalAlign: "top",
-  fontSize: "13px",
-  color: "#111827",
-};
-
-function KpiCard({ label, value, color }) {
-  return (
-    <div
-      style={{
-        flex: "0 0 auto",
-        minWidth: 120,
-        padding: "10px 14px",
-        borderRadius: 12,
-        background: "#ffffff",
-        border: "1px solid #e5e7eb",
-      }}
-    >
-      <p
-        style={{
-          fontSize: 11,
-          textTransform: "uppercase",
-          letterSpacing: "0.08em",
-          color: "#6b7280",
-          marginBottom: 4,
-        }}
-      >
-        {label}
-      </
