@@ -3,7 +3,6 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/router";
 import { useOrg } from "../../context/OrgContext";
 import { useRole } from "../../lib/useRole";
-import OpenAI from "openai";
 
 export default function VendorProfile() {
   const router = useRouter();
@@ -21,6 +20,14 @@ export default function VendorProfile() {
   const [error, setError] = useState("");
 
   const canManage = isAdmin || isManager;
+
+  // AI Vendor Fix Panel state
+  const [fixLoading, setFixLoading] = useState(false);
+  const [fixError, setFixError] = useState("");
+  const [fixSteps, setFixSteps] = useState([]);
+  const [fixVendorEmail, setFixVendorEmail] = useState("");
+  const [fixInternalNotes, setFixInternalNotes] = useState("");
+
   // Load vendor + policies
   useEffect(() => {
     if (!vendorId || !activeOrgId) return;
@@ -47,24 +54,27 @@ export default function VendorProfile() {
     loadVendor();
   }, [vendorId, activeOrgId]);
 
-  // Load compliance results
+  // Load compliance (NOW using CACHE, not requirements/check)
   useEffect(() => {
     if (!vendorId || !activeOrgId) return;
 
-    fetch(
-      `/api/requirements/check?vendorId=${vendorId}&orgId=${activeOrgId}`
-    )
-      .then((r) => r.json())
+    fetch(`/api/compliance/cache?vendorId=${vendorId}&orgId=${activeOrgId}`)
+      .then((res) => res.json())
       .then((data) => {
         if (data.ok) {
-          setCompliance(data);
+          setCompliance({
+            summary: data.summary,
+            status: data.status,
+            missing: data.missing || [],
+            failing: data.failing || [],
+            passing: data.passing || [],
+            last_checked_at: data.last_checked_at,
+          });
         } else {
           setCompliance({ error: data.error });
         }
       })
-      .catch((err) => {
-        setCompliance({ error: err.message });
-      });
+      .catch((err) => setCompliance({ error: err.message }));
   }, [vendorId, activeOrgId]);
 
   // Load alerts for this vendor
@@ -85,6 +95,30 @@ export default function VendorProfile() {
         console.error("Alert load error:", err);
       });
   }, [vendorId, activeOrgId]);
+
+  // AI fix actions loader
+  async function loadFixPlan() {
+    if (!vendorId || !activeOrgId) return;
+    setFixLoading(true);
+    setFixError("");
+
+    try {
+      const res = await fetch(
+        `/api/vendor/fix-actions?vendorId=${vendorId}&orgId=${activeOrgId}`
+      );
+      const data = await res.json();
+      if (!res.ok || !data.ok) throw new Error(data.error || "Failed");
+
+      setFixSteps(data.steps || []);
+      setFixVendorEmail(data.vendorEmail || "");
+      setFixInternalNotes(data.internalNotes || "");
+    } catch (err) {
+      console.error("Fix actions error:", err);
+      setFixError(err.message || "Failed to load fix actions");
+    } finally {
+      setFixLoading(false);
+    }
+  }
   if (!vendorId || loadingRole) {
     return (
       <div style={{ padding: "30px 40px" }}>
@@ -121,14 +155,14 @@ export default function VendorProfile() {
           color: "#0f172a",
         }}
       >
-        {vendor.name || "Vendor Profile"}
+        {vendor.name || vendor.vendor_name || "Vendor Profile"}
       </h1>
 
       <p style={{ fontSize: 14, color: "#64748b", marginBottom: 20 }}>
         Full risk profile, policies, compliance status, alerts & AI insights.
       </p>
 
-      {/* AI SUMMARY */}
+      {/* AI VENDOR RISK SUMMARY */}
       {aiSummary && (
         <div
           style={{
@@ -195,9 +229,16 @@ export default function VendorProfile() {
               {compliance.summary}
             </p>
 
+            {compliance.last_checked_at && (
+              <p style={{ fontSize: 12, color: "#6b7280", marginTop: 4 }}>
+                Last checked:{" "}
+                {new Date(compliance.last_checked_at).toLocaleString()}
+              </p>
+            )}
+
             {compliance.missing?.length > 0 && (
               <>
-                <h3 style={{ fontSize: 14, marginTop: 12, color: "#b45309" }}>
+                <h3 style={{ fontSize: 14, marginTop: 14, color: "#b45309" }}>
                   Missing Coverage
                 </h3>
                 <ul>
@@ -210,7 +251,7 @@ export default function VendorProfile() {
 
             {compliance.failing?.length > 0 && (
               <>
-                <h3 style={{ fontSize: 14, marginTop: 12, color: "#b91c1c" }}>
+                <h3 style={{ fontSize: 14, marginTop: 14, color: "#b91c1c" }}>
                   Failing Requirements
                 </h3>
                 <ul>
@@ -224,6 +265,166 @@ export default function VendorProfile() {
             )}
           </>
         )}
+      </div>
+
+      {/* AI FIX PANEL */}
+      <div
+        style={{
+          marginBottom: 32,
+          padding: "20px",
+          borderRadius: "12px",
+          background: "#ffffff",
+          border: "1px solid #e5e7eb",
+          boxShadow: "0 8px 24px rgba(15,23,42,0.04)",
+        }}
+      >
+        <div
+          style={{
+            display: "flex",
+            justifyContent: "space-between",
+            alignItems: "flex-start",
+            gap: 12,
+            marginBottom: 12,
+          }}
+        >
+          <div>
+            <h2
+              style={{
+                fontSize: 18,
+                fontWeight: 700,
+                marginBottom: 4,
+                color: "#111827",
+              }}
+            >
+              AI Fix Plan
+            </h2>
+            <p
+              style={{
+                fontSize: 13,
+                color: "#6b7280",
+                margin: 0,
+              }}
+            >
+              Get actionable AI-generated steps, vendor email, and internal notes.
+            </p>
+          </div>
+
+          <button
+            onClick={loadFixPlan}
+            disabled={fixLoading}
+            style={{
+              padding: "8px 14px",
+              borderRadius: 999,
+              border: "none",
+              background: "#0f172a",
+              color: "white",
+              fontSize: 13,
+              fontWeight: 600,
+              cursor: fixLoading ? "not-allowed" : "pointer",
+              whiteSpace: "nowrap",
+            }}
+          >
+            {fixLoading ? "Thinking…" : "Generate Fix Plan"}
+          </button>
+        </div>
+
+        {fixError && (
+          <p style={{ color: "#b91c1c", fontSize: 13, marginBottom: 8 }}>
+            {fixError}
+          </p>
+        )}
+
+        {fixSteps.length > 0 && (
+          <div style={{ marginBottom: 16 }}>
+            <h3
+              style={{
+                fontSize: 14,
+                fontWeight: 600,
+                marginBottom: 6,
+                color: "#111827",
+              }}
+            >
+              Action Steps
+            </h3>
+            <ol
+              style={{
+                paddingLeft: 18,
+                fontSize: 13,
+                color: "#374151",
+              }}
+            >
+              {fixSteps.map((step, i) => (
+                <li key={i} style={{ marginBottom: 4 }}>
+                  {step}
+                </li>
+              ))}
+            </ol>
+          </div>
+        )}
+
+        {fixVendorEmail && (
+          <div style={{ marginBottom: 16 }}>
+            <h3
+              style={{
+                fontSize: 14,
+                fontWeight: 600,
+                marginBottom: 6,
+                color: "#111827",
+              }}
+            >
+              Email to Vendor
+            </h3>
+            <textarea
+              value={fixVendorEmail}
+              readOnly
+              style={{
+                width: "100%",
+                minHeight: 120,
+                padding: 10,
+                borderRadius: 8,
+                border: "1px solid #d1d5db",
+                fontSize: 13,
+                fontFamily: "system-ui, -apple-system, sans-serif",
+                whiteSpace: "pre-wrap",
+              }}
+            />
+          </div>
+        )}
+
+        {fixInternalNotes && (
+          <div>
+            <h3
+              style={{
+                fontSize: 14,
+                fontWeight: 600,
+                marginBottom: 6,
+                color: "#111827",
+              }}
+            >
+              Internal Notes
+            </h3>
+            <p
+              style={{
+                fontSize: 13,
+                color: "#4b5563",
+                whiteSpace: "pre-line",
+              }}
+            >
+              {fixInternalNotes}
+            </p>
+          </div>
+        )}
+
+        {!fixLoading &&
+          !fixError &&
+          fixSteps.length === 0 &&
+          !fixVendorEmail &&
+          !fixInternalNotes && (
+            <p style={{ fontSize: 13, color: "#6b7280", marginTop: 8 }}>
+              No fix plan generated yet. Click{" "}
+              <strong>Generate Fix Plan</strong> to get AI recommendations.
+            </p>
+          )}
       </div>
 
       {/* VENDOR ALERTS */}
@@ -346,6 +547,7 @@ export default function VendorProfile() {
     </div>
   );
 }
+
 /* ===========================
    TABLE + UI HELPERS
    =========================== */
