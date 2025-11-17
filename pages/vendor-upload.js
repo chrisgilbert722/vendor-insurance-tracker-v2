@@ -38,7 +38,8 @@ export default function VendorUploadPage() {
       form.append("file", file);
       form.append("vendorId", String(vendorId));
 
-      const res = await fetch(`/api/vendor-upload?vendor=${vendorId}`, {
+      // ⭐ GLOBAL ELITE UPLOAD ENDPOINT ⭐
+      const res = await fetch(`/api/vendors/upload?vendorId=${vendorId}`, {
         method: "POST",
         body: form,
       });
