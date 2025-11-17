@@ -16,19 +16,19 @@ export default function VendorProfile() {
   const [alerts, setAlerts] = useState([]);
   const [compliance, setCompliance] = useState(null);
   const [aiSummary, setAiSummary] = useState("");
+
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
 
-  const canManage = isAdmin || isManager;
-
-  // AI Vendor Fix Panel state
   const [fixLoading, setFixLoading] = useState(false);
   const [fixError, setFixError] = useState("");
   const [fixSteps, setFixSteps] = useState([]);
   const [fixVendorEmail, setFixVendorEmail] = useState("");
   const [fixInternalNotes, setFixInternalNotes] = useState("");
 
-  // Load vendor + policies
+  const canManage = isAdmin || isManager;
+
+  /* LOAD VENDOR + POLICIES (NEW API) */
   useEffect(() => {
     if (!vendorId || !activeOrgId) return;
 
@@ -37,14 +37,13 @@ export default function VendorProfile() {
       setError("");
 
       try {
-        const res = await fetch(`/api/vendor/${vendorId}`);
+        const res = await fetch(`/api/vendors/${vendorId}`);
         const data = await res.json();
-        if (!res.ok || !data.ok) throw new Error(data.error);
 
+        if (!res.ok || !data.ok) throw new Error(data.error);
         setVendor(data.vendor);
         setPolicies(data.policies);
       } catch (err) {
-        console.error("Vendor load error:", err);
         setError(err.message);
       } finally {
         setLoading(false);
@@ -54,17 +53,16 @@ export default function VendorProfile() {
     loadVendor();
   }, [vendorId, activeOrgId]);
 
-  // Load compliance (NOW using CACHE, not requirements/check)
+  /* LOAD COMPLIANCE (REAL CACHED SYSTEM) */
   useEffect(() => {
     if (!vendorId || !activeOrgId) return;
 
     fetch(`/api/compliance/cache?vendorId=${vendorId}&orgId=${activeOrgId}`)
-      .then((res) => res.json())
+      .then((r) => r.json())
       .then((data) => {
         if (data.ok) {
           setCompliance({
             summary: data.summary,
-            status: data.status,
             missing: data.missing || [],
             failing: data.failing || [],
             passing: data.passing || [],
@@ -74,29 +72,29 @@ export default function VendorProfile() {
           setCompliance({ error: data.error });
         }
       })
-      .catch((err) => setCompliance({ error: err.message }));
+      .catch((err) => {
+        setCompliance({ error: err.message });
+      });
   }, [vendorId, activeOrgId]);
 
-  // Load alerts for this vendor
+  /* LOAD ALERTS FOR THIS VENDOR */
   useEffect(() => {
     if (!activeOrgId) return;
 
     fetch(`/api/alerts?orgId=${activeOrgId}`)
-      .then((res) => res.json())
+      .then((r) => r.json())
       .then((data) => {
-        if (!data.ok) throw new Error(data.error);
+        if (!data.ok) return;
         const vendorAlerts = (data.alerts || []).filter(
-          (a) => a.vendor_id == vendorId
+          (a) => String(a.vendor_id) === String(vendorId)
         );
         setAlerts(vendorAlerts);
         setAiSummary(data.aiSummary?.summaryText || "");
       })
-      .catch((err) => {
-        console.error("Alert load error:", err);
-      });
+      .catch((err) => console.error(err));
   }, [vendorId, activeOrgId]);
 
-  // AI fix actions loader
+  /* AI FIX ACTION PLAN (NEW) */
   async function loadFixPlan() {
     if (!vendorId || !activeOrgId) return;
     setFixLoading(true);
@@ -107,21 +105,22 @@ export default function VendorProfile() {
         `/api/vendor/fix-actions?vendorId=${vendorId}&orgId=${activeOrgId}`
       );
       const data = await res.json();
-      if (!res.ok || !data.ok) throw new Error(data.error || "Failed");
+      if (!res.ok || !data.ok) throw new Error(data.error);
 
       setFixSteps(data.steps || []);
       setFixVendorEmail(data.vendorEmail || "");
       setFixInternalNotes(data.internalNotes || "");
     } catch (err) {
-      console.error("Fix actions error:", err);
-      setFixError(err.message || "Failed to load fix actions");
+      setFixError(err.message || "Failed to load fix plan");
     } finally {
       setFixLoading(false);
     }
   }
+
+  /* LOADING STATES */
   if (!vendorId || loadingRole) {
     return (
-      <div style={{ padding: "30px 40px" }}>
+      <div style={{ padding: 40 }}>
         <p>Loading vendor…</p>
       </div>
     );
@@ -129,7 +128,7 @@ export default function VendorProfile() {
 
   if (error) {
     return (
-      <div style={{ padding: "30px 40px" }}>
+      <div style={{ padding: 40 }}>
         <h1>Error loading vendor</h1>
         <p>{error}</p>
       </div>
@@ -138,7 +137,7 @@ export default function VendorProfile() {
 
   if (!vendor) {
     return (
-      <div style={{ padding: "30px 40px" }}>
+      <div style={{ padding: 40 }}>
         <h1>Vendor not found</h1>
       </div>
     );
@@ -149,13 +148,13 @@ export default function VendorProfile() {
       {/* HEADER */}
       <h1
         style={{
-          fontSize: "32px",
+          fontSize: 32,
           fontWeight: 700,
           marginBottom: 6,
           color: "#0f172a",
         }}
       >
-        {vendor.name || vendor.vendor_name || "Vendor Profile"}
+        {vendor.name || vendor.vendor_name}
       </h1>
 
       <p style={{ fontSize: 14, color: "#64748b", marginBottom: 20 }}>
@@ -167,24 +166,16 @@ export default function VendorProfile() {
         <div
           style={{
             marginBottom: 24,
-            padding: "20px",
-            borderRadius: "12px",
+            padding: 20,
+            borderRadius: 12,
             background: "#ffffff",
             border: "1px solid #e5e7eb",
-            boxShadow: "0 8px 24px rgba(15,23,42,0.04)",
           }}
         >
-          <h2
-            style={{
-              fontSize: 16,
-              fontWeight: 700,
-              marginBottom: 10,
-              color: "#0f172a",
-            }}
-          >
+          <h2 style={{ fontSize: 16, fontWeight: 700, marginBottom: 10 }}>
             AI Vendor Risk Summary
           </h2>
-          <p style={{ color: "#374151", fontSize: 14, whiteSpace: "pre-line" }}>
+          <p style={{ whiteSpace: "pre-line", color: "#374151" }}>
             {aiSummary}
           </p>
         </div>
@@ -194,21 +185,13 @@ export default function VendorProfile() {
       <div
         style={{
           marginBottom: 32,
-          padding: "20px",
-          borderRadius: "12px",
+          padding: 20,
+          borderRadius: 12,
           background: "#ffffff",
           border: "1px solid #e5e7eb",
-          boxShadow: "0 8px 24px rgba(15,23,42,0.04)",
         }}
       >
-        <h2
-          style={{
-            fontSize: 18,
-            fontWeight: 700,
-            marginBottom: 12,
-            color: "#111827",
-          }}
-        >
+        <h2 style={{ fontSize: 18, fontWeight: 700, marginBottom: 12 }}>
           Compliance Summary
         </h2>
 
@@ -218,27 +201,13 @@ export default function VendorProfile() {
           <p style={{ color: "red" }}>{compliance.error}</p>
         ) : (
           <>
-            <p
-              style={{
-                fontSize: 14,
-                color: "#374151",
-                marginBottom: 12,
-                fontWeight: 600,
-              }}
-            >
+            <p style={{ fontSize: 14, color: "#374151", fontWeight: 600 }}>
               {compliance.summary}
             </p>
 
-            {compliance.last_checked_at && (
-              <p style={{ fontSize: 12, color: "#6b7280", marginTop: 4 }}>
-                Last checked:{" "}
-                {new Date(compliance.last_checked_at).toLocaleString()}
-              </p>
-            )}
-
-            {compliance.missing?.length > 0 && (
+            {compliance.missing.length > 0 && (
               <>
-                <h3 style={{ fontSize: 14, marginTop: 14, color: "#b45309" }}>
+                <h3 style={{ fontSize: 14, marginTop: 12, color: "#b45309" }}>
                   Missing Coverage
                 </h3>
                 <ul>
@@ -249,9 +218,9 @@ export default function VendorProfile() {
               </>
             )}
 
-            {compliance.failing?.length > 0 && (
+            {compliance.failing.length > 0 && (
               <>
-                <h3 style={{ fontSize: 14, marginTop: 14, color: "#b91c1c" }}>
+                <h3 style={{ fontSize: 14, marginTop: 12, color: "#b91c1c" }}>
                   Failing Requirements
                 </h3>
                 <ul>
@@ -263,6 +232,19 @@ export default function VendorProfile() {
                 </ul>
               </>
             )}
+
+            {compliance.last_checked_at && (
+              <p
+                style={{
+                  marginTop: 12,
+                  fontSize: 12,
+                  color: "#6b7280",
+                }}
+              >
+                Last checked:{" "}
+                {new Date(compliance.last_checked_at).toLocaleString()}
+              </p>
+            )}
           </>
         )}
       </div>
@@ -271,44 +253,14 @@ export default function VendorProfile() {
       <div
         style={{
           marginBottom: 32,
-          padding: "20px",
-          borderRadius: "12px",
+          padding: 20,
+          borderRadius: 12,
           background: "#ffffff",
           border: "1px solid #e5e7eb",
-          boxShadow: "0 8px 24px rgba(15,23,42,0.04)",
         }}
       >
-        <div
-          style={{
-            display: "flex",
-            justifyContent: "space-between",
-            alignItems: "flex-start",
-            gap: 12,
-            marginBottom: 12,
-          }}
-        >
-          <div>
-            <h2
-              style={{
-                fontSize: 18,
-                fontWeight: 700,
-                marginBottom: 4,
-                color: "#111827",
-              }}
-            >
-              AI Fix Plan
-            </h2>
-            <p
-              style={{
-                fontSize: 13,
-                color: "#6b7280",
-                margin: 0,
-              }}
-            >
-              Get actionable AI-generated steps, vendor email, and internal notes.
-            </p>
-          </div>
-
+        <div style={{ display: "flex", justifyContent: "space-between" }}>
+          <h2 style={{ fontSize: 18, fontWeight: 700 }}>AI Fix Plan</h2>
           <button
             onClick={loadFixPlan}
             disabled={fixLoading}
@@ -318,134 +270,69 @@ export default function VendorProfile() {
               border: "none",
               background: "#0f172a",
               color: "white",
-              fontSize: 13,
+              cursor: "pointer",
               fontWeight: 600,
-              cursor: fixLoading ? "not-allowed" : "pointer",
-              whiteSpace: "nowrap",
             }}
           >
             {fixLoading ? "Thinking…" : "Generate Fix Plan"}
           </button>
         </div>
 
-        {fixError && (
-          <p style={{ color: "#b91c1c", fontSize: 13, marginBottom: 8 }}>
-            {fixError}
-          </p>
-        )}
+        {fixError && <p style={{ color: "red" }}>{fixError}</p>}
 
         {fixSteps.length > 0 && (
-          <div style={{ marginBottom: 16 }}>
-            <h3
-              style={{
-                fontSize: 14,
-                fontWeight: 600,
-                marginBottom: 6,
-                color: "#111827",
-              }}
-            >
-              Action Steps
-            </h3>
-            <ol
-              style={{
-                paddingLeft: 18,
-                fontSize: 13,
-                color: "#374151",
-              }}
-            >
+          <>
+            <h3 style={{ marginTop: 12, fontSize: 14 }}>Action Steps</h3>
+            <ol style={{ paddingLeft: 20 }}>
               {fixSteps.map((step, i) => (
-                <li key={i} style={{ marginBottom: 4 }}>
+                <li key={i} style={{ marginBottom: 5 }}>
                   {step}
                 </li>
               ))}
             </ol>
-          </div>
+          </>
         )}
 
         {fixVendorEmail && (
-          <div style={{ marginBottom: 16 }}>
-            <h3
-              style={{
-                fontSize: 14,
-                fontWeight: 600,
-                marginBottom: 6,
-                color: "#111827",
-              }}
-            >
-              Email to Vendor
-            </h3>
+          <>
+            <h3 style={{ marginTop: 12, fontSize: 14 }}>Email to Vendor</h3>
             <textarea
               value={fixVendorEmail}
               readOnly
               style={{
                 width: "100%",
-                minHeight: 120,
                 padding: 10,
+                minHeight: 120,
                 borderRadius: 8,
-                border: "1px solid #d1d5db",
-                fontSize: 13,
-                fontFamily: "system-ui, -apple-system, sans-serif",
+                border: "1px solid #ccc",
+                fontFamily: "system-ui",
                 whiteSpace: "pre-wrap",
               }}
             />
-          </div>
+          </>
         )}
 
         {fixInternalNotes && (
-          <div>
-            <h3
-              style={{
-                fontSize: 14,
-                fontWeight: 600,
-                marginBottom: 6,
-                color: "#111827",
-              }}
-            >
-              Internal Notes
-            </h3>
-            <p
-              style={{
-                fontSize: 13,
-                color: "#4b5563",
-                whiteSpace: "pre-line",
-              }}
-            >
+          <>
+            <h3 style={{ marginTop: 12, fontSize: 14 }}>Internal Notes</h3>
+            <p style={{ whiteSpace: "pre-line", color: "#374151" }}>
               {fixInternalNotes}
             </p>
-          </div>
+          </>
         )}
-
-        {!fixLoading &&
-          !fixError &&
-          fixSteps.length === 0 &&
-          !fixVendorEmail &&
-          !fixInternalNotes && (
-            <p style={{ fontSize: 13, color: "#6b7280", marginTop: 8 }}>
-              No fix plan generated yet. Click{" "}
-              <strong>Generate Fix Plan</strong> to get AI recommendations.
-            </p>
-          )}
       </div>
 
-      {/* VENDOR ALERTS */}
+      {/* ALERTS */}
       <div
         style={{
           marginBottom: 32,
-          padding: "20px",
+          padding: 20,
           borderRadius: 12,
           background: "#ffffff",
           border: "1px solid #e5e7eb",
-          boxShadow: "0 8px 24px rgba(15,23,42,0.04)",
         }}
       >
-        <h2
-          style={{
-            fontSize: 18,
-            fontWeight: 700,
-            marginBottom: 12,
-            color: "#111827",
-          }}
-        >
+        <h2 style={{ fontSize: 18, fontWeight: 700, marginBottom: 12 }}>
           Alerts
         </h2>
 
@@ -455,10 +342,10 @@ export default function VendorProfile() {
           <div
             key={i}
             style={{
-              padding: "12px",
-              borderRadius: 8,
-              border: "1px solid #e5e7eb",
               marginBottom: 10,
+              padding: 12,
+              borderRadius: 8,
+              border: "1px solid #ddd",
               background:
                 a.severity === "critical"
                   ? "#fee2e2"
@@ -467,11 +354,8 @@ export default function VendorProfile() {
                   : "#eef6ff",
             }}
           >
-            <p style={{ margin: 0, fontWeight: 600 }}>{a.message}</p>
-            <p style={{ margin: 0 }}>Coverage: {a.coverage_type || "—"}</p>
-            <p style={{ margin: 0, fontSize: 12, color: "#4b5563" }}>
-              Severity: {a.severity}
-            </p>
+            <p style={{ fontWeight: 600 }}>{a.message}</p>
+            <p>Coverage: {a.coverage_type}</p>
           </div>
         ))}
       </div>
@@ -480,21 +364,13 @@ export default function VendorProfile() {
       <div
         style={{
           marginBottom: 32,
-          padding: "20px",
+          padding: 20,
           borderRadius: 12,
           background: "#ffffff",
           border: "1px solid #e5e7eb",
-          boxShadow: "0 8px 24px rgba(15,23,42,0.04)",
         }}
       >
-        <h2
-          style={{
-            fontSize: 18,
-            fontWeight: 700,
-            marginBottom: 12,
-            color: "#111827",
-          }}
-        >
+        <h2 style={{ fontSize: 18, fontWeight: 700, marginBottom: 12 }}>
           Policies
         </h2>
 
@@ -504,114 +380,40 @@ export default function VendorProfile() {
           <div
             key={p.id}
             style={{
-              padding: "12px",
+              padding: 12,
               borderRadius: 8,
-              border: "1px solid #e5e7eb",
+              border: "1px solid #ddd",
               marginBottom: 10,
             }}
           >
-            <p style={{ margin: 0, fontWeight: 600 }}>
-              {p.coverage_type || "Coverage"}
+            <p style={{ fontWeight: 600 }}>{p.coverage_type}</p>
+            <p>
+              Carrier: {p.carrier} — Policy #{p.policy_number}
             </p>
-            <p style={{ margin: 0 }}>
-              Carrier: {p.carrier || "—"} • Policy #: {p.policy_number}
+            <p>
+              Effective: {p.effective_date} | Expires: {p.expiration_date}
             </p>
-            <p style={{ margin: 0 }}>Exp: {p.expiration_date || "—"}</p>
-            <p style={{ margin: 0 }}>
-              Limits: {p.limit_each_occurrence || "—"} /{" "}
-              {p.limit_aggregate || "—"}
-            </p>
-            <p style={{ margin: 0 }}>Risk Score: {p.risk_score ?? "—"}</p>
+            <p>Risk Score: {p.risk_score ?? "—"}</p>
           </div>
         ))}
       </div>
 
-      {/* UPLOAD NEW COI FOR THIS VENDOR */}
+      {/* UPLOAD NEW COI */}
       {canManage && (
-        <div>
-          <a
-            href={`/upload-coi?vendor=${vendorId}`}
-            style={{
-              padding: "10px 16px",
-              borderRadius: 999,
-              background: "#0f172a",
-              color: "white",
-              textDecoration: "none",
-              fontWeight: 600,
-            }}
-          >
-            + Upload COI for this vendor
-          </a>
-        </div>
+        <a
+          href={`/upload-coi?vendor=${vendorId}`}
+          style={{
+            padding: "10px 16px",
+            borderRadius: 999,
+            background: "#0f172a",
+            color: "white",
+            fontWeight: 600,
+            textDecoration: "none",
+          }}
+        >
+          + Upload COI for this vendor
+        </a>
       )}
-    </div>
-  );
-}
-
-/* ===========================
-   TABLE + UI HELPERS
-   =========================== */
-
-function Th({ children }) {
-  return (
-    <th
-      style={{
-        padding: "10px 12px",
-        fontSize: "11px",
-        fontWeight: 600,
-        textTransform: "uppercase",
-        letterSpacing: "0.08em",
-        color: "#6b7280",
-        borderBottom: "1px solid #e5e7eb",
-        textAlign: "left",
-      }}
-    >
-      {children}
-    </th>
-  );
-}
-
-const td = {
-  padding: "8px 10px",
-  borderBottom: "1px solid #f3f4f6",
-  verticalAlign: "top",
-  color: "#111827",
-  fontSize: "13px",
-};
-
-function KpiCard({ label, value, color }) {
-  return (
-    <div
-      style={{
-        flex: "0 0 auto",
-        minWidth: 120,
-        padding: "10px 14px",
-        borderRadius: 12,
-        background: "#ffffff",
-        border: "1px solid #e5e7eb",
-        boxShadow: "0 4px 12px rgba(15,23,42,0.04)",
-      }}
-    >
-      <p
-        style={{
-          fontSize: 11,
-          textTransform: "uppercase",
-          letterSpacing: "0.08em",
-          color: "#6b7280",
-          marginBottom: 4,
-        }}
-      >
-        {label}
-      </p>
-      <p
-        style={{
-          fontSize: 20,
-          fontWeight: 700,
-          color,
-        }}
-      >
-        {value}
-      </p>
     </div>
   );
 }
