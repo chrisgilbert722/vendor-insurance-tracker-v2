@@ -122,7 +122,7 @@ export default function AlertsPage() {
     return Array.from(map.entries());
   }, [alerts]);
 
-  // Filter
+  // Filter logic
   const filteredAlerts = alerts.filter((a, idx) => {
     if (acknowledged[idx]) return false;
     if (filterSeverity !== "all" && a.severity !== filterSeverity) return false;
@@ -147,7 +147,6 @@ export default function AlertsPage() {
   const canView = isAdmin || isManager || isViewer;
   const canManage = isAdmin || isManager;
 
-  // ⭐ UPDATED FETCH CALL ⭐
   async function openDrawer(vendorId) {
     if (!vendorId) return;
     try {
@@ -291,7 +290,7 @@ export default function AlertsPage() {
               style={{
                 padding: "6px 14px",
                 borderRadius: "999px",
-                border: "1px solid "#d1d5db",
+                border: "1px solid #d1d5db",
                 background: active ? "#0f172a" : "#ffffff",
                 color: active ? "#ffffff" : "#374151",
                 cursor: "pointer",
@@ -448,13 +447,20 @@ export default function AlertsPage() {
 
                           {/* ⭐⭐ FIX PLAN BUTTON ADDED HERE ⭐⭐ */}
                           <td style={td}>
-                            <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                            <div
+                              style={{
+                                display: "flex",
+                                gap: 8,
+                                flexWrap: "wrap",
+                              }}
+                            >
                               {canManage && (
                                 <>
                                   {/* FIX PLAN BUTTON */}
                                   <button
                                     onClick={() =>
-                                      (window.location.href = `/vendor/${a.vendor_id}?fixPlan=1`)
+                                      (window.location.href =
+                                        `/vendor/${a.vendor_id}?fixPlan=1`)
                                     }
                                     style={{
                                       fontSize: 11,
@@ -560,7 +566,14 @@ function KpiCard({ label, value, color }) {
         style={{
           fontSize: 11,
           textTransform: "uppercase",
-         </p>
+          letterSpacing: "0.08em",
+          color: "#6b7280",
+          marginBottom: 4,
+        }}
+      >
+        {label}
+      </p>
+      <p style={{ fontSize: 20, fontWeight: 700, color }}>{value}</p>
     </div>
   );
 }
