@@ -13,26 +13,39 @@ import {
 
 /**
  * VendorDrawer
- * INTERNAL USE ONLY
+ * INTERNAL USE ONLY — updated to use /api/vendors/[id]
  */
 
 export default function VendorDrawer({ vendor, policies, onClose }) {
   const [compliance, setCompliance] = useState(null);
   const [loading, setLoading] = useState(true);
 
-  // Renewal Email Modal
   const [emailModal, setEmailModal] = useState(false);
   const [emailLoading, setEmailLoading] = useState(false);
   const [emailError, setEmailError] = useState("");
   const [emailData, setEmailData] = useState(null);
 
+  // ⭐ UPDATED FETCH CALL
   useEffect(() => {
     async function loadCompliance() {
       try {
-        const res = await fetch(`/api/compliance/vendor/${vendor.id}`);
+        const res = await fetch(`/api/vendors/${vendor.id}`);
         const data = await res.json();
-        if (!res.ok) throw new Error(data.error);
-        setCompliance(data);
+        if (!res.ok || !data.ok) throw new Error(data.error);
+
+        // build minimal compliance shape
+        const p = data.policies || [];
+        const missing = [];
+        const failing = [];
+
+        // local tiny compliance check
+        p.forEach((policy) => {
+          if (!policy.expiration_date) {
+            missing.push({ coverage_type: policy.coverage_type });
+          }
+        });
+
+        setCompliance({ missing, failing });
       } catch (err) {
         console.error("Compliance error:", err);
       } finally {
@@ -43,6 +56,7 @@ export default function VendorDrawer({ vendor, policies, onClose }) {
     loadCompliance();
   }, [vendor.id]);
 
+  // Renewal email logic
   async function generateRenewalEmail() {
     setEmailLoading(true);
     setEmailError("");
@@ -74,10 +88,7 @@ export default function VendorDrawer({ vendor, policies, onClose }) {
   return (
     <>
       {/* BACKDROP */}
-      <div
-        className="fixed inset-0 bg-black/40 z-40"
-        onClick={onClose}
-      />
+      <div className="fixed inset-0 bg-black/40 z-40" onClick={onClose} />
 
       {/* DRAWER */}
       <div className="fixed right-0 top-0 h-full w-[420px] bg-slate-950 text-slate-100 border-l border-slate-800 shadow-xl z-50 p-6 overflow-y-auto">
