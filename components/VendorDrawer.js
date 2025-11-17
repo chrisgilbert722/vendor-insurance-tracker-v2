@@ -239,6 +239,15 @@ export default function VendorDrawer({ vendor, policies, onClose }) {
                     <ClipboardText size={14} />
                     Copy Body
                   </button>
+                      <button
+  onClick={() => {
+    window.location.href = `/vendor/${vendor.id}?fixPlan=1`;
+  }}
+  className="w-full flex items-center justify-center gap-2 px-3 py-2 bg-emerald-600 hover:bg-emerald-500 text-white text-sm font-semibold rounded-lg shadow transition mt-3"
+>
+  🛠️ Generate Fix Plan
+</button>
+
                 </div>
               </>
             )}
