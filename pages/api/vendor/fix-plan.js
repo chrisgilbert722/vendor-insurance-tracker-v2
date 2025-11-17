@@ -2,19 +2,6 @@
 import { Client } from "pg";
 import OpenAI from "openai";
 
-/**
- * GET /api/vendor/fix-plan?vendorId=...&orgId=...
- *
- * Returns:
- * {
- *   ok: true,
- *   steps: string[],
- *   vendorEmailSubject: string,
- *   vendorEmailBody: string,
- *   internalNotes: string
- * }
- */
-
 export default async function handler(req, res) {
   if (req.method !== "GET") {
     return res
@@ -22,30 +9,28 @@ export default async function handler(req, res) {
       .json({ ok: false, error: "Method not allowed" });
   }
 
-  const { vendorId, orgId } = req.query;
-
-  const parsedVendorId = parseInt(vendorId, 10);
-  if (!parsedVendorId || Number.isNaN(parsedVendorId) || !orgId) {
-    return res.status(400).json({
-      ok: false,
-      error: "Missing or invalid vendorId or orgId",
-    });
-  }
-
   let db = null;
 
   try {
-    // 1️⃣ Load vendor, org, policies from Postgres
+    const { vendorId, orgId } = req.query;
+
+    if (!vendorId || !orgId) {
+      return res
+        .status(400)
+        .json({ ok: false, error: "Missing vendorId or orgId" });
+    }
+
+    // 1️⃣ Load vendor + policies from DB
     db = new Client({ connectionString: process.env.DATABASE_URL });
     await db.connect();
 
     const vendorRes = await db.query(
       `
-      SELECT id, org_id, name, email
+      SELECT id, org_id, name, email, phone, address
       FROM public.vendors
       WHERE id = $1
       `,
-      [parsedVendorId]
+      [vendorId]
     );
 
     if (vendorRes.rows.length === 0) {
@@ -56,110 +41,105 @@ export default async function handler(req, res) {
 
     const vendor = vendorRes.rows[0];
 
-    const orgRes = await db.query(
-      `
-      SELECT id, name
-      FROM public.orgs
-      WHERE id = $1
-      `,
-      [orgId]
-    );
-
-    const organization = orgRes.rows[0] || null;
-
     const policiesRes = await db.query(
       `
-      SELECT
-        id,
-        policy_number,
-        carrier,
-        coverage_type,
-        effective_date,
-        expiration_date,
-        limit_each_occurrence,
-        limit_aggregate,
-        risk_score,
-        status
+      SELECT id,
+             coverage_type,
+             policy_number,
+             carrier,
+             expiration_date,
+             limit_each_occurrence,
+             limit_aggregate,
+             risk_score
       FROM public.policies
       WHERE vendor_id = $1
       ORDER BY created_at DESC
       `,
-      [parsedVendorId]
+      [vendorId]
     );
 
     const policies = policiesRes.rows;
 
-    // 2️⃣ Call existing compliance engine for this vendor + org
+    // 2️⃣ Call existing compliance engine
     const baseUrl =
-      process.env.NEXT_PUBLIC_BASE_URL ||
-      `http://localhost:3000`;
+      process.env.NEXT_PUBLIC_BASE_URL || `http://localhost:3000`;
 
-    const complianceUrl = `${baseUrl}/api/requirements/check?vendorId=${parsedVendorId}&orgId=${orgId}`;
+    const complianceRes = await fetch(
+      `${baseUrl}/api/requirements/check?vendorId=${vendorId}&orgId=${orgId}`
+    );
 
-    const compRes = await fetch(complianceUrl);
-    const compliance = await compRes.json();
+    const complianceData = await complianceRes.json();
 
-    if (!compRes.ok || !compliance.ok) {
-      throw new Error(
-        compliance.error || "Compliance engine failed for Fix Plan"
-      );
+    if (!complianceData.ok) {
+      return res.status(500).json({
+        ok: false,
+        error:
+          complianceData.error ||
+          "Compliance engine failed while generating fix plan.",
+      });
     }
 
-    // 3️⃣ Call OpenAI to generate Hybrid G+Legal Elite Fix Plan
+    const { summary, missing, failing, passing } = complianceData;
+
+    // 3️⃣ AI — Generate fix steps + emails (Hybrid G + Legal)
+    if (!process.env.OPENAI_API_KEY) {
+      return res.status(200).json({
+        ok: true,
+        steps: [
+          "Review missing and failing coverage for this vendor.",
+          "Request an updated COI from the vendor and/or broker.",
+          "Verify the new COI meets all limits, endorsements, and expiration requirements.",
+        ],
+        vendorEmailSubject: "Request for updated Certificate of Insurance",
+        vendorEmailBody:
+          "Please provide an updated Certificate of Insurance that satisfies our current coverage requirements.",
+        internalNotes:
+          "OpenAI API key not configured. AI-generated plan disabled; using fallback generic steps.",
+      });
+    }
+
     const openai = new OpenAI({
       apiKey: process.env.OPENAI_API_KEY,
     });
 
     const prompt = `
-You are an expert commercial insurance compliance analyst.
-Tone: Hybrid G-MODE blunt + professional/legal-safe.
-Audience: Internal risk/compliance team AND vendor contact.
-Your goal: produce a clear, structured remediation plan.
+You are an insurance compliance and construction risk expert writing for a general contractor / owner.
 
-You will receive:
-- Organization info
-- Vendor info
-- Policies on file
-- Compliance engine results (missing/failing/passing)
+Tone: 
+- Hybrid of G-MODE (direct, blunt, no fluff) 
+- AND legal-safe professional: no insults, no threats, no promises beyond facts.
 
-You MUST respond in STRICT JSON:
+You are given:
+- Vendor details
+- Policy snapshot
+- Compliance result (missing coverage, failing rules, passing rules)
+- Summary of compliance status
+
+You must output STRICT JSON:
 
 {
-  "steps": [
-    "Step 1...",
-    "Step 2..."
-  ],
-  "vendorEmailSubject": "Subject line here",
-  "vendorEmailBody": "Full plain text email body here (no JSON, just a normal email).",
-  "internalNotes": "Short, direct, internal note summarizing risk and urgency."
+  "steps": ["...", "...", "..."],
+  "vendorEmailSubject": "...",
+  "vendorEmailBody": "...",
+  "internalNotes": "..."
 }
 
-Rules:
-- Steps: 3–7 concrete actions to bring this vendor into full compliance.
-- Vendor email: clear, polite but firm, no insults, no threats.
-- Internal notes: speak like a senior risk manager talking to PM/GC/legal.
-- Do NOT hallucinate coverage: only reference what is in policies/compliance.
-- If coverage is missing, say what needs to be added or updated.
-- If limits are too low, say what limits are required.
-- If dates are expired/expiring, say renewal is needed with timeline.
-- Use normal English. No markdown. No bullet syntax. Just text where needed.
+Where:
+- "steps" = a 3–7 item checklist of what this organization must do to bring the vendor into compliance.
+- "vendorEmailSubject" = a clear, professional subject line for the email to the vendor or broker.
+- "vendorEmailBody" = a concise, professional email in plain text asking for exactly what is needed (coverage, limits, endorsements, corrected dates, etc.). It must be polite, firm, and legally safe.
+- "internalNotes" = 3–6 sentences explaining to the internal team (GC/owner/compliance staff) what the risk is, what is missing, and what should happen next.
 
-Organization:
-${JSON.stringify(
-  {
-    id: organization?.id || orgId,
-    name: organization?.name || "Unknown organization",
-  },
-  null,
-  2
-)}
+Do not include JSON comments. Do not wrap JSON in markdown. JSON only.
 
 Vendor:
 ${JSON.stringify(
   {
     id: vendor.id,
     name: vendor.name,
-    email: vendor.email || null,
+    email: vendor.email,
+    phone: vendor.phone,
+    address: vendor.address,
   },
   null,
   2
@@ -168,18 +148,18 @@ ${JSON.stringify(
 Policies:
 ${JSON.stringify(policies, null, 2)}
 
-Compliance:
+Compliance Summary:
 ${JSON.stringify(
   {
-    summary: compliance.summary,
-    missing: compliance.missing,
-    failing: compliance.failing,
-    passing: compliance.passing,
+    summary,
+    missing,
+    failing,
+    passing,
   },
   null,
   2
 )}
-`.trim();
+    `.trim();
 
     const completion = await openai.chat.completions.create({
       model: "gpt-4o-mini",
@@ -189,29 +169,33 @@ ${JSON.stringify(
         {
           role: "system",
           content:
-            "You are a hybrid G-Mode blunt + professional commercial insurance compliance analyst.",
+            "You are an AI assistant helping a construction/general contractor compliance team manage vendor insurance risk.",
         },
-        { role: "user", content: prompt },
+        {
+          role: "user",
+          content: prompt,
+        },
       ],
     });
 
-    const content = completion.choices[0]?.message?.content || "{}";
+    const rawContent = completion.choices[0]?.message?.content || "{}";
+
     let parsed;
     try {
-      parsed = JSON.parse(content);
+      parsed = JSON.parse(rawContent);
     } catch (err) {
-      console.error("Fix Plan JSON parse error:", err);
+      console.error("Fix-plan JSON parse error:", err);
       parsed = {
         steps: [
-          "Review missing and failing coverage items.",
-          "Request updated COI and endorsements from vendor/broker.",
-          "Update policies in system and re-run compliance.",
+          "Review vendor coverage against requirements.",
+          "Request updated COI to cure missing or failing coverage.",
+          "Re-run compliance after updated documents are received.",
         ],
-        vendorEmailSubject: "Request for updated Certificate of Insurance",
+        vendorEmailSubject: "Request for updated COI",
         vendorEmailBody:
-          "Please provide an updated COI that satisfies our current coverage and limit requirements.",
+          "Please provide an updated Certificate of Insurance that meets our requirements.",
         internalNotes:
-          "AI response failed to parse as JSON. Using fallback generic remediation steps.",
+          "AI output could not be parsed as JSON. Using fallback generic plan.",
       };
     }
 
@@ -224,15 +208,12 @@ ${JSON.stringify(
     });
   } catch (err) {
     console.error("FIX PLAN ENGINE ERROR:", err);
-    return res.status(500).json({
-      ok: false,
-      error: err.message || "Fix Plan Engine failed",
-    });
+    return res
+      .status(500)
+      .json({ ok: false, error: err.message || "Fix plan generation failed" });
   } finally {
-    if (db) {
-      try {
-        await db.end();
-      } catch (_) {}
-    }
+    try {
+      await db?.end();
+    } catch (_) {}
   }
 }
