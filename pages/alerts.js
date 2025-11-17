@@ -291,7 +291,7 @@ export default function AlertsPage() {
               style={{
                 padding: "6px 14px",
                 borderRadius: "999px",
-                border: "1px solid #d1d5db",
+                border: "1px solid "#d1d5db",
                 background: active ? "#0f172a" : "#ffffff",
                 color: active ? "#ffffff" : "#374151",
                 cursor: "pointer",
@@ -415,6 +415,7 @@ export default function AlertsPage() {
                   <tbody>
                     {list.map((a, idx) => {
                       const globalIndex = alerts.indexOf(a);
+
                       return (
                         <tr key={idx}>
                           <td style={td}>
@@ -435,29 +436,57 @@ export default function AlertsPage() {
                               a.vendor_name || "—"
                             )}
                           </td>
+
                           <td style={td}>{a.coverage_type || "—"}</td>
                           <td style={td}>{a.message}</td>
+
                           <td style={td}>
                             <span style={{ fontSize: 12 }}>
                               {suggestedAction(a)}
                             </span>
                           </td>
+
+                          {/* ⭐⭐ FIX PLAN BUTTON ADDED HERE ⭐⭐ */}
                           <td style={td}>
-                            {canManage && (
-                              <button
-                                onClick={() => markAcknowledged(globalIndex)}
-                                style={{
-                                  fontSize: 11,
-                                  padding: "4px 10px",
-                                  borderRadius: 999,
-                                  background: "#e5e7eb",
-                                  border: "none",
-                                  cursor: "pointer",
-                                }}
-                              >
-                                Mark reviewed
-                              </button>
-                            )}
+                            <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                              {canManage && (
+                                <>
+                                  {/* FIX PLAN BUTTON */}
+                                  <button
+                                    onClick={() =>
+                                      (window.location.href = `/vendor/${a.vendor_id}?fixPlan=1`)
+                                    }
+                                    style={{
+                                      fontSize: 11,
+                                      padding: "4px 10px",
+                                      borderRadius: 999,
+                                      border: "none",
+                                      cursor: "pointer",
+                                      background: "#0f172a",
+                                      color: "white",
+                                    }}
+                                  >
+                                    Fix Plan
+                                  </button>
+
+                                  {/* MARK REVIEWED */}
+                                  <button
+                                    onClick={() => markAcknowledged(globalIndex)}
+                                    style={{
+                                      fontSize: 11,
+                                      padding: "4px 10px",
+                                      borderRadius: 999,
+                                      border: "none",
+                                      cursor: "pointer",
+                                      background: "#e5e7eb",
+                                      color: "#111827",
+                                    }}
+                                  >
+                                    Mark reviewed
+                                  </button>
+                                </>
+                              )}
+                            </div>
                           </td>
                         </tr>
                       );
@@ -509,7 +538,7 @@ function Th({ children }) {
 
 const td = {
   padding: "8px 10px",
-  borderBottom: "1px solid #f3f4f6",
+  borderBottom: "1px solid "#f3f4f6",
   verticalAlign: "top",
   fontSize: "13px",
   color: "#111827",
@@ -531,14 +560,7 @@ function KpiCard({ label, value, color }) {
         style={{
           fontSize: 11,
           textTransform: "uppercase",
-          letterSpacing: "0.08em",
-          color: "#6b7280",
-          marginBottom: 4,
-        }}
-      >
-        {label}
-      </p>
-      <p style={{ fontSize: 20, fontWeight: 700, color }}>{value}</p>
+         </p>
     </div>
   );
 }
