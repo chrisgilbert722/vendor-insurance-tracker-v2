@@ -1,529 +1,415 @@
-import React, { useState } from "react";
-import Link from "next/link";
-import { Client } from "pg";
+// pages/vendor/[id].js
+import { useEffect, useState } from "react";
+import { useRouter } from "next/router";
+import { useOrg } from "../../context/OrgContext";
+import { useRole } from "../../lib/useRole";
 import OpenAI from "openai";
-import {
-  ShieldCheck,
-  WarningCircle,
-  FileText,
-  EnvelopeSimple,
-  X as XIcon,
-  ClipboardText,
-} from "@phosphor-icons/react";
 
-/* ============================================================
-   HELPERS — EXPIRATION + RISK
-============================================================ */
+export default function VendorProfile() {
+  const router = useRouter();
+  const { id: vendorId } = router.query;
 
-function parseExpiration(dateStr) {
-  if (!dateStr) return null;
-  const [mm, dd, yyyy] = dateStr.split("/");
-  if (!mm || !dd || !yyyy) return null;
-  return new Date(`${yyyy}-${mm}-${dd}T00:00:00`);
-}
+  const { activeOrgId } = useOrg();
+  const { isAdmin, isManager, isViewer, loading: loadingRole } = useRole();
 
-function computeDaysLeft(dateStr) {
-  const d = parseExpiration(dateStr);
-  if (!d) return null;
-  return Math.floor((d - new Date()) / (1000 * 60 * 60 * 24));
-}
+  const [vendor, setVendor] = useState(null);
+  const [policies, setPolicies] = useState([]);
+  const [alerts, setAlerts] = useState([]);
+  const [compliance, setCompliance] = useState(null);
+  const [aiSummary, setAiSummary] = useState("");
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
 
-function computeRiskSummary(policies) {
-  if (!policies || policies.length === 0) {
-    return {
-      total: 0,
-      expired: 0,
-      expSoon: 0,
-      latestExpiration: null,
-      baseRiskScore: 0,
-      riskTier: "Unknown",
-    };
-  }
+  const canManage = isAdmin || isManager;
+  // Load vendor + policies
+  useEffect(() => {
+    if (!vendorId || !activeOrgId) return;
 
-  const now = new Date();
-  let expired = 0;
-  let expSoon = 0;
-  const valid = [];
+    async function loadVendor() {
+      setLoading(true);
+      setError("");
 
-  for (const p of policies) {
-    if (!p.expiration_date) continue;
-    const exp = parseExpiration(p.expiration_date);
-    if (!exp) continue;
+      try {
+        const res = await fetch(`/api/vendor/${vendorId}`);
+        const data = await res.json();
+        if (!res.ok || !data.ok) throw new Error(data.error);
 
-    valid.push(exp);
-
-    if (exp < now) expired++;
-    else if ((exp - now) / (1000 * 60 * 60 * 24) <= 60) expSoon++;
-  }
-
-  const sorted = valid.sort((a, b) => b - a);
-  const latestExpiration = sorted[0]
-    ? sorted[0].toISOString().slice(0, 10)
-    : null;
-
-  const baseRiskScore =
-    expired > 0 ? 25 : expSoon > 0 ? 55 : 85;
-
-  const riskTier =
-    baseRiskScore >= 80
-      ? "Low"
-      : baseRiskScore >= 50
-      ? "Moderate"
-      : "High";
-
-  return {
-    total: policies.length,
-    expired,
-    expSoon,
-    latestExpiration,
-    baseRiskScore,
-    riskTier,
-  };
-}
-
-/* ============================================================
-   SERVER-SIDE LOAD + AI SUMMARY
-============================================================ */
-
-export async function getServerSideProps({ params }) {
-  const vendorId = parseInt(params.id, 10);
-  if (Number.isNaN(vendorId)) return { notFound: true };
-
-  const client = new Client({
-    connectionString: process.env.DATABASE_URL,
-  });
-
-  await client.connect();
-
-  const vendorRes = await client.query(
-    `SELECT id, org_id, name, email, phone, address, created_at 
-     FROM public.vendors WHERE id = $1`,
-    [vendorId]
-  );
-
-  if (vendorRes.rows.length === 0) {
-    await client.end();
-    return { notFound: true };
-  }
-
-  const vendor = vendorRes.rows[0];
-
-  const policiesRes = await client.query(
-    `SELECT id, vendor_id, vendor_name, policy_number, carrier, coverage_type,
-            expiration_date, effective_date, status, created_at
-     FROM public.policies WHERE vendor_id = $1
-     ORDER BY created_at DESC`,
-    [vendorId]
-  );
-
-  await client.end();
-
-  const policies = policiesRes.rows;
-  const risk = computeRiskSummary(policies);
-
-  /* AI SUMMARY */
-  let aiSummary = null;
-
-  try {
-    const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
-
-    const prompt = `
-You are an internal commercial insurance analyst.
-Tone: blunt, factual, risk-focused (not insulting, internal only).
-
-Summarize this vendor's insurance posture in 4–6 sentences.
-
-Vendor: ${vendor.name}
-Expired policies: ${risk.expired}
-Expiring soon: ${risk.expSoon}
-Total policies: ${risk.total}
-Latest expiration: ${risk.latestExpiration}
-Risk tier: ${risk.riskTier}
-
-Policies:
-${JSON.stringify(
-  policies.map((p) => ({
-    policy_number: p.policy_number,
-    carrier: p.carrier,
-    type: p.coverage_type,
-    exp: p.expiration_date,
-    status: p.status,
-  })),
-  null,
-  2
-)}
-    `.trim();
-
-    const completion = await openai.chat.completions.create({
-      model: "gpt-4.1-mini",
-      temperature: 0.3,
-      messages: [
-        {
-          role: "system",
-          content: "You are an internal risk analyst. No hallucinations.",
-        },
-        { role: "user", content: prompt },
-      ],
-    });
-
-    aiSummary = completion.choices[0]?.message?.content?.trim() || null;
-  } catch (err) {
-    console.error("AI error:", err);
-  }
-
-  return {
-    props: { vendor, policies, risk, aiSummary },
-  };
-}
-
-/* ============================================================
-   MAIN PAGE COMPONENT
-============================================================ */
-
-export default function VendorProfilePage({
-  vendor,
-  policies,
-  risk,
-  aiSummary,
-}) {
-  const { total, expired, expSoon, latestExpiration, baseRiskScore, riskTier } =
-    risk;
-
-  const riskColor =
-    baseRiskScore >= 80
-      ? "bg-emerald-500/10 border-emerald-500/40 text-emerald-300"
-      : baseRiskScore >= 50
-      ? "bg-amber-500/10 border-amber-500/40 text-amber-300"
-      : "bg-rose-500/10 border-rose-500/40 text-rose-300";
-
-  /* EMAIL MODAL STATE */
-  const [emailModal, setEmailModal] = useState(false);
-  const [emailLoading, setEmailLoading] = useState(false);
-  const [emailError, setEmailError] = useState("");
-  const [emailData, setEmailData] = useState(null);
-
-  async function generateRenewalEmail() {
-    setEmailLoading(true);
-    setEmailError("");
-    setEmailData(null);
-
-    try {
-      const res = await fetch("/api/vendor/email-renewal", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ vendorId: vendor.id }),
-      });
-
-      const data = await res.json();
-      if (!data.ok) throw new Error(data.error);
-      setEmailData(data);
-    } catch (err) {
-      setEmailError(err.message);
-    } finally {
-      setEmailLoading(false);
+        setVendor(data.vendor);
+        setPolicies(data.policies);
+      } catch (err) {
+        console.error("Vendor load error:", err);
+        setError(err.message);
+      } finally {
+        setLoading(false);
+      }
     }
+
+    loadVendor();
+  }, [vendorId, activeOrgId]);
+
+  // Load compliance results
+  useEffect(() => {
+    if (!vendorId || !activeOrgId) return;
+
+    fetch(
+      `/api/requirements/check?vendorId=${vendorId}&orgId=${activeOrgId}`
+    )
+      .then((r) => r.json())
+      .then((data) => {
+        if (data.ok) {
+          setCompliance(data);
+        } else {
+          setCompliance({ error: data.error });
+        }
+      })
+      .catch((err) => {
+        setCompliance({ error: err.message });
+      });
+  }, [vendorId, activeOrgId]);
+
+  // Load alerts for this vendor
+  useEffect(() => {
+    if (!activeOrgId) return;
+
+    fetch(`/api/alerts?orgId=${activeOrgId}`)
+      .then((res) => res.json())
+      .then((data) => {
+        if (!data.ok) throw new Error(data.error);
+        const vendorAlerts = (data.alerts || []).filter(
+          (a) => a.vendor_id == vendorId
+        );
+        setAlerts(vendorAlerts);
+        setAiSummary(data.aiSummary?.summaryText || "");
+      })
+      .catch((err) => {
+        console.error("Alert load error:", err);
+      });
+  }, [vendorId, activeOrgId]);
+  if (!vendorId || loadingRole) {
+    return (
+      <div style={{ padding: "30px 40px" }}>
+        <p>Loading vendor…</p>
+      </div>
+    );
   }
 
-  function copyText(t) {
-    navigator.clipboard.writeText(t);
+  if (error) {
+    return (
+      <div style={{ padding: "30px 40px" }}>
+        <h1>Error loading vendor</h1>
+        <p>{error}</p>
+      </div>
+    );
+  }
+
+  if (!vendor) {
+    return (
+      <div style={{ padding: "30px 40px" }}>
+        <h1>Vendor not found</h1>
+      </div>
+    );
   }
 
   return (
-    <div className="min-h-screen bg-slate-950 text-slate-50">
-      <div className="h-1 bg-gradient-to-r from-sky-500 via-purple-500 to-emerald-400" />
+    <div style={{ padding: "30px 40px" }}>
+      {/* HEADER */}
+      <h1
+        style={{
+          fontSize: "32px",
+          fontWeight: 700,
+          marginBottom: 6,
+          color: "#0f172a",
+        }}
+      >
+        {vendor.name || "Vendor Profile"}
+      </h1>
 
-      <div className="max-w-6xl mx-auto px-4 py-10 space-y-10">
-        {/* Breadcrumb */}
-        <div className="text-xs text-slate-400 flex items-center gap-2">
-          <Link href="/dashboard" className="hover:text-slate-100">Dashboard</Link>
-          <span>›</span>
-          <Link href="/vendors" className="hover:text-slate-100">Vendors</Link>
-          <span>›</span>
-          <span className="text-slate-200">{vendor.name}</span>
-        </div>
+      <p style={{ fontSize: 14, color: "#64748b", marginBottom: 20 }}>
+        Full risk profile, policies, compliance status, alerts & AI insights.
+      </p>
 
-        {/* HEADER */}
-        <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-6">
-          <div>
-            <p className="text-[11px] uppercase tracking-[0.18em] text-slate-500">Vendor Profile</p>
-            <h1 className="text-4xl font-semibold">{vendor.name}</h1>
-
-            <div className="flex flex-wrap items-center gap-2 text-xs text-slate-400 mt-1">
-              {vendor.email && <span>{vendor.email}</span>}
-              {vendor.phone && <span>• {vendor.phone}</span>}
-              {vendor.address && <span>• {vendor.address}</span>}
-            </div>
-
-            {/* AI Chat Button */}
-            <Link
-              href={`/vendor/chat/${vendor.id}`}
-              className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-sky-600 text-slate-950 text-xs font-semibold shadow hover:bg-sky-500 transition mt-3"
-            >
-              Ask This Vendor’s COIs →
-            </Link>
-
-            {/* Renewal Email Button */}
-            <button
-              onClick={() => {
-                setEmailModal(true);
-                generateRenewalEmail();
-              }}
-              className="inline-flex items-center gap-2 px-3 py-1.5 ml-2 rounded-full bg-emerald-600 text-slate-950 text-xs font-semibold shadow hover:bg-emerald-500 transition mt-3"
-            >
-              <EnvelopeSimple size={14} />
-              Generate Renewal Email
-            </button>
-          </div>
-
-          {/* RISK PILL */}
-          <div className={`inline-flex items-center gap-2 px-4 py-1.5 rounded-full border ${riskColor}`}>
-            <ShieldCheck size={16} weight="bold" />
-            <span className="text-[10px] uppercase tracking-[0.15em]">Risk</span>
-            <span className="text-sm font-semibold">{baseRiskScore}</span>
-            <span className="text-xs opacity-70">{riskTier} Risk</span>
-          </div>
-        </div>
-
-        {/* METRICS */}
-        <section className="grid grid-cols-2 md:grid-cols-4 gap-4">
-          <MetricCard label="Total policies" value={total} />
-          <MetricCard label="Expired" value={expired} tone={expired > 0 ? "bad" : "neutral"} />
-          <MetricCard label="Expiring ≤ 60 days" value={expSoon} tone={expSoon > 0 ? "warn" : "neutral"} />
-          <MetricCard label="Latest expiration" value={latestExpiration || "—"} />
-        </section>
-
-        {/* MAIN LAYOUT */}
-        <section className="grid lg:grid-cols-[1.8fr_2.2fr] gap-8">
-          {/* LEFT */}
-          <div className="space-y-6">
-            {/* AI Summary */}
-            <div className="rounded-2xl border border-slate-800 bg-slate-950/80 p-5 shadow-xl">
-              <div className="flex gap-2 items-center mb-2">
-                <WarningCircle size={18} className="text-amber-400" />
-                <h2 className="text-sm font-semibold">G-Mode Analyst</h2>
-              </div>
-
-              {aiSummary ? (
-                <p className="text-sm text-slate-200 leading-relaxed">{aiSummary}</p>
-              ) : (
-                <p className="text-xs text-slate-500">AI summary unavailable.</p>
-              )}
-            </div>
-
-            {/* Vendor Details */}
-            <div className="rounded-2xl border border-slate-800 bg-slate-950/80 p-5">
-              <h3 className="text-sm font-semibold mb-3">Vendor Details</h3>
-              <dl className="space-y-2 text-xs text-slate-300">
-                <DetailRow label="Vendor ID" value={vendor.id} />
-                <DetailRow label="Org ID" value={vendor.org_id || "—"} />
-                <DetailRow label="Created" value={new Date(vendor.created_at).toLocaleString()} />
-                <DetailRow label="Email" value={vendor.email || "—"} />
-                <DetailRow label="Phone" value={vendor.phone || "—"} />
-                <DetailRow label="Address" value={vendor.address || "—"} />
-              </dl>
-            </div>
-          </div>
-
-          {/* RIGHT — POLICIES */}
-          <div className="rounded-2xl border border-slate-800 bg-slate-950/80 p-5 overflow-hidden">
-            <div className="flex items-center gap-2 mb-3">
-              <FileText size={20} className="text-slate-200" />
-              <h2 className="text-sm font-semibold">Policy History</h2>
-            </div>
-
-            {policies.length === 0 ? (
-              <p className="text-xs text-slate-500">No policies on file.</p>
-            ) : (
-              <div className="overflow-x-auto">
-                <table className="min-w-full text-xs border-collapse">
-                  <thead>
-                    <tr className="border-b border-slate-800 text-slate-400">
-                      <th className="py-2 pr-4">Policy #</th>
-                      <th className="py-2 pr-4">Carrier</th>
-                      <th className="py-2 pr-4">Coverage</th>
-                      <th className="py-2 pr-4">Effective</th>
-                      <th className="py-2 pr-4">Expires</th>
-                      <th className="py-2 pr-4">Status</th>
-                    </tr>
-                  </thead>
-
-                  <tbody>
-                    {policies.map((p) => {
-                      const daysLeft = computeDaysLeft(p.expiration_date);
-                      const expired = daysLeft !== null && daysLeft < 0;
-                      const soon =
-                        daysLeft !== null && daysLeft >= 0 && daysLeft <= 60;
-
-                      return (
-                        <tr
-                          key={p.id}
-                          className="border-b border-slate-900/60 hover:bg-slate-900/60 transition"
-                        >
-                          <td className="py-2 pr-4 text-slate-100">
-                            {p.policy_number || "—"}
-                          </td>
-                          <td className="py-2 pr-4 text-slate-200">
-                            {p.carrier}
-                          </td>
-                          <td className="py-2 pr-4 text-slate-200">
-                            {p.coverage_type}
-                          </td>
-                          <td className="py-2 pr-4 text-slate-300">
-                            {p.effective_date}
-                          </td>
-                          <td className="py-2 pr-4 text-slate-300">
-                            {p.expiration_date}
-                          </td>
-                          <td className="py-2 pr-4">
-                            <StatusPill
-                              expired={expired}
-                              expSoon={soon}
-                              rawStatus={p.status}
-                            />
-                          </td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              </div>
-            )}
-          </div>
-        </section>
-
-        {/* BACK LINK */}
-        <div className="pt-4">
-          <Link
-            href="/dashboard"
-            className="text-xs text-slate-400 hover:text-slate-100"
+      {/* AI SUMMARY */}
+      {aiSummary && (
+        <div
+          style={{
+            marginBottom: 24,
+            padding: "20px",
+            borderRadius: "12px",
+            background: "#ffffff",
+            border: "1px solid #e5e7eb",
+            boxShadow: "0 8px 24px rgba(15,23,42,0.04)",
+          }}
+        >
+          <h2
+            style={{
+              fontSize: 16,
+              fontWeight: 700,
+              marginBottom: 10,
+              color: "#0f172a",
+            }}
           >
-            ← Back to Dashboard
-          </Link>
+            AI Vendor Risk Summary
+          </h2>
+          <p style={{ color: "#374151", fontSize: 14, whiteSpace: "pre-line" }}>
+            {aiSummary}
+          </p>
         </div>
-      </div>
+      )}
 
-      {/* ==========================
-          RENEWAL EMAIL MODAL
-      ========================== */}
-      {emailModal && (
-        <div className="fixed inset-0 flex items-center justify-center bg-black/50 z-50">
-          <div className="bg-slate-900 text-slate-100 w-full max-w-lg rounded-xl border border-slate-700 p-6 shadow-xl relative">
-            <button
-              className="absolute right-4 top-4 text-slate-400 hover:text-slate-200"
-              onClick={() => {
-                setEmailModal(false);
-                setEmailData(null);
-                setEmailError("");
+      {/* COMPLIANCE SUMMARY */}
+      <div
+        style={{
+          marginBottom: 32,
+          padding: "20px",
+          borderRadius: "12px",
+          background: "#ffffff",
+          border: "1px solid #e5e7eb",
+          boxShadow: "0 8px 24px rgba(15,23,42,0.04)",
+        }}
+      >
+        <h2
+          style={{
+            fontSize: 18,
+            fontWeight: 700,
+            marginBottom: 12,
+            color: "#111827",
+          }}
+        >
+          Compliance Summary
+        </h2>
+
+        {!compliance ? (
+          <p>Checking compliance…</p>
+        ) : compliance.error ? (
+          <p style={{ color: "red" }}>{compliance.error}</p>
+        ) : (
+          <>
+            <p
+              style={{
+                fontSize: 14,
+                color: "#374151",
+                marginBottom: 12,
+                fontWeight: 600,
               }}
             >
-              <XIcon size={20} />
-            </button>
+              {compliance.summary}
+            </p>
 
-            <h2 className="text-lg font-bold mb-3 flex items-center gap-2">
-              <EnvelopeSimple size={18} />
-              Renewal Request Email
-            </h2>
-
-            {emailLoading && (
-              <p className="text-sm text-slate-400">Generating…</p>
-            )}
-
-            {emailError && (
-              <p className="text-sm text-rose-400">{emailError}</p>
-            )}
-
-            {emailData && (
+            {compliance.missing?.length > 0 && (
               <>
-                {/* SUBJECT */}
-                <div className="mb-4">
-                  <h3 className="text-sm font-semibold">Subject</h3>
-                  <div className="bg-slate-800 p-3 rounded-lg text-xs border border-slate-700 mt-1">
-                    {emailData.subject}
-                  </div>
-
-                  <button
-                    onClick={() => copyText(emailData.subject)}
-                    className="mt-2 flex items-center gap-2 text-xs text-slate-300 bg-slate-800 px-3 py-1 rounded-lg border border-slate-700 hover:bg-slate-700"
-                  >
-                    <ClipboardText size={14} />
-                    Copy Subject
-                  </button>
-                </div>
-
-                {/* BODY */}
-                <div>
-                  <h3 className="text-sm font-semibold">Body</h3>
-                  <pre className="bg-slate-800 p-3 rounded-lg text-xs border border-slate-700 whitespace-pre-wrap mt-1">
-                    {emailData.body}
-                  </pre>
-
-                  <button
-                    onClick={() => copyText(emailData.body)}
-                    className="mt-2 flex items-center gap-2 text-xs text-slate-300 bg-slate-800 px-3 py-1 rounded-lg border border-slate-700 hover:bg-slate-700"
-                  >
-                    <ClipboardText size={14} />
-                    Copy Body
-                  </button>
-                </div>
+                <h3 style={{ fontSize: 14, marginTop: 12, color: "#b45309" }}>
+                  Missing Coverage
+                </h3>
+                <ul>
+                  {compliance.missing.map((m, i) => (
+                    <li key={i}>{m.coverage_type}</li>
+                  ))}
+                </ul>
               </>
             )}
+
+            {compliance.failing?.length > 0 && (
+              <>
+                <h3 style={{ fontSize: 14, marginTop: 12, color: "#b91c1c" }}>
+                  Failing Requirements
+                </h3>
+                <ul>
+                  {compliance.failing.map((f, i) => (
+                    <li key={i}>
+                      {f.coverage_type}: {f.reason}
+                    </li>
+                  ))}
+                </ul>
+              </>
+            )}
+          </>
+        )}
+      </div>
+
+      {/* VENDOR ALERTS */}
+      <div
+        style={{
+          marginBottom: 32,
+          padding: "20px",
+          borderRadius: 12,
+          background: "#ffffff",
+          border: "1px solid #e5e7eb",
+          boxShadow: "0 8px 24px rgba(15,23,42,0.04)",
+        }}
+      >
+        <h2
+          style={{
+            fontSize: 18,
+            fontWeight: 700,
+            marginBottom: 12,
+            color: "#111827",
+          }}
+        >
+          Alerts
+        </h2>
+
+        {alerts.length === 0 && <p>No alerts for this vendor.</p>}
+
+        {alerts.map((a, i) => (
+          <div
+            key={i}
+            style={{
+              padding: "12px",
+              borderRadius: 8,
+              border: "1px solid #e5e7eb",
+              marginBottom: 10,
+              background:
+                a.severity === "critical"
+                  ? "#fee2e2"
+                  : a.severity === "warning"
+                  ? "#fef3c7"
+                  : "#eef6ff",
+            }}
+          >
+            <p style={{ margin: 0, fontWeight: 600 }}>{a.message}</p>
+            <p style={{ margin: 0 }}>Coverage: {a.coverage_type || "—"}</p>
+            <p style={{ margin: 0, fontSize: 12, color: "#4b5563" }}>
+              Severity: {a.severity}
+            </p>
           </div>
+        ))}
+      </div>
+
+      {/* POLICIES */}
+      <div
+        style={{
+          marginBottom: 32,
+          padding: "20px",
+          borderRadius: 12,
+          background: "#ffffff",
+          border: "1px solid #e5e7eb",
+          boxShadow: "0 8px 24px rgba(15,23,42,0.04)",
+        }}
+      >
+        <h2
+          style={{
+            fontSize: 18,
+            fontWeight: 700,
+            marginBottom: 12,
+            color: "#111827",
+          }}
+        >
+          Policies
+        </h2>
+
+        {policies.length === 0 && <p>No policies found.</p>}
+
+        {policies.map((p) => (
+          <div
+            key={p.id}
+            style={{
+              padding: "12px",
+              borderRadius: 8,
+              border: "1px solid #e5e7eb",
+              marginBottom: 10,
+            }}
+          >
+            <p style={{ margin: 0, fontWeight: 600 }}>
+              {p.coverage_type || "Coverage"}
+            </p>
+            <p style={{ margin: 0 }}>
+              Carrier: {p.carrier || "—"} • Policy #: {p.policy_number}
+            </p>
+            <p style={{ margin: 0 }}>Exp: {p.expiration_date || "—"}</p>
+            <p style={{ margin: 0 }}>
+              Limits: {p.limit_each_occurrence || "—"} /{" "}
+              {p.limit_aggregate || "—"}
+            </p>
+            <p style={{ margin: 0 }}>Risk Score: {p.risk_score ?? "—"}</p>
+          </div>
+        ))}
+      </div>
+
+      {/* UPLOAD NEW COI FOR THIS VENDOR */}
+      {canManage && (
+        <div>
+          <a
+            href={`/upload-coi?vendor=${vendorId}`}
+            style={{
+              padding: "10px 16px",
+              borderRadius: 999,
+              background: "#0f172a",
+              color: "white",
+              textDecoration: "none",
+              fontWeight: 600,
+            }}
+          >
+            + Upload COI for this vendor
+          </a>
         </div>
       )}
     </div>
   );
 }
+/* ===========================
+   TABLE + UI HELPERS
+   =========================== */
 
-/* ============================================================
-   SMALL COMPONENTS
-============================================================ */
-
-function MetricCard({ label, value, tone = "neutral" }) {
-  const toneClass =
-    tone === "bad"
-      ? "border-rose-500/40 bg-rose-950/50"
-      : tone === "warn"
-      ? "border-amber-500/40 bg-amber-950/50"
-      : "border-slate-800/80 bg-slate-950/60";
-
+function Th({ children }) {
   return (
-    <div className={`rounded-2xl border p-4 ${toneClass}`}>
-      <p className="text-[11px] uppercase tracking-[0.15em] text-slate-400">
+    <th
+      style={{
+        padding: "10px 12px",
+        fontSize: "11px",
+        fontWeight: 600,
+        textTransform: "uppercase",
+        letterSpacing: "0.08em",
+        color: "#6b7280",
+        borderBottom: "1px solid #e5e7eb",
+        textAlign: "left",
+      }}
+    >
+      {children}
+    </th>
+  );
+}
+
+const td = {
+  padding: "8px 10px",
+  borderBottom: "1px solid #f3f4f6",
+  verticalAlign: "top",
+  color: "#111827",
+  fontSize: "13px",
+};
+
+function KpiCard({ label, value, color }) {
+  return (
+    <div
+      style={{
+        flex: "0 0 auto",
+        minWidth: 120,
+        padding: "10px 14px",
+        borderRadius: 12,
+        background: "#ffffff",
+        border: "1px solid #e5e7eb",
+        boxShadow: "0 4px 12px rgba(15,23,42,0.04)",
+      }}
+    >
+      <p
+        style={{
+          fontSize: 11,
+          textTransform: "uppercase",
+          letterSpacing: "0.08em",
+          color: "#6b7280",
+          marginBottom: 4,
+        }}
+      >
         {label}
       </p>
-      <p className="text-lg font-semibold text-slate-50">{value}</p>
+      <p
+        style={{
+          fontSize: 20,
+          fontWeight: 700,
+          color,
+        }}
+      >
+        {value}
+      </p>
     </div>
-  );
-}
-
-function DetailRow({ label, value }) {
-  return (
-    <div className="flex justify-between text-xs text-slate-300">
-      <span className="text-slate-500">{label}</span>
-      <span className="max-w-[60%] text-right truncate">{value}</span>
-    </div>
-  );
-}
-
-function StatusPill({ expired, expSoon, rawStatus }) {
-  const label = expired
-    ? "Expired"
-    : expSoon
-    ? "Expiring Soon"
-    : rawStatus || "Active";
-
-  const cls =
-    expired
-      ? "bg-rose-500/10 text-rose-300 border-rose-500/40"
-      : expSoon
-      ? "bg-amber-500/10 text-amber-300 border-amber-500/40"
-      : "bg-emerald-500/10 text-emerald-300 border-emerald-500/40";
-
-  return (
-    <span
-      className={`px-2 py-0.5 rounded-full border text-[10px] font-medium ${cls}`}
-    >
-      {label}
-    </span>
   );
 }
