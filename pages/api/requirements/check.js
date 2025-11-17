@@ -1,26 +1,13 @@
 // pages/api/requirements/check.js
-import { supabase } from "../../../lib/supabaseClient";
+import { Client } from "pg";
 
 /**
  * Endpoint: /api/requirements/check?vendorId=123&orgId=456
- *
- * Input:
- *  - vendorId
- *  - orgId
- *
- * Output:
- *  {
- *    ok: true,
- *    coverage: [...],
- *    missing: [...],
- *    failing: [...],
- *    passing: [...],
- *    summary: "...",
- *    vendor: {...}
- *  }
  */
 
 export default async function handler(req, res) {
+  let db = null;
+
   try {
     const { vendorId, orgId } = req.query;
 
@@ -30,59 +17,56 @@ export default async function handler(req, res) {
         .json({ ok: false, error: "Missing vendorId or orgId" });
     }
 
-    // 1️⃣ Load org-wide requirements
-    const { data: reqs, error: reqsError } = await supabase
-      .from("requirements")
-      .select("*")
-      .eq("org_id", orgId);
+    // Connect to database
+    db = new Client({
+      connectionString: process.env.DATABASE_URL,
+    });
+    await db.connect();
 
-    if (reqsError) {
-      console.error("Requirements fetch error:", reqsError);
-      return res.status(500).json({
-        ok: false,
-        error: reqsError.message,
-      });
-    }
+    // 1️⃣ Load org-wide requirements
+    const reqResult = await db.query(
+      `SELECT *
+       FROM public.requirements
+       WHERE org_id = $1
+       ORDER BY created_at ASC`,
+      [orgId]
+    );
+
+    const requirements = reqResult.rows;
 
     // 2️⃣ Load vendor policies
-    const { data: policies, error: policyErr } = await supabase
-      .from("policies")
-      .select("*")
-      .eq("vendor_id", vendorId);
+    const policyResult = await db.query(
+      `SELECT *
+       FROM public.policies
+       WHERE vendor_id = $1
+       ORDER BY created_at DESC`,
+      [vendorId]
+    );
 
-    if (policyErr) {
-      console.error("Policies fetch error:", policyErr);
-      return res.status(500).json({
-        ok: false,
-        error: policyErr.message,
-      });
-    }
+    const policies = policyResult.rows;
 
     // 3️⃣ Evaluate compliance
     const missing = [];
     const failing = [];
     const passing = [];
 
-    for (const rule of reqs) {
-      // Find matching vendor policy for this coverage type
+    for (const rule of requirements) {
       const match = policies.find(
         (p) =>
           p.coverage_type?.toLowerCase().trim() ===
           rule.coverage_type?.toLowerCase().trim()
       );
 
-      // If vendor has NO policy of this type → missing
+      // ❌ Missing coverage
       if (!match) {
         missing.push({
           coverage_type: rule.coverage_type,
-          reason: "Missing coverage",
+          reason: "Missing required coverage",
         });
         continue;
       }
 
-      // POLICY MATCHED → check details
-
-      // CHECK MIN EACH OCCURRENCE
+      // ❌ Each Occurrence
       if (
         rule.min_limit_each_occurrence &&
         (!match.limit_each_occurrence ||
@@ -90,12 +74,12 @@ export default async function handler(req, res) {
       ) {
         failing.push({
           coverage_type: rule.coverage_type,
-          reason: `Each Occurrence limit too low (${match.limit_each_occurrence} < ${rule.min_limit_each_occurrence})`,
+          reason: `Each Occurrence too low (${match.limit_each_occurrence} < ${rule.min_limit_each_occurrence})`,
         });
         continue;
       }
 
-      // CHECK MIN AGGREGATE
+      // ❌ Aggregate
       if (
         rule.min_limit_aggregate &&
         (!match.limit_aggregate ||
@@ -103,16 +87,13 @@ export default async function handler(req, res) {
       ) {
         failing.push({
           coverage_type: rule.coverage_type,
-          reason: `Aggregate limit too low (${match.limit_aggregate} < ${rule.min_limit_aggregate})`,
+          reason: `Aggregate too low (${match.limit_aggregate} < ${rule.min_limit_aggregate})`,
         });
         continue;
       }
 
-      // CHECK ADDITIONAL INSURED
-      if (
-        rule.require_additional_insured &&
-        !match.additional_insured
-      ) {
+      // ❌ Additional Insured Required
+      if (rule.require_additional_insured && !match.additional_insured) {
         failing.push({
           coverage_type: rule.coverage_type,
           reason: "Missing Additional Insured endorsement",
@@ -120,7 +101,7 @@ export default async function handler(req, res) {
         continue;
       }
 
-      // CHECK WAIVER OF SUBROGATION
+      // ❌ Waiver of Subrogation
       if (rule.require_waiver && !match.waiver_of_subrogation) {
         failing.push({
           coverage_type: rule.coverage_type,
@@ -129,7 +110,7 @@ export default async function handler(req, res) {
         continue;
       }
 
-      // CHECK MIN RISK SCORE
+      // ❌ Risk Score too low
       if (
         rule.min_risk_score &&
         match.risk_score &&
@@ -142,31 +123,40 @@ export default async function handler(req, res) {
         continue;
       }
 
-      // PASSED ALL CHECKS
+      // ✅ Passed everything
       passing.push({
         coverage_type: rule.coverage_type,
         reason: "Compliant",
       });
     }
 
-    // 4️⃣ Build summary
+    // 4️⃣ Summary
     let summary = "Fully compliant";
 
     if (missing.length > 0) summary = "Missing required coverage";
-    if (failing.length > 0) summary = "Coverage does not meet requirements";
+    if (failing.length > 0) summary = "Coverage failing compliance rules";
 
     return res.status(200).json({
       ok: true,
+      vendorId,
+      orgId,
       summary,
       missing,
       failing,
       passing,
       policyCount: policies.length,
+      requirementCount: requirements.length,
     });
   } catch (err) {
     console.error("COMPLIANCE CHECK ERROR:", err);
     return res
       .status(500)
       .json({ ok: false, error: err.message || "Compliance check failed" });
+  } finally {
+    if (db) {
+      try {
+        await db.end();
+      } catch (_) {}
+    }
   }
 }
