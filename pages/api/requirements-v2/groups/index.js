@@ -1,10 +1,8 @@
-// pages/api/requirements-v2/groups/index.js
 import { supabase } from "../../../../lib/supabaseClient";
 
 export default async function handler(req, res) {
   const { method } = req;
 
-  // GET: list groups for an org
   if (method === "GET") {
     const { orgId } = req.query;
 
@@ -31,20 +29,20 @@ export default async function handler(req, res) {
       return res.status(500).json({ ok: false, error: error.message });
     }
 
-    const groups = data?.map((g) => ({
-      id: g.id,
-      org_id: g.org_id,
-      name: g.name,
-      description: g.description,
-      is_active: g.is_active,
-      created_at: g.created_at,
-      rule_count: g.requirements_rules_v2?.length || 0,
-    })) || [];
+    const groups =
+      data?.map((g) => ({
+        id: g.id,
+        org_id: g.org_id,
+        name: g.name,
+        description: g.description,
+        is_active: g.is_active,
+        created_at: g.created_at,
+        rule_count: g.requirements_rules_v2?.length || 0,
+      })) || [];
 
     return res.status(200).json({ ok: true, groups });
   }
 
-  // POST: create group
   if (method === "POST") {
     const { orgId, name, description } = req.body || {};
 
@@ -72,22 +70,16 @@ export default async function handler(req, res) {
     return res.status(201).json({ ok: true, group: data });
   }
 
-  // PUT: update group
   if (method === "PUT") {
     const { id, name, description, is_active } = req.body || {};
 
-    if (!id) {
+    if (!id)
       return res.status(400).json({ ok: false, error: "Missing group id" });
-    }
 
     const updates = {};
     if (name !== undefined) updates.name = name;
     if (description !== undefined) updates.description = description;
     if (is_active !== undefined) updates.is_active = is_active;
-
-    if (Object.keys(updates).length === 0) {
-      return res.status(400).json({ ok: false, error: "No fields to update" });
-    }
 
     const { data, error } = await supabase
       .from("requirements_groups_v2")
@@ -101,20 +93,16 @@ export default async function handler(req, res) {
       return res.status(500).json({ ok: false, error: error.message });
     }
 
-    if (!data) {
+    if (!data)
       return res.status(404).json({ ok: false, error: "Group not found" });
-    }
 
     return res.status(200).json({ ok: true, group: data });
   }
 
-  // DELETE: delete group
   if (method === "DELETE") {
     const { id } = req.query;
-
-    if (!id) {
+    if (!id)
       return res.status(400).json({ ok: false, error: "Missing group id" });
-    }
 
     const { error } = await supabase
       .from("requirements_groups_v2")
@@ -130,5 +118,7 @@ export default async function handler(req, res) {
   }
 
   res.setHeader("Allow", ["GET", "POST", "PUT", "DELETE"]);
-  return res.status(405).json({ ok: false, error: `Method ${method} Not Allowed` });
+  return res
+    .status(405)
+    .json({ ok: false, error: `Method ${method} Not Allowed` });
 }
