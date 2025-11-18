@@ -15,7 +15,7 @@ export default function VendorPage() {
   const [loadingCompliance, setLoadingCompliance] = useState(true);
   const [error, setError] = useState("");
 
-  // Fix Plan State
+  // FIX PLAN STATE
   const [fixLoading, setFixLoading] = useState(false);
   const [fixError, setFixError] = useState("");
   const [fixSteps, setFixSteps] = useState([]);
@@ -23,12 +23,12 @@ export default function VendorPage() {
   const [fixBody, setFixBody] = useState("");
   const [fixInternalNotes, setFixInternalNotes] = useState("");
 
-  // SEND EMAIL STATE
+  // SEND FIX EMAIL STATE
   const [sendLoading, setSendLoading] = useState(false);
   const [sendError, setSendError] = useState("");
   const [sendSuccess, setSendSuccess] = useState("");
 
-  // ------------- LOAD VENDOR / POLICIES ---------------
+  // ----------------- LOAD VENDOR -----------------
   useEffect(() => {
     if (!id) return;
 
@@ -39,13 +39,13 @@ export default function VendorPage() {
         const res = await fetch(`/api/vendors/${id}`);
         const data = await res.json();
 
-        if (!res.ok || !data.ok) throw new Error(data.error);
+        if (!data.ok) throw new Error(data.error);
 
         setVendor(data.vendor);
         setOrg(data.organization);
         setPolicies(data.policies);
 
-        if (data.vendor && data.vendor.org_id) {
+        if (data.vendor?.org_id) {
           await loadCompliance(data.vendor.id, data.vendor.org_id);
         } else {
           setLoadingCompliance(false);
@@ -80,7 +80,7 @@ export default function VendorPage() {
     loadVendor();
   }, [id]);
 
-  // ------------- FIX PLAN LOADER ---------------
+  // ----------------- LOAD FIX PLAN -----------------
   async function loadFixPlan() {
     if (!vendor || !org) return;
 
@@ -95,8 +95,8 @@ export default function VendorPage() {
       const res = await fetch(
         `/api/vendor/fix-plan?vendorId=${vendor.id}&orgId=${org.id}`
       );
-      const data = await res.json();
 
+      const data = await res.json();
       if (!data.ok) throw new Error(data.error);
 
       setFixSteps(data.steps || []);
@@ -104,20 +104,20 @@ export default function VendorPage() {
       setFixBody(data.vendorEmailBody || "");
       setFixInternalNotes(data.internalNotes || "");
     } catch (err) {
-      setFixError(err.message || "Failed to generate fix plan.");
+      setFixError(err.message);
     } finally {
       setFixLoading(false);
     }
   }
 
-  // AUTO RUN FIX PLAN WHEN OPENED VIA ALERTS
+  // ----------------- AUTO-RUN FIX PLAN -----------------
   useEffect(() => {
     if (router.query.fixPlan === "1" && vendor && org) {
       loadFixPlan();
     }
   }, [router.query, vendor, org]);
 
-  // -------- SEND FIX EMAIL FUNCTION ---------
+  // ----------------- SEND FIX EMAIL -----------------
   async function sendFixEmail() {
     if (!vendor || !org || !fixSubject || !fixBody) return;
 
@@ -142,13 +142,13 @@ export default function VendorPage() {
 
       setSendSuccess(`Email sent to ${data.sentTo}`);
     } catch (err) {
-      setSendError(err.message || "Failed to send email");
+      setSendError(err.message);
     } finally {
       setSendLoading(false);
     }
   }
 
-  // -------------- STATES ---------------
+  // ----------------- UI STATES -----------------
   if (loadingVendor) {
     return (
       <div style={{ padding: 40 }}>
@@ -174,7 +174,7 @@ export default function VendorPage() {
     );
   }
 
-  // -------------- UI ---------------
+  // ----------------- MAIN UI -----------------
   return (
     <div style={{ padding: "30px 40px", maxWidth: 900, margin: "0 auto" }}>
       <h1 style={{ fontSize: 32, fontWeight: 700, marginBottom: 6 }}>
@@ -187,7 +187,7 @@ export default function VendorPage() {
         </p>
       )}
 
-      {/* ================= COMPLIANCE ================= */}
+      {/* ----------------- COMPLIANCE SUMMARY ----------------- */}
       <div
         style={{
           background: "white",
@@ -197,9 +197,7 @@ export default function VendorPage() {
           marginBottom: 30,
         }}
       >
-        <h2 style={{ fontSize: 18, fontWeight: 600, marginBottom: 8 }}>
-          Compliance Summary
-        </h2>
+        <h2 style={{ fontSize: 18, fontWeight: 600 }}>Compliance Summary</h2>
 
         {loadingCompliance && <p>Checking compliance…</p>}
 
@@ -209,16 +207,14 @@ export default function VendorPage() {
 
         {!loadingCompliance && compliance && !compliance.error && (
           <>
-            <p style={{ fontWeight: 600, marginBottom: 8 }}>
-              {compliance.summary}
-            </p>
+            <p style={{ marginTop: 8, fontWeight: 600 }}>{compliance.summary}</p>
 
             {compliance.missing?.length > 0 && (
               <>
                 <h4 style={{ color: "#b91c1c" }}>Missing Coverage</h4>
                 <ul>
-                  {compliance.missing.map((m, idx) => (
-                    <li key={idx}>{m.coverage_type}</li>
+                  {compliance.missing.map((m, i) => (
+                    <li key={i}>{m.coverage_type}</li>
                   ))}
                 </ul>
               </>
@@ -226,12 +222,10 @@ export default function VendorPage() {
 
             {compliance.failing?.length > 0 && (
               <>
-                <h4 style={{ color: "#b45309", marginTop: 12 }}>
-                  Failing Requirements
-                </h4>
+                <h4 style={{ color: "#b45309" }}>Failing Requirements</h4>
                 <ul>
-                  {compliance.failing.map((f, idx) => (
-                    <li key={idx}>
+                  {compliance.failing.map((f, i) => (
+                    <li key={i}>
                       {f.coverage_type}: {f.reason}
                     </li>
                   ))}
@@ -241,10 +235,10 @@ export default function VendorPage() {
 
             {compliance.passing?.length > 0 && (
               <>
-                <h4 style={{ color: "#15803d", marginTop: 12 }}>Passing</h4>
+                <h4 style={{ color: "#15803d" }}>Passing</h4>
                 <ul>
-                  {compliance.passing.map((p, idx) => (
-                    <li key={idx}>{p.coverage_type}</li>
+                  {compliance.passing.map((p, i) => (
+                    <li key={i}>{p.coverage_type}</li>
                   ))}
                 </ul>
               </>
@@ -253,7 +247,7 @@ export default function VendorPage() {
         )}
       </div>
 
-      {/* ============== FIX PLAN PANEL ============== */}
+      {/* ----------------- FIX PLAN PANEL ----------------- */}
       <div
         style={{
           background: "white",
@@ -273,7 +267,7 @@ export default function VendorPage() {
           <div>
             <h2 style={{ fontSize: 18, fontWeight: 600 }}>AI Fix Plan</h2>
             <p style={{ fontSize: 13, color: "#6b7280" }}>
-              Hybrid G+Legal remediation steps and vendor email.
+              Hybrid G+Legal vendor remediation steps.
             </p>
           </div>
 
@@ -283,11 +277,10 @@ export default function VendorPage() {
             style={{
               padding: "8px 14px",
               borderRadius: 999,
-              border: "none",
               background: "#0f172a",
               color: "white",
+              border: "none",
               cursor: "pointer",
-              fontSize: 13,
               fontWeight: 600,
             }}
           >
@@ -296,74 +289,71 @@ export default function VendorPage() {
         </div>
 
         {fixError && (
-          <p style={{ color: "red", fontSize: 13 }}>{fixError}</p>
+          <p style={{ color: "red", marginBottom: 12 }}>{fixError}</p>
         )}
 
         {fixSteps.length > 0 && (
-          <div style={{ marginBottom: 12 }}>
+          <>
             <h3 style={{ fontSize: 14, fontWeight: 600 }}>Action Steps</h3>
-            <ol style={{ paddingLeft: 20 }}>
+            <ol style={{ paddingLeft: 20, marginBottom: 12 }}>
               {fixSteps.map((s, i) => (
                 <li key={i} style={{ marginBottom: 4 }}>
                   {s}
                 </li>
               ))}
             </ol>
-          </div>
+          </>
         )}
 
         {fixSubject && (
-          <div style={{ marginBottom: 12 }}>
-            <h3 style={{ fontSize: 14, fontWeight: 600 }}>
-              Vendor Email Subject
-            </h3>
+          <>
+            <h3 style={{ fontSize: 14, fontWeight: 600 }}>Vendor Email Subject</h3>
             <p
               style={{
-                border: "1px solid #e5e7eb",
+                background: "#f9fafb",
                 padding: 8,
                 borderRadius: 8,
-                background: "#f9fafb",
+                border: "1px solid #e5e7eb",
               }}
             >
               {fixSubject}
             </p>
-          </div>
+          </>
         )}
 
         {fixBody && (
-          <div style={{ marginBottom: 12 }}>
-            <h3 style={{ fontSize: 14, fontWeight: 600 }}>Vendor Email Body</h3>
+          <>
+            <h3 style={{ fontSize: 14, fontWeight: 600, marginTop: 12 }}>
+              Vendor Email Body
+            </h3>
+
             <textarea
               readOnly
               value={fixBody}
               style={{
                 width: "100%",
                 minHeight: 140,
-                border: "1px solid #e5e7eb",
                 padding: 10,
                 borderRadius: 8,
+                border: "1px solid #e5e7eb",
                 fontFamily: "system-ui",
                 whiteSpace: "pre-wrap",
               }}
             />
-          </div>
-        )}
 
-        {/* SEND FIX EMAIL BUTTON */}
-        {fixSubject && fixBody && (
-          <div style={{ marginTop: 12 }}>
+            {/* ---------------- SEND FIX EMAIL BUTTON ---------------- */}
             <button
               onClick={sendFixEmail}
               disabled={sendLoading}
               style={{
                 width: "100%",
+                marginTop: 15,
                 padding: "10px 14px",
                 borderRadius: 8,
-                border: "none",
                 background: "#0f172a",
                 color: "white",
-                fontSize: 14,
                 fontWeight: 600,
+                border: "none",
                 cursor: "pointer",
               }}
             >
@@ -371,28 +361,26 @@ export default function VendorPage() {
             </button>
 
             {sendError && (
-              <p style={{ color: "red", fontSize: 13, marginTop: 8 }}>
-                {sendError}
-              </p>
+              <p style={{ color: "red", marginTop: 8 }}>{sendError}</p>
             )}
 
             {sendSuccess && (
-              <p style={{ color: "#15803d", fontSize: 13, marginTop: 8 }}>
-                {sendSuccess}
-              </p>
+              <p style={{ color: "#15803d", marginTop: 8 }}>{sendSuccess}</p>
             )}
-          </div>
+          </>
         )}
 
         {fixInternalNotes && (
-          <div style={{ marginTop: 12 }}>
-            <h3 style={{ fontSize: 14, fontWeight: 600 }}>Internal Notes</h3>
+          <>
+            <h3 style={{ fontSize: 14, fontWeight: 600, marginTop: 20 }}>
+              Internal Notes
+            </h3>
             <p style={{ whiteSpace: "pre-wrap" }}>{fixInternalNotes}</p>
-          </div>
+          </>
         )}
       </div>
 
-      {/* ================= POLICIES ================= */}
+      {/* ----------------- POLICIES ----------------- */}
       <div
         style={{
           background: "white",
@@ -402,9 +390,7 @@ export default function VendorPage() {
           marginBottom: 30,
         }}
       >
-        <h2 style={{ fontSize: 18, fontWeight: 600, marginBottom: 12 }}>
-          Policies
-        </h2>
+        <h2 style={{ fontSize: 18, fontWeight: 600 }}>Policies</h2>
 
         {policies.length === 0 && <p>No policies on file.</p>}
 
@@ -414,9 +400,9 @@ export default function VendorPage() {
             style={{
               padding: 12,
               background: "#f9fafb",
-              borderRadius: 10,
               border: "1px solid #e5e7eb",
-              marginBottom: 10,
+              borderRadius: 10,
+              marginTop: 10,
             }}
           >
             <p style={{ fontWeight: 600 }}>{p.coverage_type}</p>
@@ -434,7 +420,7 @@ export default function VendorPage() {
         ))}
       </div>
 
-      <a href="/dashboard" style={{ color: "#2563eb", fontSize: 14 }}>
+      <a href="/dashboard" style={{ fontSize: 14, color: "#2563eb" }}>
         ← Back to Dashboard
       </a>
     </div>
