@@ -1,5 +1,5 @@
-// pages/api/requirements-v2/groups.js
-import { supabase } from "../../../lib/supabaseClient";
+// pages/api/requirements-v2/groups/index.js
+import { supabase } from "../../../../lib/supabaseClient";
 
 export default async function handler(req, res) {
   const { method } = req;
@@ -14,8 +14,7 @@ export default async function handler(req, res) {
 
     const { data, error } = await supabase
       .from("requirements_groups_v2")
-      .select(
-        `
+      .select(`
         id,
         org_id,
         name,
@@ -23,8 +22,7 @@ export default async function handler(req, res) {
         is_active,
         created_at,
         requirements_rules_v2 ( id )
-      `
-      )
+      `)
       .eq("org_id", orgId)
       .order("created_at", { ascending: false });
 
@@ -33,16 +31,15 @@ export default async function handler(req, res) {
       return res.status(500).json({ ok: false, error: error.message });
     }
 
-    const groups =
-      data?.map((g) => ({
-        id: g.id,
-        org_id: g.org_id,
-        name: g.name,
-        description: g.description,
-        is_active: g.is_active,
-        created_at: g.created_at,
-        rule_count: g.requirements_rules_v2?.length || 0,
-      })) || [];
+    const groups = data?.map((g) => ({
+      id: g.id,
+      org_id: g.org_id,
+      name: g.name,
+      description: g.description,
+      is_active: g.is_active,
+      created_at: g.created_at,
+      rule_count: g.requirements_rules_v2?.length || 0,
+    })) || [];
 
     return res.status(200).json({ ok: true, groups });
   }
@@ -111,7 +108,7 @@ export default async function handler(req, res) {
     return res.status(200).json({ ok: true, group: data });
   }
 
-  // DELETE: delete group (and cascade rules)
+  // DELETE: delete group
   if (method === "DELETE") {
     const { id } = req.query;
 
@@ -133,7 +130,5 @@ export default async function handler(req, res) {
   }
 
   res.setHeader("Allow", ["GET", "POST", "PUT", "DELETE"]);
-  return res
-    .status(405)
-    .json({ ok: false, error: `Method ${method} Not Allowed` });
+  return res.status(405).json({ ok: false, error: `Method ${method} Not Allowed` });
 }
