@@ -1,10 +1,10 @@
-// pages/api/requirements-v2/rules.js
-import { supabase } from "../../../lib/supabaseClient";
+// pages/api/requirements-v2/rules/index.js
+import { supabase } from "../../../../lib/supabaseClient";
 
 export default async function handler(req, res) {
   const { method } = req;
 
-  // GET: list rules for a group
+  // GET rules
   if (method === "GET") {
     const { groupId } = req.query;
 
@@ -26,7 +26,7 @@ export default async function handler(req, res) {
     return res.status(200).json({ ok: true, rules: data || [] });
   }
 
-  // POST: create new rule
+  // POST create rule
   if (method === "POST") {
     const {
       groupId,
@@ -67,7 +67,7 @@ export default async function handler(req, res) {
     return res.status(201).json({ ok: true, rule: data });
   }
 
-  // PUT: update rule
+  // PUT update rule
   if (method === "PUT") {
     const {
       id,
@@ -93,10 +93,6 @@ export default async function handler(req, res) {
     if (internal_note !== undefined) updates.internal_note = internal_note;
     if (is_active !== undefined) updates.is_active = is_active;
 
-    if (Object.keys(updates).length === 0) {
-      return res.status(400).json({ ok: false, error: "No fields to update" });
-    }
-
     const { data, error } = await supabase
       .from("requirements_rules_v2")
       .update(updates)
@@ -116,7 +112,7 @@ export default async function handler(req, res) {
     return res.status(200).json({ ok: true, rule: data });
   }
 
-  // DELETE: delete rule
+  // DELETE rule
   if (method === "DELETE") {
     const { id } = req.query;
 
@@ -138,7 +134,5 @@ export default async function handler(req, res) {
   }
 
   res.setHeader("Allow", ["GET", "POST", "PUT", "DELETE"]);
-  return res
-    .status(405)
-    .json({ ok: false, error: `Method ${method} Not Allowed` });
+  return res.status(405).json({ ok: false, error: `Method ${method} Not Allowed` });
 }
