@@ -148,7 +148,7 @@ export default function VendorPage() {
     }
   }
 
-  // ----------------- DOWNLOAD FIX PLAN PDF -----------------
+  // ----------------- DOWNLOAD FIX PLAN (SIMPLE PDF) -----------------
   async function downloadPDF() {
     try {
       const res = await fetch("/api/vendor/fix-plan-pdf", {
@@ -179,6 +179,46 @@ export default function VendorPage() {
       window.URL.revokeObjectURL(url);
     } catch (err) {
       alert("PDF Error: " + err.message);
+    }
+  }
+
+  // ----------------- ENTERPRISE REPORT PDF -----------------
+  async function downloadEnterprisePDF() {
+    try {
+      const res = await fetch("/api/vendor/enterprise-report-pdf", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          vendor,
+          org,
+          compliance,
+          fixSteps,
+          fixSubject,
+          fixBody,
+          fixInternalNotes,
+          policies,
+        }),
+      });
+
+      if (!res.ok) {
+        const err = await res.json();
+        throw new Error(err.error || "Enterprise PDF failed");
+      }
+
+      const pdfBlob = await res.blob();
+      const url = window.URL.createObjectURL(pdfBlob);
+      const link = document.createElement("a");
+
+      link.href = url;
+      link.download = `${vendor.name.replace(
+        /\s+/g,
+        "_"
+      )}_Compliance_Report.pdf`;
+      link.click();
+
+      window.URL.revokeObjectURL(url);
+    } catch (err) {
+      alert("Enterprise PDF Error: " + err.message);
     }
   }
 
@@ -402,7 +442,7 @@ export default function VendorPage() {
               <p style={{ color: "#15803d", marginTop: 8 }}>{sendSuccess}</p>
             )}
 
-            {/* ---------------- DOWNLOAD PDF BUTTON ---------------- */}
+            {/* ---------------- DOWNLOAD FIX PLAN PDF ---------------- */}
             <button
               onClick={downloadPDF}
               style={{
@@ -418,6 +458,24 @@ export default function VendorPage() {
               }}
             >
               📄 Download Fix Plan (PDF)
+            </button>
+
+            {/* ---------------- ENTERPRISE PDF BUTTON ---------------- */}
+            <button
+              onClick={downloadEnterprisePDF}
+              style={{
+                width: "100%",
+                marginTop: 12,
+                padding: "10px 14px",
+                borderRadius: 8,
+                background: "#1f2937",
+                color: "white",
+                fontWeight: 600,
+                border: "none",
+                cursor: "pointer",
+              }}
+            >
+              🧾 Download Enterprise Compliance Report (PDF)
             </button>
           </>
         )}
