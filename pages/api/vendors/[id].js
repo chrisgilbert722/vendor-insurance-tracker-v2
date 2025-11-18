@@ -9,13 +9,13 @@ export default function VendorPage() {
   const [vendor, setVendor] = useState(null);
   const [org, setOrg] = useState(null);
   const [policies, setPolicies] = useState([]);
-
   const [compliance, setCompliance] = useState(null);
+
   const [loadingVendor, setLoadingVendor] = useState(true);
   const [loadingCompliance, setLoadingCompliance] = useState(true);
   const [error, setError] = useState("");
 
-  // Fix Plan state
+  // Fix Plan State
   const [fixLoading, setFixLoading] = useState(false);
   const [fixError, setFixError] = useState("");
   const [fixSteps, setFixSteps] = useState([]);
@@ -23,52 +23,43 @@ export default function VendorPage() {
   const [fixBody, setFixBody] = useState("");
   const [fixInternalNotes, setFixInternalNotes] = useState("");
 
-  // -----------------------------------------
-  // 1️⃣ LOAD VENDOR + POLICIES + ORG
-  // -----------------------------------------
+  // ---------------- LOAD VENDOR & POLICIES ----------------
   useEffect(() => {
     if (!id) return;
 
     async function loadVendor() {
       try {
         setLoadingVendor(true);
-        setError("");
 
         const res = await fetch(`/api/vendors/${id}`);
         const data = await res.json();
-
-        if (!data.ok) throw new Error(data.error);
+        if (!res.ok || !data.ok) throw new Error(data.error);
 
         setVendor(data.vendor);
         setOrg(data.organization);
         setPolicies(data.policies);
 
-        if (data.complianceCheckUrl) {
-          await loadCompliance(data.complianceCheckUrl);
-        } else {
-          setLoadingCompliance(false);
+        if (data.vendor?.org_id) {
+          await loadCompliance(data.vendor.id, data.vendor.org_id);
         }
       } catch (err) {
-        console.error("VENDOR LOAD ERROR:", err);
         setError(err.message);
-        setLoadingCompliance(false);
       } finally {
         setLoadingVendor(false);
       }
     }
 
-    async function loadCompliance(url) {
+    async function loadCompliance(vendorId, orgId) {
       try {
         setLoadingCompliance(true);
-
-        const res = await fetch(url);
+        const res = await fetch(
+          `/api/requirements/check?vendorId=${vendorId}&orgId=${orgId}`
+        );
         const data = await res.json();
-
         if (!data.ok) throw new Error(data.error);
 
         setCompliance(data);
       } catch (err) {
-        console.error("COMPLIANCE ERROR:", err);
         setCompliance({ error: err.message });
       } finally {
         setLoadingCompliance(false);
@@ -78,11 +69,9 @@ export default function VendorPage() {
     loadVendor();
   }, [id]);
 
-  // -----------------------------------------
-  // 2️⃣ FIX PLAN LOADER
-  // -----------------------------------------
+  // ---------------- FIX PLAN GENERATOR ----------------
   async function loadFixPlan() {
-    if (!id || !vendor || !org) return;
+    if (!vendor || !org) return;
 
     try {
       setFixLoading(true);
@@ -96,175 +85,116 @@ export default function VendorPage() {
         `/api/vendor/fix-plan?vendorId=${vendor.id}&orgId=${org.id}`
       );
       const data = await res.json();
+      if (!data.ok) throw new Error(data.error);
 
-      if (!res.ok || !data.ok) throw new Error(data.error);
-
-      setFixSteps(data.steps || []);
-      setFixSubject(data.vendorEmailSubject || "");
-      setFixBody(data.vendorEmailBody || "");
-      setFixInternalNotes(data.internalNotes || "");
+      setFixSteps(data.steps);
+      setFixSubject(data.vendorEmailSubject);
+      setFixBody(data.vendorEmailBody);
+      setFixInternalNotes(data.internalNotes);
     } catch (err) {
-      console.error("FIX PLAN ERROR:", err);
-      setFixError(err.message || "Failed to generate fix plan.");
+      setFixError(err.message);
     } finally {
       setFixLoading(false);
     }
   }
 
-  // -----------------------------------------
-  // 3️⃣ LOADING / ERROR STATES
-  // -----------------------------------------
-  if (loadingVendor) {
-    return (
-      <div style={{ padding: 40 }}>
-        <h1>Loading vendor…</h1>
-      </div>
-    );
-  }
+  // AUTO RUN FIX PLAN WHEN COMING FROM ALERTS
+  useEffect(() => {
+    if (router.query.fixPlan === "1" && vendor && org) {
+      loadFixPlan();
+    }
+  }, [router.query, vendor, org]);
 
-  if (error) {
-    return (
-      <div style={{ padding: 40 }}>
-        <h1>Error</h1>
-        <p style={{ color: "red" }}>{error}</p>
-      </div>
-    );
-  }
+  // ---------------- PAGE STATES ----------------
+  if (loadingVendor) return <div style={{ padding: 40 }}>Loading vendor…</div>;
+  if (error) return <div style={{ padding: 40, color: "red" }}>{error}</div>;
+  if (!vendor) return <div style={{ padding: 40 }}>Vendor not found</div>;
 
-  if (!vendor) {
-    return (
-      <div style={{ padding: 40 }}>
-        <h1>Vendor not found</h1>
-      </div>
-    );
-  }
-
-  // -----------------------------------------
-  // 4️⃣ UI
-  // -----------------------------------------
+  // ---------------- UI ----------------
   return (
-    <div style={{ padding: "30px 40px" }}>
-      {/* HEADER */}
-      <h1
-        style={{
-          fontSize: 32,
-          fontWeight: 700,
-          marginBottom: 6,
-          color: "#0f172a",
-        }}
-      >
-        {vendor.name}
-      </h1>
+    <div style={{ padding: "30px 40px", maxWidth: 900, margin: "0 auto" }}>
+      <h1 style={{ fontSize: 32, fontWeight: 700 }}>{vendor.name}</h1>
 
-      <p style={{ fontSize: 14, color: "#64748b", marginBottom: 16 }}>
-        {org ? `Organization: ${org.name}` : "No organization assigned"}
-      </p>
+      {org && (
+        <p style={{ fontSize: 13, color: "#6b7280" }}>
+          Organization: <strong>{org.name}</strong>
+        </p>
+      )}
 
-      {/* COMPLIANCE SUMMARY */}
+      {/* ---------------- COMPLIANCE ---------------- */}
       <div
         style={{
-          marginBottom: 24,
-          padding: 20,
-          borderRadius: 12,
-          background: "#ffffff",
+          background: "white",
           border: "1px solid #e5e7eb",
+          borderRadius: 12,
+          padding: 20,
+          marginBottom: 30
         }}
       >
-        <h2 style={{ fontSize: 18, fontWeight: 600, marginBottom: 8 }}>
-          Compliance Summary
-        </h2>
+        <h2 style={{ fontSize: 18, marginBottom: 8 }}>Compliance Summary</h2>
 
         {loadingCompliance && <p>Checking compliance…</p>}
-
         {compliance?.error && (
           <p style={{ color: "red" }}>❌ {compliance.error}</p>
         )}
 
         {!loadingCompliance && compliance && !compliance.error && (
           <>
-            <p
-              style={{
-                fontSize: 14,
-                fontWeight: 600,
-                color: "#111827",
-                marginBottom: 10,
-              }}
-            >
-              {compliance.summary}
-            </p>
+            <p style={{ fontWeight: 600 }}>{compliance.summary}</p>
 
             {compliance.missing?.length > 0 && (
-              <div style={{ marginBottom: 12 }}>
-                <h4 style={{ color: "#b91c1c", marginBottom: 4 }}>
-                  Missing Coverage
-                </h4>
+              <>
+                <h4 style={{ color: "#b91c1c" }}>Missing Coverage</h4>
                 <ul>
-                  {compliance.missing.map((m, idx) => (
-                    <li key={idx}>{m.coverage_type}</li>
+                  {compliance.missing.map((m, i) => (
+                    <li key={i}>{m.coverage_type}</li>
                   ))}
                 </ul>
-              </div>
+              </>
             )}
 
             {compliance.failing?.length > 0 && (
-              <div style={{ marginBottom: 12 }}>
-                <h4 style={{ color: "#b45309", marginBottom: 4 }}>
-                  Failing Requirements
-                </h4>
+              <>
+                <h4 style={{ color: "#b45309" }}>Failing Requirements</h4>
                 <ul>
-                  {compliance.failing.map((f, idx) => (
-                    <li key={idx}>
+                  {compliance.failing.map((f, i) => (
+                    <li key={i}>
                       {f.coverage_type}: {f.reason}
                     </li>
                   ))}
                 </ul>
-              </div>
+              </>
             )}
 
             {compliance.passing?.length > 0 && (
-              <div>
-                <h4 style={{ color: "#16a34a", marginBottom: 4 }}>Passing</h4>
+              <>
+                <h4 style={{ color: "#15803d" }}>Passing</h4>
                 <ul>
-                  {compliance.passing.map((p, idx) => (
-                    <li key={idx}>{p.coverage_type}</li>
+                  {compliance.passing.map((p, i) => (
+                    <li key={i}>{p.coverage_type}</li>
                   ))}
                 </ul>
-              </div>
+              </>
             )}
           </>
         )}
       </div>
 
-      {/* AI FIX PLAN PANEL */}
+      {/* ---------------- FIX PLAN ---------------- */}
       <div
         style={{
-          marginBottom: 24,
-          padding: 20,
-          borderRadius: 12,
-          background: "#ffffff",
+          background: "white",
           border: "1px solid #e5e7eb",
+          borderRadius: 12,
+          padding: 20,
+          marginBottom: 30
         }}
       >
-        <div
-          style={{
-            display: "flex",
-            justifyContent: "space-between",
-            alignItems: "flex-start",
-            marginBottom: 10,
-          }}
-        >
+        <div style={{ display: "flex", justifyContent: "space-between" }}>
           <div>
-            <h2
-              style={{
-                fontSize: 18,
-                fontWeight: 600,
-                marginBottom: 4,
-              }}
-            >
-              AI Fix Plan
-            </h2>
-            <p style={{ fontSize: 13, color: "#6b7280", margin: 0 }}>
-              Hybrid G+Legal plan to remediate coverage issues with this vendor.
+            <h2 style={{ fontSize: 18 }}>AI Fix Plan</h2>
+            <p style={{ color: "#6b7280", fontSize: 13 }}>
+              Hybrid G+Legal remediation plan
             </p>
           </div>
 
@@ -274,146 +204,179 @@ export default function VendorPage() {
             style={{
               padding: "8px 14px",
               borderRadius: 999,
-              border: "none",
               background: "#0f172a",
               color: "white",
-              cursor: fixLoading ? "not-allowed" : "pointer",
-              fontSize: 13,
-              fontWeight: 600,
+              border: "none",
+              cursor: "pointer",
+              fontWeight: 600
             }}
           >
-            {fixLoading ? "Generating..." : "Generate Fix Plan"}
+            {fixLoading ? "Generating…" : "Generate Fix Plan"}
           </button>
         </div>
 
-        {fixError && (
-          <p style={{ color: "red", fontSize: 13 }}>{fixError}</p>
-        )}
-
-        {!fixLoading &&
-          !fixError &&
-          fixSteps.length === 0 &&
-          !fixBody &&
-          !fixInternalNotes && (
-            <p style={{ fontSize: 13, color: "#6b7280" }}>
-              No fix plan generated yet. Click{" "}
-              <strong>Generate Fix Plan</strong> to see recommendations.
-            </p>
-          )}
+        {fixError && <p style={{ color: "red" }}>{fixError}</p>}
 
         {fixSteps.length > 0 && (
-          <div style={{ marginBottom: 12 }}>
-            <h3 style={{ fontSize: 14, fontWeight: 600, marginBottom: 6 }}>
-              Action Steps
-            </h3>
-            <ol style={{ paddingLeft: 20, fontSize: 13 }}>
+          <>
+            <h3 style={{ marginTop: 10 }}>Action Steps</h3>
+            <ol>
               {fixSteps.map((s, i) => (
-                <li key={i} style={{ marginBottom: 4 }}>
-                  {s}
-                </li>
+                <li key={i}>{s}</li>
               ))}
             </ol>
-          </div>
+          </>
         )}
 
         {fixSubject && (
-          <div style={{ marginBottom: 12 }}>
-            <h3 style={{ fontSize: 14, fontWeight: 600, marginBottom: 4 }}>
-              Vendor Email Subject
-            </h3>
+          <>
+            <h3 style={{ marginTop: 15 }}>Vendor Email Subject</h3>
             <p
               style={{
-                fontSize: 13,
-                padding: 8,
-                borderRadius: 8,
                 border: "1px solid #e5e7eb",
-                background: "#f9fafb",
+                padding: 8,
+                borderRadius: 8
               }}
             >
               {fixSubject}
             </p>
-          </div>
+          </>
         )}
 
         {fixBody && (
-          <div style={{ marginBottom: 12 }}>
-            <h3 style={{ fontSize: 14, fontWeight: 600, marginBottom: 4 }}>
-              Vendor Email Body
-            </h3>
+          <>
+            <h3 style={{ marginTop: 15 }}>Vendor Email Body</h3>
             <textarea
               readOnly
               value={fixBody}
               style={{
                 width: "100%",
-                minHeight: 120,
+                minHeight: 140,
                 padding: 10,
                 borderRadius: 8,
                 border: "1px solid #e5e7eb",
-                fontSize: 13,
-                fontFamily: "system-ui, -apple-system, sans-serif",
-                whiteSpace: "pre-wrap",
+                fontFamily: "system-ui"
               }}
             />
-          </div>
+
+            {/* SEND FIX EMAIL */}
+            <button
+              onClick={async () => {
+                try {
+                  const res = await fetch("/api/vendor/send-fix-email", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({
+                      vendorId: vendor.id,
+                      orgId: org.id,
+                      subject: fixSubject,
+                      body: fixBody
+                    })
+                  });
+
+                  const data = await res.json();
+                  if (!data.ok) throw new Error(data.error);
+
+                  alert(`Email sent to ${data.sentTo}`);
+                } catch (err) {
+                  alert("Email error: " + err.message);
+                }
+              }}
+              style={{
+                padding: "10px 14px",
+                borderRadius: 8,
+                background: "#0f172a",
+                color: "white",
+                width: "100%",
+                marginTop: 10,
+                fontWeight: 600
+              }}
+            >
+              📬 Send Fix Email
+            </button>
+
+            {/* EXPORT PDF */}
+            <button
+              onClick={async () => {
+                try {
+                  const res = await fetch("/api/vendor/fix-plan-pdf", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({
+                      vendorName: vendor.name,
+                      steps: fixSteps,
+                      subject: fixSubject,
+                      body: fixBody,
+                      internalNotes: fixInternalNotes
+                    })
+                  });
+
+                  if (!res.ok) throw new Error("PDF failed");
+
+                  const blob = await res.blob();
+                  const url = window.URL.createObjectURL(blob);
+
+                  const a = document.createElement("a");
+                  a.href = url;
+                  a.download = `${vendor.name}-Fix-Plan.pdf`;
+                  a.click();
+                  window.URL.revokeObjectURL(url);
+                } catch (err) {
+                  alert("PDF error: " + err.message);
+                }
+              }}
+              style={{
+                padding: "10px 14px",
+                borderRadius: 8,
+                background: "#111827",
+                color: "white",
+                width: "100%",
+                marginTop: 10,
+                fontWeight: 600
+              }}
+            >
+              📄 Export Fix Plan PDF
+            </button>
+          </>
         )}
 
         {fixInternalNotes && (
-          <div>
-            <h3 style={{ fontSize: 14, fontWeight: 600, marginBottom: 4 }}>
-              Internal Notes
-            </h3>
-            <p
-              style={{
-                fontSize: 13,
-                color: "#4b5563",
-                whiteSpace: "pre-line",
-              }}
-            >
-              {fixInternalNotes}
-            </p>
-          </div>
+          <>
+            <h3 style={{ marginTop: 15 }}>Internal Notes</h3>
+            <pre>{fixInternalNotes}</pre>
+          </>
         )}
       </div>
 
-      {/* POLICIES */}
+      {/* ---------------- POLICIES ---------------- */}
       <div
         style={{
-          marginBottom: 24,
-          padding: 20,
-          borderRadius: 12,
-          background: "#ffffff",
+          background: "white",
           border: "1px solid #e5e7eb",
+          borderRadius: 12,
+          padding: 20
         }}
       >
-        <h2 style={{ fontSize: 18, fontWeight: 600, marginBottom: 8 }}>
-          Policies
-        </h2>
-
-        {policies.length === 0 && <p>No policies on file.</p>}
-
+        <h2>Policies</h2>
+        {policies.length === 0 && <p>No policies.</p>}
         {policies.map((p) => (
           <div
             key={p.id}
             style={{
-              padding: 10,
-              borderRadius: 10,
-              border: "1px solid #e5e7eb",
-              marginBottom: 10,
               background: "#f9fafb",
+              padding: 12,
+              borderRadius: 10,
+              marginBottom: 10
             }}
           >
-            <p style={{ fontWeight: 600, marginBottom: 4 }}>
-              {p.coverage_type || "Coverage"}
-            </p>
-            <p style={{ marginBottom: 2 }}>Carrier: {p.carrier || "—"}</p>
-            <p style={{ marginBottom: 2 }}>
-              Policy #: {p.policy_number || "—"}
-            </p>
-            <p style={{ marginBottom: 2 }}>
+            <p><strong>{p.coverage_type}</strong></p>
+            <p>Policy #: {p.policy_number || "—"}</p>
+            <p>Carrier: {p.carrier || "—"}</p>
+            <p>
               Effective: {p.effective_date || "—"} — Expires:{" "}
               {p.expiration_date || "—"}
             </p>
-            <p style={{ marginBottom: 0 }}>
+            <p>
               Limits: {p.limit_each_occurrence || "—"} /{" "}
               {p.limit_aggregate || "—"}
             </p>
@@ -421,8 +384,7 @@ export default function VendorPage() {
         ))}
       </div>
 
-      {/* BACK */}
-      <a href="/dashboard" style={{ fontSize: 13, color: "#2563eb" }}>
+      <a href="/dashboard" style={{ color: "#2563eb", marginTop: 20 }}>
         ← Back to Dashboard
       </a>
     </div>
