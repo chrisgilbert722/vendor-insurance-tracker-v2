@@ -4,9 +4,7 @@ import { supabase } from "../../../lib/supabaseClient";
 export default async function handler(req, res) {
   const { method } = req;
 
-  //
   // GET: list groups for an org
-  //
   if (method === "GET") {
     const { orgId } = req.query;
 
@@ -35,7 +33,6 @@ export default async function handler(req, res) {
       return res.status(500).json({ ok: false, error: error.message });
     }
 
-    // Add rule_count to each group
     const groups =
       data?.map((g) => ({
         id: g.id,
@@ -50,9 +47,7 @@ export default async function handler(req, res) {
     return res.status(200).json({ ok: true, groups });
   }
 
-  //
-  // POST: create a new group
-  //
+  // POST: create group
   if (method === "POST") {
     const { orgId, name, description } = req.body || {};
 
@@ -80,9 +75,7 @@ export default async function handler(req, res) {
     return res.status(201).json({ ok: true, group: data });
   }
 
-  //
   // PUT: update group
-  //
   if (method === "PUT") {
     const { id, name, description, is_active } = req.body || {};
 
@@ -118,9 +111,7 @@ export default async function handler(req, res) {
     return res.status(200).json({ ok: true, group: data });
   }
 
-  //
   // DELETE: delete group (and cascade rules)
-  //
   if (method === "DELETE") {
     const { id } = req.query;
 
@@ -145,8 +136,4 @@ export default async function handler(req, res) {
   return res
     .status(405)
     .json({ ok: false, error: `Method ${method} Not Allowed` });
-}
-
-  res.setHeader("Allow", ["GET", "POST", "PUT", "DELETE"]);
-  return res.status(405).json({ ok: false, error: `Method ${method} Not Allowed` });
 }
