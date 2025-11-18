@@ -148,6 +148,40 @@ export default function VendorPage() {
     }
   }
 
+  // ----------------- DOWNLOAD FIX PLAN PDF -----------------
+  async function downloadPDF() {
+    try {
+      const res = await fetch("/api/vendor/fix-plan-pdf", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          vendorName: vendor.name,
+          steps: fixSteps,
+          subject: fixSubject,
+          body: fixBody,
+          internalNotes: fixInternalNotes,
+        }),
+      });
+
+      if (!res.ok) {
+        const err = await res.json();
+        throw new Error(err.error || "PDF download failed");
+      }
+
+      const pdfBlob = await res.blob();
+      const url = window.URL.createObjectURL(pdfBlob);
+      const link = document.createElement("a");
+
+      link.href = url;
+      link.download = `${vendor.name.replace(/\s+/g, "_")}_Fix_Plan.pdf`;
+      link.click();
+
+      window.URL.revokeObjectURL(url);
+    } catch (err) {
+      alert("PDF Error: " + err.message);
+    }
+  }
+
   // ----------------- UI STATES -----------------
   if (loadingVendor) {
     return (
@@ -367,6 +401,24 @@ export default function VendorPage() {
             {sendSuccess && (
               <p style={{ color: "#15803d", marginTop: 8 }}>{sendSuccess}</p>
             )}
+
+            {/* ---------------- DOWNLOAD PDF BUTTON ---------------- */}
+            <button
+              onClick={downloadPDF}
+              style={{
+                width: "100%",
+                marginTop: 12,
+                padding: "10px 14px",
+                borderRadius: 8,
+                background: "#2563eb",
+                color: "white",
+                fontWeight: 600,
+                border: "none",
+                cursor: "pointer",
+              }}
+            >
+              📄 Download Fix Plan (PDF)
+            </button>
           </>
         )}
 
