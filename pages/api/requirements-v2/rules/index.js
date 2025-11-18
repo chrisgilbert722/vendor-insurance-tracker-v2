@@ -1,16 +1,13 @@
-// pages/api/requirements-v2/rules/index.js
 import { supabase } from "../../../../lib/supabaseClient";
 
 export default async function handler(req, res) {
   const { method } = req;
 
-  // GET rules
   if (method === "GET") {
     const { groupId } = req.query;
 
-    if (!groupId) {
+    if (!groupId)
       return res.status(400).json({ ok: false, error: "Missing groupId" });
-    }
 
     const { data, error } = await supabase
       .from("requirements_rules_v2")
@@ -26,7 +23,6 @@ export default async function handler(req, res) {
     return res.status(200).json({ ok: true, rules: data || [] });
   }
 
-  // POST create rule
   if (method === "POST") {
     const {
       groupId,
@@ -38,12 +34,12 @@ export default async function handler(req, res) {
       internal_note,
     } = req.body || {};
 
-    if (!groupId || !field_key || !operator || !expected_value) {
+    if (!groupId || !field_key || !operator || !expected_value)
       return res.status(400).json({
         ok: false,
-        error: "groupId, field_key, operator and expected_value are required",
+        error:
+          "groupId, field_key, operator and expected_value fields are required.",
       });
-    }
 
     const { data, error } = await supabase
       .from("requirements_rules_v2")
@@ -67,7 +63,6 @@ export default async function handler(req, res) {
     return res.status(201).json({ ok: true, rule: data });
   }
 
-  // PUT update rule
   if (method === "PUT") {
     const {
       id,
@@ -80,9 +75,8 @@ export default async function handler(req, res) {
       is_active,
     } = req.body || {};
 
-    if (!id) {
+    if (!id)
       return res.status(400).json({ ok: false, error: "Missing rule id" });
-    }
 
     const updates = {};
     if (field_key !== undefined) updates.field_key = field_key;
@@ -105,20 +99,17 @@ export default async function handler(req, res) {
       return res.status(500).json({ ok: false, error: error.message });
     }
 
-    if (!data) {
+    if (!data)
       return res.status(404).json({ ok: false, error: "Rule not found" });
-    }
 
     return res.status(200).json({ ok: true, rule: data });
   }
 
-  // DELETE rule
   if (method === "DELETE") {
     const { id } = req.query;
 
-    if (!id) {
+    if (!id)
       return res.status(400).json({ ok: false, error: "Missing rule id" });
-    }
 
     const { error } = await supabase
       .from("requirements_rules_v2")
@@ -134,5 +125,7 @@ export default async function handler(req, res) {
   }
 
   res.setHeader("Allow", ["GET", "POST", "PUT", "DELETE"]);
-  return res.status(405).json({ ok: false, error: `Method ${method} Not Allowed` });
+  return res
+    .status(405)
+    .json({ ok: false, error: `Method ${method} Not Allowed` });
 }
