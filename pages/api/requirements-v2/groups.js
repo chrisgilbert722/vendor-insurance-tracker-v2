@@ -1,11 +1,11 @@
 // pages/api/requirements-v2/groups.js
-import { getClient } from "../../../lib/db";
+import { supabase } from "../../../lib/supabaseClient";
 
 export default async function handler(req, res) {
   const { method } = req;
 
   //
-  // 1) GET GROUPS
+  // GET: list groups for an org
   //
   if (method === "GET") {
     const { orgId } = req.query;
@@ -14,38 +14,44 @@ export default async function handler(req, res) {
       return res.status(400).json({ ok: false, error: "Missing orgId" });
     }
 
-    let client;
-    try {
-      client = await getClient();
-      const result = await client.query(
+    const { data, error } = await supabase
+      .from("requirements_groups_v2")
+      .select(
         `
-          SELECT g.id,
-                 g.name,
-                 g.description,
-                 g.is_active,
-                 g.created_at,
-                 COUNT(r.id)::int AS rule_count
-          FROM requirement_groups_v2 g
-          LEFT JOIN requirements_v2 r
-            ON r.group_id = g.id
-          WHERE g.org_id = $1
-          GROUP BY g.id
-          ORDER BY g.created_at DESC
-        `,
-        [orgId]
-      );
+        id,
+        org_id,
+        name,
+        description,
+        is_active,
+        created_at,
+        requirements_rules_v2 ( id )
+      `
+      )
+      .eq("org_id", orgId)
+      .order("created_at", { ascending: false });
 
-      return res.status(200).json({ ok: true, groups: result.rows });
-    } catch (err) {
-      console.error("GET groups error:", err);
-      return res.status(500).json({ ok: false, error: "Failed to load groups" });
-    } finally {
-      if (client) await client.end();
+    if (error) {
+      console.error("GET groups error:", error);
+      return res.status(500).json({ ok: false, error: error.message });
     }
+
+    // Add rule_count to each group
+    const groups =
+      data?.map((g) => ({
+        id: g.id,
+        org_id: g.org_id,
+        name: g.name,
+        description: g.description,
+        is_active: g.is_active,
+        created_at: g.created_at,
+        rule_count: g.requirements_rules_v2?.length || 0,
+      })) || [];
+
+    return res.status(200).json({ ok: true, groups });
   }
 
   //
-  // 2) CREATE GROUP
+  // POST: create a new group
   //
   if (method === "POST") {
     const { orgId, name, description } = req.body || {};
@@ -56,29 +62,26 @@ export default async function handler(req, res) {
         .json({ ok: false, error: "orgId and name are required" });
     }
 
-    let client;
-    try {
-      client = await getClient();
-      const result = await client.query(
-        `
-          INSERT INTO requirement_groups_v2 (org_id, name, description)
-          VALUES ($1, $2, $3)
-          RETURNING id, org_id, name, description, is_active, created_at
-        `,
-        [orgId, name, description || null]
-      );
+    const { data, error } = await supabase
+      .from("requirements_groups_v2")
+      .insert({
+        org_id: orgId,
+        name,
+        description: description || null,
+      })
+      .select()
+      .single();
 
-      return res.status(201).json({ ok: true, group: result.rows[0] });
-    } catch (err) {
-      console.error("POST group error:", err);
-      return res.status(500).json({ ok: false, error: "Failed to create group" });
-    } finally {
-      if (client) await client.end();
+    if (error) {
+      console.error("POST group error:", error);
+      return res.status(500).json({ ok: false, error: error.message });
     }
+
+    return res.status(201).json({ ok: true, group: data });
   }
 
   //
-  // 3) UPDATE GROUP
+  // PUT: update group
   //
   if (method === "PUT") {
     const { id, name, description, is_active } = req.body || {};
@@ -87,36 +90,36 @@ export default async function handler(req, res) {
       return res.status(400).json({ ok: false, error: "Missing group id" });
     }
 
-    let client;
-    try {
-      client = await getClient();
-      const result = await client.query(
-        `
-          UPDATE requirement_groups_v2
-          SET name = COALESCE($2, name),
-              description = COALESCE($3, description),
-              is_active = COALESCE($4, is_active)
-          WHERE id = $1
-          RETURNING id, org_id, name, description, is_active, created_at
-        `,
-        [id, name || null, description || null, is_active]
-      );
+    const updates = {};
+    if (name !== undefined) updates.name = name;
+    if (description !== undefined) updates.description = description;
+    if (is_active !== undefined) updates.is_active = is_active;
 
-      if (result.rowCount === 0) {
-        return res.status(404).json({ ok: false, error: "Group not found" });
-      }
-
-      return res.status(200).json({ ok: true, group: result.rows[0] });
-    } catch (err) {
-      console.error("PUT group error:", err);
-      return res.status(500).json({ ok: false, error: "Failed to update group" });
-    } finally {
-      if (client) await client.end();
+    if (Object.keys(updates).length === 0) {
+      return res.status(400).json({ ok: false, error: "No fields to update" });
     }
+
+    const { data, error } = await supabase
+      .from("requirements_groups_v2")
+      .update(updates)
+      .eq("id", id)
+      .select()
+      .single();
+
+    if (error) {
+      console.error("PUT group error:", error);
+      return res.status(500).json({ ok: false, error: error.message });
+    }
+
+    if (!data) {
+      return res.status(404).json({ ok: false, error: "Group not found" });
+    }
+
+    return res.status(200).json({ ok: true, group: data });
   }
 
   //
-  // 4) DELETE GROUP
+  // DELETE: delete group (and cascade rules)
   //
   if (method === "DELETE") {
     const { id } = req.query;
@@ -125,21 +128,24 @@ export default async function handler(req, res) {
       return res.status(400).json({ ok: false, error: "Missing group id" });
     }
 
-    let client;
-    try {
-      client = await getClient();
-      await client.query("DELETE FROM requirement_groups_v2 WHERE id = $1", [
-        id,
-      ]);
+    const { error } = await supabase
+      .from("requirements_groups_v2")
+      .delete()
+      .eq("id", id);
 
-      return res.status(200).json({ ok: true });
-    } catch (err) {
-      console.error("DELETE group error:", err);
-      return res.status(500).json({ ok: false, error: "Failed to delete group" });
-    } finally {
-      if (client) await client.end();
+    if (error) {
+      console.error("DELETE group error:", error);
+      return res.status(500).json({ ok: false, error: error.message });
     }
+
+    return res.status(200).json({ ok: true });
   }
+
+  res.setHeader("Allow", ["GET", "POST", "PUT", "DELETE"]);
+  return res
+    .status(405)
+    .json({ ok: false, error: `Method ${method} Not Allowed` });
+}
 
   res.setHeader("Allow", ["GET", "POST", "PUT", "DELETE"]);
   return res.status(405).json({ ok: false, error: `Method ${method} Not Allowed` });
