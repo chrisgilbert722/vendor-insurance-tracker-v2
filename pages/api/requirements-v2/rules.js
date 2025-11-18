@@ -4,9 +4,7 @@ import { supabase } from "../../../lib/supabaseClient";
 export default async function handler(req, res) {
   const { method } = req;
 
-  //
   // GET: list rules for a group
-  //
   if (method === "GET") {
     const { groupId } = req.query;
 
@@ -28,9 +26,7 @@ export default async function handler(req, res) {
     return res.status(200).json({ ok: true, rules: data || [] });
   }
 
-  //
   // POST: create new rule
-  //
   if (method === "POST") {
     const {
       groupId,
@@ -71,9 +67,7 @@ export default async function handler(req, res) {
     return res.status(201).json({ ok: true, rule: data });
   }
 
-  //
   // PUT: update rule
-  //
   if (method === "PUT") {
     const {
       id,
@@ -122,9 +116,7 @@ export default async function handler(req, res) {
     return res.status(200).json({ ok: true, rule: data });
   }
 
-  //
   // DELETE: delete rule
-  //
   if (method === "DELETE") {
     const { id } = req.query;
 
