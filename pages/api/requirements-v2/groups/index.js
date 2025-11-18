@@ -3,6 +3,9 @@ import { supabase } from "../../../../lib/supabaseClient";
 export default async function handler(req, res) {
   const { method } = req;
 
+  // -------------------------
+  // GET GROUPS
+  // -------------------------
   if (method === "GET") {
     const { orgId } = req.query;
 
@@ -10,17 +13,10 @@ export default async function handler(req, res) {
       return res.status(400).json({ ok: false, error: "Missing orgId" });
     }
 
+    // FIXED: remove broken embedded relationship
     const { data, error } = await supabase
       .from("requirements_groups_v2")
-      .select(`
-        id,
-        org_id,
-        name,
-        description,
-        is_active,
-        created_at,
-        requirements_rules_v2 ( id )
-      `)
+      .select("*")
       .eq("org_id", orgId)
       .order("created_at", { ascending: false });
 
@@ -29,6 +25,7 @@ export default async function handler(req, res) {
       return res.status(500).json({ ok: false, error: error.message });
     }
 
+    // TEMP: rule_count = 0 (rules loaded later in rules endpoint)
     const groups =
       data?.map((g) => ({
         id: g.id,
@@ -37,12 +34,15 @@ export default async function handler(req, res) {
         description: g.description,
         is_active: g.is_active,
         created_at: g.created_at,
-        rule_count: g.requirements_rules_v2?.length || 0,
+        rule_count: 0,
       })) || [];
 
     return res.status(200).json({ ok: true, groups });
   }
 
+  // -------------------------
+  // CREATE GROUP
+  // -------------------------
   if (method === "POST") {
     const { orgId, name, description } = req.body || {};
 
@@ -70,6 +70,9 @@ export default async function handler(req, res) {
     return res.status(201).json({ ok: true, group: data });
   }
 
+  // -------------------------
+  // UPDATE GROUP
+  // -------------------------
   if (method === "PUT") {
     const { id, name, description, is_active } = req.body || {};
 
@@ -99,6 +102,9 @@ export default async function handler(req, res) {
     return res.status(200).json({ ok: true, group: data });
   }
 
+  // -------------------------
+  // DELETE GROUP
+  // -------------------------
   if (method === "DELETE") {
     const { id } = req.query;
     if (!id)
@@ -122,4 +128,4 @@ export default async function handler(req, res) {
     .status(405)
     .json({ ok: false, error: `Method ${method} Not Allowed` });
 }
- 
+
