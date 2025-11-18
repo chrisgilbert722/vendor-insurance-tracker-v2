@@ -23,6 +23,11 @@ export default function VendorPage() {
   const [fixBody, setFixBody] = useState("");
   const [fixInternalNotes, setFixInternalNotes] = useState("");
 
+  // SEND EMAIL STATE
+  const [sendLoading, setSendLoading] = useState(false);
+  const [sendError, setSendError] = useState("");
+  const [sendSuccess, setSendSuccess] = useState("");
+
   // ------------- LOAD VENDOR / POLICIES ---------------
   useEffect(() => {
     if (!id) return;
@@ -112,6 +117,36 @@ export default function VendorPage() {
     }
   }, [router.query, vendor, org]);
 
+  // -------- SEND FIX EMAIL FUNCTION ---------
+  async function sendFixEmail() {
+    if (!vendor || !org || !fixSubject || !fixBody) return;
+
+    try {
+      setSendLoading(true);
+      setSendError("");
+      setSendSuccess("");
+
+      const res = await fetch("/api/vendor/send-fix-email", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          vendorId: vendor.id,
+          orgId: org.id,
+          subject: fixSubject,
+          body: fixBody,
+        }),
+      });
+
+      const data = await res.json();
+      if (!data.ok) throw new Error(data.error);
+
+      setSendSuccess(`Email sent to ${data.sentTo}`);
+    } catch (err) {
+      setSendError(err.message || "Failed to send email");
+    } finally {
+      setSendLoading(false);
+    }
+  }
 
   // -------------- STATES ---------------
   if (loadingVendor) {
@@ -314,8 +349,43 @@ export default function VendorPage() {
           </div>
         )}
 
+        {/* SEND FIX EMAIL BUTTON */}
+        {fixSubject && fixBody && (
+          <div style={{ marginTop: 12 }}>
+            <button
+              onClick={sendFixEmail}
+              disabled={sendLoading}
+              style={{
+                width: "100%",
+                padding: "10px 14px",
+                borderRadius: 8,
+                border: "none",
+                background: "#0f172a",
+                color: "white",
+                fontSize: 14,
+                fontWeight: 600,
+                cursor: "pointer",
+              }}
+            >
+              {sendLoading ? "Sending…" : "📬 Send Fix Email"}
+            </button>
+
+            {sendError && (
+              <p style={{ color: "red", fontSize: 13, marginTop: 8 }}>
+                {sendError}
+              </p>
+            )}
+
+            {sendSuccess && (
+              <p style={{ color: "#15803d", fontSize: 13, marginTop: 8 }}>
+                {sendSuccess}
+              </p>
+            )}
+          </div>
+        )}
+
         {fixInternalNotes && (
-          <div>
+          <div style={{ marginTop: 12 }}>
             <h3 style={{ fontSize: 14, fontWeight: 600 }}>Internal Notes</h3>
             <p style={{ whiteSpace: "pre-wrap" }}>{fixInternalNotes}</p>
           </div>
