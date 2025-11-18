@@ -10,18 +10,14 @@ export default function RequirementsV2() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
 
-  // -------------------------
-  // Load Groups for Org
-  // -------------------------
+  // Load Groups
   useEffect(() => {
     if (loadingOrgs) return;
     if (!activeOrgId) return;
 
     async function loadGroups() {
       setLoading(true);
-      const res = await fetch(
-        `/api/requirements-v2/groups?orgId=${activeOrgId}`
-      );
+      const res = await fetch(`/api/requirements-v2/groups?orgId=${activeOrgId}`);
       const data = await res.json();
       if (data.ok) setGroups(data.groups);
       setLoading(false);
@@ -30,21 +26,15 @@ export default function RequirementsV2() {
     loadGroups();
   }, [activeOrgId, loadingOrgs]);
 
-  // -------------------------
-  // Load Rules for a Group
-  // -------------------------
+  // Load Rules
   async function loadRulesForGroup(groupId) {
     setSelectedGroup(groupId);
-    const res = await fetch(
-      `/api/requirements-v2/rules?groupId=${groupId}`
-    );
+    const res = await fetch(`/api/requirements-v2/rules?groupId=${groupId}`);
     const data = await res.json();
     if (data.ok) setRules(data.rules);
   }
 
-  // -------------------------
   // Create Group
-  // -------------------------
   async function createGroup() {
     const name = prompt("New Group Name:");
     if (!name) return;
@@ -54,13 +44,13 @@ export default function RequirementsV2() {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ orgId: activeOrgId, name }),
     });
+
     const data = await res.json();
+
     if (data.ok) setGroups([...groups, data.group]);
   }
 
-  // -------------------------
   // Update Rule
-  // -------------------------
   async function updateRule(rule) {
     setSaving(true);
 
@@ -71,32 +61,23 @@ export default function RequirementsV2() {
     });
 
     const data = await res.json();
+
     if (data.ok) {
-      // Replace updated rule
-      setRules((prev) =>
-        prev.map((r) => (r.id === rule.id ? data.rule : r))
-      );
+      setRules((prev) => prev.map((r) => (r.id === rule.id ? data.rule : r)));
     }
 
     setSaving(false);
   }
 
-  // -------------------------
   // Delete Rule
-  // -------------------------
   async function deleteRule(id) {
     if (!confirm("Delete this rule?")) return;
 
-    await fetch(`/api/requirements-v2/rules?id=${id}`, {
-      method: "DELETE",
-    });
+    await fetch(`/api/requirements-v2/rules?id=${id}`, { method: "DELETE" });
 
     setRules((prev) => prev.filter((r) => r.id !== id));
   }
 
-  // -------------------------
-  // UI Loading
-  // -------------------------
   if (loading || loadingOrgs)
     return <div style={{ padding: 40 }}>Loading rule groups…</div>;
 
@@ -123,8 +104,7 @@ export default function RequirementsV2() {
                 padding: "10px 14px",
                 borderRadius: 8,
                 cursor: "pointer",
-                background:
-                  selectedGroup === g.id ? "#0f172a" : "#f3f4f6",
+                background: selectedGroup === g.id ? "#0f172a" : "#f3f4f6",
                 color: selectedGroup === g.id ? "white" : "#0f172a",
                 marginBottom: 8,
               }}
@@ -173,7 +153,6 @@ export default function RequirementsV2() {
                     background: "white",
                   }}
                 >
-                  {/* FIELD */}
                   <input
                     value={rule.field_key}
                     placeholder="Field Key"
@@ -183,27 +162,27 @@ export default function RequirementsV2() {
                     style={inputStyle}
                   />
 
-                  {/* OPERATOR */}
                   <input
                     value={rule.operator}
-                    placeholder="Operator (>=, =, includes)"
+                    placeholder="Operator"
                     onChange={(e) =>
                       updateRule({ ...rule, operator: e.target.value })
                     }
                     style={inputStyle}
                   />
 
-                  {/* VALUE */}
                   <input
                     value={rule.expected_value}
                     placeholder="Expected Value"
                     onChange={(e) =>
-                      updateRule({ ...rule, expected_value: e.target.value })
+                      updateRule({
+                        ...rule,
+                        expected_value: e.target.value,
+                      })
                     }
                     style={inputStyle}
                   />
 
-                  {/* DELETE */}
                   <button
                     onClick={() => deleteRule(rule.id)}
                     style={{
