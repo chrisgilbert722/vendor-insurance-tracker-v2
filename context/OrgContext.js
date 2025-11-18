@@ -10,9 +10,18 @@ export function OrgProvider({ children }) {
 
   useEffect(() => {
     async function load() {
-      const { data: { session } } = await supabase.auth.getSession();
-      if (!session) return;
+      // 1. Load Supabase user session
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
 
+      if (!session) {
+        console.warn("No Supabase session found");
+        setLoadingOrgs(false);
+        return;
+      }
+
+      // 2. Load orgs using NEON-based API
       const res = await fetch("/api/org/list", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -20,18 +29,24 @@ export function OrgProvider({ children }) {
       });
 
       const data = await res.json();
+
       if (data.ok) {
         setOrgs(data.orgs);
 
-        // Set active org from cookie or fallback to first one
+        // 3. Check for existing cookie to remember last org
         const cookieOrgId =
           document.cookie
             .split("; ")
             .find((r) => r.startsWith("activeOrgId="))
             ?.split("=")[1];
 
-        setActiveOrgId(cookieOrgId || (data.orgs[0]?.id || null));
+        // 4. Use cookie OR default to first org
+        const fallbackOrg = data.orgs[0]?.id || null;
+        const newActiveOrgId = cookieOrgId || fallbackOrg;
+
+        setActiveOrgId(newActiveOrgId);
       }
+
       setLoadingOrgs(false);
     }
 
@@ -40,6 +55,9 @@ export function OrgProvider({ children }) {
 
   async function switchOrg(id) {
     setActiveOrgId(id);
+
+    // Persist org choice in cookie
+    document.cookie = `activeOrgId=${id}; path=/; max-age=31536000`;
 
     await fetch("/api/org/switch", {
       method: "POST",
