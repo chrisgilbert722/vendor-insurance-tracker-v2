@@ -1,78 +1,104 @@
 import { useEffect, useState } from "react";
+import { useOrg } from "../context/OrgContext";
 
 export default function RequirementsV2() {
+  const { activeOrgId, loadingOrgs } = useOrg();
+
   const [groups, setGroups] = useState([]);
   const [selectedGroup, setSelectedGroup] = useState(null);
   const [rules, setRules] = useState([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
-  const [orgId, setOrgId] = useState(null);
 
-  // Load organization ID from context/api
+  // -------------------------
+  // Load Groups for Org
+  // -------------------------
   useEffect(() => {
-    async function loadOrg() {
-      const res = await fetch("/api/org/me");
-      const data = await res.json();
-      if (data.ok) setOrgId(data.org.id);
-    }
-    loadOrg();
-  }, []);
-
-  // Load all rule groups
-  useEffect(() => {
-    if (!orgId) return;
+    if (loadingOrgs) return;
+    if (!activeOrgId) return;
 
     async function loadGroups() {
       setLoading(true);
-      const res = await fetch(`/api/requirements-v2?orgId=${orgId}`);
+      const res = await fetch(
+        `/api/requirements-v2/groups?orgId=${activeOrgId}`
+      );
       const data = await res.json();
       if (data.ok) setGroups(data.groups);
       setLoading(false);
     }
-    loadGroups();
-  }, [orgId]);
 
-  // Load rules for selected group
-  async function loadRules(groupId) {
+    loadGroups();
+  }, [activeOrgId, loadingOrgs]);
+
+  // -------------------------
+  // Load Rules for a Group
+  // -------------------------
+  async function loadRulesForGroup(groupId) {
     setSelectedGroup(groupId);
-    const res = await fetch(`/api/requirements-v2/${groupId}`);
+    const res = await fetch(
+      `/api/requirements-v2/rules?groupId=${groupId}`
+    );
     const data = await res.json();
     if (data.ok) setRules(data.rules);
   }
 
-  // Create new group
+  // -------------------------
+  // Create Group
+  // -------------------------
   async function createGroup() {
-    const name = prompt("New Group Name");
+    const name = prompt("New Group Name:");
     if (!name) return;
-    const res = await fetch(`/api/requirements-v2`, {
+
+    const res = await fetch(`/api/requirements-v2/groups`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ name, org_id: orgId }),
+      body: JSON.stringify({ orgId: activeOrgId, name }),
     });
     const data = await res.json();
     if (data.ok) setGroups([...groups, data.group]);
   }
 
-  // Update a rule inline
+  // -------------------------
+  // Update Rule
+  // -------------------------
   async function updateRule(rule) {
     setSaving(true);
-    const res = await fetch(`/api/requirements-v2/${rule.id}`, {
+
+    const res = await fetch(`/api/requirements-v2/rules`, {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(rule),
     });
-    await res.json();
+
+    const data = await res.json();
+    if (data.ok) {
+      // Replace updated rule
+      setRules((prev) =>
+        prev.map((r) => (r.id === rule.id ? data.rule : r))
+      );
+    }
+
     setSaving(false);
   }
 
-  // Delete a rule
+  // -------------------------
+  // Delete Rule
+  // -------------------------
   async function deleteRule(id) {
     if (!confirm("Delete this rule?")) return;
-    await fetch(`/api/requirements-v2/${id}`, { method: "DELETE" });
-    setRules(rules.filter((r) => r.id !== id));
+
+    await fetch(`/api/requirements-v2/rules?id=${id}`, {
+      method: "DELETE",
+    });
+
+    setRules((prev) => prev.filter((r) => r.id !== id));
   }
 
-  if (loading) return <div style={{ padding: 40 }}>Loading rule groups…</div>;
+  // -------------------------
+  // UI Loading
+  // -------------------------
+  if (loading || loadingOrgs)
+    return <div style={{ padding: 40 }}>Loading rule groups…</div>;
 
   return (
     <div style={{ padding: "30px 40px" }}>
@@ -81,14 +107,18 @@ export default function RequirementsV2() {
       </h1>
 
       <div style={{ display: "flex", gap: 40 }}>
-        {/* LEFT COLUMN — GROUPS */}
+        {/* LEFT COLUMN */}
         <div style={{ width: "260px" }}>
           <h3 style={{ marginBottom: 10 }}>Rule Groups</h3>
+
+          {groups.length === 0 && (
+            <p style={{ color: "#6b7280" }}>No groups yet.</p>
+          )}
 
           {groups.map((g) => (
             <div
               key={g.id}
-              onClick={() => loadRules(g.id)}
+              onClick={() => loadRulesForGroup(g.id)}
               style={{
                 padding: "10px 14px",
                 borderRadius: 8,
@@ -99,7 +129,7 @@ export default function RequirementsV2() {
                 marginBottom: 8,
               }}
             >
-              {g.name}
+              {g.name} ({g.rule_count})
             </div>
           ))}
 
@@ -120,11 +150,13 @@ export default function RequirementsV2() {
           </button>
         </div>
 
-        {/* RIGHT COLUMN — RULES */}
+        {/* RIGHT COLUMN */}
         <div style={{ flex: 1 }}>
-          {selectedGroup ? (
+          {!selectedGroup ? (
+            <p>Select a group.</p>
+          ) : (
             <>
-              <h3>Rules in Group</h3>
+              <h3>Rules</h3>
 
               {rules.length === 0 && (
                 <p style={{ color: "#6b7280" }}>No rules yet.</p>
@@ -141,137 +173,56 @@ export default function RequirementsV2() {
                     background: "white",
                   }}
                 >
-                  <div style={{ display: "flex", gap: 10 }}>
-                    <input
-                      value={rule.coverage_type}
-                      onChange={(e) =>
-                        updateRule({
-                          ...rule,
-                          coverage_type: e.target.value,
-                        })
-                      }
-                      style={{
-                        flex: 1,
-                        padding: 8,
-                        border: "1px solid #d1d5db",
-                        borderRadius: 6,
-                      }}
-                    />
-
-                    <button
-                      onClick={() => deleteRule(rule.id)}
-                      style={{
-                        background: "#b91c1c",
-                        color: "white",
-                        padding: "6px 10px",
-                        borderRadius: 6,
-                        border: 0,
-                        cursor: "pointer",
-                      }}
-                    >
-                      Delete
-                    </button>
-                  </div>
-
-                  {/* LIMITS */}
-                  <div style={{ display: "flex", gap: 10, marginTop: 10 }}>
-                    <input
-                      type="number"
-                      placeholder="Each Occurrence"
-                      value={rule.min_limit_each_occurrence || ""}
-                      onChange={(e) =>
-                        updateRule({
-                          ...rule,
-                          min_limit_each_occurrence: Number(e.target.value),
-                        })
-                      }
-                      style={inputStyle}
-                    />
-
-                    <input
-                      type="number"
-                      placeholder="Aggregate Limit"
-                      value={rule.min_limit_aggregate || ""}
-                      onChange={(e) =>
-                        updateRule({
-                          ...rule,
-                          min_limit_aggregate: Number(e.target.value),
-                        })
-                      }
-                      style={inputStyle}
-                    />
-
-                    <input
-                      type="number"
-                      placeholder="Min Risk Score"
-                      value={rule.min_risk_score || ""}
-                      onChange={(e) =>
-                        updateRule({
-                          ...rule,
-                          min_risk_score: Number(e.target.value),
-                        })
-                      }
-                      style={inputStyle}
-                    />
-                  </div>
-
-                  {/* TOGGLES */}
-                  <div style={{ display: "flex", gap: 20, marginTop: 12 }}>
-                    <label>
-                      <input
-                        type="checkbox"
-                        checked={rule.require_additional_insured}
-                        onChange={(e) =>
-                          updateRule({
-                            ...rule,
-                            require_additional_insured: e.target.checked,
-                          })
-                        }
-                      />{" "}
-                      Additional Insured
-                    </label>
-
-                    <label>
-                      <input
-                        type="checkbox"
-                        checked={rule.require_waiver}
-                        onChange={(e) =>
-                          updateRule({
-                            ...rule,
-                            require_waiver: e.target.checked,
-                          })
-                        }
-                      />{" "}
-                      Waiver Required
-                    </label>
-                  </div>
-
-                  {/* NOTES */}
-                  <textarea
-                    placeholder="Internal notes"
-                    value={rule.notes || ""}
+                  {/* FIELD */}
+                  <input
+                    value={rule.field_key}
+                    placeholder="Field Key"
                     onChange={(e) =>
-                      updateRule({
-                        ...rule,
-                        notes: e.target.value,
-                      })
+                      updateRule({ ...rule, field_key: e.target.value })
                     }
-                    style={{
-                      width: "100%",
-                      marginTop: 12,
-                      padding: 10,
-                      minHeight: 60,
-                      border: "1px solid #d1d5db",
-                      borderRadius: 6,
-                    }}
+                    style={inputStyle}
                   />
+
+                  {/* OPERATOR */}
+                  <input
+                    value={rule.operator}
+                    placeholder="Operator (>=, =, includes)"
+                    onChange={(e) =>
+                      updateRule({ ...rule, operator: e.target.value })
+                    }
+                    style={inputStyle}
+                  />
+
+                  {/* VALUE */}
+                  <input
+                    value={rule.expected_value}
+                    placeholder="Expected Value"
+                    onChange={(e) =>
+                      updateRule({ ...rule, expected_value: e.target.value })
+                    }
+                    style={inputStyle}
+                  />
+
+                  {/* DELETE */}
+                  <button
+                    onClick={() => deleteRule(rule.id)}
+                    style={{
+                      background: "#b91c1c",
+                      color: "white",
+                      padding: "6px 10px",
+                      borderRadius: 6,
+                      border: 0,
+                      cursor: "pointer",
+                      marginTop: 8,
+                    }}
+                  >
+                    Delete Rule
+                  </button>
                 </div>
               ))}
 
               {saving && <p>Saving…</p>}
             </>
-          ) : (
-            <p>Select a group.</p>
           )}
         </div>
       </div>
@@ -280,8 +231,9 @@ export default function RequirementsV2() {
 }
 
 const inputStyle = {
-  flex: 1,
+  width: "100%",
   padding: 8,
+  marginTop: 8,
   border: "1px solid #d1d5db",
   borderRadius: 6,
 };
