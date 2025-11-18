@@ -23,7 +23,7 @@ export default async function handler(req, res) {
   let db = null;
 
   try {
-    // 1️⃣ Load vendor to get email
+    // Load vendor email
     db = new Client({ connectionString: process.env.DATABASE_URL });
     await db.connect();
 
@@ -46,7 +46,7 @@ export default async function handler(req, res) {
       throw new Error("Vendor has no email on file.");
     }
 
-    // 2️⃣ Send email using Resend
+    // Send email with Resend
     const resend = new Resend(process.env.RESEND_API_KEY);
 
     await resend.emails.send({
@@ -56,7 +56,6 @@ export default async function handler(req, res) {
       text: body,
     });
 
-    // 3️⃣ Done
     return res.status(200).json({
       ok: true,
       sentTo: vendor.email
