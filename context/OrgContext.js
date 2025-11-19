@@ -10,18 +10,30 @@ export function OrgProvider({ children }) {
 
   useEffect(() => {
     async function load() {
-      // 1. Load Supabase user session
-      const {
+      // 1️⃣ Try to get session normally
+      let {
         data: { session },
       } = await supabase.auth.getSession();
 
+      // 2️⃣ If session is STILL NULL, fallback to getUser()
       if (!session) {
-        console.warn("No Supabase session found");
+        const {
+          data: { user },
+        } = await supabase.auth.getUser();
+
+        if (user) {
+          session = { user };
+        }
+      }
+
+      // 3️⃣ If STILL no user → stop
+      if (!session?.user?.id) {
+        console.warn("No Supabase user found");
         setLoadingOrgs(false);
         return;
       }
 
-      // 2. Load orgs using NEON-based API
+      // 4️⃣ Load orgs from your Neon API
       const res = await fetch("/api/org/list", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -33,13 +45,9 @@ export function OrgProvider({ children }) {
       if (data.ok) {
         setOrgs(data.orgs);
 
-        // 3. ALWAYS use first org from DB, ignore ANY old cookies forever
+        // 5️⃣ ALWAYS use the first org from DB
         const newActiveOrgId = data.orgs[0]?.id || null;
         setActiveOrgId(newActiveOrgId);
-
-        // 4. DELETE any corrupted cookie immediately
-        document.cookie =
-          "activeOrgId=; path=/; expires=Thu, 01 Jan 1970 00:00:00 UTC;";
       }
 
       setLoadingOrgs(false);
@@ -51,8 +59,6 @@ export function OrgProvider({ children }) {
   async function switchOrg(id) {
     setActiveOrgId(id);
 
-    // After removing cookie logic permanently,
-    // we still update the backend (Neon) active org if needed
     await fetch("/api/org/switch", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
