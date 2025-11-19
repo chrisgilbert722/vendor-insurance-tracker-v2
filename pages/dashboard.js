@@ -10,6 +10,7 @@ import ComplianceTrajectoryChart from "../components/charts/ComplianceTrajectory
 import PassFailDonutChart from "../components/charts/PassFailDonutChart";
 import ExpiringCertsHeatmap from "../components/charts/ExpiringCertsHeatmap";
 import SeverityDistributionChart from "../components/charts/SeverityDistributionChart";
+import RiskTimelineChart from "../components/charts/RiskTimelineChart";
 
 /* THEME TOKENS */
 const GP = {
