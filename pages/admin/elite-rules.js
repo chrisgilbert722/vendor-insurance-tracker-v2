@@ -1,7 +1,9 @@
 // pages/admin/elite-rules.js
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, useRef } from "react";
 import { useRole } from "../../lib/useRole";
 import { useOrg } from "../../context/OrgContext";
+import { DndProvider, useDrag, useDrop } from "react-dnd";
+import { HTML5Backend } from "react-dnd-html5-backend";
 
 /* THEME TOKENS — keep consistent with dashboard */
 const GP = {
@@ -22,6 +24,9 @@ const GP = {
   text: "#1f2933",
   textLight: "#7b8794",
 };
+
+/* DnD TYPE */
+const RULE_CARD_TYPE = "RULE_CARD";
 
 /* SAMPLE DATA — used when API is empty or unavailable */
 const SAMPLE_GROUPS = [
@@ -57,7 +62,8 @@ const SAMPLE_RULES = [
     groupId: "general-liability",
     name: "GL Each Occurrence ≥ $1M",
     severity: "high",
-    description: "Vendor must carry at least $1M per occurrence for general liability.",
+    description:
+      "Vendor must carry at least $1M per occurrence for general liability.",
     logic: "limit_each_occurrence >= 1000000",
     status: "active",
   },
@@ -86,7 +92,8 @@ const SAMPLE_RULES = [
     groupId: "workers-comp",
     name: "Workers’ Comp = Statutory",
     severity: "medium",
-    description: "Policy must indicate statutory workers’ compensation coverage.",
+    description:
+      "Policy must indicate statutory workers’ compensation coverage.",
     logic: "work_comp_limit == 'statutory'",
     status: "active",
   },
@@ -101,6 +108,7 @@ const SAMPLE_RULES = [
     status: "draft",
   },
 ];
+
 /* SEVERITY CHIP STYLES */
 function severityStyle(level) {
   switch (level) {
@@ -161,11 +169,54 @@ function RuleStatusPill({ status }) {
   );
 }
 
-function RuleCard({ rule, index }) {
+/**
+ * DnD-enabled rule card
+ */
+function RuleCard({ rule, index, moveRule }) {
   const sev = severityStyle(rule.severity || "low");
+  const ref = useRef(null);
+
+  const [, drop] = useDrop({
+    accept: RULE_CARD_TYPE,
+    hover(item, monitor) {
+      if (!ref.current) return;
+
+      const dragId = item.id;
+      const hoverId = rule.id || rule.rule_id;
+      if (!dragId || !hoverId || dragId === hoverId) return;
+
+      const boundingRect = ref.current.getBoundingClientRect();
+      const middleY = (boundingRect.bottom - boundingRect.top) / 2;
+      const clientOffset = monitor.getClientOffset();
+      if (!clientOffset) return;
+
+      const hoverClientY = clientOffset.y - boundingRect.top;
+
+      // Only trigger a move when cursor crosses halfway point
+      if (item.index < index && hoverClientY < middleY) return;
+      if (item.index > index && hoverClientY > middleY) return;
+
+      moveRule(dragId, hoverId);
+      item.index = index;
+    },
+  });
+
+  const [{ isDragging }, drag] = useDrag({
+    type: RULE_CARD_TYPE,
+    item: () => ({
+      id: rule.id || rule.rule_id,
+      index,
+    }),
+    collect: (monitor) => ({
+      isDragging: monitor.isDragging(),
+    }),
+  });
+
+  drag(drop(ref));
 
   return (
     <div
+      ref={ref}
       style={{
         display: "flex",
         gap: 14,
@@ -176,6 +227,8 @@ function RuleCard({ rule, index }) {
         boxShadow: "0 12px 30px rgba(15, 23, 42, 0.06)",
         marginBottom: 12,
         position: "relative",
+        opacity: isDragging ? 0.5 : 1,
+        transition: "opacity 0.12s ease-out, transform 0.12s ease-out",
       }}
     >
       {/* Drag handle */}
@@ -268,7 +321,8 @@ function RuleCard({ rule, index }) {
         {rule.logic && (
           <div
             style={{
-              fontFamily: "SFMono-Regular, Menlo, Monaco, Consolas, monospace",
+              fontFamily:
+                "SFMono-Regular, Menlo, Monaco, Consolas, monospace",
               fontSize: 11,
               padding: "8px 10px",
               borderRadius: 10,
@@ -393,6 +447,26 @@ export default function EliteRulesPage() {
         "AI rule builder wiring is next — UI is ready. (No backend call yet, just placeholder.)"
       );
     }, 1000);
+  }
+
+  // 🔥 Reorder rules in the global list based on drag/hover IDs
+  function moveRule(dragId, hoverId) {
+    if (!dragId || !hoverId || dragId === hoverId) return;
+
+    setRules((prev) => {
+      const arr = [...prev];
+      const dragIndex = arr.findIndex(
+        (r) => (r.id || r.rule_id) === dragId
+      );
+      const hoverIndex = arr.findIndex(
+        (r) => (r.id || r.rule_id) === hoverId
+      );
+      if (dragIndex === -1 || hoverIndex === -1) return prev;
+
+      const [removed] = arr.splice(dragIndex, 1);
+      arr.splice(hoverIndex, 0, removed);
+      return arr;
+    });
   }
 
   return (
@@ -653,90 +727,100 @@ export default function EliteRulesPage() {
             </div>
           </div>
 
-          {/* RIGHT: RULES */}
-          <div
-            style={{
-              background: GP.panel,
-              borderRadius: 20,
-              border: "1px solid rgba(226, 232, 240, 0.95)",
-              boxShadow: GP.shadow,
-              padding: 18,
-            }}
-          >
+          {/* RIGHT: RULES (DnD-enabled) */}
+          <DndProvider backend={HTML5Backend}>
             <div
               style={{
-                display: "flex",
-                justifyContent: "space-between",
-                alignItems: "center",
-                marginBottom: 10,
+                background: GP.panel,
+                borderRadius: 20,
+                border: "1px solid rgba(226, 232, 240, 0.95)",
+                boxShadow: GP.shadow,
+                padding: 18,
               }}
             >
-              <div>
+              <div
+                style={{
+                  display: "flex",
+                  justifyContent: "space-between",
+                  alignItems: "center",
+                  marginBottom: 10,
+                }}
+              >
+                <div>
+                  <div
+                    style={{
+                      fontSize: 13,
+                      fontWeight: 600,
+                      textTransform: "uppercase",
+                      letterSpacing: "0.12em",
+                      color: GP.inkSoft,
+                      marginBottom: 3,
+                    }}
+                  >
+                    {selectedGroup?.label || "Rules"}
+                  </div>
+                  <div
+                    style={{
+                      fontSize: 16,
+                      fontWeight: 700,
+                      color: GP.ink,
+                    }}
+                  >
+                    Execution order & severity scoring
+                  </div>
+                </div>
+
+                <div
+                  style={{
+                    fontSize: 11,
+                    color: GP.inkSoft,
+                    textAlign: "right",
+                  }}
+                >
+                  {visibleRules.length} rule
+                  {visibleRules.length === 1 ? "" : "s"} in this group
+                  <br />
+                  <span style={{ opacity: 0.8 }}>
+                    Highest severity rules should sit at the top.
+                  </span>
+                </div>
+              </div>
+
+              {loading && (
+                <div
+                  style={{ fontSize: 12, color: GP.inkSoft, marginTop: 8 }}
+                >
+                  Loading rules…
+                </div>
+              )}
+
+              {!loading && visibleRules.length === 0 && (
                 <div
                   style={{
                     fontSize: 13,
-                    fontWeight: 600,
-                    textTransform: "uppercase",
-                    letterSpacing: "0.12em",
                     color: GP.inkSoft,
-                    marginBottom: 3,
+                    marginTop: 12,
                   }}
                 >
-                  {selectedGroup?.label || "Rules"}
+                  No rules defined for this group yet. Use{" "}
+                  <strong>New Rule</strong> or{" "}
+                  <strong>AI: Suggest Rules For This Org</strong> to get
+                  started.
                 </div>
-                <div
-                  style={{
-                    fontSize: 16,
-                    fontWeight: 700,
-                    color: GP.ink,
-                  }}
-                >
-                  Execution order & severity scoring
-                </div>
-              </div>
+              )}
 
-              <div
-                style={{
-                  fontSize: 11,
-                  color: GP.inkSoft,
-                  textAlign: "right",
-                }}
-              >
-                {visibleRules.length} rule
-                {visibleRules.length === 1 ? "" : "s"} in this group
-                <br />
-                <span style={{ opacity: 0.8 }}>
-                  Highest severity rules should sit at the top.
-                </span>
-              </div>
+              {!loading &&
+                visibleRules.length > 0 &&
+                visibleRules.map((r, idx) => (
+                  <RuleCard
+                    key={r.id || r.rule_id || idx}
+                    rule={r}
+                    index={idx}
+                    moveRule={moveRule}
+                  />
+                ))}
             </div>
-
-            {loading && (
-              <div style={{ fontSize: 12, color: GP.inkSoft, marginTop: 8 }}>
-                Loading rules…
-              </div>
-            )}
-
-            {!loading && visibleRules.length === 0 && (
-              <div
-                style={{
-                  fontSize: 13,
-                  color: GP.inkSoft,
-                  marginTop: 12,
-                }}
-              >
-                No rules defined for this group yet. Use{" "}
-                <strong>New Rule</strong> or{" "}
-                <strong>AI: Suggest Rules For This Org</strong> to get started.
-              </div>
-            )}
-
-            {!loading &&
-              visibleRules.length > 0 &&
-              visibleRules.map((r, idx) => (
-                <RuleCard key={r.id || idx} rule={r} index={idx} />
-              ))}
-          </div>
+          </DndProvider>
         </div>
       </div>
     </div>
