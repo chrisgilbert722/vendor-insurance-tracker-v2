@@ -583,6 +583,9 @@ export default function Dashboard() {
   {/* 🔥 Severity Distribution Bar Chart */}
 <SeverityDistributionChart policies={policies} />
 
+  {/* 🔥 Cinematic Risk Timeline */}
+<RiskTimelineChart policies={policies} />
+
         {/* POLICIES TABLE */}
         <h2
           style={{
