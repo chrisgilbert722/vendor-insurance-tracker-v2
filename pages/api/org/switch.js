@@ -11,14 +11,9 @@ export default async function handler(req, res) {
     return res.status(400).json({ ok: false, error: "orgId required" });
   }
 
-  // Manual cookie header – NO external dependency needed
-  const cookie = `activeOrgId=${orgId}; Path=/; HttpOnly; SameSite=Strict; Max-Age=${
-    60 * 60 * 24 * 365
-  }${
-    process.env.NODE_ENV === "production" ? "; Secure" : ""
-  }`;
+  // 🚀 DO NOT SET ANY COOKIES ANYMORE.
+  // We rely 100% on OrgContext using the correct org from the DB.
+  // Remove the corrupted cookie behavior permanently.
 
-  res.setHeader("Set-Cookie", cookie);
-
-  return res.status(200).json({ ok: true });
+  return res.status(200).json({ ok: true, orgId });
 }
