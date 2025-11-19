@@ -3,6 +3,11 @@ import { useEffect, useState } from "react";
 import VendorDrawer from "../components/VendorDrawer";
 import { useRole } from "../lib/useRole";
 import { useOrg } from "../context/OrgContext";
+import EliteStatusPill from "../components/elite/EliteStatusPill";
+
+// 📊 NEW CHART IMPORTS
+import ComplianceTrajectoryChart from "../components/charts/ComplianceTrajectoryChart";
+import PassFailDonutChart from "../components/charts/PassFailDonutChart";
 
 /* THEME TOKENS */
 const GP = {
@@ -24,10 +29,12 @@ const GP = {
   textLight: "#7b8794",
 };
 
-/* RISK HELPERS */
+/* RISK + SCORE HELPERS */
 function parseExpiration(dateStr) {
   if (!dateStr) return null;
-  const [mm, dd, yyyy] = dateStr.split("/");
+  const parts = dateStr.split("/");
+  if (parts.length !== 3) return null;
+  const [mm, dd, yyyy] = parts;
   if (!mm || !dd || !yyyy) return null;
   return new Date(`${yyyy}-${mm}-${dd}T00:00:00`);
 }
@@ -81,108 +88,97 @@ function computeRisk(p) {
   return { daysLeft, severity, score, flags, tier };
 }
 
+/* 🔧 BADGE STYLE — THIS WAS MISSING AND BREAKING THINGS */
 function badgeStyle(level) {
   switch (level) {
     case "expired":
-      return { background: "#ffebee", color: "#b71c1c", fontWeight: "600" };
+      return { background: "#ffebee", color: "#b71c1c", fontWeight: 600 };
     case "critical":
-      return { background: "#fff3e0", color: "#e65100", fontWeight: "600" };
+      return { background: "#fff3e0", color: "#e65100", fontWeight: 600 };
     case "warning":
-      return { background: "#fffde7", color: "#f9a825", fontWeight: "600" };
+      return { background: "#fffde7", color: "#f9a825", fontWeight: 600 };
     case "ok":
-      return { background: "#e8f5e9", color: "#1b5e20", fontWeight: "600" };
+      return { background: "#e8f5e9", color: "#1b5e20", fontWeight: 600 };
     default:
-      return { background: "#eceff1", color: "#546e7a" };
+      return { background: "#eceff1", color: "#546e7a", fontWeight: 600 };
   }
 }
 
-/* COMPLIANCE BADGE HELPER — uses real summary/missing/failing from /api/requirements/check */
+/* AI RISK SCORE */
+function computeAiRisk({ risk, elite, compliance }) {
+  if (!risk) return { score: 0, tier: "Unknown" };
+
+  let base = typeof risk.score === "number" ? risk.score : 0;
+  let eliteFactor = 1.0;
+
+  if (elite && !elite.loading && !elite.error) {
+    if (elite.overall === "fail") eliteFactor = 0.4;
+    else if (elite.overall === "warn") eliteFactor = 0.7;
+  }
+
+  let complianceFactor = 1.0;
+  if (compliance && compliance.failing?.length > 0) complianceFactor = 0.5;
+  else if (compliance && compliance.missing?.length > 0) complianceFactor = 0.7;
+
+  let score = Math.round(base * eliteFactor * complianceFactor);
+  score = Math.min(Math.max(score, 0), 100);
+
+  let tier = "Unknown";
+  if (score >= 85) tier = "Elite Safe";
+  else if (score >= 70) tier = "Preferred";
+  else if (score >= 55) tier = "Watch";
+  else if (score >= 35) tier = "High Risk";
+  else tier = "Severe";
+
+  return { score, tier };
+}
+
+/* COMPLIANCE BADGE */
 function renderComplianceBadge(vendorId, complianceMap) {
   const data = complianceMap[vendorId];
-
   const base = {
     display: "inline-flex",
     alignItems: "center",
-    justifyContent: "center",
     padding: "3px 8px",
     borderRadius: "999px",
-    fontSize: "11px",
+    fontSize: 11,
     fontWeight: 600,
   };
 
-  if (!data || data.loading) {
+  if (!data || data.loading)
     return (
-      <span
-        style={{
-          ...base,
-          background: "#eef0f4",
-          color: "#64748b",
-        }}
-      >
+      <span style={{ ...base, background: "#eef0f4", color: "#64748b" }}>
         Checking…
       </span>
     );
-  }
 
-  if (data.error) {
+  if (data.error)
     return (
-      <span
-        style={{
-          ...base,
-          background: "#fee2e2",
-          color: "#b91c1c",
-        }}
-        title={data.error}
-      >
+      <span style={{ ...base, background: "#fee2e2", color: "#b91c1c" }}>
         Error
       </span>
     );
-  }
 
-  if (data.missing && data.missing.length > 0) {
+  if (data.missing?.length > 0)
     return (
-      <span
-        style={{
-          ...base,
-          background: "#fef3c7",
-          color: "#b45309",
-        }}
-        title="Missing required coverage."
-      >
+      <span style={{ ...base, background: "#fef3c7", color: "#b45309" }}>
         Missing
       </span>
     );
-  }
 
-  if (data.failing && data.failing.length > 0) {
+  if (data.failing?.length > 0)
     return (
-      <span
-        style={{
-          ...base,
-          background: "#fee2e2",
-          color: "#b91c1c",
-        }}
-        title="Coverage does not meet requirements."
-      >
+      <span style={{ ...base, background: "#fee2e2", color: "#b91c1c" }}>
         Non-compliant
       </span>
     );
-  }
 
   return (
-    <span
-      style={{
-        ...base,
-        background: "#dcfce7",
-        color: "#166534",
-      }}
-      title="Vendor meets all current organizational coverage requirements."
-    >
+    <span style={{ ...base, background: "#dcfce7", color: "#166534" }}>
       🛡️ Compliant
     </span>
   );
 }
-
 /* MAIN DASHBOARD */
 export default function Dashboard() {
   const [policies, setPolicies] = useState([]);
@@ -191,6 +187,13 @@ export default function Dashboard() {
   const [metrics, setMetrics] = useState(null);
   const [deltas, setDeltas] = useState(null);
   const [complianceMap, setComplianceMap] = useState({});
+
+  const [eliteMap, setEliteMap] = useState({});
+  const [eliteSummary, setEliteSummary] = useState({ pass: 0, warn: 0, fail: 0 });
+
+  // ⭐ Phase F Alerts
+  const [alerts, setAlerts] = useState([]);
+  const [showAlerts, setShowAlerts] = useState(false);
 
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [drawerVendor, setDrawerVendor] = useState(null);
@@ -202,15 +205,10 @@ export default function Dashboard() {
   /* LOAD POLICIES */
   useEffect(() => {
     async function load() {
-      try {
-        const res = await fetch("/api/get-policies");
-        const data = await res.json();
-        if (data.ok) setPolicies(data.policies);
-      } catch (err) {
-        console.error("FAILED TO LOAD POLICIES:", err);
-      } finally {
-        setLoading(false);
-      }
+      const res = await fetch("/api/get-policies");
+      const data = await res.json();
+      if (data.ok) setPolicies(data.policies);
+      setLoading(false);
     }
     load();
   }, []);
@@ -218,35 +216,26 @@ export default function Dashboard() {
   /* LOAD METRICS */
   useEffect(() => {
     async function loadSummary() {
-      try {
-        const res = await fetch("/api/metrics/summary");
-        const data = await res.json();
-        if (data.ok) {
-          setMetrics(data.latest);
-          setDeltas(data.deltas);
-        }
-      } catch (err) {
-        console.error("METRICS FETCH FAILED:", err);
+      const res = await fetch("/api/metrics/summary");
+      const data = await res.json();
+      if (data.ok) {
+        setMetrics(data.latest);
+        setDeltas(data.deltas);
       }
     }
     loadSummary();
   }, []);
 
-  /* LOAD COMPLIANCE PER VENDOR — REAL compliance engine with orgId */
+  /* LOAD COMPLIANCE */
   useEffect(() => {
-    if (!policies || policies.length === 0) return;
-    if (!activeOrgId) return;
+    if (!policies.length || !activeOrgId) return;
 
     const vendorIds = [...new Set(policies.map((p) => p.vendor_id))];
 
     vendorIds.forEach((vendorId) => {
-      // don’t refetch if we already have data
       if (complianceMap[vendorId]) return;
 
-      setComplianceMap((prev) => ({
-        ...prev,
-        [vendorId]: { loading: true },
-      }));
+      setComplianceMap((prev) => ({ ...prev, [vendorId]: { loading: true } }));
 
       fetch(`/api/requirements/check?vendorId=${vendorId}&orgId=${activeOrgId}`)
         .then((res) => res.json())
@@ -261,21 +250,139 @@ export default function Dashboard() {
                   failing: data.failing || [],
                   passing: data.passing || [],
                 }
-              : {
-                  loading: false,
-                  error: data.error || "Compliance check failed",
-                },
-          }));
-        })
-        .catch((err) => {
-          console.error("Compliance fetch error", err);
-          setComplianceMap((prev) => ({
-            ...prev,
-            [vendorId]: { loading: false, error: err.message },
+              : { loading: false, error: data.error },
           }));
         });
     });
   }, [policies, activeOrgId, complianceMap]);
+
+  /* LOAD ELITE */
+  useEffect(() => {
+    if (!policies.length) return;
+
+    const vendorIds = [...new Set(policies.map((p) => p.vendor_id))];
+
+    vendorIds.forEach((vendorId) => {
+      if (eliteMap[vendorId] && !eliteMap[vendorId].loading) return;
+
+      const primary = policies.find((p) => p.vendor_id === vendorId);
+      if (!primary) return;
+
+      const coidata = {
+        expirationDate: primary.expiration_date,
+        generalLiabilityLimit: primary.limit_each_occurrence,
+        autoLimit: primary.auto_limit,
+        workCompLimit: primary.work_comp_limit,
+        policyType: primary.coverage_type,
+      };
+
+      setEliteMap((prev) => ({ ...prev, [vendorId]: { loading: true } }));
+
+      fetch("/api/elite/evaluate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ coidata }),
+      })
+        .then((res) => res.json())
+        .then((data) => {
+          setEliteMap((prev) => ({
+            ...prev,
+            [vendorId]: data.ok
+              ? { loading: false, overall: data.overall, rules: data.rules }
+              : { loading: false, error: data.error },
+          }));
+        });
+    });
+  }, [policies, eliteMap]);
+
+  /* ELITE SUMMARY */
+  useEffect(() => {
+    let pass = 0,
+      warn = 0,
+      fail = 0;
+
+    Object.values(eliteMap).forEach((e) => {
+      if (!e || e.loading || e.error) return;
+      if (e.overall === "pass") pass++;
+      else if (e.overall === "warn") warn++;
+      else if (e.overall === "fail") fail++;
+    });
+
+    setEliteSummary({ pass, warn, fail });
+  }, [eliteMap]);
+
+  /* ⭐ Phase F — Log alerts */
+  async function logAlert(vendorId, type, message) {
+    if (!activeOrgId) return;
+    await fetch("/api/alerts/log", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ vendorId, orgId: activeOrgId, type, message }),
+    });
+  }
+
+  /* ⭐ Phase F — Trigger alerts automatically */
+  useEffect(() => {
+    if (!policies.length || !activeOrgId) return;
+
+    policies.forEach((p) => {
+      const risk = computeRisk(p);
+      const elite = eliteMap[p.vendor_id];
+      const compliance = complianceMap[p.vendor_id];
+      const ai = computeAiRisk({ risk, elite, compliance });
+      const name = p.vendor_name || "Vendor";
+
+      if (elite?.overall === "fail") {
+        logAlert(p.vendor_id, "elite_fail", `${name} failed Elite Engine`);
+      }
+
+      if (ai.score < 60) {
+        logAlert(p.vendor_id, "risk_low", `${name} dropped to risk ${ai.score}`);
+      }
+
+      if (risk.daysLeft !== null && risk.daysLeft < 5) {
+        logAlert(
+          p.vendor_id,
+          "expires_soon",
+          `${name} has a policy expiring in ${risk.daysLeft} days`
+        );
+      }
+
+      if (compliance?.missing?.length > 0) {
+        logAlert(
+          p.vendor_id,
+          "missing_coverage",
+          `${name} missing required coverage`
+        );
+      }
+    });
+  }, [policies, eliteMap, complianceMap, activeOrgId]);
+
+  /* ⭐ Phase F — Fetch alerts for dropdown */
+  useEffect(() => {
+    if (!activeOrgId) return;
+
+    async function loadAlerts() {
+      const res = await fetch(`/api/alerts/get?orgId=${activeOrgId}`);
+      const data = await res.json();
+      if (data.ok) setAlerts(data.alerts);
+    }
+
+    loadAlerts();
+    const interval = setInterval(loadAlerts, 5000);
+    return () => clearInterval(interval);
+  }, [activeOrgId]);
+
+  const filtered = policies.filter((p) => {
+    const t = filterText.toLowerCase();
+    return (
+      !t ||
+      p.vendor_name?.toLowerCase().includes(t) ||
+      p.policy_number?.toLowerCase().includes(t) ||
+      p.carrier?.toLowerCase().includes(t) ||
+      p.coverage_type?.toLowerCase().includes(t)
+    );
+  });
 
   async function openDrawer(vendorId) {
     try {
@@ -296,63 +403,114 @@ export default function Dashboard() {
     setDrawerPolicies([]);
   }
 
-  const filtered = policies.filter((p) => {
-    const t = filterText.toLowerCase();
-    return (
-      !t ||
-      p.vendor_name?.toLowerCase().includes(t) ||
-      p.policy_number?.toLowerCase().includes(t) ||
-      p.carrier?.toLowerCase().includes(t) ||
-      p.coverage_type?.toLowerCase().includes(t)
-    );
-  });
-
   return (
     <div style={{ minHeight: "100vh", background: GP.surface }}>
-      {/* Header is global now via Layout — no <Header /> here */}
-      <div style={{ padding: "30px 40px" }}>
-        <h1
-          style={{
-            fontSize: "36px",
-            marginTop: "10px",
-            color: GP.ink,
-            fontWeight: "700",
-          }}
-        >
-          Vendor Insurance Dashboard
-        </h1>
+      <div style={{ padding: "30px 40px", position: "relative" }}>
+        {/* HEADER + ALERTS */}
+        <div style={{ display: "flex", justifyContent: "space-between" }}>
+          <div>
+            <h1 style={{ fontSize: 36, fontWeight: 700, color: GP.ink }}>
+              Vendor Insurance Dashboard
+            </h1>
+            <p style={{ fontSize: 15, color: GP.inkLight }}>
+              Real-time vendor insurance intelligence
+            </p>
+            {(isAdmin || isManager) && (
+              <a
+                href="/upload-coi"
+                style={{
+                  display: "inline-block",
+                  marginTop: 20,
+                  padding: "9px 16px",
+                  background: GP.primary,
+                  color: "white",
+                  borderRadius: 999,
+                  textDecoration: "none",
+                  fontWeight: 600,
+                }}
+              >
+                + Upload New COI
+              </a>
+            )}
+          </div>
 
-        <p
-          style={{
-            fontSize: "15px",
-            marginTop: "8px",
-            color: GP.inkLight,
-          }}
-        >
-          Real-time visibility into vendor insurance compliance, expiration
-          risk, and coverage health.
-        </p>
+          {/* ALERT BELL */}
+          <div style={{ position: "relative", marginTop: 10 }}>
+            <button
+              onClick={() => setShowAlerts((s) => !s)}
+              style={{
+                padding: "8px 14px",
+                borderRadius: 999,
+                border: "1px solid #e5e7eb",
+                background: "white",
+                cursor: "pointer",
+                display: "flex",
+                gap: 6,
+                fontSize: 13,
+              }}
+            >
+              🔔 Alerts ({alerts.length})
+            </button>
 
-        {(isAdmin || isManager) && (
-          <a
-            href="/upload-coi"
-            style={{
-              display: "inline-block",
-              marginTop: "18px",
-              marginBottom: "25px",
-              padding: "9px 16px",
-              background: GP.primary,
-              color: GP.panel,
-              borderRadius: "999px",
-              fontSize: "14px",
-              fontWeight: "600",
-              textDecoration: "none",
-              boxShadow: GP.shadow,
-            }}
-          >
-            + Upload New COI
-          </a>
-        )}
+            {showAlerts && (
+              <div
+                style={{
+                  position: "absolute",
+                  top: "120%",
+                  right: 0,
+                  width: 300,
+                  background: "white",
+                  border: "1px solid #e5e7eb",
+                  borderRadius: 12,
+                  padding: 12,
+                  maxHeight: 340,
+                  overflowY: "auto",
+                  boxShadow: "0 6px 20px rgba(0,0,0,0.15)",
+                  zIndex: 20,
+                }}
+              >
+                {alerts.length === 0 ? (
+                  <div style={{ fontSize: 12, color: "#6b7280" }}>
+                    No alerts yet.
+                  </div>
+                ) : (
+                  alerts.map((a) => (
+                    <div
+                      key={a.id}
+                      style={{
+                        paddingBottom: 8,
+                        marginBottom: 8,
+                        borderBottom: "1px solid #f1f5f9",
+                      }}
+                    >
+                      <div
+                        style={{
+                          fontSize: 11,
+                          fontWeight: 600,
+                          color: "#111827",
+                          textTransform: "uppercase",
+                          marginBottom: 2,
+                        }}
+                      >
+                        {a.type.replace(/_/g, " ")}
+                      </div>
+                      <div style={{ fontSize: 12 }}>{a.message}</div>
+                      <div
+                        style={{
+                          fontSize: 10,
+                          color: "#6b7280",
+                          marginTop: 2,
+                        }}
+                      >
+                        {new Date(a.created_at).toLocaleString()}
+                      </div>
+                    </div>
+                  ))
+                )}
+              </div>
+            )}
+          </div>
+        </div>
 
         <hr style={{ margin: "22px 0" }} />
 
@@ -360,13 +518,13 @@ export default function Dashboard() {
         <div
           style={{
             display: "flex",
-            gap: "16px",
-            marginBottom: "30px",
-            padding: "22px 26px",
-            background: GP.panel,
-            borderRadius: GP.radius,
-            boxShadow: GP.shadow,
+            gap: 16,
+            marginBottom: 30,
+            background: "white",
+            borderRadius: 12,
+            padding: "20px 26px",
             border: "1px solid #e3e9f1",
+            boxShadow: GP.shadow,
           }}
         >
           <RiskCard
@@ -387,7 +545,7 @@ export default function Dashboard() {
             label="Warning (≤90 days)"
             icon="🟡"
             color={GP.yellow}
-            count={metrics?.warning ?? 0}
+            count={metrics?.warning_count ?? 0}
             delta={deltas?.warning ?? 0}
           />
           <RiskCard
@@ -397,10 +555,23 @@ export default function Dashboard() {
             count={metrics?.ok_count ?? 0}
             delta={deltas?.ok ?? 0}
           />
-          <ScoreCard
-            avgScore={metrics?.avg_score}
-            delta={deltas?.avg_score}
-          />
+          <ScoreCard avgScore={metrics?.avg_score} delta={deltas?.avg_score} />
+          <EliteCard counts={eliteSummary} />
+        </div>
+
+        {/* 📊 ANALYTICS ROW — COMPLIANCE TRAJECTORY + PASS/FAIL DONUT */}
+        <div
+          style={{
+            marginTop: 10,
+            marginBottom: 40,
+            display: "grid",
+            gridTemplateColumns: "minmax(0, 2fr) minmax(0, 1.2fr)",
+            gap: 24,
+            alignItems: "stretch",
+          }}
+        >
+          <ComplianceTrajectoryChart />
+          <PassFailDonutChart />
         </div>
 
         {/* POLICIES TABLE */}
@@ -429,7 +600,6 @@ export default function Dashboard() {
             fontSize: "14px",
           }}
         />
-
         {loading && <p>Loading policies…</p>}
         {!loading && filtered.length === 0 && <p>No matching policies.</p>}
 
@@ -453,18 +623,19 @@ export default function Dashboard() {
                   <th style={th}>Days Left</th>
                   <th style={th}>Status</th>
                   <th style={th}>Risk Tier</th>
-                  <th style={th}>Score</th>
+                  <th style={th}>AI Risk Score</th>
                   <th style={th}>Compliance</th>
+                  <th style={th}>Elite</th>
                   <th style={th}>Flags</th>
                 </tr>
               </thead>
-
               <tbody>
                 {filtered.map((p) => {
                   const risk = computeRisk(p);
-                  const severity = risk.severity;
-                  const score = risk.score;
                   const flags = risk.flags || [];
+                  const elite = eliteMap[p.vendor_id];
+                  const compliance = complianceMap[p.vendor_id];
+                  const ai = computeAiRisk({ risk, elite, compliance });
 
                   return (
                     <tr
@@ -474,7 +645,6 @@ export default function Dashboard() {
                         background: "#ffffff",
                         cursor: "pointer",
                         boxShadow: "0 2px 6px rgba(0,0,0,0.05)",
-                        transition: "0.15s ease",
                       }}
                     >
                       <td style={td}>{p.vendor_name || "—"}</td>
@@ -484,28 +654,30 @@ export default function Dashboard() {
                       <td style={td}>{p.expiration_date || "—"}</td>
                       <td style={td}>{risk.daysLeft ?? "—"}</td>
 
+                      {/* STATUS BADGE */}
                       <td
                         style={{
                           ...td,
-                          ...badgeStyle(severity),
+                          ...badgeStyle(risk.severity),
                           textAlign: "center",
                         }}
                       >
-                        {severity === "ok"
+                        {risk.severity === "ok"
                           ? "Active"
-                          : severity.charAt(0).toUpperCase() +
-                            severity.slice(1)}
+                          : risk.severity.charAt(0).toUpperCase() +
+                            risk.severity.slice(1)}
                       </td>
 
+                      {/* RISK TIER */}
                       <td style={{ ...td, textAlign: "center" }}>
                         <span
                           style={{
                             display: "inline-block",
                             padding: "3px 10px",
-                            borderRadius: "999px",
+                            borderRadius: 999,
                             background: "#eef0f4",
-                            fontSize: "11px",
-                            fontWeight: "600",
+                            fontSize: 11,
+                            fontWeight: 600,
                             color: GP.inkLight,
                           }}
                         >
@@ -513,27 +685,28 @@ export default function Dashboard() {
                         </span>
                       </td>
 
+                      {/* AI RISK SCORE */}
                       <td
                         style={{
                           ...td,
                           textAlign: "center",
                           fontWeight: "700",
                           color:
-                            score >= 80
+                            ai.score >= 80
                               ? GP.green
-                              : score >= 60
+                              : ai.score >= 60
                               ? GP.yellow
                               : GP.red,
                         }}
                       >
-                        <div>{score}</div>
+                        <div>{ai.score}</div>
 
                         <div
                           style={{
-                            marginTop: "4px",
-                            height: "4px",
-                            width: "70px",
-                            borderRadius: "999px",
+                            marginTop: 4,
+                            height: 4,
+                            width: 70,
+                            borderRadius: 999,
                             background: "#eceff1",
                             overflow: "hidden",
                             marginLeft: "auto",
@@ -542,12 +715,12 @@ export default function Dashboard() {
                         >
                           <div
                             style={{
-                              width: `${Math.min(score, 100)}%`,
+                              width: `${ai.score}%`,
                               height: "100%",
                               background:
-                                score >= 80
+                                ai.score >= 80
                                   ? GP.green
-                                  : score >= 60
+                                  : ai.score >= 60
                                   ? GP.yellow
                                   : GP.red,
                             }}
@@ -555,10 +728,27 @@ export default function Dashboard() {
                         </div>
                       </td>
 
+                      {/* COMPLIANCE */}
                       <td style={{ ...td, textAlign: "center" }}>
                         {renderComplianceBadge(p.vendor_id, complianceMap)}
                       </td>
 
+                      {/* ELITE */}
+                      <td style={{ ...td, textAlign: "center" }}>
+                        {elite && !elite.loading && !elite.error ? (
+                          <EliteStatusPill status={elite.overall} />
+                        ) : elite && elite.loading ? (
+                          <span style={{ fontSize: 11, color: "#6b7280" }}>
+                            Evaluating…
+                          </span>
+                        ) : (
+                          <span style={{ fontSize: 11, color: "#9ca3af" }}>
+                            —
+                          </span>
+                        )}
+                      </td>
+
+                      {/* FLAGS */}
                       <td style={{ ...td, textAlign: "center" }}>
                         {flags.length > 0 ? (
                           <span
@@ -590,8 +780,7 @@ export default function Dashboard() {
     </div>
   );
 }
-
-/* KPI + SCORE CARDS */
+/* COMPONENTS */
 function RiskCard({ label, icon, color, count, delta }) {
   let arrow = "➖";
   let arrowColor = GP.textLight;
@@ -606,32 +795,15 @@ function RiskCard({ label, icon, color, count, delta }) {
 
   return (
     <div style={{ textAlign: "center", flex: 1 }}>
-      <div style={{ fontSize: "22px" }}>{icon}</div>
+      <div style={{ fontSize: 22 }}>{icon}</div>
+      <div style={{ fontSize: 26, fontWeight: 700, color }}>{count}</div>
+      <div style={{ fontSize: 13, marginTop: 2, color: GP.text }}>{label}</div>
       <div
         style={{
-          fontSize: "26px",
-          fontWeight: "700",
-          color,
-          marginTop: "4px",
-        }}
-      >
-        {count}
-      </div>
-      <div
-        style={{
-          fontSize: "13px",
-          marginTop: "2px",
-          color: GP.text,
-        }}
-      >
-        {label}
-      </div>
-      <div
-        style={{
-          fontSize: "12px",
-          marginTop: "4px",
+          fontSize: 12,
+          marginTop: 4,
           color: arrowColor,
-          fontWeight: "600",
+          fontWeight: 600,
         }}
       >
         {arrow} {delta}
@@ -660,42 +832,59 @@ function ScoreCard({ avgScore, delta }) {
 
   return (
     <div style={{ textAlign: "center", flex: 1 }}>
-      <div style={{ fontSize: "22px" }}>📊</div>
+      <div style={{ fontSize: 22 }}>📊</div>
       <div
         style={{
-          fontSize: "26px",
-          fontWeight: "700",
+          fontSize: 26,
+          fontWeight: 700,
           color: hasScore ? color : GP.textLight,
-          marginTop: "4px",
         }}
       >
         {hasScore ? score.toFixed(0) : "—"}
       </div>
+      <div style={{ fontSize: 13, color: GP.text }}>Avg Score</div>
       <div
         style={{
-          fontSize: "13px",
-          marginTop: "2px",
-          color: GP.text,
-        }}
-      >
-        Avg Score
-      </div>
-      <div
-        style={{
-          fontSize: "12px",
-          marginTop: "4px",
+          fontSize: 12,
+          marginTop: 4,
           color: arrowColor,
-          fontWeight: "600",
+          fontWeight: 600,
         }}
       >
-        {arrow}{" "}
-        {typeof delta === "number" ? delta.toFixed(1) : "0.0"}
+        {arrow} {typeof delta === "number" ? delta.toFixed(1) : "0.0"}
       </div>
     </div>
   );
 }
 
-/* TABLE STYLES */
+function EliteCard({ counts }) {
+  const total = counts.pass + counts.warn + counts.fail;
+
+  return (
+    <div style={{ textAlign: "center", flex: 1 }}>
+      <div style={{ fontSize: 22 }}>🧠</div>
+      <div
+        style={{ fontSize: 16, fontWeight: 700, color: GP.ink, marginTop: 2 }}
+      >
+        Elite Summary
+      </div>
+      <div style={{ fontSize: 12, color: GP.textLight }}>
+        Vendors Evaluated: <strong>{total}</strong>
+      </div>
+      <div style={{ fontSize: 12, marginTop: 4, color: "#166534" }}>
+        PASS: <strong>{counts.pass}</strong>
+      </div>
+      <div style={{ fontSize: 12, marginTop: 4, color: "#b68b00" }}>
+        WARN: <strong>{counts.warn}</strong>
+      </div>
+      <div style={{ fontSize: 12, marginTop: 4, color: "#b00020" }}>
+        FAIL: <strong>{counts.fail}</strong>
+      </div>
+    </div>
+  );
+}
+
+/* TABLE CELL STYLES */
 const th = {
   padding: "10px 12px",
   background: "#f5f7fb",

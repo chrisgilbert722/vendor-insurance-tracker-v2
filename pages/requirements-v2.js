@@ -1,245 +1,219 @@
-// pages/requirements-v2.js
+// build-buster-1
 import { useEffect, useState } from "react";
 import { useOrg } from "../context/OrgContext";
-import { DndProvider, useDrag, useDrop } from "react-dnd";
-import { HTML5Backend } from "react-dnd-html5-backend";
 
-export default function RequirementsV2Page() {
-  const { activeOrgId } = useOrg();
+export default function RequirementsV2() {
+  const { activeOrgId, loadingOrgs } = useOrg();
+  const orgId = activeOrgId;
 
-  const [loading, setLoading] = useState(true);
   const [groups, setGroups] = useState([]);
-  const [error, setError] = useState("");
-  const [newGroupName, setNewGroupName] = useState("");
-
-  // Load groups
-  async function loadGroups() {
-    if (!activeOrgId) return;
-    try {
-      setLoading(true);
-      const res = await fetch(`/api/requirements-v2?orgId=${activeOrgId}`);
-      const data = await res.json();
-
-      if (!data.ok) throw new Error(data.error);
-      setGroups(data.groups);
-    } catch (err) {
-      setError(err.message);
-    } finally {
-      setLoading(false);
-    }
-  }
+  const [selectedGroup, setSelectedGroup] = useState(null);
+  const [rules, setRules] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
 
   useEffect(() => {
+    if (!orgId || loadingOrgs) return;
+
+    async function loadGroups() {
+      setLoading(true);
+      const res = await fetch(`/api/requirements-v2/groups?orgId=${orgId}`);
+      const data = await res.json();
+      if (data.ok) setGroups(data.groups);
+      setLoading(false);
+    }
+
     loadGroups();
-  }, [activeOrgId]);
+  }, [orgId, loadingOrgs]);
 
-  // Create group
+
+  // Load Rules
+  async function loadRulesForGroup(groupId) {
+    setSelectedGroup(groupId);
+    const res = await fetch(`/api/requirements-v2/rules?groupId=${groupId}`);
+    const data = await res.json();
+    if (data.ok) setRules(data.rules);
+  }
+
+  // Create Group
   async function createGroup() {
-    if (!newGroupName.trim()) return;
+    const name = prompt("New Group Name:");
+    if (!name) return;
 
-    const res = await fetch(`/api/requirements-v2`, {
+    const res = await fetch(`/api/requirements-v2/groups`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        name: newGroupName,
-        org_id: activeOrgId,
-      }),
+      body: JSON.stringify({ orgId: activeOrgId, name }),
     });
 
     const data = await res.json();
-    if (data.ok) {
-      setNewGroupName("");
-      loadGroups();
-    } else {
-      alert(data.error);
-    }
+
+    if (data.ok) setGroups([...groups, data.group]);
   }
 
-  // Delete group
-  async function deleteGroup(id) {
-    if (!confirm("Delete this group?")) return;
+  // Update Rule
+  async function updateRule(rule) {
+    setSaving(true);
 
-    const res = await fetch(`/api/requirements-v2/${id}`, {
-      method: "DELETE",
-    });
-
-    const data = await res.json();
-    if (data.ok) loadGroups();
-    else alert(data.error);
-  }
-
-  // Rename group
-  async function renameGroup(id, newName) {
-    const res = await fetch(`/api/requirements-v2/${id}`, {
+    const res = await fetch(`/api/requirements-v2/rules`, {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ name: newName }),
+      body: JSON.stringify(rule),
     });
 
     const data = await res.json();
-    if (data.ok) loadGroups();
-    else alert(data.error);
-  }
 
-  // Drag + drop reorder
-  async function moveGroup(dragIndex, hoverIndex) {
-    const updated = [...groups];
-    const [removed] = updated.splice(dragIndex, 1);
-    updated.splice(hoverIndex, 0, removed);
-
-    setGroups(updated);
-
-    // Save new order
-    for (let i = 0; i < updated.length; i++) {
-      await fetch(`/api/requirements-v2/${updated[i].id}`, {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ order_index: i }),
-      });
+    if (data.ok) {
+      setRules((prev) => prev.map((r) => (r.id === rule.id ? data.rule : r)));
     }
+
+    setSaving(false);
   }
+
+  // Delete Rule
+  async function deleteRule(id) {
+    if (!confirm("Delete this rule?")) return;
+
+    await fetch(`/api/requirements-v2/rules?id=${id}`, { method: "DELETE" });
+
+    setRules((prev) => prev.filter((r) => r.id !== id));
+  }
+
+  if (loading || loadingOrgs)
+    return <div style={{ padding: 40 }}>Loading rule groups…</div>;
 
   return (
-    <DndProvider backend={HTML5Backend}>
-      <div style={{ padding: "30px 40px", maxWidth: 900, margin: "0 auto" }}>
-        <h1 style={{ fontSize: 32, fontWeight: 700, marginBottom: 10 }}>
-          Requirements Engine V2
-        </h1>
+    <div style={{ padding: "30px 40px" }}>
+      <h1 style={{ fontSize: 32, fontWeight: 700, marginBottom: 20 }}>
+        Requirements V2
+      </h1>
 
-        {error && <p style={{ color: "red" }}>{error}</p>}
-        {loading && <p>Loading…</p>}
+      <div style={{ display: "flex", gap: 40 }}>
+        {/* LEFT COLUMN */}
+        <div style={{ width: "260px" }}>
+          <h3 style={{ marginBottom: 10 }}>Rule Groups</h3>
 
-        {/* Create new group */}
-        <div style={{ marginBottom: 30 }}>
-          <input
-            placeholder="New Group Name"
-            value={newGroupName}
-            onChange={(e) => setNewGroupName(e.target.value)}
-            style={{
-              padding: 8,
-              border: "1px solid #ccc",
-              borderRadius: 8,
-              marginRight: 10,
-            }}
-          />
+          {groups.length === 0 && (
+            <p style={{ color: "#6b7280" }}>No groups yet.</p>
+          )}
+
+          {groups.map((g) => (
+            <div
+              key={g.id}
+              onClick={() => loadRulesForGroup(g.id)}
+              style={{
+                padding: "10px 14px",
+                borderRadius: 8,
+                cursor: "pointer",
+                background: selectedGroup === g.id ? "#0f172a" : "#f3f4f6",
+                color: selectedGroup === g.id ? "white" : "#0f172a",
+                marginBottom: 8,
+              }}
+            >
+              {g.name} ({g.rule_count})
+            </div>
+          ))}
+
           <button
             onClick={createGroup}
             style={{
-              padding: "8px 14px",
-              background: "#0f172a",
-              color: "white",
+              marginTop: 12,
+              width: "100%",
+              padding: "10px 12px",
               borderRadius: 8,
-              border: "none",
-            }}
-          >
-            + Add Group
-          </button>
-        </div>
-
-        {/* List groups */}
-        {groups.map((g, index) => (
-          <GroupRow
-            key={g.id}
-            group={g}
-            index={index}
-            moveGroup={moveGroup}
-            onDelete={() => deleteGroup(g.id)}
-            onRename={(name) => renameGroup(g.id, name)}
-          />
-        ))}
-      </div>
-    </DndProvider>
-  );
-}
-
-// Draggable group row
-function GroupRow({ group, index, moveGroup, onDelete, onRename }) {
-  const [{ isDragging }, dragRef] = useDrag({
-    type: "GROUP",
-    item: { index },
-    collect: (monitor) => ({
-      isDragging: monitor.isDragging(),
-    }),
-  });
-
-  const [, dropRef] = useDrop({
-    accept: "GROUP",
-    hover(item) {
-      if (item.index !== index) {
-        moveGroup(item.index, index);
-        item.index = index;
-      }
-    },
-  });
-
-  const [editing, setEditing] = useState(false);
-  const [tempName, setTempName] = useState(group.name);
-
-  return (
-    <div
-      ref={(node) => dragRef(dropRef(node))}
-      style={{
-        opacity: isDragging ? 0.5 : 1,
-        marginBottom: 12,
-        padding: 15,
-        background: "#f9fafb",
-        borderRadius: 10,
-        border: "1px solid #e5e7eb",
-      }}
-    >
-      {/* Edit Mode */}
-      {editing ? (
-        <div>
-          <input
-            value={tempName}
-            onChange={(e) => setTempName(e.target.value)}
-            style={{ padding: 8, width: "70%" }}
-          />
-          <button
-            onClick={() => {
-              setEditing(false);
-              onRename(tempName);
-            }}
-            style={{
-              marginLeft: 10,
-              padding: "6px 12px",
-              background: "#0f172a",
+              background: "#2563eb",
               color: "white",
-              borderRadius: 6,
+              border: 0,
+              cursor: "pointer",
             }}
           >
-            Save
-          </button>
-          <button
-            onClick={() => setEditing(false)}
-            style={{ marginLeft: 10 }}
-          >
-            Cancel
+            + New Group
           </button>
         </div>
-      ) : (
-        <div
-          style={{
-            display: "flex",
-            justifyContent: "space-between",
-            alignItems: "center",
-          }}
-        >
-          <span style={{ fontSize: 16, fontWeight: 600 }}>{group.name}</span>
 
-          <div>
-            <button
-              onClick={() => setEditing(true)}
-              style={{ marginRight: 10 }}
-            >
-              Edit
-            </button>
-            <button onClick={onDelete} style={{ color: "red" }}>
-              Delete
-            </button>
-          </div>
+        {/* RIGHT COLUMN */}
+        <div style={{ flex: 1 }}>
+          {!selectedGroup ? (
+            <p>Select a group.</p>
+          ) : (
+            <>
+              <h3>Rules</h3>
+
+              {rules.length === 0 && (
+                <p style={{ color: "#6b7280" }}>No rules yet.</p>
+              )}
+
+              {rules.map((rule) => (
+                <div
+                  key={rule.id}
+                  style={{
+                    border: "1px solid #e5e7eb",
+                    padding: 15,
+                    borderRadius: 10,
+                    marginBottom: 12,
+                    background: "white",
+                  }}
+                >
+                  <input
+                    value={rule.field_key}
+                    placeholder="Field Key"
+                    onChange={(e) =>
+                      updateRule({ ...rule, field_key: e.target.value })
+                    }
+                    style={inputStyle}
+                  />
+
+                  <input
+                    value={rule.operator}
+                    placeholder="Operator"
+                    onChange={(e) =>
+                      updateRule({ ...rule, operator: e.target.value })
+                    }
+                    style={inputStyle}
+                  />
+
+                  <input
+                    value={rule.expected_value}
+                    placeholder="Expected Value"
+                    onChange={(e) =>
+                      updateRule({
+                        ...rule,
+                        expected_value: e.target.value,
+                      })
+                    }
+                    style={inputStyle}
+                  />
+
+                  <button
+                    onClick={() => deleteRule(rule.id)}
+                    style={{
+                      background: "#b91c1c",
+                      color: "white",
+                      padding: "6px 10px",
+                      borderRadius: 6,
+                      border: 0,
+                      cursor: "pointer",
+                      marginTop: 8,
+                    }}
+                  >
+                    Delete Rule
+                  </button>
+                </div>
+              ))}
+
+              {saving && <p>Saving…</p>}
+            </>
+          )}
         </div>
-      )}
+      </div>
     </div>
   );
 }
+
+const inputStyle = {
+  width: "100%",
+  padding: 8,
+  marginTop: 8,
+  border: "1px solid #d1d5db",
+  borderRadius: 6,
+};

@@ -12,8 +12,8 @@ export default function Layout({ children }) {
   // Global role system
   const { isAdmin, isManager, isViewer } = useRole();
 
-  // Organization context
-  const { orgId } = useOrg();
+  // FIX: remove invalid destructure
+  useOrg(); // ensures context mounts
 
   return (
     <div
@@ -24,7 +24,6 @@ export default function Layout({ children }) {
         overflow: "hidden",
       }}
     >
-      {/* GLOBAL SIDEBAR */}
       <Sidebar
         pathname={pathname}
         isAdmin={isAdmin}
@@ -32,12 +31,9 @@ export default function Layout({ children }) {
         isViewer={isViewer}
       />
 
-      {/* MAIN PANEL */}
       <div style={{ flex: 1, display: "flex", flexDirection: "column" }}>
-        {/* GLOBAL HEADER */}
         <Header />
 
-        {/* PAGE CONTENT */}
         <main style={{ padding: "30px 40px" }}>{children}</main>
       </div>
     </div>
