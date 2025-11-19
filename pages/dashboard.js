@@ -579,6 +579,9 @@ export default function Dashboard() {
 {/* 🔥 EXPIRING CERTIFICATES HEATMAP */}
 <ExpiringCertsHeatmap policies={policies} />
 
+  {/* 🔥 Severity Distribution Bar Chart */}
+<SeverityDistributionChart policies={policies} />
+
         {/* POLICIES TABLE */}
         <h2
           style={{
