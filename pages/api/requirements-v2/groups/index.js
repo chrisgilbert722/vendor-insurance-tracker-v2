@@ -13,11 +13,13 @@ export default async function handler(req, res) {
       return res.status(400).json({ ok: false, error: "Missing orgId" });
     }
 
-    // FIXED: remove broken embedded relationship
+    // 🔥 FIX: Convert orgId to integer
+    const org_id_int = parseInt(orgId, 10);
+
     const { data, error } = await supabase
       .from("requirements_groups_v2")
       .select("*")
-      .eq("org_id", orgId)
+      .eq("org_id", org_id_int)
       .order("created_at", { ascending: false });
 
     if (error) {
@@ -25,7 +27,6 @@ export default async function handler(req, res) {
       return res.status(500).json({ ok: false, error: error.message });
     }
 
-    // TEMP: rule_count = 0 (rules loaded later in rules endpoint)
     const groups =
       data?.map((g) => ({
         id: g.id,
@@ -34,7 +35,7 @@ export default async function handler(req, res) {
         description: g.description,
         is_active: g.is_active,
         created_at: g.created_at,
-        rule_count: 0,
+        rule_count: 0, // rules loaded separately
       })) || [];
 
     return res.status(200).json({ ok: true, groups });
@@ -52,10 +53,13 @@ export default async function handler(req, res) {
         .json({ ok: false, error: "orgId and name are required" });
     }
 
+    // 🔥 Fix int conversion
+    const org_id_int = parseInt(orgId, 10);
+
     const { data, error } = await supabase
       .from("requirements_groups_v2")
       .insert({
-        org_id: orgId,
+        org_id: org_id_int,
         name,
         description: description || null,
       })
