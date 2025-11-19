@@ -9,6 +9,7 @@ import EliteStatusPill from "../components/elite/EliteStatusPill";
 import ComplianceTrajectoryChart from "../components/charts/ComplianceTrajectoryChart";
 import PassFailDonutChart from "../components/charts/PassFailDonutChart";
 import ExpiringCertsHeatmap from "../components/charts/ExpiringCertsHeatmap";
+import SeverityDistributionChart from "../components/charts/SeverityDistributionChart";
 
 /* THEME TOKENS */
 const GP = {
