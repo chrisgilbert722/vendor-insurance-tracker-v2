@@ -8,6 +8,7 @@ import EliteStatusPill from "../components/elite/EliteStatusPill";
 // 📊 NEW CHART IMPORTS
 import ComplianceTrajectoryChart from "../components/charts/ComplianceTrajectoryChart";
 import PassFailDonutChart from "../components/charts/PassFailDonutChart";
+import ExpiringCertsHeatmap from "../components/charts/ExpiringCertsHeatmap";
 
 /* THEME TOKENS */
 const GP = {
