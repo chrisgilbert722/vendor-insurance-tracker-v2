@@ -25,7 +25,7 @@ const GP = {
   textLight: "#7b8794",
 };
 
-/* RISK HELPERS */
+/* RISK HELPERS (expiration-based) */
 function parseExpiration(dateStr) {
   if (!dateStr) return null;
   const parts = dateStr.split("/");
@@ -99,7 +99,51 @@ function badgeStyle(level) {
   }
 }
 
-/* COMPLIANCE BADGE HELPER — uses real summary/missing/failing from /api/requirements/check */
+/* AI RISK SCORE (Phase E) — blends expiration + Elite + compliance */
+function computeAiRisk({ risk, elite, compliance }) {
+  if (!risk) {
+    return { score: 0, tier: "Unknown" };
+  }
+
+  // Base: expiration risk score (0–100 from computeRisk)
+  let base = typeof risk.score === "number" ? risk.score : 0;
+
+  // Elite factor
+  let eliteFactor = 1.0;
+  if (elite && !elite.loading && !elite.error) {
+    if (elite.overall === "fail") eliteFactor = 0.4;
+    else if (elite.overall === "warn") eliteFactor = 0.7;
+    else if (elite.overall === "pass") eliteFactor = 1.0;
+  }
+
+  // Compliance factor
+  let complianceFactor = 1.0;
+  if (compliance) {
+    if (compliance.error) {
+      complianceFactor = 0.7;
+    } else {
+      const hasMissing = (compliance.missing || []).length > 0;
+      const hasFailing = (compliance.failing || []).length > 0;
+      if (hasFailing) complianceFactor = 0.5;
+      else if (hasMissing) complianceFactor = 0.7;
+    }
+  }
+
+  let score = Math.round(base * eliteFactor * complianceFactor);
+  if (score < 0) score = 0;
+  if (score > 100) score = 100;
+
+  let tier = "Unknown";
+  if (score >= 85) tier = "Elite Safe";
+  else if (score >= 70) tier = "Preferred";
+  else if (score >= 55) tier = "Watch";
+  else if (score >= 35) tier = "High Risk";
+  else tier = "Severe";
+
+  return { score, tier };
+}
+
+/* COMPLIANCE BADGE HELPER — uses /api/requirements/check */
 function renderComplianceBadge(vendorId, complianceMap) {
   const data = complianceMap[vendorId];
 
@@ -226,7 +270,7 @@ export default function Dashboard() {
     load();
   }, []);
 
-  /* LOAD METRICS */
+  /* LOAD METRICS (existing backend summary) */
   useEffect(() => {
     async function loadSummary() {
       try {
@@ -243,7 +287,7 @@ export default function Dashboard() {
     loadSummary();
   }, []);
 
-  /* LOAD COMPLIANCE PER VENDOR — REAL compliance engine with orgId */
+  /* LOAD COMPLIANCE PER VENDOR */
   useEffect(() => {
     if (!policies || policies.length === 0) return;
     if (!activeOrgId) return;
@@ -288,14 +332,13 @@ export default function Dashboard() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [policies, activeOrgId]);
 
-  /* ⭐ PHASE D — ELITE UNDERWRITING: one Elite evaluation per VENDOR */
+  /* ⭐ PHASE D — ELITE: one Elite evaluation per VENDOR */
   useEffect(() => {
     if (!policies || policies.length === 0) return;
 
     const vendorIds = [...new Set(policies.map((p) => p.vendor_id))];
 
     vendorIds.forEach((vendorId) => {
-      // don’t refetch if we already have an Elite result
       if (eliteMap[vendorId] && !eliteMap[vendorId].loading) return;
 
       const vendorPolicies = policies.filter(
@@ -304,7 +347,6 @@ export default function Dashboard() {
 
       if (vendorPolicies.length === 0) return;
 
-      // Simple vendor-level coidata using the first policy for now
       const primary = vendorPolicies[0];
 
       const coidata = {
@@ -544,7 +586,7 @@ export default function Dashboard() {
                   <th style={th}>Days Left</th>
                   <th style={th}>Status</th>
                   <th style={th}>Risk Tier</th>
-                  <th style={th}>Score</th>
+                  <th style={th}>AI Risk Score</th>
                   <th style={th}>Compliance</th>
                   <th style={th}>Elite</th>
                   <th style={th}>Flags</th>
@@ -555,9 +597,12 @@ export default function Dashboard() {
                 {filtered.map((p) => {
                   const risk = computeRisk(p);
                   const severity = risk.severity;
-                  const score = risk.score;
                   const flags = risk.flags || [];
                   const elite = eliteMap[p.vendor_id];
+                  const compliance = complianceMap[p.vendor_id];
+
+                  const ai = computeAiRisk({ risk, elite, compliance });
+                  const aiScore = ai.score;
 
                   return (
                     <tr
@@ -602,7 +647,7 @@ export default function Dashboard() {
                             color: GP.inkLight,
                           }}
                         >
-                          {risk.tier}
+                          {ai.tier}
                         </span>
                       </td>
 
@@ -612,14 +657,15 @@ export default function Dashboard() {
                           textAlign: "center",
                           fontWeight: "700",
                           color:
-                            score >= 80
+                            aiScore >= 80
                               ? GP.green
-                              : score >= 60
+                              : aiScore >= 60
                               ? GP.yellow
                               : GP.red,
                         }}
                       >
-                        <div>{score}</div>
+                        <div>{aiScore}</div>
+
                         <div
                           style={{
                             marginTop: "4px",
@@ -634,12 +680,12 @@ export default function Dashboard() {
                         >
                           <div
                             style={{
-                              width: `${Math.min(score, 100)}%`,
+                              width: `${Math.min(aiScore, 100)}%`,
                               height: "100%",
                               background:
-                                score >= 80
+                                aiScore >= 80
                                   ? GP.green
-                                  : score >= 60
+                                  : aiScore >= 60
                                   ? GP.yellow
                                   : GP.red,
                             }}
