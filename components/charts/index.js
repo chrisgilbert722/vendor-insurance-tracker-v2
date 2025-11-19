@@ -3,3 +3,4 @@ export { default as ComplianceTrajectoryChart } from "./ComplianceTrajectoryChar
 export { default as PassFailDonutChart } from "./PassFailDonutChart";
 export { default as ExpiringCertsHeatmap } from "./ExpiringCertsHeatmap"; // 🔥 NEW
 export { default as SeverityDistributionChart } from "./SeverityDistributionChart";
+export { default as RiskTimelineChart } from "./RiskTimelineChart";
