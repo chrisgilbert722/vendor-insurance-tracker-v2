@@ -3,6 +3,7 @@ import { useOrg } from "../context/OrgContext";
 
 export default function RequirementsV2() {
   const { activeOrgId, loadingOrgs } = useOrg();
+  const orgId = activeOrgId;
 
   const [groups, setGroups] = useState([]);
   const [selectedGroup, setSelectedGroup] = useState(null);
@@ -10,21 +11,20 @@ export default function RequirementsV2() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
 
-  // Load Groups
   useEffect(() => {
-    if (loadingOrgs) return;
-    if (!activeOrgId) return;
+    if (!orgId || loadingOrgs) return;
 
     async function loadGroups() {
       setLoading(true);
-      const res = await fetch(`/api/requirements-v2/groups?orgId=${activeOrgId}`);
+      const res = await fetch(`/api/requirements-v2/groups?orgId=${orgId}`);
       const data = await res.json();
       if (data.ok) setGroups(data.groups);
       setLoading(false);
     }
 
     loadGroups();
-  }, [activeOrgId, loadingOrgs]);
+  }, [orgId, loadingOrgs]);
+
 
   // Load Rules
   async function loadRulesForGroup(groupId) {
