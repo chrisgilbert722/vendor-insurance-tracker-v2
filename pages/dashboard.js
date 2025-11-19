@@ -575,6 +575,9 @@ export default function Dashboard() {
           <PassFailDonutChart />
         </div>
 
+{/* 🔥 EXPIRING CERTIFICATES HEATMAP */}
+<ExpiringCertsHeatmap policies={policies} />
+
         {/* POLICIES TABLE */}
         <h2
           style={{
