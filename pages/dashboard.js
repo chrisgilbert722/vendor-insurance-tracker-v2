@@ -5,6 +5,10 @@ import { useRole } from "../lib/useRole";
 import { useOrg } from "../context/OrgContext";
 import EliteStatusPill from "../components/elite/EliteStatusPill";
 
+// 📊 NEW CHART IMPORTS
+import ComplianceTrajectoryChart from "../components/charts/ComplianceTrajectoryChart";
+import PassFailDonutChart from "../components/charts/PassFailDonutChart";
+
 /* THEME TOKENS */
 const GP = {
   primary: "#0057FF",
@@ -368,6 +372,7 @@ export default function Dashboard() {
     const interval = setInterval(loadAlerts, 5000);
     return () => clearInterval(interval);
   }, [activeOrgId]);
+
   const filtered = policies.filter((p) => {
     const t = filterText.toLowerCase();
     return (
@@ -554,6 +559,21 @@ export default function Dashboard() {
           <EliteCard counts={eliteSummary} />
         </div>
 
+        {/* 📊 ANALYTICS ROW — COMPLIANCE TRAJECTORY + PASS/FAIL DONUT */}
+        <div
+          style={{
+            marginTop: 10,
+            marginBottom: 40,
+            display: "grid",
+            gridTemplateColumns: "minmax(0, 2fr) minmax(0, 1.2fr)",
+            gap: 24,
+            alignItems: "stretch",
+          }}
+        >
+          <ComplianceTrajectoryChart />
+          <PassFailDonutChart />
+        </div>
+
         {/* POLICIES TABLE */}
         <h2
           style={{
@@ -580,7 +600,6 @@ export default function Dashboard() {
             fontSize: "14px",
           }}
         />
-
         {loading && <p>Loading policies…</p>}
         {!loading && filtered.length === 0 && <p>No matching policies.</p>}
 
@@ -761,7 +780,6 @@ export default function Dashboard() {
     </div>
   );
 }
-
 /* COMPONENTS */
 function RiskCard({ label, icon, color, count, delta }) {
   let arrow = "➖";
