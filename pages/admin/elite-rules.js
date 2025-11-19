@@ -160,6 +160,24 @@ function RuleStatusPill({ status }) {
     </span>
   );
 }
+
+// shared form styles
+const labelStyle = {
+  fontSize: 12,
+  fontWeight: 600,
+  color: GP.inkSoft,
+  display: "block",
+  marginBottom: 4,
+};
+
+const inputStyle = {
+  width: "100%",
+  padding: "8px 10px",
+  borderRadius: 10,
+  border: "1px solid #E5E7EB",
+  fontSize: 13,
+  background: "#FFF",
+};
 /* EDIT RULE MODAL */
 function EditRuleModal({ rule, onClose, onSave }) {
   const [name, setName] = useState(rule.name || "");
@@ -256,28 +274,12 @@ function EditRuleModal({ rule, onClose, onSave }) {
           <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
             {/* Name */}
             <div>
-              <label
-                style={{
-                  fontSize: 12,
-                  fontWeight: 600,
-                  color: GP.inkSoft,
-                  display: "block",
-                  marginBottom: 4,
-                }}
-              >
-                Rule name
-              </label>
+              <label style={labelStyle}>Rule name</label>
               <input
                 type="text"
                 value={name}
                 onChange={(e) => setName(e.target.value)}
-                style={{
-                  width: "100%",
-                  padding: "8px 10px",
-                  borderRadius: 10,
-                  border: "1px solid #E5E7EB",
-                  fontSize: 13,
-                }}
+                style={inputStyle}
                 required
               />
             </div>
@@ -291,27 +293,11 @@ function EditRuleModal({ rule, onClose, onSave }) {
               }}
             >
               <div>
-                <label
-                  style={{
-                    fontSize: 12,
-                    fontWeight: 600,
-                    color: GP.inkSoft,
-                    display: "block",
-                    marginBottom: 4,
-                  }}
-                >
-                  Severity
-                </label>
+                <label style={labelStyle}>Severity</label>
                 <select
                   value={severity}
                   onChange={(e) => setSeverity(e.target.value)}
-                  style={{
-                    width: "100%",
-                    padding: "8px 10px",
-                    borderRadius: 10,
-                    border: "1px solid #E5E7EB",
-                    fontSize: 13,
-                  }}
+                  style={inputStyle}
                 >
                   <option value="high">High</option>
                   <option value="medium">Medium</option>
@@ -320,27 +306,11 @@ function EditRuleModal({ rule, onClose, onSave }) {
               </div>
 
               <div>
-                <label
-                  style={{
-                    fontSize: 12,
-                    fontWeight: 600,
-                    color: GP.inkSoft,
-                    display: "block",
-                    marginBottom: 4,
-                  }}
-                >
-                  Status
-                </label>
+                <label style={labelStyle}>Status</label>
                 <select
                   value={status}
                   onChange={(e) => setStatus(e.target.value)}
-                  style={{
-                    width: "100%",
-                    padding: "8px 10px",
-                    borderRadius: 10,
-                    border: "1px solid #E5E7EB",
-                    fontSize: 13,
-                  }}
+                  style={inputStyle}
                 >
                   <option value="active">Active</option>
                   <option value="draft">Draft</option>
@@ -350,43 +320,18 @@ function EditRuleModal({ rule, onClose, onSave }) {
 
             {/* Description */}
             <div>
-              <label
-                style={{
-                  fontSize: 12,
-                  fontWeight: 600,
-                  color: GP.inkSoft,
-                  display: "block",
-                  marginBottom: 4,
-                }}
-              >
-                Description
-              </label>
+              <label style={labelStyle}>Description</label>
               <textarea
                 value={description}
                 onChange={(e) => setDescription(e.target.value)}
                 rows={3}
-                style={{
-                  width: "100%",
-                  padding: "8px 10px",
-                  borderRadius: 10,
-                  border: "1px solid #E5E7EB",
-                  fontSize: 13,
-                  resize: "vertical",
-                }}
+                style={{ ...inputStyle, resize: "vertical" }}
               />
             </div>
 
             {/* Logic */}
             <div>
-              <label
-                style={{
-                  fontSize: 12,
-                  fontWeight: 600,
-                  color: GP.inkSoft,
-                  display: "block",
-                  marginBottom: 4,
-                }}
-              >
+              <label style={labelStyle}>
                 Rule logic (expression evaluated by engine)
               </label>
               <textarea
@@ -394,10 +339,7 @@ function EditRuleModal({ rule, onClose, onSave }) {
                 onChange={(e) => setLogic(e.target.value)}
                 rows={3}
                 style={{
-                  width: "100%",
-                  padding: "8px 10px",
-                  borderRadius: 10,
-                  border: "1px solid #E5E7EB",
+                  ...inputStyle,
                   fontSize: 12,
                   fontFamily:
                     "SFMono-Regular, Menlo, Monaco, Consolas, monospace",
@@ -447,6 +389,247 @@ function EditRuleModal({ rule, onClose, onSave }) {
               }}
             >
               Save changes
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+}
+
+/* CREATE RULE MODAL */
+function NewRuleModal({ groups, onClose, onCreate, defaultGroupId }) {
+  const [name, setName] = useState("");
+  const [groupId, setGroupId] = useState(defaultGroupId);
+  const [severity, setSeverity] = useState("medium");
+  const [status, setStatus] = useState("active");
+  const [description, setDescription] = useState("");
+  const [logic, setLogic] = useState("");
+
+  function handleSubmit(e) {
+    e.preventDefault();
+    if (!name.trim() || !logic.trim()) return;
+
+    const newRule = {
+      id: "rule-" + Date.now(),
+      name,
+      groupId,
+      severity,
+      status,
+      description,
+      logic,
+    };
+
+    onCreate(newRule);
+  }
+
+  return (
+    <div
+      style={{
+        position: "fixed",
+        inset: 0,
+        background: "rgba(15,23,42,0.35)",
+        backdropFilter: "blur(8px)",
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        zIndex: 300,
+      }}
+    >
+      <div
+        style={{
+          width: 600,
+          maxWidth: "95vw",
+          borderRadius: 24,
+          background: "rgba(248,250,252,0.98)",
+          boxShadow: "0 30px 80px rgba(15,23,42,0.45)",
+          border: "1px solid rgba(226,232,240,0.9)",
+          padding: 24,
+        }}
+      >
+        {/* Header */}
+        <div
+          style={{
+            display: "flex",
+            justifyContent: "space-between",
+            marginBottom: 14,
+            alignItems: "center",
+          }}
+        >
+          <div>
+            <div
+              style={{
+                fontSize: 12,
+                letterSpacing: "0.12em",
+                textTransform: "uppercase",
+                color: GP.inkSoft,
+                marginBottom: 4,
+              }}
+            >
+              Create New Rule
+            </div>
+
+            <div
+              style={{
+                fontSize: 18,
+                fontWeight: 700,
+                color: GP.ink,
+              }}
+            >
+              Add requirement to compliance engine
+            </div>
+          </div>
+
+          <button
+            type="button"
+            onClick={onClose}
+            style={{
+              border: "none",
+              background: "transparent",
+              fontSize: 18,
+              cursor: "pointer",
+              color: "#6B7280",
+            }}
+          >
+            ✕
+          </button>
+        </div>
+
+        {/* FORM */}
+        <form onSubmit={handleSubmit}>
+          <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+            {/* NAME */}
+            <div>
+              <label style={labelStyle}>Rule name</label>
+              <input
+                type="text"
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                style={inputStyle}
+                placeholder="e.g., GL Each Occurrence ≥ $1M"
+                required
+              />
+            </div>
+
+            {/* GROUP */}
+            <div>
+              <label style={labelStyle}>Coverage Group</label>
+              <select
+                value={groupId}
+                onChange={(e) => setGroupId(e.target.value)}
+                style={inputStyle}
+              >
+                {groups.map((g) => (
+                  <option key={g.id} value={g.id}>
+                    {g.label}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            {/* Severity + Status */}
+            <div
+              style={{
+                display: "grid",
+                gridTemplateColumns: "1fr 1fr",
+                gap: 12,
+              }}
+            >
+              <div>
+                <label style={labelStyle}>Severity</label>
+                <select
+                  value={severity}
+                  onChange={(e) => setSeverity(e.target.value)}
+                  style={inputStyle}
+                >
+                  <option value="high">High</option>
+                  <option value="medium">Medium</option>
+                  <option value="low">Low</option>
+                </select>
+              </div>
+
+              <div>
+                <label style={labelStyle}>Status</label>
+                <select
+                  value={status}
+                  onChange={(e) => setStatus(e.target.value)}
+                  style={inputStyle}
+                >
+                  <option value="active">Active</option>
+                  <option value="draft">Draft</option>
+                </select>
+              </div>
+            </div>
+
+            {/* DESCRIPTION */}
+            <div>
+              <label style={labelStyle}>Description</label>
+              <textarea
+                rows={3}
+                value={description}
+                onChange={(e) => setDescription(e.target.value)}
+                style={{ ...inputStyle, resize: "vertical" }}
+                placeholder="Explain the requirement..."
+              />
+            </div>
+
+            {/* LOGIC */}
+            <div>
+              <label style={labelStyle}>Rule Logic (engine expression)</label>
+              <textarea
+                rows={3}
+                value={logic}
+                onChange={(e) => setLogic(e.target.value)}
+                style={{
+                  ...inputStyle,
+                  fontFamily: "SFMono-Regular, Menlo, Consolas, monospace",
+                  background: "#020617",
+                  color: "#E5E7EB",
+                }}
+                placeholder="limit_each_occurrence >= 1000000"
+                required
+              />
+            </div>
+          </div>
+
+          {/* ACTIONS */}
+          <div
+            style={{
+              display: "flex",
+              justifyContent: "flex-end",
+              gap: 10,
+              marginTop: 20,
+            }}
+          >
+            <button
+              type="button"
+              onClick={onClose}
+              style={{
+                padding: "8px 14px",
+                borderRadius: 999,
+                background: "#FFF",
+                border: "1px solid #E5E7EB",
+                cursor: "pointer",
+              }}
+            >
+              Cancel
+            </button>
+
+            <button
+              type="submit"
+              style={{
+                padding: "8px 16px",
+                borderRadius: 999,
+                border: "none",
+                background:
+                  "linear-gradient(135deg,#0057FF,#00E0FF 70%,#8A2BFF)",
+                color: "#FFF",
+                fontWeight: 600,
+                cursor: "pointer",
+                boxShadow: "0 14px 35px rgba(37,99,235,0.45)",
+              }}
+            >
+              Create Rule
             </button>
           </div>
         </form>
@@ -639,6 +822,7 @@ export default function EliteRulesPage() {
   const [aiThinking, setAiThinking] = useState(false);
   const [error, setError] = useState(null);
   const [editingRule, setEditingRule] = useState(null);
+  const [showNewRule, setShowNewRule] = useState(false);
 
   /* HYBRID LOADER */
   useEffect(() => {
@@ -715,6 +899,24 @@ export default function EliteRulesPage() {
     );
     setEditingRule(null);
   }
+
+  function handleCreateRule(newRule) {
+    setRules((prev) => {
+      // insert new rule at top of its group
+      const list = [...prev];
+      const indexOfFirstInGroup = list.findIndex(
+        (r) =>
+          r.groupId === newRule.groupId || r.group_id === newRule.groupId
+      );
+      if (indexOfFirstInGroup === -1) {
+        list.push(newRule);
+      } else {
+        list.splice(indexOfFirstInGroup, 0, newRule);
+      }
+      return list;
+    });
+    setShowNewRule(false);
+  }
   return (
     <div style={{ minHeight: "100vh", background: GP.surface }}>
       <div style={{ padding: "30px 40px" }}>
@@ -788,6 +990,7 @@ export default function EliteRulesPage() {
                 border: "none",
                 cursor: "pointer",
               }}
+              onClick={() => setShowNewRule(true)}
             >
               ＋ New Rule
             </button>
@@ -1005,6 +1208,16 @@ export default function EliteRulesPage() {
           rule={editingRule}
           onClose={() => setEditingRule(null)}
           onSave={handleSaveRule}
+        />
+      )}
+
+      {/* NEW RULE MODAL */}
+      {showNewRule && (
+        <NewRuleModal
+          groups={groups}
+          defaultGroupId={selectedGroupId}
+          onCreate={handleCreateRule}
+          onClose={() => setShowNewRule(false)}
         />
       )}
     </div>
