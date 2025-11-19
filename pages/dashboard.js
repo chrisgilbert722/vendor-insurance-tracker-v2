@@ -84,6 +84,22 @@ function computeRisk(p) {
   return { daysLeft, severity, score, flags, tier };
 }
 
+/* 🔧 BADGE STYLE — THIS WAS MISSING AND BREAKING THINGS */
+function badgeStyle(level) {
+  switch (level) {
+    case "expired":
+      return { background: "#ffebee", color: "#b71c1c", fontWeight: 600 };
+    case "critical":
+      return { background: "#fff3e0", color: "#e65100", fontWeight: 600 };
+    case "warning":
+      return { background: "#fffde7", color: "#f9a825", fontWeight: 600 };
+    case "ok":
+      return { background: "#e8f5e9", color: "#1b5e20", fontWeight: 600 };
+    default:
+      return { background: "#eceff1", color: "#546e7a", fontWeight: 600 };
+  }
+}
+
 /* AI RISK SCORE */
 function computeAiRisk({ risk, elite, compliance }) {
   if (!risk) return { score: 0, tier: "Unknown" };
@@ -159,7 +175,6 @@ function renderComplianceBadge(vendorId, complianceMap) {
     </span>
   );
 }
-
 /* MAIN DASHBOARD */
 export default function Dashboard() {
   const [policies, setPolicies] = useState([]);
@@ -235,7 +250,7 @@ export default function Dashboard() {
           }));
         });
     });
-  }, [policies, activeOrgId]);
+  }, [policies, activeOrgId, complianceMap]);
 
   /* LOAD ELITE */
   useEffect(() => {
@@ -274,7 +289,7 @@ export default function Dashboard() {
           }));
         });
     });
-  }, [policies]);
+  }, [policies, eliteMap]);
 
   /* ELITE SUMMARY */
   useEffect(() => {
@@ -353,10 +368,39 @@ export default function Dashboard() {
     const interval = setInterval(loadAlerts, 5000);
     return () => clearInterval(interval);
   }, [activeOrgId]);
+  const filtered = policies.filter((p) => {
+    const t = filterText.toLowerCase();
+    return (
+      !t ||
+      p.vendor_name?.toLowerCase().includes(t) ||
+      p.policy_number?.toLowerCase().includes(t) ||
+      p.carrier?.toLowerCase().includes(t) ||
+      p.coverage_type?.toLowerCase().includes(t)
+    );
+  });
+
+  async function openDrawer(vendorId) {
+    try {
+      const res = await fetch(`/api/vendors/${vendorId}`);
+      const data = await res.json();
+      if (!res.ok || !data.ok) throw new Error(data.error);
+      setDrawerVendor(data.vendor);
+      setDrawerPolicies(data.policies);
+      setDrawerOpen(true);
+    } catch (err) {
+      console.error("Drawer Load Error:", err);
+    }
+  }
+
+  function closeDrawer() {
+    setDrawerOpen(false);
+    setDrawerVendor(null);
+    setDrawerPolicies([]);
+  }
+
   return (
     <div style={{ minHeight: "100vh", background: GP.surface }}>
       <div style={{ padding: "30px 40px", position: "relative" }}>
-        
         {/* HEADER + ALERTS */}
         <div style={{ display: "flex", justifyContent: "space-between" }}>
           <div>
@@ -509,6 +553,7 @@ export default function Dashboard() {
           <ScoreCard avgScore={metrics?.avg_score} delta={deltas?.avg_score} />
           <EliteCard counts={eliteSummary} />
         </div>
+
         {/* POLICIES TABLE */}
         <h2
           style={{
@@ -565,7 +610,6 @@ export default function Dashboard() {
                   <th style={th}>Flags</th>
                 </tr>
               </thead>
-
               <tbody>
                 {filtered.map((p) => {
                   const risk = computeRisk(p);
@@ -592,10 +636,17 @@ export default function Dashboard() {
                       <td style={td}>{risk.daysLeft ?? "—"}</td>
 
                       {/* STATUS BADGE */}
-                      <td style={{ ...td, ...badgeStyle(risk.severity), textAlign: "center" }}>
+                      <td
+                        style={{
+                          ...td,
+                          ...badgeStyle(risk.severity),
+                          textAlign: "center",
+                        }}
+                      >
                         {risk.severity === "ok"
                           ? "Active"
-                          : risk.severity.charAt(0).toUpperCase() + risk.severity.slice(1)}
+                          : risk.severity.charAt(0).toUpperCase() +
+                            risk.severity.slice(1)}
                       </td>
 
                       {/* RISK TIER */}
@@ -672,14 +723,19 @@ export default function Dashboard() {
                             Evaluating…
                           </span>
                         ) : (
-                          <span style={{ fontSize: 11, color: "#9ca3af" }}>—</span>
+                          <span style={{ fontSize: 11, color: "#9ca3af" }}>
+                            —
+                          </span>
                         )}
                       </td>
 
                       {/* FLAGS */}
                       <td style={{ ...td, textAlign: "center" }}>
                         {flags.length > 0 ? (
-                          <span title={flags.join("\n")} style={{ cursor: "help" }}>
+                          <span
+                            title={flags.join("\n")}
+                            style={{ cursor: "help" }}
+                          >
                             🚩 {flags.length}
                           </span>
                         ) : (
@@ -724,7 +780,14 @@ function RiskCard({ label, icon, color, count, delta }) {
       <div style={{ fontSize: 22 }}>{icon}</div>
       <div style={{ fontSize: 26, fontWeight: 700, color }}>{count}</div>
       <div style={{ fontSize: 13, marginTop: 2, color: GP.text }}>{label}</div>
-      <div style={{ fontSize: 12, marginTop: 4, color: arrowColor, fontWeight: 600 }}>
+      <div
+        style={{
+          fontSize: 12,
+          marginTop: 4,
+          color: arrowColor,
+          fontWeight: 600,
+        }}
+      >
         {arrow} {delta}
       </div>
     </div>
@@ -752,11 +815,24 @@ function ScoreCard({ avgScore, delta }) {
   return (
     <div style={{ textAlign: "center", flex: 1 }}>
       <div style={{ fontSize: 22 }}>📊</div>
-      <div style={{ fontSize: 26, fontWeight: 700, color: hasScore ? color : GP.textLight }}>
+      <div
+        style={{
+          fontSize: 26,
+          fontWeight: 700,
+          color: hasScore ? color : GP.textLight,
+        }}
+      >
         {hasScore ? score.toFixed(0) : "—"}
       </div>
       <div style={{ fontSize: 13, color: GP.text }}>Avg Score</div>
-      <div style={{ fontSize: 12, marginTop: 4, color: arrowColor, fontWeight: 600 }}>
+      <div
+        style={{
+          fontSize: 12,
+          marginTop: 4,
+          color: arrowColor,
+          fontWeight: 600,
+        }}
+      >
         {arrow} {typeof delta === "number" ? delta.toFixed(1) : "0.0"}
       </div>
     </div>
@@ -769,7 +845,11 @@ function EliteCard({ counts }) {
   return (
     <div style={{ textAlign: "center", flex: 1 }}>
       <div style={{ fontSize: 22 }}>🧠</div>
-      <div style={{ fontSize: 16, fontWeight: 700, color: GP.ink }}>Elite Summary</div>
+      <div
+        style={{ fontSize: 16, fontWeight: 700, color: GP.ink, marginTop: 2 }}
+      >
+        Elite Summary
+      </div>
       <div style={{ fontSize: 12, color: GP.textLight }}>
         Vendors Evaluated: <strong>{total}</strong>
       </div>
