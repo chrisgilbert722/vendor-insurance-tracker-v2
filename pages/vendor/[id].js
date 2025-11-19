@@ -1,10 +1,107 @@
 // pages/vendor/[id].js
 import { useRouter } from "next/router";
 import { useEffect, useState } from "react";
-
-// ⭐ ELITE ENGINE IMPORT
 import EliteComplianceBlock from "../../components/elite/EliteComplianceBlock";
 
+/* -------------------- SHARED RISK HELPERS -------------------- */
+function parseExpiration(dateStr) {
+  if (!dateStr) return null;
+  const parts = dateStr.split("/");
+  if (parts.length !== 3) return null;
+  const [mm, dd, yyyy] = parts;
+  if (!mm || !dd || !yyyy) return null;
+  return new Date(`${yyyy}-${mm}-${dd}T00:00:00`);
+}
+
+function computeDaysLeft(dateStr) {
+  const d = parseExpiration(dateStr);
+  if (!d) return null;
+  return Math.floor((d - new Date()) / (1000 * 60 * 60 * 24));
+}
+
+function computeExpirationRisk(policy) {
+  if (!policy) {
+    return {
+      daysLeft: null,
+      severity: "unknown",
+      baseScore: 0,
+      flags: ["Missing policy"],
+    };
+  }
+
+  const daysLeft = computeDaysLeft(policy.expiration_date);
+  const flags = [];
+
+  if (daysLeft === null) {
+    return {
+      daysLeft: null,
+      severity: "unknown",
+      baseScore: 0,
+      flags: ["Missing expiration date"],
+    };
+  }
+
+  let severity = "ok";
+  let baseScore = 95;
+
+  if (daysLeft < 0) {
+    severity = "expired";
+    baseScore = 20;
+    flags.push("Policy expired");
+  } else if (daysLeft <= 30) {
+    severity = "critical";
+    baseScore = 40;
+    flags.push("Expires within 30 days");
+  } else if (daysLeft <= 90) {
+    severity = "warning";
+    baseScore = 70;
+    flags.push("Expires within 90 days");
+  }
+
+  return { daysLeft, severity, baseScore, flags };
+}
+
+/* -------------------- PHASE E: AI UNDERWRITING RISK SCORE -------------------- */
+function computeVendorAiRisk({ primaryPolicy, elite, compliance }) {
+  const exp = computeExpirationRisk(primaryPolicy);
+  let base = exp.baseScore;
+
+  // Elite factor
+  let eliteFactor = 1.0;
+  if (elite && !elite.loading && !elite.error) {
+    if (elite.overall === "fail") eliteFactor = 0.4;
+    else if (elite.overall === "warn") eliteFactor = 0.7;
+    else if (elite.overall === "pass") eliteFactor = 1.0;
+  }
+
+  // Compliance factor
+  let complianceFactor = 1.0;
+  if (compliance) {
+    if (compliance.error) {
+      complianceFactor = 0.7;
+    } else {
+      const hasMissing = (compliance.missing || []).length > 0;
+      const hasFailing = (compliance.failing || []).length > 0;
+      if (hasFailing) complianceFactor = 0.5;
+      else if (hasMissing) complianceFactor = 0.7;
+    }
+  }
+
+  let score = Math.round(base * eliteFactor * complianceFactor);
+  if (score < 0) score = 0;
+  if (score > 100) score = 100;
+
+  let tier = "Unknown";
+  if (score >= 85) tier = "Elite Safe";
+  else if (score >= 70) tier = "Preferred";
+  else if (score >= 55) tier = "Watch";
+  else if (score >= 35) tier = "High Risk";
+  else tier = "Severe";
+
+  return { score, tier, exp };
+}
+
+/* ------------------------- MAIN PAGE ------------------------- */
 export default function VendorPage() {
   const router = useRouter();
   const { id } = router.query;
@@ -18,30 +115,30 @@ export default function VendorPage() {
   const [loadingCompliance, setLoadingCompliance] = useState(true);
   const [error, setError] = useState("");
 
-  // FIX PLAN
+  // Fix Plan State
   const [fixLoading, setFixLoading] = useState(false);
   const [fixError, setFixError] = useState("");
   const [fixSteps, setFixSteps] = useState([]);
   const [fixSubject, setFixSubject] = useState("");
   const [fixBody, setFixBody] = useState("");
   const [fixInternalNotes, setFixInternalNotes] = useState("");
-
-  // SEND FIX EMAIL
   const [sendLoading, setSendLoading] = useState(false);
   const [sendError, setSendError] = useState("");
   const [sendSuccess, setSendSuccess] = useState("");
 
-  // ----------------- LOAD VENDOR -----------------
+  // Elite result for the AI underwriting panel
+  const [eliteResult, setEliteResult] = useState(null);
+
+  /* ----------------- LOAD VENDOR + COMPLIANCE + ELITE ----------------- */
   useEffect(() => {
     if (!id) return;
 
-    async function loadVendor() {
+    async function loadAll() {
       try {
         setLoadingVendor(true);
 
         const res = await fetch(`/api/vendors/${id}`);
         const data = await res.json();
-
         if (!data.ok) throw new Error(data.error);
 
         setVendor(data.vendor);
@@ -49,7 +146,7 @@ export default function VendorPage() {
         setPolicies(data.policies);
 
         if (data.vendor?.org_id) {
-          await loadCompliance(data.vendor.id, data.vendor.org_id);
+          await loadCompliance(data.vendor.id, data.vendor.org_id, data.policies);
         } else {
           setLoadingCompliance(false);
         }
@@ -61,7 +158,7 @@ export default function VendorPage() {
       }
     }
 
-    async function loadCompliance(vendorId, orgId) {
+    async function loadCompliance(vendorId, orgId, vendorPolicies) {
       try {
         setLoadingCompliance(true);
 
@@ -69,10 +166,38 @@ export default function VendorPage() {
           `/api/requirements/check?vendorId=${vendorId}&orgId=${orgId}`
         );
         const data = await res.json();
-
         if (!data.ok) throw new Error(data.error);
 
         setCompliance(data);
+
+        // ----- RUN ELITE ENGINE RIGHT AFTER COMPLIANCE -----
+        const primary = vendorPolicies?.[0];
+        if (primary) {
+          const coidata = {
+            expirationDate: primary.expiration_date,
+            generalLiabilityLimit: primary.limit_each_occurrence,
+            autoLimit: primary.auto_limit,
+            workCompLimit: primary.work_comp_limit,
+            policyType: primary.coverage_type,
+          };
+
+          const eliteRes = await fetch("/api/elite/evaluate", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ coidata }),
+          });
+
+          const eliteData = await eliteRes.json();
+          if (eliteData.ok) {
+            setEliteResult({
+              overall: eliteData.overall,
+              rules: eliteData.rules || [],
+              loading: false,
+            });
+          } else {
+            setEliteResult({ error: eliteData.error || "Elite error" });
+          }
+        }
       } catch (err) {
         setCompliance({ error: err.message });
       } finally {
@@ -80,150 +205,10 @@ export default function VendorPage() {
       }
     }
 
-    loadVendor();
+    loadAll();
   }, [id]);
 
-  // ----------------- LOAD FIX PLAN -----------------
-  async function loadFixPlan() {
-    if (!vendor || !org) return;
-
-    try {
-      setFixLoading(true);
-      setFixError("");
-      setFixSteps([]);
-      setFixSubject("");
-      setFixBody("");
-      setFixInternalNotes("");
-
-      const res = await fetch(
-        `/api/vendor/fix-plan?vendorId=${vendor.id}&orgId=${org.id}`
-      );
-
-      const data = await res.json();
-      if (!data.ok) throw new Error(data.error);
-
-      setFixSteps(data.steps || []);
-      setFixSubject(data.vendorEmailSubject || "");
-      setFixBody(data.vendorEmailBody || "");
-      setFixInternalNotes(data.internalNotes || "");
-    } catch (err) {
-      setFixError(err.message);
-    } finally {
-      setFixLoading(false);
-    }
-  }
-
-  // AUTO-RUN FIX PLAN
-  useEffect(() => {
-    if (router.query.fixPlan === "1" && vendor && org) {
-      loadFixPlan();
-    }
-  }, [router.query, vendor, org]);
-
-  // ----------------- SEND FIX EMAIL -----------------
-  async function sendFixEmail() {
-    if (!vendor || !org || !fixSubject || !fixBody) return;
-
-    try {
-      setSendLoading(true);
-      setSendError("");
-      setSendSuccess("");
-
-      const res = await fetch("/api/vendor/send-fix-email", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          vendorId: vendor.id,
-          orgId: org.id,
-          subject: fixSubject,
-          body: fixBody,
-        }),
-      });
-
-      const data = await res.json();
-      if (!data.ok) throw new Error(data.error);
-
-      setSendSuccess(`Email sent to ${data.sentTo}`);
-    } catch (err) {
-      setSendError(err.message);
-    } finally {
-      setSendLoading(false);
-    }
-  }
-
-  // DOWNLOAD FIX PLAN PDF
-  async function downloadPDF() {
-    try {
-      const res = await fetch("/api/vendor/fix-plan-pdf", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          vendorName: vendor.name,
-          steps: fixSteps,
-          subject: fixSubject,
-          body: fixBody,
-          internalNotes: fixInternalNotes,
-        }),
-      });
-
-      if (!res.ok) {
-        const err = await res.json();
-        throw new Error(err.error || "PDF download failed");
-      }
-
-      const pdfBlob = await res.blob();
-      const url = window.URL.createObjectURL(pdfBlob);
-      const link = document.createElement("a");
-
-      link.href = url;
-      link.download = `${vendor.name.replace(/\s+/g, "_")}_Fix_Plan.pdf`;
-      link.click();
-      window.URL.revokeObjectURL(url);
-    } catch (err) {
-      alert("PDF Error: " + err.message);
-    }
-  }
-
-  // ENTERPRISE REPORT PDF
-  async function downloadEnterprisePDF() {
-    try {
-      const res = await fetch("/api/vendor/enterprise-report-pdf", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          vendor,
-          org,
-          compliance,
-          fixSteps,
-          fixSubject,
-          fixBody,
-          fixInternalNotes,
-          policies,
-        }),
-      });
-
-      if (!res.ok) {
-        const err = await res.json();
-        throw new Error(err.error || "Enterprise PDF failed");
-      }
-
-      const pdfBlob = await res.blob();
-      const url = window.URL.createObjectURL(pdfBlob);
-      const link = document.createElement("a");
-
-      link.href = url;
-      link.download = `${vendor.name.replace(
-        /\s+/g,
-        "_"
-      )}_Compliance_Report.pdf`;
-      link.click();
-      window.URL.revokeObjectURL(url);
-    } catch (err) {
-      alert("Enterprise PDF Error: " + err.message);
-    }
-  }
-
-  // ----------------- UI STATES -----------------
+  /* ----------------- LOADING STATES ----------------- */
   if (loadingVendor) {
     return (
       <div style={{ padding: 40 }}>
@@ -249,7 +234,13 @@ export default function VendorPage() {
     );
   }
 
-  // ----------------- MAIN UI -----------------
+  const primaryPolicy = policies[0] || null;
+  const aiRisk = computeVendorAiRisk({
+    primaryPolicy,
+    elite: eliteResult,
+    compliance,
+  });
+  /* ----------------- MAIN UI ----------------- */
   return (
     <div style={{ padding: "30px 40px", maxWidth: 900, margin: "0 auto" }}>
       <h1 style={{ fontSize: 32, fontWeight: 700, marginBottom: 6 }}>
@@ -262,7 +253,9 @@ export default function VendorPage() {
         </p>
       )}
 
-      {/* ----------------- COMPLIANCE SUMMARY ----------------- */}
+      {/* ============================================================== */}
+      {/*               COMPLIANCE SUMMARY + AI UNDERWRITING            */}
+      {/* ============================================================== */}
       <div
         style={{
           background: "white",
@@ -280,29 +273,157 @@ export default function VendorPage() {
           <p style={{ color: "red" }}>❌ {compliance.error}</p>
         )}
 
-        {/* NORMAL COMPLIANCE ENGINE */}
+        {/* ----- WHEN COMPLIANCE IS LOADED ----- */}
         {!loadingCompliance && compliance && !compliance.error && (
           <>
             <p style={{ marginTop: 8, fontWeight: 600 }}>
               {compliance.summary}
             </p>
 
-            {/* ⭐ ELITE RULE ENGINE */}
-            <div style={{ marginTop: 14 }}>
-              <EliteComplianceBlock
-                coidata={{
-                  expirationDate: policies?.[0]?.expiration_date,
-                  generalLiabilityLimit: policies?.[0]?.limit_each_occurrence,
-                  autoLimit: policies?.[0]?.auto_limit,
-                  workCompLimit: policies?.[0]?.work_comp_limit,
-                  policyType: policies?.[0]?.coverage_type,
+            {/* ---------------- GRID: Elite + AI Risk ---------------- */}
+            <div
+              style={{
+                marginTop: 14,
+                display: "grid",
+                gridTemplateColumns: "1fr 1fr",
+                gap: 16,
+              }}
+            >
+              {/* ================= ELITE ENGINE ================= */}
+              <div>
+                <h3
+                  style={{
+                    fontSize: 13,
+                    fontWeight: 600,
+                    marginBottom: 6,
+                    color: "#111827",
+                  }}
+                >
+                  Elite Rule Engine
+                </h3>
+
+                <EliteComplianceBlock
+                  coidata={{
+                    expirationDate: primaryPolicy?.expiration_date,
+                    generalLiabilityLimit:
+                      primaryPolicy?.limit_each_occurrence,
+                    autoLimit: primaryPolicy?.auto_limit,
+                    workCompLimit: primaryPolicy?.work_comp_limit,
+                    policyType: primaryPolicy?.coverage_type,
+                  }}
+                />
+              </div>
+
+              {/* ================= AI UNDERWRITING ================= */}
+              <div
+                style={{
+                  padding: 12,
+                  borderRadius: 10,
+                  background: "#f9fafb",
+                  border: "1px solid #e5e7eb",
                 }}
-              />
+              >
+                <h3
+                  style={{
+                    fontSize: 13,
+                    fontWeight: 600,
+                    marginBottom: 6,
+                    color: "#111827",
+                  }}
+                >
+                  AI Underwriting Risk Score
+                </h3>
+
+                {/* SCORE + COLOR BAR */}
+                <div
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 12,
+                    marginBottom: 8,
+                  }}
+                >
+                  <div
+                    style={{
+                      fontSize: 28,
+                      fontWeight: 700,
+                      color:
+                        aiRisk.score >= 80
+                          ? "#16a34a" // green
+                          : aiRisk.score >= 60
+                          ? "#facc15" // yellow
+                          : "#b91c1c", // red
+                    }}
+                  >
+                    {aiRisk.score}
+                  </div>
+
+                  <div>
+                    <div
+                      style={{
+                        fontSize: 12,
+                        fontWeight: 600,
+                        color: "#111827",
+                      }}
+                    >
+                      {aiRisk.tier}
+                    </div>
+
+                    <div
+                      style={{
+                        marginTop: 4,
+                        height: 4,
+                        width: 110,
+                        borderRadius: 999,
+                        background: "#e5e7eb",
+                        overflow: "hidden",
+                      }}
+                    >
+                      <div
+                        style={{
+                          width: `${Math.min(aiRisk.score, 100)}%`,
+                          height: "100%",
+                          background:
+                            aiRisk.score >= 80
+                              ? "#16a34a"
+                              : aiRisk.score >= 60
+                              ? "#facc15"
+                              : "#b91c1c",
+                        }}
+                      ></div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Expiration Detail */}
+                {primaryPolicy && (
+                  <div
+                    style={{
+                      marginTop: 4,
+                      fontSize: 11,
+                      color: "#4b5563",
+                    }}
+                  >
+                    <div>
+                      <strong>Primary Policy:</strong>{" "}
+                      {primaryPolicy.coverage_type || "—"}
+                    </div>
+                    <div>
+                      <strong>Expires:</strong>{" "}
+                      {primaryPolicy.expiration_date || "—"} (
+                      {aiRisk.exp.daysLeft ?? "—"} days left)
+                    </div>
+                  </div>
+                )}
+              </div>
             </div>
 
+            {/* ---------------- EXISTING COMPLIANCE LISTS ---------------- */}
             {compliance.missing?.length > 0 && (
               <>
-                <h4 style={{ color: "#b91c1c" }}>Missing Coverage</h4>
+                <h4 style={{ color: "#b91c1c", marginTop: 16 }}>
+                  Missing Coverage
+                </h4>
                 <ul>
                   {compliance.missing.map((m, i) => (
                     <li key={i}>{m.coverage_type}</li>
@@ -337,7 +458,6 @@ export default function VendorPage() {
           </>
         )}
       </div>
-
       {/* ----------------- FIX PLAN PANEL ----------------- */}
       <div
         style={{
@@ -382,7 +502,6 @@ export default function VendorPage() {
         {fixError && (
           <p style={{ color: "red", marginBottom: 12 }}>{fixError}</p>
         )}
-
         {fixSteps.length > 0 && (
           <>
             <h3 style={{ fontSize: 14, fontWeight: 600 }}>Action Steps</h3>
@@ -474,7 +593,6 @@ export default function VendorPage() {
             >
               📄 Download Fix Plan (PDF)
             </button>
-
             <button
               onClick={downloadEnterprisePDF}
               style={{
@@ -503,7 +621,6 @@ export default function VendorPage() {
           </>
         )}
       </div>
-
       {/* ----------------- POLICIES ----------------- */}
       <div
         style={{
