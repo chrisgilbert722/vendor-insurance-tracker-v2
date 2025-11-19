@@ -160,8 +160,303 @@ function RuleStatusPill({ status }) {
     </span>
   );
 }
+/* EDIT RULE MODAL */
+function EditRuleModal({ rule, onClose, onSave }) {
+  const [name, setName] = useState(rule.name || "");
+  const [severity, setSeverity] = useState(rule.severity || "medium");
+  const [status, setStatus] = useState(rule.status || "active");
+  const [description, setDescription] = useState(rule.description || "");
+  const [logic, setLogic] = useState(rule.logic || "");
+
+  function handleSubmit(e) {
+    e.preventDefault();
+    onSave({
+      ...rule,
+      name,
+      severity,
+      status,
+      description,
+      logic,
+    });
+  }
+
+  return (
+    <div
+      style={{
+        position: "fixed",
+        inset: 0,
+        background: "rgba(15,23,42,0.35)",
+        backdropFilter: "blur(8px)",
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        zIndex: 200,
+      }}
+    >
+      <div
+        style={{
+          width: 580,
+          maxWidth: "95vw",
+          borderRadius: 24,
+          background: "rgba(248,250,252,0.98)",
+          boxShadow: "0 30px 80px rgba(15,23,42,0.45)",
+          border: "1px solid rgba(226,232,240,0.9)",
+          padding: 24,
+        }}
+      >
+        {/* Header */}
+        <div
+          style={{
+            display: "flex",
+            justifyContent: "space-between",
+            marginBottom: 14,
+            alignItems: "center",
+          }}
+        >
+          <div>
+            <div
+              style={{
+                fontSize: 12,
+                letterSpacing: "0.12em",
+                textTransform: "uppercase",
+                color: GP.inkSoft,
+                marginBottom: 4,
+              }}
+            >
+              Edit Rule
+            </div>
+            <div
+              style={{
+                fontSize: 18,
+                fontWeight: 700,
+                color: GP.ink,
+              }}
+            >
+              {rule.name || "Untitled Rule"}
+            </div>
+          </div>
+
+          <button
+            type="button"
+            onClick={onClose}
+            style={{
+              border: "none",
+              background: "transparent",
+              fontSize: 18,
+              cursor: "pointer",
+              color: "#6B7280",
+            }}
+          >
+            ✕
+          </button>
+        </div>
+
+        {/* Form */}
+        <form onSubmit={handleSubmit}>
+          <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+            {/* Name */}
+            <div>
+              <label
+                style={{
+                  fontSize: 12,
+                  fontWeight: 600,
+                  color: GP.inkSoft,
+                  display: "block",
+                  marginBottom: 4,
+                }}
+              >
+                Rule name
+              </label>
+              <input
+                type="text"
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                style={{
+                  width: "100%",
+                  padding: "8px 10px",
+                  borderRadius: 10,
+                  border: "1px solid #E5E7EB",
+                  fontSize: 13,
+                }}
+                required
+              />
+            </div>
+
+            {/* Row: severity + status */}
+            <div
+              style={{
+                display: "grid",
+                gridTemplateColumns: "1fr 1fr",
+                gap: 12,
+              }}
+            >
+              <div>
+                <label
+                  style={{
+                    fontSize: 12,
+                    fontWeight: 600,
+                    color: GP.inkSoft,
+                    display: "block",
+                    marginBottom: 4,
+                  }}
+                >
+                  Severity
+                </label>
+                <select
+                  value={severity}
+                  onChange={(e) => setSeverity(e.target.value)}
+                  style={{
+                    width: "100%",
+                    padding: "8px 10px",
+                    borderRadius: 10,
+                    border: "1px solid #E5E7EB",
+                    fontSize: 13,
+                  }}
+                >
+                  <option value="high">High</option>
+                  <option value="medium">Medium</option>
+                  <option value="low">Low</option>
+                </select>
+              </div>
+
+              <div>
+                <label
+                  style={{
+                    fontSize: 12,
+                    fontWeight: 600,
+                    color: GP.inkSoft,
+                    display: "block",
+                    marginBottom: 4,
+                  }}
+                >
+                  Status
+                </label>
+                <select
+                  value={status}
+                  onChange={(e) => setStatus(e.target.value)}
+                  style={{
+                    width: "100%",
+                    padding: "8px 10px",
+                    borderRadius: 10,
+                    border: "1px solid #E5E7EB",
+                    fontSize: 13,
+                  }}
+                >
+                  <option value="active">Active</option>
+                  <option value="draft">Draft</option>
+                </select>
+              </div>
+            </div>
+
+            {/* Description */}
+            <div>
+              <label
+                style={{
+                  fontSize: 12,
+                  fontWeight: 600,
+                  color: GP.inkSoft,
+                  display: "block",
+                  marginBottom: 4,
+                }}
+              >
+                Description
+              </label>
+              <textarea
+                value={description}
+                onChange={(e) => setDescription(e.target.value)}
+                rows={3}
+                style={{
+                  width: "100%",
+                  padding: "8px 10px",
+                  borderRadius: 10,
+                  border: "1px solid #E5E7EB",
+                  fontSize: 13,
+                  resize: "vertical",
+                }}
+              />
+            </div>
+
+            {/* Logic */}
+            <div>
+              <label
+                style={{
+                  fontSize: 12,
+                  fontWeight: 600,
+                  color: GP.inkSoft,
+                  display: "block",
+                  marginBottom: 4,
+                }}
+              >
+                Rule logic (expression evaluated by engine)
+              </label>
+              <textarea
+                value={logic}
+                onChange={(e) => setLogic(e.target.value)}
+                rows={3}
+                style={{
+                  width: "100%",
+                  padding: "8px 10px",
+                  borderRadius: 10,
+                  border: "1px solid #E5E7EB",
+                  fontSize: 12,
+                  fontFamily:
+                    "SFMono-Regular, Menlo, Monaco, Consolas, monospace",
+                  background: "#020617",
+                  color: "#E5E7EB",
+                }}
+              />
+            </div>
+          </div>
+
+          {/* Actions */}
+          <div
+            style={{
+              display: "flex",
+              justifyContent: "flex-end",
+              gap: 10,
+              marginTop: 18,
+            }}
+          >
+            <button
+              type="button"
+              onClick={onClose}
+              style={{
+                padding: "8px 14px",
+                borderRadius: 999,
+                border: "1px solid #E5E7EB",
+                background: "#FFFFFF",
+                fontSize: 13,
+                cursor: "pointer",
+              }}
+            >
+              Cancel
+            </button>
+            <button
+              type="submit"
+              style={{
+                padding: "8px 16px",
+                borderRadius: 999,
+                border: "none",
+                background:
+                  "linear-gradient(135deg,#0057FF,#00E0FF 70%,#8A2BFF)",
+                color: "#FFFFFF",
+                fontSize: 13,
+                fontWeight: 600,
+                cursor: "pointer",
+                boxShadow: "0 12px 30px rgba(37,99,235,0.5)",
+              }}
+            >
+              Save changes
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+}
+
 /* DnD-enabled RuleCard */
-function RuleCard({ rule, index, moveRule }) {
+function RuleCard({ rule, index, moveRule, onEdit }) {
   const sev = severityStyle(rule.severity || "low");
   const ref = useRef(null);
 
@@ -292,6 +587,42 @@ function RuleCard({ rule, index, moveRule }) {
         >
           {rule.logic}
         </div>
+
+        <div
+          style={{
+            display: "flex",
+            justifyContent: "flex-end",
+            gap: 10,
+            marginTop: 10,
+          }}
+        >
+          <button
+            type="button"
+            onClick={onEdit}
+            style={{
+              padding: "6px 10px",
+              borderRadius: 999,
+              border: "1px solid #E5E7EB",
+              background: "#FFF",
+              cursor: "pointer",
+            }}
+          >
+            Edit
+          </button>
+          <button
+            type="button"
+            style={{
+              padding: "6px 10px",
+              borderRadius: 999,
+              background: "rgba(239,68,68,0.08)",
+              color: "#B91C1C",
+              border: "none",
+              cursor: "pointer",
+            }}
+          >
+            Disable
+          </button>
+        </div>
       </div>
     </div>
   );
@@ -307,6 +638,7 @@ export default function EliteRulesPage() {
   const [loading, setLoading] = useState(false);
   const [aiThinking, setAiThinking] = useState(false);
   const [error, setError] = useState(null);
+  const [editingRule, setEditingRule] = useState(null);
 
   /* HYBRID LOADER */
   useEffect(() => {
@@ -375,6 +707,13 @@ export default function EliteRulesPage() {
 
       return list;
     });
+  }
+
+  function handleSaveRule(updated) {
+    setRules((prev) =>
+      prev.map((r) => (r.id === updated.id ? { ...r, ...updated } : r))
+    );
+    setEditingRule(null);
   }
   return (
     <div style={{ minHeight: "100vh", background: GP.surface }}>
@@ -568,6 +907,7 @@ export default function EliteRulesPage() {
               })}
             </div>
           </div>
+
           {/* RIGHT: RULE LIST - DND ENABLED */}
           <DndProvider backend={HTML5Backend}>
             <div
@@ -651,12 +991,22 @@ export default function EliteRulesPage() {
                     rule={r}
                     index={i}
                     moveRule={moveRule}
+                    onEdit={() => setEditingRule(r)}
                   />
                 ))}
             </div>
           </DndProvider>
         </div>
       </div>
+
+      {/* EDIT MODAL */}
+      {editingRule && (
+        <EditRuleModal
+          rule={editingRule}
+          onClose={() => setEditingRule(null)}
+          onSave={handleSaveRule}
+        />
+      )}
     </div>
   );
 }
