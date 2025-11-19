@@ -2,6 +2,9 @@
 import { useRouter } from "next/router";
 import { useEffect, useState } from "react";
 
+// ⭐ ELITE ENGINE IMPORT
+import EliteComplianceBlock from "../../components/elite/EliteComplianceBlock";
+
 export default function VendorPage() {
   const router = useRouter();
   const { id } = router.query;
@@ -15,7 +18,7 @@ export default function VendorPage() {
   const [loadingCompliance, setLoadingCompliance] = useState(true);
   const [error, setError] = useState("");
 
-  // FIX PLAN STATE
+  // FIX PLAN
   const [fixLoading, setFixLoading] = useState(false);
   const [fixError, setFixError] = useState("");
   const [fixSteps, setFixSteps] = useState([]);
@@ -23,7 +26,7 @@ export default function VendorPage() {
   const [fixBody, setFixBody] = useState("");
   const [fixInternalNotes, setFixInternalNotes] = useState("");
 
-  // SEND FIX EMAIL STATE
+  // SEND FIX EMAIL
   const [sendLoading, setSendLoading] = useState(false);
   const [sendError, setSendError] = useState("");
   const [sendSuccess, setSendSuccess] = useState("");
@@ -110,7 +113,7 @@ export default function VendorPage() {
     }
   }
 
-  // ----------------- AUTO-RUN FIX PLAN -----------------
+  // AUTO-RUN FIX PLAN
   useEffect(() => {
     if (router.query.fixPlan === "1" && vendor && org) {
       loadFixPlan();
@@ -148,7 +151,7 @@ export default function VendorPage() {
     }
   }
 
-  // ----------------- DOWNLOAD FIX PLAN (SIMPLE PDF) -----------------
+  // DOWNLOAD FIX PLAN PDF
   async function downloadPDF() {
     try {
       const res = await fetch("/api/vendor/fix-plan-pdf", {
@@ -175,14 +178,13 @@ export default function VendorPage() {
       link.href = url;
       link.download = `${vendor.name.replace(/\s+/g, "_")}_Fix_Plan.pdf`;
       link.click();
-
       window.URL.revokeObjectURL(url);
     } catch (err) {
       alert("PDF Error: " + err.message);
     }
   }
 
-  // ----------------- ENTERPRISE REPORT PDF -----------------
+  // ENTERPRISE REPORT PDF
   async function downloadEnterprisePDF() {
     try {
       const res = await fetch("/api/vendor/enterprise-report-pdf", {
@@ -215,7 +217,6 @@ export default function VendorPage() {
         "_"
       )}_Compliance_Report.pdf`;
       link.click();
-
       window.URL.revokeObjectURL(url);
     } catch (err) {
       alert("Enterprise PDF Error: " + err.message);
@@ -279,9 +280,25 @@ export default function VendorPage() {
           <p style={{ color: "red" }}>❌ {compliance.error}</p>
         )}
 
+        {/* NORMAL COMPLIANCE ENGINE */}
         {!loadingCompliance && compliance && !compliance.error && (
           <>
-            <p style={{ marginTop: 8, fontWeight: 600 }}>{compliance.summary}</p>
+            <p style={{ marginTop: 8, fontWeight: 600 }}>
+              {compliance.summary}
+            </p>
+
+            {/* ⭐ ELITE RULE ENGINE */}
+            <div style={{ marginTop: 14 }}>
+              <EliteComplianceBlock
+                coidata={{
+                  expirationDate: policies?.[0]?.expiration_date,
+                  generalLiabilityLimit: policies?.[0]?.limit_each_occurrence,
+                  autoLimit: policies?.[0]?.auto_limit,
+                  workCompLimit: policies?.[0]?.work_comp_limit,
+                  policyType: policies?.[0]?.coverage_type,
+                }}
+              />
+            </div>
 
             {compliance.missing?.length > 0 && (
               <>
@@ -415,7 +432,6 @@ export default function VendorPage() {
               }}
             />
 
-            {/* ---------------- SEND FIX EMAIL BUTTON ---------------- */}
             <button
               onClick={sendFixEmail}
               disabled={sendLoading}
@@ -442,7 +458,6 @@ export default function VendorPage() {
               <p style={{ color: "#15803d", marginTop: 8 }}>{sendSuccess}</p>
             )}
 
-            {/* ---------------- DOWNLOAD FIX PLAN PDF ---------------- */}
             <button
               onClick={downloadPDF}
               style={{
@@ -460,7 +475,6 @@ export default function VendorPage() {
               📄 Download Fix Plan (PDF)
             </button>
 
-            {/* ---------------- ENTERPRISE PDF BUTTON ---------------- */}
             <button
               onClick={downloadEnterprisePDF}
               style={{
