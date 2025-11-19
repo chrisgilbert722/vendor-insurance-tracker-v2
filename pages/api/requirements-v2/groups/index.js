@@ -1,10 +1,11 @@
+// pages/api/requirements-v2/groups/index.js
 import { supabase } from "../../../../lib/supabaseClient";
 
 export default async function handler(req, res) {
   const { method } = req;
 
   // -------------------------
-  // GET GROUPS
+  // GET GROUPS (with rule count)
   // -------------------------
   if (method === "GET") {
     const { orgId } = req.query;
@@ -13,13 +14,19 @@ export default async function handler(req, res) {
       return res.status(400).json({ ok: false, error: "Missing orgId" });
     }
 
-    // 🔥 FIX: Convert orgId to integer
-    const org_id_int = parseInt(orgId, 10);
-
+    // FIXED: Proper rule counting using Supabase aggregate
     const { data, error } = await supabase
       .from("requirements_groups_v2")
-      .select("*")
-      .eq("org_id", org_id_int)
+      .select(`
+        id,
+        org_id,
+        name,
+        description,
+        is_active,
+        created_at,
+        rules:requirements_rules_v2(count)
+      `)
+      .eq("org_id", orgId)
       .order("created_at", { ascending: false });
 
     if (error) {
@@ -35,7 +42,7 @@ export default async function handler(req, res) {
         description: g.description,
         is_active: g.is_active,
         created_at: g.created_at,
-        rule_count: 0, // rules loaded separately
+        rule_count: g.rules?.[0]?.count || 0,
       })) || [];
 
     return res.status(200).json({ ok: true, groups });
@@ -53,13 +60,10 @@ export default async function handler(req, res) {
         .json({ ok: false, error: "orgId and name are required" });
     }
 
-    // 🔥 Fix int conversion
-    const org_id_int = parseInt(orgId, 10);
-
     const { data, error } = await supabase
       .from("requirements_groups_v2")
       .insert({
-        org_id: org_id_int,
+        org_id: orgId,
         name,
         description: description || null,
       })
@@ -132,4 +136,3 @@ export default async function handler(req, res) {
     .status(405)
     .json({ ok: false, error: `Method ${method} Not Allowed` });
 }
-
