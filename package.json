@@ -11,6 +11,7 @@
   },
   "dependencies": {
     "@phosphor-icons/react": "2.0.9",
+    "@reduxjs/toolkit": "^2.10.1",
     "@sparticuz/chromium": "^141.0.0",
     "@supabase/supabase-js": "2.39.4",
     "formidable": "3.5.0",
@@ -23,6 +24,7 @@
     "react-dnd": "^16.0.1",
     "react-dnd-html5-backend": "^16.0.1",
     "react-dom": "18.2.0",
+    "react-redux": "^9.2.0",
     "recharts": "^3.4.1",
     "resend": "4.0.0"
   },
