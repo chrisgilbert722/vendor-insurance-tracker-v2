@@ -66,7 +66,6 @@ function computeVendorAiRisk({ primaryPolicy, elite, compliance }) {
   const exp = computeExpirationRisk(primaryPolicy);
   let base = exp.baseScore;
 
-  // Elite factor
   let eliteFactor = 1.0;
   if (elite && !elite.loading && !elite.error) {
     if (elite.overall === "fail") eliteFactor = 0.4;
@@ -74,22 +73,15 @@ function computeVendorAiRisk({ primaryPolicy, elite, compliance }) {
     else if (elite.overall === "pass") eliteFactor = 1.0;
   }
 
-  // Compliance factor
   let complianceFactor = 1.0;
   if (compliance) {
-    if (compliance.error) {
-      complianceFactor = 0.7;
-    } else {
-      const hasMissing = (compliance.missing || []).length > 0;
-      const hasFailing = (compliance.failing || []).length > 0;
-      if (hasFailing) complianceFactor = 0.5;
-      else if (hasMissing) complianceFactor = 0.7;
-    }
+    if (compliance.error) complianceFactor = 0.7;
+    else if (compliance.failing?.length > 0) complianceFactor = 0.5;
+    else if (compliance.missing?.length > 0) complianceFactor = 0.7;
   }
 
   let score = Math.round(base * eliteFactor * complianceFactor);
-  if (score < 0) score = 0;
-  if (score > 100) score = 100;
+  score = Math.min(Math.max(score, 0), 100);
 
   let tier = "Unknown";
   if (score >= 85) tier = "Elite Safe";
@@ -115,7 +107,6 @@ export default function VendorPage() {
   const [loadingCompliance, setLoadingCompliance] = useState(true);
   const [error, setError] = useState("");
 
-  // Fix Plan State
   const [fixLoading, setFixLoading] = useState(false);
   const [fixError, setFixError] = useState("");
   const [fixSteps, setFixSteps] = useState([]);
@@ -126,10 +117,8 @@ export default function VendorPage() {
   const [sendError, setSendError] = useState("");
   const [sendSuccess, setSendSuccess] = useState("");
 
-  // Elite result for the AI underwriting panel
   const [eliteResult, setEliteResult] = useState(null);
 
-  /* ----------------- LOAD VENDOR + COMPLIANCE + ELITE ----------------- */
   useEffect(() => {
     if (!id) return;
 
@@ -170,7 +159,6 @@ export default function VendorPage() {
 
         setCompliance(data);
 
-        // ----- RUN ELITE ENGINE RIGHT AFTER COMPLIANCE -----
         const primary = vendorPolicies?.[0];
         if (primary) {
           const coidata = {
@@ -195,7 +183,7 @@ export default function VendorPage() {
               loading: false,
             });
           } else {
-            setEliteResult({ error: eliteData.error || "Elite error" });
+            setEliteResult({ error: eliteData.error });
           }
         }
       } catch (err) {
@@ -208,7 +196,6 @@ export default function VendorPage() {
     loadAll();
   }, [id]);
 
-  /* ----------------- LOADING STATES ----------------- */
   if (loadingVendor) {
     return (
       <div style={{ padding: 40 }}>
@@ -240,7 +227,6 @@ export default function VendorPage() {
     elite: eliteResult,
     compliance,
   });
-  /* ----------------- MAIN UI ----------------- */
   return (
     <div style={{ padding: "30px 40px", maxWidth: 900, margin: "0 auto" }}>
       <h1 style={{ fontSize: 32, fontWeight: 700, marginBottom: 6 }}>
@@ -253,9 +239,6 @@ export default function VendorPage() {
         </p>
       )}
 
-      {/* ============================================================== */}
-      {/*               COMPLIANCE SUMMARY + AI UNDERWRITING            */}
-      {/* ============================================================== */}
       <div
         style={{
           background: "white",
@@ -273,14 +256,12 @@ export default function VendorPage() {
           <p style={{ color: "red" }}>❌ {compliance.error}</p>
         )}
 
-        {/* ----- WHEN COMPLIANCE IS LOADED ----- */}
         {!loadingCompliance && compliance && !compliance.error && (
           <>
             <p style={{ marginTop: 8, fontWeight: 600 }}>
               {compliance.summary}
             </p>
 
-            {/* ---------------- GRID: Elite + AI Risk ---------------- */}
             <div
               style={{
                 marginTop: 14,
@@ -289,7 +270,6 @@ export default function VendorPage() {
                 gap: 16,
               }}
             >
-              {/* ================= ELITE ENGINE ================= */}
               <div>
                 <h3
                   style={{
@@ -314,7 +294,6 @@ export default function VendorPage() {
                 />
               </div>
 
-              {/* ================= AI UNDERWRITING ================= */}
               <div
                 style={{
                   padding: 12,
@@ -334,7 +313,6 @@ export default function VendorPage() {
                   AI Underwriting Risk Score
                 </h3>
 
-                {/* SCORE + COLOR BAR */}
                 <div
                   style={{
                     display: "flex",
@@ -349,10 +327,10 @@ export default function VendorPage() {
                       fontWeight: 700,
                       color:
                         aiRisk.score >= 80
-                          ? "#16a34a" // green
+                          ? "#16a34a"
                           : aiRisk.score >= 60
-                          ? "#facc15" // yellow
-                          : "#b91c1c", // red
+                          ? "#facc15"
+                          : "#b91c1c",
                     }}
                   >
                     {aiRisk.score}
@@ -395,7 +373,6 @@ export default function VendorPage() {
                   </div>
                 </div>
 
-                {/* Expiration Detail */}
                 {primaryPolicy && (
                   <div
                     style={{
@@ -418,7 +395,32 @@ export default function VendorPage() {
               </div>
             </div>
 
-            {/* ---------------- EXISTING COMPLIANCE LISTS ---------------- */}
+            {/* ⭐ ADDED TREND BOX HERE ⭐ */}
+            <div
+              style={{
+                marginTop: 20,
+                padding: 16,
+                background: "white",
+                borderRadius: 12,
+                border: "1px solid #e5e7eb",
+              }}
+            >
+              <h3 style={{ fontSize: 16, fontWeight: 600 }}>
+                Vendor Risk Trend
+              </h3>
+              <img
+                src="/trend-placeholder.png"
+                style={{
+                  width: "100%",
+                  height: 160,
+                  opacity: 0.6,
+                  borderRadius: 10,
+                  marginTop: 10,
+                }}
+              />
+            </div>
+
+            {/* Existing compliance lists */}
             {compliance.missing?.length > 0 && (
               <>
                 <h4 style={{ color: "#b91c1c", marginTop: 16 }}>
@@ -496,131 +498,9 @@ export default function VendorPage() {
             }}
           >
             {fixLoading ? "Generating…" : "Generate Fix Plan"}
-          </button>
-        </div>
-
-        {fixError && (
-          <p style={{ color: "red", marginBottom: 12 }}>{fixError}</p>
-        )}
-        {fixSteps.length > 0 && (
-          <>
-            <h3 style={{ fontSize: 14, fontWeight: 600 }}>Action Steps</h3>
-            <ol style={{ paddingLeft: 20, marginBottom: 12 }}>
-              {fixSteps.map((s, i) => (
-                <li key={i} style={{ marginBottom: 4 }}>
-                  {s}
-                </li>
-              ))}
-            </ol>
-          </>
-        )}
-
-        {fixSubject && (
-          <>
-            <h3 style={{ fontSize: 14, fontWeight: 600 }}>Vendor Email Subject</h3>
-            <p
-              style={{
-                background: "#f9fafb",
-                padding: 8,
-                borderRadius: 8,
-                border: "1px solid #e5e7eb",
-              }}
-            >
-              {fixSubject}
-            </p>
-          </>
-        )}
-
-        {fixBody && (
-          <>
-            <h3 style={{ fontSize: 14, fontWeight: 600, marginTop: 12 }}>
-              Vendor Email Body
-            </h3>
-
-            <textarea
-              readOnly
-              value={fixBody}
-              style={{
-                width: "100%",
-                minHeight: 140,
-                padding: 10,
-                borderRadius: 8,
-                border: "1px solid #e5e7eb",
-                fontFamily: "system-ui",
-                whiteSpace: "pre-wrap",
-              }}
-            />
-
-            <button
-              onClick={sendFixEmail}
-              disabled={sendLoading}
-              style={{
-                width: "100%",
-                marginTop: 15,
-                padding: "10px 14px",
-                borderRadius: 8,
-                background: "#0f172a",
-                color: "white",
-                fontWeight: 600,
-                border: "none",
-                cursor: "pointer",
-              }}
-            >
-              {sendLoading ? "Sending…" : "📬 Send Fix Email"}
-            </button>
-
-            {sendError && (
-              <p style={{ color: "red", marginTop: 8 }}>{sendError}</p>
-            )}
-
-            {sendSuccess && (
-              <p style={{ color: "#15803d", marginTop: 8 }}>{sendSuccess}</p>
-            )}
-
-            <button
-              onClick={downloadPDF}
-              style={{
-                width: "100%",
-                marginTop: 12,
-                padding: "10px 14px",
-                borderRadius: 8,
-                background: "#2563eb",
-                color: "white",
-                fontWeight: 600,
-                border: "none",
-                cursor: "pointer",
-              }}
-            >
-              📄 Download Fix Plan (PDF)
-            </button>
-            <button
-              onClick={downloadEnterprisePDF}
-              style={{
-                width: "100%",
-                marginTop: 12,
-                padding: "10px 14px",
-                borderRadius: 8,
-                background: "#1f2937",
-                color: "white",
-                fontWeight: 600,
-                border: "none",
-                cursor: "pointer",
-              }}
-            >
-              🧾 Download Enterprise Compliance Report (PDF)
-            </button>
-          </>
-        )}
-
-        {fixInternalNotes && (
-          <>
-            <h3 style={{ fontSize: 14, fontWeight: 600, marginTop: 20 }}>
-              Internal Notes
-            </h3>
-            <p style={{ whiteSpace: "pre-wrap" }}>{fixInternalNotes}</p>
-          </>
-        )}
+          </button> തുട
       </div>
+      
       {/* ----------------- POLICIES ----------------- */}
       <div
         style={{
