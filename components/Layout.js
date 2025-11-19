@@ -12,12 +12,8 @@ export default function Layout({ children }) {
   // Global role system
   const { isAdmin, isManager, isViewer } = useRole();
 
-  // THIS LINE WAS WRONG AND BREAKING EVERYTHING:
-  // const { orgId } = useOrg();
-
-  // FIX:
-  const { activeOrgId } = useOrg(); 
-  // (or delete this entirely if unused)
+  // FIX: remove invalid destructure
+  useOrg(); // ensures context mounts
 
   return (
     <div
@@ -37,6 +33,7 @@ export default function Layout({ children }) {
 
       <div style={{ flex: 1, display: "flex", flexDirection: "column" }}>
         <Header />
+
         <main style={{ padding: "30px 40px" }}>{children}</main>
       </div>
     </div>
