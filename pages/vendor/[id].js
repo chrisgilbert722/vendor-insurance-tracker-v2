@@ -75,9 +75,14 @@ function computeVendorAiRisk({ primaryPolicy, elite, compliance }) {
 
   let complianceFactor = 1.0;
   if (compliance) {
-    if (compliance.error) complianceFactor = 0.7;
-    else if (compliance.failing?.length > 0) complianceFactor = 0.5;
-    else if (compliance.missing?.length > 0) complianceFactor = 0.7;
+    if (compliance.error) {
+      complianceFactor = 0.7;
+    } else {
+      const hasMissing = (compliance.missing || []).length > 0;
+      const hasFailing = (compliance.failing || []).length > 0;
+      if (hasFailing) complianceFactor = 0.5;
+      else if (hasMissing) complianceFactor = 0.7;
+    }
   }
 
   let score = Math.round(base * eliteFactor * complianceFactor);
@@ -107,6 +112,7 @@ export default function VendorPage() {
   const [loadingCompliance, setLoadingCompliance] = useState(true);
   const [error, setError] = useState("");
 
+  // Fix Plan State
   const [fixLoading, setFixLoading] = useState(false);
   const [fixError, setFixError] = useState("");
   const [fixSteps, setFixSteps] = useState([]);
@@ -119,6 +125,7 @@ export default function VendorPage() {
 
   const [eliteResult, setEliteResult] = useState(null);
 
+  /* ----------------- LOAD VENDOR + COMPLIANCE + ELITE ----------------- */
   useEffect(() => {
     if (!id) return;
 
@@ -196,6 +203,135 @@ export default function VendorPage() {
     loadAll();
   }, [id]);
 
+  /* ----------------- FIX PLAN HELPERS ----------------- */
+  async function loadFixPlan() {
+    if (!vendor || !org) return;
+
+    try {
+      setFixLoading(true);
+      setFixError("");
+      setFixSteps([]);
+      setFixSubject("");
+      setFixBody("");
+      setFixInternalNotes("");
+
+      const res = await fetch(
+        `/api/vendor/fix-plan?vendorId=${vendor.id}&orgId=${org.id}`
+      );
+
+      const data = await res.json();
+      if (!data.ok) throw new Error(data.error);
+
+      setFixSteps(data.steps || []);
+      setFixSubject(data.vendorEmailSubject || "");
+      setFixBody(data.vendorEmailBody || "");
+      setFixInternalNotes(data.internalNotes || "");
+    } catch (err) {
+      setFixError(err.message);
+    } finally {
+      setFixLoading(false);
+    }
+  }
+
+  async function sendFixEmail() {
+    if (!vendor || !org || !fixSubject || !fixBody) return;
+
+    try {
+      setSendLoading(true);
+      setSendError("");
+      setSendSuccess("");
+
+      const res = await fetch("/api/vendor/send-fix-email", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          vendorId: vendor.id,
+          orgId: org.id,
+          subject: fixSubject,
+          body: fixBody,
+        }),
+      });
+
+      const data = await res.json();
+      if (!data.ok) throw new Error(data.error);
+
+      setSendSuccess(`Email sent to ${data.sentTo}`);
+    } catch (err) {
+      setSendError(err.message);
+    } finally {
+      setSendLoading(false);
+    }
+  }
+
+  async function downloadPDF() {
+    try {
+      const res = await fetch("/api/vendor/fix-plan-pdf", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          vendorName: vendor.name,
+          steps: fixSteps,
+          subject: fixSubject,
+          body: fixBody,
+          internalNotes: fixInternalNotes,
+        }),
+      });
+
+      if (!res.ok) {
+        const err = await res.json();
+        throw new Error(err.error || "PDF download failed");
+      }
+
+      const pdfBlob = await res.blob();
+      const url = window.URL.createObjectURL(pdfBlob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = `${vendor.name.replace(/\s+/g, "_")}_Fix_Plan.pdf`;
+      link.click();
+      window.URL.revokeObjectURL(url);
+    } catch (err) {
+      alert("PDF Error: " + err.message);
+    }
+  }
+
+  async function downloadEnterprisePDF() {
+    try {
+      const res = await fetch("/api/vendor/enterprise-report-pdf", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          vendor,
+          org,
+          compliance,
+          fixSteps,
+          fixSubject,
+          fixBody,
+          fixInternalNotes,
+          policies,
+        }),
+      });
+
+      if (!res.ok) {
+        const err = await res.json();
+        throw new Error(err.error || "Enterprise PDF failed");
+      }
+
+      const pdfBlob = await res.blob();
+      const url = window.URL.createObjectURL(pdfBlob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = `${vendor.name.replace(
+        /\s+/g,
+        "_"
+      )}_Compliance_Report.pdf`;
+      link.click();
+      window.URL.revokeObjectURL(url);
+    } catch (err) {
+      alert("Enterprise PDF Error: " + err.message);
+    }
+  }
+
+  /* ----------------- LOADING STATES ----------------- */
   if (loadingVendor) {
     return (
       <div style={{ padding: 40 }}>
@@ -227,6 +363,8 @@ export default function VendorPage() {
     elite: eliteResult,
     compliance,
   });
+
+  /* ----------------- MAIN UI ----------------- */
   return (
     <div style={{ padding: "30px 40px", maxWidth: 900, margin: "0 auto" }}>
       <h1 style={{ fontSize: 32, fontWeight: 700, marginBottom: 6 }}>
@@ -239,6 +377,7 @@ export default function VendorPage() {
         </p>
       )}
 
+      {/* COMPLIANCE + ELITE + AI RISK */}
       <div
         style={{
           background: "white",
@@ -395,7 +534,7 @@ export default function VendorPage() {
               </div>
             </div>
 
-            {/* ⭐ ADDED TREND BOX HERE ⭐ */}
+            {/* VENDOR RISK TREND BOX */}
             <div
               style={{
                 marginTop: 20,
@@ -408,6 +547,7 @@ export default function VendorPage() {
               <h3 style={{ fontSize: 16, fontWeight: 600 }}>
                 Vendor Risk Trend
               </h3>
+              {/* Replace this img with a real chart later */}
               <img
                 src="/trend-placeholder.png"
                 style={{
@@ -417,6 +557,7 @@ export default function VendorPage() {
                   borderRadius: 10,
                   marginTop: 10,
                 }}
+                alt="Risk trend"
               />
             </div>
 
@@ -460,6 +601,7 @@ export default function VendorPage() {
           </>
         )}
       </div>
+
       {/* ----------------- FIX PLAN PANEL ----------------- */}
       <div
         style={{
@@ -498,9 +640,134 @@ export default function VendorPage() {
             }}
           >
             {fixLoading ? "Generating…" : "Generate Fix Plan"}
-          </button> തുട
+          </button>
+        </div>
+
+        {fixError && (
+          <p style={{ color: "red", marginBottom: 12 }}>{fixError}</p>
+        )}
+
+        {fixSteps.length > 0 && (
+          <>
+            <h3 style={{ fontSize: 14, fontWeight: 600 }}>Action Steps</h3>
+            <ol style={{ paddingLeft: 20, marginBottom: 12 }}>
+              {fixSteps.map((s, i) => (
+                <li key={i} style={{ marginBottom: 4 }}>
+                  {s}
+                </li>
+              ))}
+            </ol>
+          </>
+        )}
+
+        {fixSubject && (
+          <>
+            <h3 style={{ fontSize: 14, fontWeight: 600 }}>Vendor Email Subject</h3>
+            <p
+              style={{
+                background: "#f9fafb",
+                padding: 8,
+                borderRadius: 8,
+                border: "1px solid #e5e7eb",
+              }}
+            >
+              {fixSubject}
+            </p>
+          </>
+        )}
+
+        {fixBody && (
+          <>
+            <h3 style={{ fontSize: 14, fontWeight: 600, marginTop: 12 }}>
+              Vendor Email Body
+            </h3>
+
+            <textarea
+              readOnly
+              value={fixBody}
+              style={{
+                width: "100%",
+                minHeight: 140,
+                padding: 10,
+                borderRadius: 8,
+                border: "1px solid #e5e7eb",
+                fontFamily: "system-ui",
+                whiteSpace: "pre-wrap",
+              }}
+            />
+
+            <button
+              onClick={sendFixEmail}
+              disabled={sendLoading}
+              style={{
+                width: "100%",
+                marginTop: 15,
+                padding: "10px 14px",
+                borderRadius: 8,
+                background: "#0f172a",
+                color: "white",
+                fontWeight: 600,
+                border: "none",
+                cursor: "pointer",
+              }}
+            >
+              {sendLoading ? "Sending…" : "📬 Send Fix Email"}
+            </button>
+
+            {sendError && (
+              <p style={{ color: "red", marginTop: 8 }}>{sendError}</p>
+            )}
+
+            {sendSuccess && (
+              <p style={{ color: "#15803d", marginTop: 8 }}>{sendSuccess}</p>
+            )}
+
+            <button
+              onClick={downloadPDF}
+              style={{
+                width: "100%",
+                marginTop: 12,
+                padding: "10px 14px",
+                borderRadius: 8,
+                background: "#2563eb",
+                color: "white",
+                fontWeight: 600,
+                border: "none",
+                cursor: "pointer",
+              }}
+            >
+              📄 Download Fix Plan (PDF)
+            </button>
+
+            <button
+              onClick={downloadEnterprisePDF}
+              style={{
+                width: "100%",
+                marginTop: 12,
+                padding: "10px 14px",
+                borderRadius: 8,
+                background: "#1f2937",
+                color: "white",
+                fontWeight: 600,
+                border: "none",
+                cursor: "pointer",
+              }}
+            >
+              🧾 Download Enterprise Compliance Report (PDF)
+            </button>
+          </>
+        )}
+
+        {fixInternalNotes && (
+          <>
+            <h3 style={{ fontSize: 14, fontWeight: 600, marginTop: 20 }}>
+              Internal Notes
+            </h3>
+            <p style={{ whiteSpace: "pre-wrap" }}>{fixInternalNotes}</p>
+          </>
+        )}
       </div>
-      
+
       {/* ----------------- POLICIES ----------------- */}
       <div
         style={{
