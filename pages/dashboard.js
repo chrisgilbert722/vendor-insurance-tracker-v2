@@ -3,6 +3,7 @@ import { useEffect, useState } from "react";
 import VendorDrawer from "../components/VendorDrawer";
 import { useRole } from "../lib/useRole";
 import { useOrg } from "../context/OrgContext";
+import EliteStatusPill from "../components/elite/EliteStatusPill";
 
 /* THEME TOKENS */
 const GP = {
@@ -27,7 +28,9 @@ const GP = {
 /* RISK HELPERS */
 function parseExpiration(dateStr) {
   if (!dateStr) return null;
-  const [mm, dd, yyyy] = dateStr.split("/");
+  const parts = dateStr.split("/");
+  if (parts.length !== 3) return null;
+  const [mm, dd, yyyy] = parts;
   if (!mm || !dd || !yyyy) return null;
   return new Date(`${yyyy}-${mm}-${dd}T00:00:00`);
 }
@@ -192,6 +195,14 @@ export default function Dashboard() {
   const [deltas, setDeltas] = useState(null);
   const [complianceMap, setComplianceMap] = useState({});
 
+  // ⭐ Elite underwriting state
+  const [eliteMap, setEliteMap] = useState({});
+  const [eliteSummary, setEliteSummary] = useState({
+    pass: 0,
+    warn: 0,
+    fail: 0,
+  });
+
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [drawerVendor, setDrawerVendor] = useState(null);
   const [drawerPolicies, setDrawerPolicies] = useState([]);
@@ -240,7 +251,6 @@ export default function Dashboard() {
     const vendorIds = [...new Set(policies.map((p) => p.vendor_id))];
 
     vendorIds.forEach((vendorId) => {
-      // don’t refetch if we already have data
       if (complianceMap[vendorId]) return;
 
       setComplianceMap((prev) => ({
@@ -275,7 +285,88 @@ export default function Dashboard() {
           }));
         });
     });
-  }, [policies, activeOrgId, complianceMap]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [policies, activeOrgId]);
+
+  /* ⭐ PHASE D — ELITE UNDERWRITING: one Elite evaluation per VENDOR */
+  useEffect(() => {
+    if (!policies || policies.length === 0) return;
+
+    const vendorIds = [...new Set(policies.map((p) => p.vendor_id))];
+
+    vendorIds.forEach((vendorId) => {
+      // don’t refetch if we already have an Elite result
+      if (eliteMap[vendorId] && !eliteMap[vendorId].loading) return;
+
+      const vendorPolicies = policies.filter(
+        (p) => p.vendor_id === vendorId
+      );
+
+      if (vendorPolicies.length === 0) return;
+
+      // Simple vendor-level coidata using the first policy for now
+      const primary = vendorPolicies[0];
+
+      const coidata = {
+        expirationDate: primary.expiration_date,
+        generalLiabilityLimit: primary.limit_each_occurrence,
+        autoLimit: primary.auto_limit,
+        workCompLimit: primary.work_comp_limit,
+        policyType: primary.coverage_type,
+      };
+
+      setEliteMap((prev) => ({
+        ...prev,
+        [vendorId]: { ...(prev[vendorId] || {}), loading: true },
+      }));
+
+      fetch("/api/elite/evaluate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ coidata }),
+      })
+        .then((res) => res.json())
+        .then((data) => {
+          if (!data.ok) {
+            throw new Error(data.error || "Elite evaluation failed");
+          }
+          setEliteMap((prev) => ({
+            ...prev,
+            [vendorId]: {
+              loading: false,
+              overall: data.overall, // "pass" | "warn" | "fail"
+              rules: data.rules || [],
+            },
+          }));
+        })
+        .catch((err) => {
+          console.error("Elite evaluation error:", err);
+          setEliteMap((prev) => ({
+            ...prev,
+            [vendorId]: {
+              loading: false,
+              error: err.message,
+            },
+          }));
+        });
+    });
+  }, [policies, eliteMap]);
+
+  /* Recompute Elite summary counts whenever Elite map changes */
+  useEffect(() => {
+    let pass = 0;
+    let warn = 0;
+    let fail = 0;
+
+    Object.values(eliteMap).forEach((val) => {
+      if (!val || val.loading || val.error) return;
+      if (val.overall === "pass") pass += 1;
+      else if (val.overall === "warn") warn += 1;
+      else if (val.overall === "fail") fail += 1;
+    });
+
+    setEliteSummary({ pass, warn, fail });
+  }, [eliteMap]);
 
   async function openDrawer(vendorId) {
     try {
@@ -309,7 +400,6 @@ export default function Dashboard() {
 
   return (
     <div style={{ minHeight: "100vh", background: GP.surface }}>
-      {/* Header is global now via Layout — no <Header /> here */}
       <div style={{ padding: "30px 40px" }}>
         <h1
           style={{
@@ -387,7 +477,7 @@ export default function Dashboard() {
             label="Warning (≤90 days)"
             icon="🟡"
             color={GP.yellow}
-            count={metrics?.warning ?? 0}
+            count={metrics?.warning_count ?? 0}
             delta={deltas?.warning ?? 0}
           />
           <RiskCard
@@ -401,6 +491,7 @@ export default function Dashboard() {
             avgScore={metrics?.avg_score}
             delta={deltas?.avg_score}
           />
+          <EliteCard counts={eliteSummary} />
         </div>
 
         {/* POLICIES TABLE */}
@@ -455,6 +546,7 @@ export default function Dashboard() {
                   <th style={th}>Risk Tier</th>
                   <th style={th}>Score</th>
                   <th style={th}>Compliance</th>
+                  <th style={th}>Elite</th>
                   <th style={th}>Flags</th>
                 </tr>
               </thead>
@@ -465,6 +557,7 @@ export default function Dashboard() {
                   const severity = risk.severity;
                   const score = risk.score;
                   const flags = risk.flags || [];
+                  const elite = eliteMap[p.vendor_id];
 
                   return (
                     <tr
@@ -527,7 +620,6 @@ export default function Dashboard() {
                         }}
                       >
                         <div>{score}</div>
-
                         <div
                           style={{
                             marginTop: "4px",
@@ -557,6 +649,39 @@ export default function Dashboard() {
 
                       <td style={{ ...td, textAlign: "center" }}>
                         {renderComplianceBadge(p.vendor_id, complianceMap)}
+                      </td>
+
+                      <td style={{ ...td, textAlign: "center" }}>
+                        {elite && !elite.loading && !elite.error ? (
+                          <EliteStatusPill status={elite.overall} />
+                        ) : elite && elite.loading ? (
+                          <span
+                            style={{
+                              fontSize: 11,
+                              color: "#6b7280",
+                            }}
+                          >
+                            Evaluating…
+                          </span>
+                        ) : elite && elite.error ? (
+                          <span
+                            style={{
+                              fontSize: 11,
+                              color: "#b91c1c",
+                            }}
+                          >
+                            Elite error
+                          </span>
+                        ) : (
+                          <span
+                            style={{
+                              fontSize: 11,
+                              color: "#9ca3af",
+                            }}
+                          >
+                            —
+                          </span>
+                        )}
                       </td>
 
                       <td style={{ ...td, textAlign: "center" }}>
@@ -690,6 +815,55 @@ function ScoreCard({ avgScore, delta }) {
       >
         {arrow}{" "}
         {typeof delta === "number" ? delta.toFixed(1) : "0.0"}
+      </div>
+    </div>
+  );
+}
+
+function EliteCard({ counts }) {
+  const total = counts.pass + counts.warn + counts.fail;
+  return (
+    <div style={{ textAlign: "center", flex: 1 }}>
+      <div style={{ fontSize: "22px" }}>🧠</div>
+      <div
+        style={{
+          fontSize: "16px",
+          fontWeight: "700",
+          color: GP.ink,
+          marginTop: "4px",
+        }}
+      >
+        Elite Summary
+      </div>
+      <div style={{ fontSize: "12px", marginTop: "6px", color: GP.textLight }}>
+        Total Vendors Evaluated: <strong>{total}</strong>
+      </div>
+      <div
+        style={{
+          fontSize: "12px",
+          marginTop: "4px",
+          color: "#166534",
+        }}
+      >
+        PASS: <strong>{counts.pass}</strong>
+      </div>
+      <div
+        style={{
+          fontSize: "12px",
+          marginTop: "2px",
+          color: "#b68b00",
+        }}
+      >
+        WARN: <strong>{counts.warn}</strong>
+      </div>
+      <div
+        style={{
+          fontSize: "12px",
+          marginTop: "2px",
+          color: "#b00020",
+        }}
+      >
+        FAIL: <strong>{counts.fail}</strong>
       </div>
     </div>
   );
