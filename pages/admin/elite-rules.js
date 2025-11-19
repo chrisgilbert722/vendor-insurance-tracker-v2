@@ -25,7 +25,7 @@ const GP = {
   textLight: "#7b8794",
 };
 
-/* DND TYPE */
+/* DnD TYPE */
 const RULE_CARD = "RULE_CARD";
 
 /* SAMPLE GROUPS */
@@ -44,14 +44,14 @@ const SAMPLE_GROUPS = [
   },
   {
     id: "workers-comp",
-    label: "Workers’ Comp & Employers Liability",
-    description: "Statutory limits & employer liability coverage",
+    label: "Workers’ Comp",
+    description: "Statutory WC + employer liability limits",
     icon: "💼",
   },
   {
     id: "umbrella",
     label: "Umbrella / Excess",
-    description: "Follow-form excess coverage and aggregate limits",
+    description: "Follow-form umbrella or excess liability",
     icon: "☂️",
   },
 ];
@@ -63,8 +63,7 @@ const SAMPLE_RULES = [
     groupId: "general-liability",
     name: "GL Each Occurrence ≥ $1M",
     severity: "high",
-    description:
-      "Vendor must carry at least $1M per occurrence for general liability.",
+    description: "Vendor must carry at least $1M per occurrence.",
     logic: "limit_each_occurrence >= 1000000",
     status: "active",
   },
@@ -73,18 +72,15 @@ const SAMPLE_RULES = [
     groupId: "general-liability",
     name: "GL Aggregate ≥ $2M",
     severity: "medium",
-    description:
-      "Preferred aggregate limit of $2M or greater across all GL claims for the policy term.",
+    description: "Aggregate limit must be ≥ $2M.",
     logic: "general_aggregate >= 2000000",
     status: "active",
   },
   {
     id: "r3",
     groupId: "auto",
-    name: "Auto CSL ≥ $1M",
+    name: "Auto Liability ≥ $1M",
     severity: "high",
-    description:
-      "Combined single limit for business auto liability must be at least $1M.",
     logic: "auto_limit >= 1000000",
     status: "active",
   },
@@ -93,43 +89,40 @@ const SAMPLE_RULES = [
     groupId: "workers-comp",
     name: "Workers’ Comp = Statutory",
     severity: "medium",
-    description: "Policy must indicate statutory workers’ compensation coverage.",
     logic: "work_comp_limit == 'statutory'",
     status: "active",
   },
   {
     id: "r5",
     groupId: "umbrella",
-    name: "Umbrella / Excess ≥ $5M",
+    name: "Umbrella ≥ $5M",
     severity: "high",
-    description:
-      "Umbrella or excess liability coverage of at least $5M is required for high-risk vendors.",
     logic: "umbrella_limit >= 5000000",
     status: "draft",
   },
 ];
 
-/* Severity chip */
+/* SEVERITY CHIP */
 function severityStyle(level) {
   switch (level) {
     case "high":
       return {
-        bg: "rgba(239, 68, 68, 0.08)",
-        border: "1px solid rgba(248, 113, 113, 0.8)",
+        bg: "rgba(239,68,68,0.08)",
+        border: "1px solid rgba(248,113,113,0.8)",
         color: "#B91C1C",
         label: "High",
       };
     case "medium":
       return {
-        bg: "rgba(245, 158, 11, 0.08)",
-        border: "1px solid rgba(251, 191, 36, 0.8)",
+        bg: "rgba(245,158,11,0.08)",
+        border: "1px solid rgba(251,191,36,0.8)",
         color: "#92400E",
         label: "Medium",
       };
     default:
       return {
-        bg: "rgba(34, 197, 94, 0.08)",
-        border: "1px solid rgba(74, 222, 128, 0.8)",
+        bg: "rgba(34,197,94,0.08)",
+        border: "1px solid rgba(74,222,128,0.8)",
         color: "#166534",
         label: "Low",
       };
@@ -184,11 +177,10 @@ function RuleCard({ rule, index, moveRule }) {
       const rect = ref.current.getBoundingClientRect();
       const middleY = (rect.bottom - rect.top) / 2;
 
-      const clientOffset = monitor.getClientOffset();
-      if (!clientOffset) return;
+      const pointer = monitor.getClientOffset();
+      if (!pointer) return;
 
-      const hoverY = clientOffset.y - rect.top;
-
+      const hoverY = pointer.y - rect.top;
       const tolerance = rect.height * 0.25;
 
       if (item.index < index && hoverY < middleY - tolerance) return;
@@ -225,7 +217,6 @@ function RuleCard({ rule, index, moveRule }) {
         transition: "opacity 0.12s ease-out",
       }}
     >
-      {/* Drag handles */}
       <div
         style={{
           width: 18,
@@ -261,24 +252,12 @@ function RuleCard({ rule, index, moveRule }) {
             >
               Rule {index + 1}
             </div>
-            <div
-              style={{
-                fontSize: 15,
-                fontWeight: 600,
-                color: GP.ink,
-              }}
-            >
+            <div style={{ fontSize: 15, fontWeight: 600, color: GP.ink }}>
               {rule.name}
             </div>
           </div>
 
-          <div
-            style={{
-              display: "flex",
-              gap: 8,
-              alignItems: "center",
-            }}
-          >
+          <div style={{ display: "flex", gap: 8 }}>
             <div
               style={{
                 padding: "4px 10px",
@@ -288,8 +267,6 @@ function RuleCard({ rule, index, moveRule }) {
                 color: sev.color,
                 fontSize: 11,
                 fontWeight: 600,
-                textTransform: "uppercase",
-                letterSpacing: "0.08em",
               }}
             >
               {sev.label} Severity
@@ -298,20 +275,13 @@ function RuleCard({ rule, index, moveRule }) {
           </div>
         </div>
 
-        <p
-          style={{
-            fontSize: 13,
-            color: GP.inkSoft,
-            marginBottom: 8,
-          }}
-        >
+        <p style={{ fontSize: 13, color: GP.inkSoft, marginBottom: 8 }}>
           {rule.description}
         </p>
 
         <div
           style={{
-            fontFamily:
-              "SFMono-Regular, Menlo, Monaco, Consolas, monospace",
+            fontFamily: "SFMono-Regular, Menlo, Monaco, Consolas, monospace",
             fontSize: 11,
             padding: "8px 10px",
             borderRadius: 10,
@@ -322,45 +292,11 @@ function RuleCard({ rule, index, moveRule }) {
         >
           {rule.logic}
         </div>
-
-        <div
-          style={{
-            display: "flex",
-            justifyContent: "flex-end",
-            gap: 10,
-            marginTop: 10,
-          }}
-        >
-          <button
-            type="button"
-            style={{
-              padding: "6px 10px",
-              borderRadius: 999,
-              border: "1px solid #E5E7EB",
-              background: "#FFF",
-              cursor: "pointer",
-            }}
-          >
-            Edit
-          </button>
-          <button
-            type="button"
-            style={{
-              padding: "6px 10px",
-              borderRadius: 999,
-              background: "rgba(239,68,68,0.08)",
-              color: "#B91C1C",
-              border: "none",
-              cursor: "pointer",
-            }}
-          >
-            Disable
-          </button>
-        </div>
       </div>
     </div>
   );
 }
+/* MAIN RULE ENGINE PAGE */
 export default function EliteRulesPage() {
   const { isAdmin } = useRole();
   const { activeOrgId } = useOrg();
@@ -372,34 +308,39 @@ export default function EliteRulesPage() {
   const [aiThinking, setAiThinking] = useState(false);
   const [error, setError] = useState(null);
 
+  /* HYBRID LOADER */
   useEffect(() => {
-    let ignore = false;
+    let cancelled = false;
 
     async function load() {
       setLoading(true);
+
       try {
-        const [groupsRes, rulesRes] = await Promise.all([
-          fetch("/api/requirements-v2/groups"),
-          fetch("/api/requirements-v2/rules"),
+        const [gRes, rRes] = await Promise.all([
+          fetch("/api/requirements-v2/groups").catch(() => null),
+          fetch("/api/requirements-v2/rules").catch(() => null),
         ]);
 
-        const g = await groupsRes.json().catch(() => ({}));
-        const r = await rulesRes.json().catch(() => ({}));
+        const g = gRes ? await gRes.json().catch(() => null) : null;
+        const r = rRes ? await rRes.json().catch(() => null) : null;
 
-        if (!ignore) {
-          if (g.groups) setGroups(g.groups);
-          if (r.rules) setRules(r.rules);
+        if (!cancelled) {
+          if (g && Array.isArray(g.groups) && g.groups.length > 0) {
+            setGroups(g.groups);
+          }
+
+          if (r && Array.isArray(r.rules) && r.rules.length > 0) {
+            setRules(r.rules);
+          }
         }
-      } catch (e) {
-        if (!ignore) setError("Using demo data while API loads.");
       } finally {
-        if (!ignore) setLoading(false);
+        if (!cancelled) setLoading(false);
       }
     }
 
     load();
     return () => {
-      ignore = true;
+      cancelled = true;
     };
   }, []);
 
@@ -415,14 +356,15 @@ export default function EliteRulesPage() {
     setAiThinking(true);
     setTimeout(() => {
       setAiThinking(false);
-      alert("AI builder coming soon.");
+      alert("AI Rule Builder coming soon (UI ready).");
     }, 1000);
   }
 
-  /** 🔥 Full reorder logic */
+  /* CLEAN REORDER LOGIC */
   function moveRule(dragId, hoverId) {
     setRules((prev) => {
       const list = [...prev];
+
       const dragIndex = list.findIndex((r) => r.id === dragId);
       const hoverIndex = list.findIndex((r) => r.id === hoverId);
 
@@ -449,9 +391,9 @@ export default function EliteRulesPage() {
             <div
               style={{
                 fontSize: 12,
-                color: GP.inkSoft,
                 textTransform: "uppercase",
                 letterSpacing: "0.16em",
+                color: GP.inkSoft,
                 marginBottom: 6,
               }}
             >
@@ -470,61 +412,46 @@ export default function EliteRulesPage() {
             </h1>
 
             <p style={{ fontSize: 14, color: GP.inkSoft, maxWidth: 520 }}>
-              Design, reorder, and score the rules that power your AI-driven
+              Design, reorder, and score the rules that power your AI-driven vendor
               compliance engine.
             </p>
 
             {error && (
-              <p style={{ color: "#B45309", fontSize: 12, marginTop: 8 }}>
+              <p style={{ marginTop: 8, color: "#B45309", fontSize: 12 }}>
                 ⚠️ {error}
               </p>
             )}
           </div>
 
-          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-            <div
+          {/* RIGHT HEADER ACTIONS */}
+          <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+            <button
               style={{
-                fontSize: 11,
-                padding: "4px 10px",
+                padding: "9px 14px",
                 borderRadius: 999,
-                background: "rgba(129,140,248,0.1)",
-                border: "1px solid rgba(129,140,248,0.4)",
-                color: "#4F46E5",
-                textTransform: "uppercase",
-                letterSpacing: "0.12em",
+                border: "1px solid #E5E7EB",
+                background: "#FFF",
+                cursor: "pointer",
               }}
             >
-              Cinematic Mode • Beta
-            </div>
+              View Rule History
+            </button>
 
-            <div style={{ display: "flex", gap: 8 }}>
-              <button
-                style={{
-                  padding: "9px 14px",
-                  borderRadius: 999,
-                  border: "1px solid #E5E7EB",
-                  background: "#FFF",
-                  cursor: "pointer",
-                }}
-              >
-                View Rule History
-              </button>
-              <button
-                style={{
-                  padding: "9px 14px",
-                  borderRadius: 999,
-                  background:
-                    "linear-gradient(135deg,#0057FF,#00E0FF 70%,#8A2BFF)",
-                  color: "#FFF",
-                  fontWeight: 600,
-                  boxShadow: "0 14px 35px rgba(37,99,235,0.45)",
-                  border: "none",
-                  cursor: "pointer",
-                }}
-              >
-                ＋ New Rule
-              </button>
-            </div>
+            <button
+              style={{
+                padding: "9px 14px",
+                borderRadius: 999,
+                background:
+                  "linear-gradient(135deg,#0057FF,#00E0FF 70%,#8A2BFF)",
+                color: "#FFF",
+                fontWeight: 600,
+                boxShadow: "0 14px 35px rgba(37,99,235,0.45)",
+                border: "none",
+                cursor: "pointer",
+              }}
+            >
+              ＋ New Rule
+            </button>
 
             <button
               onClick={handleAiBuild}
@@ -544,21 +471,20 @@ export default function EliteRulesPage() {
           </div>
         </div>
 
-                {/* MAIN GRID */}
+        {/* MAIN GRID */}
         <div
           style={{
             display: "grid",
             gridTemplateColumns: "minmax(0, 1.15fr) minmax(0, 2fr)",
             gap: 24,
-            alignItems: "flex-start",
           }}
         >
-          {/* LEFT: GROUPS */}
+          {/* LEFT: GROUP LIST */}
           <div
             style={{
               background: GP.panel,
               borderRadius: 20,
-              border: "1px solid rgba(226, 232, 240, 0.95)",
+              border: "1px solid rgba(226,232,240,0.95)",
               boxShadow: GP.shadow,
               padding: 18,
             }}
@@ -576,13 +502,7 @@ export default function EliteRulesPage() {
               Requirement Groups
             </div>
 
-            <p
-              style={{
-                fontSize: 12,
-                color: GP.inkSoft,
-                marginBottom: 14,
-              }}
-            >
+            <p style={{ fontSize: 12, color: GP.inkSoft, marginBottom: 14 }}>
               Select a coverage group to view and reorder its rules.
             </p>
 
@@ -619,8 +539,8 @@ export default function EliteRulesPage() {
                           ? "rgba(37,99,235,0.1)"
                           : "rgba(15,23,42,0.03)",
                         display: "flex",
-                        alignItems: "center",
                         justifyContent: "center",
+                        alignItems: "center",
                         fontSize: 16,
                       }}
                     >
@@ -648,8 +568,7 @@ export default function EliteRulesPage() {
               })}
             </div>
           </div>
-
-          {/* RIGHT: RULE LIST — DND ENABLED */}
+          {/* RIGHT: RULE LIST - DND ENABLED */}
           <DndProvider backend={HTML5Backend}>
             <div
               style={{
@@ -660,12 +579,13 @@ export default function EliteRulesPage() {
                 padding: 18,
               }}
             >
+              {/* RIGHT HEADER */}
               <div
                 style={{
                   display: "flex",
                   justifyContent: "space-between",
-                  alignItems: "center",
                   marginBottom: 10,
+                  alignItems: "center",
                 }}
               >
                 <div>
@@ -679,10 +599,17 @@ export default function EliteRulesPage() {
                       marginBottom: 3,
                     }}
                   >
-                    {selectedGroup?.label || "Rules"}
+                    {groups.find((g) => g.id === selectedGroupId)?.label ||
+                      "Rules"}
                   </div>
 
-                  <div style={{ fontSize: 16, fontWeight: 700, color: GP.ink }}>
+                  <div
+                    style={{
+                      fontSize: 16,
+                      fontWeight: 700,
+                      color: GP.ink,
+                    }}
+                  >
                     Execution order & severity scoring
                   </div>
                 </div>
@@ -698,21 +625,21 @@ export default function EliteRulesPage() {
                   {visibleRules.length === 1 ? "" : "s"}
                   <br />
                   <span style={{ opacity: 0.75 }}>
-                    Highest severity rules should sit at the top.
+                    Drag to reorder (top = highest priority)
                   </span>
                 </div>
               </div>
 
+              {/* RULE LIST */}
               {loading && (
-                <div style={{ fontSize: 12, color: GP.inkSoft }}>
+                <div style={{ color: GP.inkSoft, fontSize: 12 }}>
                   Loading rules…
                 </div>
               )}
 
               {!loading && visibleRules.length === 0 && (
                 <div style={{ fontSize: 13, color: GP.inkSoft }}>
-                  No rules defined. Use <strong>New Rule</strong> or{" "}
-                  <strong>AI: Suggest Rules</strong> to create some.
+                  No rules yet. Use <strong>New Rule</strong> above.
                 </div>
               )}
 
@@ -720,7 +647,7 @@ export default function EliteRulesPage() {
                 visibleRules.length > 0 &&
                 visibleRules.map((r, i) => (
                   <RuleCard
-                    key={r.id || r.rule_id || i}
+                    key={r.id}
                     rule={r}
                     index={i}
                     moveRule={moveRule}
