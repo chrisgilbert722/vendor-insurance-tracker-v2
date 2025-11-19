@@ -33,18 +33,13 @@ export function OrgProvider({ children }) {
       if (data.ok) {
         setOrgs(data.orgs);
 
-        // 3. Check for existing cookie to remember last org
-        const cookieOrgId =
-          document.cookie
-            .split("; ")
-            .find((r) => r.startsWith("activeOrgId="))
-            ?.split("=")[1];
-
-        // 4. Use cookie OR default to first org
-        const fallbackOrg = data.orgs[0]?.id || null;
-        const newActiveOrgId = cookieOrgId || fallbackOrg;
-
+        // 3. ALWAYS use first org from DB, ignore ANY old cookies forever
+        const newActiveOrgId = data.orgs[0]?.id || null;
         setActiveOrgId(newActiveOrgId);
+
+        // 4. DELETE any corrupted cookie immediately
+        document.cookie =
+          "activeOrgId=; path=/; expires=Thu, 01 Jan 1970 00:00:00 UTC;";
       }
 
       setLoadingOrgs(false);
@@ -56,9 +51,8 @@ export function OrgProvider({ children }) {
   async function switchOrg(id) {
     setActiveOrgId(id);
 
-    // Persist org choice in cookie
-    document.cookie = `activeOrgId=${id}; path=/; max-age=31536000`;
-
+    // After removing cookie logic permanently,
+    // we still update the backend (Neon) active org if needed
     await fetch("/api/org/switch", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -67,7 +61,9 @@ export function OrgProvider({ children }) {
   }
 
   return (
-    <OrgContext.Provider value={{ orgs, activeOrgId, switchOrg, loadingOrgs }}>
+    <OrgContext.Provider
+      value={{ orgs, activeOrgId, switchOrg, loadingOrgs }}
+    >
       {children}
     </OrgContext.Provider>
   );
