@@ -247,6 +247,10 @@ export default function Dashboard() {
     fail: 0,
   });
 
+  // ⭐ Phase F — Alerts state
+  const [alerts, setAlerts] = useState([]);
+  const [showAlerts, setShowAlerts] = useState(false);
+
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [drawerVendor, setDrawerVendor] = useState(null);
   const [drawerPolicies, setDrawerPolicies] = useState([]);
@@ -410,6 +414,110 @@ export default function Dashboard() {
     setEliteSummary({ pass, warn, fail });
   }, [eliteMap]);
 
+  /* ⭐ Phase F — helper to log alerts to backend */
+  async function logAlert(vendorId, type, message) {
+    if (!activeOrgId) return;
+    try {
+      await fetch("/api/alerts/log", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          vendorId,
+          orgId: activeOrgId,
+          type,
+          message,
+        }),
+      });
+    } catch (err) {
+      console.error("Alert log error:", err);
+    }
+  }
+
+  /* ⭐ Phase F — scan for alert conditions when data is ready */
+  useEffect(() => {
+    if (!activeOrgId || !policies.length) return;
+
+    policies.forEach((p) => {
+      const risk = computeRisk(p);
+      const elite = eliteMap[p.vendor_id];
+      const compliance = complianceMap[p.vendor_id];
+      const ai = computeAiRisk({ risk, elite, compliance });
+      const vendorName = p.vendor_name || "Vendor";
+
+      // Elite FAIL
+      if (
+        elite &&
+        !elite.loading &&
+        !elite.error &&
+        elite.overall === "fail"
+      ) {
+        logAlert(
+          p.vendor_id,
+          "elite_fail",
+          `${vendorName} failed Elite engine checks`
+        );
+      }
+
+      // Risk score below 60
+      if (typeof ai.score === "number" && ai.score < 60) {
+        logAlert(
+          p.vendor_id,
+          "risk_low",
+          `${vendorName} risk score dropped to ${ai.score}`
+        );
+      }
+
+      // Policy expires in < 5 days
+      if (risk.daysLeft !== null && risk.daysLeft < 5) {
+        logAlert(
+          p.vendor_id,
+          "expires_soon",
+          `${vendorName} has a policy expiring in ${risk.daysLeft} days`
+        );
+      }
+
+      // Missing coverage
+      if (
+        compliance &&
+        !compliance.loading &&
+        !compliance.error &&
+        Array.isArray(compliance.missing) &&
+        compliance.missing.length > 0
+      ) {
+        logAlert(
+          p.vendor_id,
+          "missing_coverage",
+          `${vendorName} is missing required coverage`
+        );
+      }
+    });
+  }, [policies, eliteMap, complianceMap, activeOrgId]);
+
+  /* ⭐ Phase F — Alerts fetch loop (bell dropdown data) */
+  useEffect(() => {
+    if (!activeOrgId) return;
+
+    let isCancelled = false;
+
+    async function loadAlerts() {
+      try {
+        const res = await fetch(`/api/alerts/get?orgId=${activeOrgId}`);
+        const data = await res.json();
+        if (!data.ok || isCancelled) return;
+        setAlerts(data.alerts || []);
+      } catch (err) {
+        console.error("Alerts fetch error:", err);
+      }
+    }
+
+    loadAlerts();
+    const intervalId = setInterval(loadAlerts, 8000);
+    return () => {
+      isCancelled = true;
+      clearInterval(intervalId);
+    };
+  }, [activeOrgId]);
+
   async function openDrawer(vendorId) {
     try {
       const res = await fetch(`/api/vendors/${vendorId}`);
@@ -442,49 +550,156 @@ export default function Dashboard() {
 
   return (
     <div style={{ minHeight: "100vh", background: GP.surface }}>
-      <div style={{ padding: "30px 40px" }}>
-        <h1
+      <div style={{ padding: "30px 40px", position: "relative" }}>
+        {/* Header + Alerts Bell */}
+        <div
           style={{
-            fontSize: "36px",
-            marginTop: "10px",
-            color: GP.ink,
-            fontWeight: "700",
+            display: "flex",
+            alignItems: "flex-start",
+            justifyContent: "space-between",
+            gap: 16,
           }}
         >
-          Vendor Insurance Dashboard
-        </h1>
+          <div>
+            <h1
+              style={{
+                fontSize: "36px",
+                marginTop: "10px",
+                color: GP.ink,
+                fontWeight: "700",
+              }}
+            >
+              Vendor Insurance Dashboard
+            </h1>
 
-        <p
-          style={{
-            fontSize: "15px",
-            marginTop: "8px",
-            color: GP.inkLight,
-          }}
-        >
-          Real-time visibility into vendor insurance compliance, expiration
-          risk, and coverage health.
-        </p>
+            <p
+              style={{
+                fontSize: "15px",
+                marginTop: "8px",
+                color: GP.inkLight,
+              }}
+            >
+              Real-time visibility into vendor insurance compliance, expiration
+              risk, and coverage health.
+            </p>
 
-        {(isAdmin || isManager) && (
-          <a
-            href="/upload-coi"
-            style={{
-              display: "inline-block",
-              marginTop: "18px",
-              marginBottom: "25px",
-              padding: "9px 16px",
-              background: GP.primary,
-              color: GP.panel,
-              borderRadius: "999px",
-              fontSize: "14px",
-              fontWeight: "600",
-              textDecoration: "none",
-              boxShadow: GP.shadow,
-            }}
-          >
-            + Upload New COI
-          </a>
-        )}
+            {(isAdmin || isManager) && (
+              <a
+                href="/upload-coi"
+                style={{
+                  display: "inline-block",
+                  marginTop: "18px",
+                  marginBottom: "25px",
+                  padding: "9px 16px",
+                  background: GP.primary,
+                  color: GP.panel,
+                  borderRadius: "999px",
+                  fontSize: "14px",
+                  fontWeight: "600",
+                  textDecoration: "none",
+                  boxShadow: GP.shadow,
+                }}
+              >
+                + Upload New COI
+              </a>
+            )}
+          </div>
+
+          {/* 🔔 Alerts Bell */}
+          <div style={{ position: "relative", marginTop: 10 }}>
+            <button
+              type="button"
+              onClick={() => setShowAlerts((prev) => !prev)}
+              style={{
+                display: "inline-flex",
+                alignItems: "center",
+                gap: 6,
+                padding: "6px 10px",
+                borderRadius: 999,
+                border: "1px solid #e2e8f0",
+                background: "#ffffff",
+                cursor: "pointer",
+                fontSize: 12,
+              }}
+            >
+              <span>🔔</span>
+              <span>Alerts ({alerts.length})</span>
+            </button>
+
+            {showAlerts && (
+              <div
+                style={{
+                  position: "absolute",
+                  top: "130%",
+                  right: 0,
+                  width: 280,
+                  background: "#ffffff",
+                  border: "1px solid #e2e8f0",
+                  borderRadius: 12,
+                  boxShadow: "0 14px 40px rgba(15,23,42,0.25)",
+                  padding: 10,
+                  zIndex: 50,
+                  maxHeight: 360,
+                  overflowY: "auto",
+                }}
+              >
+                {alerts.length === 0 ? (
+                  <div
+                    style={{
+                      fontSize: 12,
+                      color: "#6b7280",
+                      padding: "6px 4px",
+                    }}
+                  >
+                    No alerts yet.
+                  </div>
+                ) : (
+                  alerts.map((a) => (
+                    <div
+                      key={a.id}
+                      style={{
+                        padding: "6px 4px",
+                        borderBottom: "1px solid #f1f5f9",
+                      }}
+                    >
+                      <div
+                        style={{
+                          fontSize: 11,
+                          fontWeight: 600,
+                          marginBottom: 2,
+                          textTransform: "uppercase",
+                          letterSpacing: "0.06em",
+                          color: "#0f172a",
+                        }}
+                      >
+                        {a.type?.replace(/_/g, " ") || "ALERT"}
+                      </div>
+                      <div
+                        style={{
+                          fontSize: 12,
+                          color: "#475569",
+                        }}
+                      >
+                        {a.message}
+                      </div>
+                      {a.created_at && (
+                        <div
+                          style={{
+                            fontSize: 10,
+                            color: "#94a3b8",
+                            marginTop: 2,
+                          }}
+                        >
+                          {new Date(a.created_at).toLocaleString()}
+                        </div>
+                      )}
+                    </div>
+                  ))
+                )}
+              </div>
+            )}
+          </div>
+        </div>
 
         <hr style={{ margin: "22px 0" }} />
 
