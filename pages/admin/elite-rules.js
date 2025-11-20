@@ -4,9 +4,10 @@ import { useRole } from "../../lib/useRole";
 import { useOrg } from "../../context/OrgContext";
 import { DndProvider, useDrag, useDrop } from "react-dnd";
 import { HTML5Backend } from "react-dnd-html5-backend";
-import RuleEnginePanel from "../../components/elite/RuleEnginePanel";
 
-/* THEME TOKENS */
+/* ===========================
+   THEME TOKENS
+=========================== */
 const GP = {
   primary: "#0057FF",
   primaryDark: "#003BB3",
@@ -19,831 +20,1752 @@ const GP = {
   ink: "#0D1623",
   inkSoft: "#64748B",
   surface: "#F7F9FC",
-  panel: "#FFFFFF",
-  radius: "14px",
-  shadow: "0 14px 40px rgba(15,23,42,0.16)",
-  text: "#1f2933",
-  textLight: "#7b8794",
+  card: "#FFFFFF",
+  border: "#E2E8F0",
+  shadowSoft: "0 18px 45px rgba(15,23,42,0.18)",
 };
 
-/* DnD TYPE */
-const RULE_CARD = "RULE_CARD";
+const ItemTypes = {
+  GROUP: "GROUP",
+  RULE: "RULE",
+};
 
-/* SAMPLE GROUPS */
-const SAMPLE_GROUPS = [
+/* ===========================
+   SEED DATA
+=========================== */
+const initialGroups = [
   {
-    id: "general-liability",
-    label: "General Liability",
-    description: "Bodily injury, property damage, each occurrence limits",
-    icon: "⚖️",
+    id: "grp-expired",
+    label: "Expired / Missing Insurance",
+    description: "Vendors with expired COIs or missing required documents.",
+    icon: "⚠️",
+    rules: [
+      {
+        id: "rule-exp-30",
+        label: "Expires Within 30 Days",
+        description: "Policy expiration date is within the next 30 days.",
+        severity: "High",
+        active: true,
+        conditionsSummary:
+          "Certificate.expirationDate <= today + 30 days AND Vendor.isActive = true",
+      },
+      {
+        id: "rule-no-coi",
+        label: "No Active COI on File",
+        description: "No certificate of insurance found for active vendor.",
+        severity: "Critical",
+        active: true,
+        conditionsSummary:
+          "COUNT(Certificate WHERE status = 'active') = 0 AND Vendor.isActive = true",
+      },
+    ],
   },
   {
-    id: "auto",
-    label: "Auto Liability",
-    description: "Owned / non-owned / hired autos & combined single limits",
-    icon: "🚚",
+    id: "grp-limits",
+    label: "Coverage Limits",
+    description: "Vendors whose coverage is below required contract limits.",
+    icon: "📊",
+    rules: [
+      {
+        id: "rule-gen-liab",
+        label: "General Liability Below Required",
+        description:
+          "General liability per occurrence is below the organization minimum.",
+        severity: "Medium",
+        active: true,
+        conditionsSummary:
+          "Certificate.generalLiabilityPerOccurrence < Org.requiredGLPerOccurrence",
+      },
+      {
+        id: "rule-auto-liab",
+        label: "Auto Liability Missing",
+        description:
+          "Vendor categorized as 'Fleet / Auto' but no auto liability coverage found.",
+        severity: "High",
+        active: true,
+        conditionsSummary:
+          "Vendor.category = 'Auto / Fleet' AND Certificate.autoLiability is NULL",
+      },
+    ],
   },
   {
-    id: "workers-comp",
-    label: "Workers’ Comp",
-    description: "Statutory WC + employer liability limits",
-    icon: "💼",
-  },
-  {
-    id: "umbrella",
-    label: "Umbrella / Excess",
-    description: "Follow-form umbrella or excess liability",
-    icon: "☂️",
+    id: "grp-docusigned",
+    label: "Contracts & Endorsements",
+    description: "Missing endorsements, waivers, or additional insured language.",
+    icon: "📄",
+    rules: [
+      {
+        id: "rule-ai-missing",
+        label: "Additional Insured Not Found",
+        description:
+          "Policy endorsement text does not include required additional insured wording.",
+        severity: "High",
+        active: true,
+        conditionsSummary:
+          "NOT textSearch(Endorsement.document, Org.requiredAIText)",
+      },
+    ],
   },
 ];
 
-/* SAMPLE RULES */
-const SAMPLE_RULES = [
-  {
-    id: "r1",
-    groupId: "general-liability",
-    name: "GL Each Occurrence ≥ $1M",
-    severity: "high",
-    description: "Vendor must carry at least $1M per occurrence.",
-    logic: "limit_each_occurrence >= 1000000",
-    status: "active",
-  },
-  {
-    id: "r2",
-    groupId: "general-liability",
-    name: "GL Aggregate ≥ $2M",
-    severity: "medium",
-    description: "Aggregate limit must be ≥ $2M.",
-    logic: "general_aggregate >= 2000000",
-    status: "active",
-  },
-  {
-    id: "r3",
-    groupId: "auto",
-    name: "Auto Liability ≥ $1M",
-    severity: "high",
-    logic: "auto_limit >= 1000000",
-    status: "active",
-  },
-  {
-    id: "r4",
-    groupId: "workers-comp",
-    name: "Workers’ Comp = Statutory",
-    severity: "medium",
-    logic: "work_comp_limit == 'statutory'",
-    status: "active",
-  },
-  {
-    id: "r5",
-    groupId: "umbrella",
-    name: "Umbrella ≥ $5M",
-    severity: "high",
-    logic: "umbrella_limit >= 5000000",
-    status: "draft",
-  },
-];
+const severityOptions = ["All", "Critical", "High", "Medium", "Low"];
 
-/* DEFAULT SEVERITY WEIGHTS */
-const DEFAULT_WEIGHTS = { high: 1.0, medium: 0.7, low: 0.4 };
-
-/* SEVERITY CHIP */
-function severityStyle(level) {
-  switch (level) {
-    case "high":
-      return {
-        bg: "rgba(239,68,68,0.08)",
-        border: "1px solid rgba(248,113,113,0.8)",
-        color: "#B91C1C",
-        label: "High",
-      };
-    case "medium":
-      return {
-        bg: "rgba(245,158,11,0.08)",
-        border: "1px solid rgba(251,191,36,0.8)",
-        color: "#92400E",
-        label: "Medium",
-      };
-    default:
-      return {
-        bg: "rgba(34,197,94,0.08)",
-        border: "1px solid rgba(74,222,128,0.8)",
-        color: "#166534",
-        label: "Low",
-      };
-  }
+/* ===========================
+   UTILITY HELPERS
+=========================== */
+function generateId(prefix = "id") {
+  return `${prefix}-${Math.random().toString(36).slice(2, 9)}`;
 }
 
-/* STATUS PILL */
-function RuleStatusPill({ status }) {
-  const label =
-    status === "draft" ? "Draft" : status === "disabled" ? "Disabled" : "Active";
+function cloneGroups(groups) {
+  return JSON.parse(JSON.stringify(groups));
+}
 
-  const bg =
-    status === "draft"
-      ? "rgba(148,163,184,0.16)"
-      : status === "disabled"
-      ? "rgba(148,163,184,0.12)"
-      : "rgba(34,197,94,0.12)";
+/* Fake AI suggestion call */
+async function fakeAiSuggestRule(context = {}) {
+  // You can later wire this to /api/elite-rules/ai-suggest
+  await new Promise((r) => setTimeout(r, 600));
+  const id = generateId("ai-rule");
+  return {
+    id,
+    label: "AI: Missing Waiver of Subrogation",
+    description:
+      "Flag vendors whose policies do not include a waiver of subrogation where required.",
+    severity: "Medium",
+    active: true,
+    conditionsSummary:
+      "NOT textSearch(Endorsement.document, 'waiver of subrogation') AND Vendor.requiresWaiver = true",
+    _aiSuggested: true,
+  };
+}
 
-  const border =
-    status === "draft"
-      ? "1px solid rgba(156,163,175,0.5)"
-      : status === "disabled"
-      ? "1px solid rgba(148,163,184,0.6)"
-      : "1px solid rgba(134,239,172,0.8)";
+/* ===========================
+   DRAG HELPERS
+=========================== */
+function useDraggableGroup(group, index, moveGroup) {
+  const ref = useRef(null);
 
-  const color =
-    status === "draft"
-      ? "#4B5563"
-      : status === "disabled"
-      ? "#6B7280"
-      : "#166534";
+  const [, drop] = useDrop({
+    accept: ItemTypes.GROUP,
+    hover(item) {
+      if (!ref.current) return;
+      const dragIndex = item.index;
+      const hoverIndex = index;
+      if (dragIndex === hoverIndex) return;
+      moveGroup(dragIndex, hoverIndex);
+      item.index = hoverIndex;
+    },
+  });
 
+  const [{ isDragging }, drag] = useDrag(() => ({
+    type: ItemTypes.GROUP,
+    item: { id: group.id, index },
+    collect: (monitor) => ({
+      isDragging: monitor.isDragging(),
+    }),
+  }));
+
+  drag(drop(ref));
+
+  return { ref, isDragging };
+}
+
+function useDraggableRule(rule, index, moveRule, groupId) {
+  const ref = useRef(null);
+
+  const [, drop] = useDrop({
+    accept: ItemTypes.RULE,
+    hover(item) {
+      if (!ref.current) return;
+      if (item.groupId !== groupId) return; // only reorder within same group for now
+      const dragIndex = item.index;
+      const hoverIndex = index;
+      if (dragIndex === hoverIndex) return;
+      moveRule(groupId, dragIndex, hoverIndex);
+      item.index = hoverIndex;
+    },
+  });
+
+  const [{ isDragging }, drag] = useDrag(() => ({
+    type: ItemTypes.RULE,
+    item: { id: rule.id, index, groupId },
+    collect: (monitor) => ({
+      isDragging: monitor.isDragging(),
+    }),
+  }));
+
+  drag(drop(ref));
+
+  return { ref, isDragging };
+}
+
+/* ===========================
+   MAIN PAGE
+=========================== */
+export default function EliteRulesPage() {
+  const { isAdmin, isManager } = useRole();
+  const { orgId } = useOrg();
+
+  const [groups, setGroups] = useState(initialGroups);
+  const [selectedGroupId, setSelectedGroupId] = useState(initialGroups[0]?.id);
+  const [severityFilter, setSeverityFilter] = useState("All");
+  const [searchTerm, setSearchTerm] = useState("");
+  const [showInactive, setShowInactive] = useState(false);
+
+  const [editingRule, setEditingRule] = useState(null);
+  const [editingGroup, setEditingGroup] = useState(null);
+  const [aiLoading, setAiLoading] = useState(false);
+  const [aiError, setAiError] = useState("");
+
+  const canEdit = isAdmin || isManager;
+
+  const selectedGroup = useMemo(
+    () => groups.find((g) => g.id === selectedGroupId) || groups[0],
+    [groups, selectedGroupId]
+  );
+
+  const filteredRules = useMemo(() => {
+    if (!selectedGroup) return [];
+    return selectedGroup.rules.filter((rule) => {
+      if (!showInactive && !rule.active) return false;
+      if (severityFilter !== "All" && rule.severity !== severityFilter)
+        return false;
+      if (!searchTerm) return true;
+      const haystack =
+        `${rule.label} ${rule.description} ${rule.conditionsSummary}`.toLowerCase();
+      return haystack.includes(searchTerm.toLowerCase());
+    });
+  }, [selectedGroup, severityFilter, searchTerm, showInactive]);
+
+  /* ===========================
+     CRUD HANDLERS
+  =========================== */
+  function moveGroup(fromIndex, toIndex) {
+    setGroups((prev) => {
+      const next = [...prev];
+      const [removed] = next.splice(fromIndex, 1);
+      next.splice(toIndex, 0, removed);
+      return next;
+    });
+  }
+
+  function moveRule(groupId, fromIndex, toIndex) {
+    setGroups((prev) => {
+      const next = cloneGroups(prev);
+      const group = next.find((g) => g.id === groupId);
+      if (!group) return prev;
+      const [removed] = group.rules.splice(fromIndex, 1);
+      group.rules.splice(toIndex, 0, removed);
+      return next;
+    });
+  }
+
+  function toggleRuleActive(groupId, ruleId) {
+    setGroups((prev) => {
+      const next = cloneGroups(prev);
+      const group = next.find((g) => g.id === groupId);
+      if (!group) return prev;
+      const rule = group.rules.find((r) => r.id === ruleId);
+      if (!rule) return prev;
+      rule.active = !rule.active;
+      return next;
+    });
+  }
+
+  function handleSaveRule(updatedRule) {
+    setGroups((prev) => {
+      const next = cloneGroups(prev);
+      const group = next.find((g) => g.id === selectedGroup.id);
+      if (!group) return prev;
+
+      const index = group.rules.findIndex((r) => r.id === updatedRule.id);
+      if (index === -1) {
+        group.rules.push(updatedRule);
+      } else {
+        group.rules[index] = updatedRule;
+      }
+      return next;
+    });
+    setEditingRule(null);
+  }
+
+  function handleDeleteRule(ruleId) {
+    if (!window.confirm("Delete this rule? This cannot be undone.")) return;
+    setGroups((prev) => {
+      const next = cloneGroups(prev);
+      const group = next.find((g) => g.id === selectedGroup.id);
+      if (!group) return prev;
+      group.rules = group.rules.filter((r) => r.id !== ruleId);
+      return next;
+    });
+  }
+
+  function handleCreateRule() {
+    const id = generateId("rule");
+    setEditingRule({
+      id,
+      label: "",
+      description: "",
+      severity: "Medium",
+      active: true,
+      conditionsSummary: "",
+    });
+  }
+
+  function handleSaveGroup(updatedGroup) {
+    setGroups((prev) => {
+      const next = cloneGroups(prev);
+      const index = next.findIndex((g) => g.id === updatedGroup.id);
+      if (index === -1) {
+        next.push({ ...updatedGroup, rules: [] });
+      } else {
+        next[index] = {
+          ...next[index],
+          ...updatedGroup,
+        };
+      }
+      return next;
+    });
+    setEditingGroup(null);
+  }
+
+  function handleCreateGroup() {
+    const id = generateId("grp");
+    setEditingGroup({
+      id,
+      label: "",
+      description: "",
+      icon: "⚙️",
+    });
+  }
+
+  function handleDeleteGroup(groupId) {
+    if (!window.confirm("Delete this group and all its rules?")) return;
+    setGroups((prev) => {
+      const next = prev.filter((g) => g.id !== groupId);
+      if (selectedGroupId === groupId && next.length) {
+        setSelectedGroupId(next[0].id);
+      }
+      return next;
+    });
+  }
+
+  async function handleAiSuggest() {
+    try {
+      setAiError("");
+      setAiLoading(true);
+      const suggestion = await fakeAiSuggestRule({
+        orgId,
+        groupId: selectedGroup?.id,
+      });
+      setGroups((prev) => {
+        const next = cloneGroups(prev);
+        const group = next.find((g) => g.id === selectedGroup?.id);
+        if (!group) return prev;
+        group.rules.unshift(suggestion);
+        return next;
+      });
+    } catch (err) {
+      setAiError("AI suggestion failed. Try again in a moment.");
+    } finally {
+      setAiLoading(false);
+    }
+  }
+
+  /* ===========================
+     RENDER
+  =========================== */
   return (
-    <span
-      style={{
-        fontSize: 11,
-        padding: "4px 9px",
-        borderRadius: 999,
-        background: bg,
-        border,
-        color,
-        fontWeight: 600,
-        letterSpacing: "0.08em",
-        textTransform: "uppercase",
-      }}
-    >
-      {label}
-    </span>
+    <DndProvider backend={HTML5Backend}>
+      <div
+        style={{
+          minHeight: "100vh",
+          background:
+            "radial-gradient(circle at top left, #0f172a 0, #020617 50%, #020617 100%)",
+          padding: "32px 40px 40px",
+          color: "white",
+          fontFamily:
+            "-apple-system, BlinkMacSystemFont, system-ui, -apple-system, Segoe UI, sans-serif",
+        }}
+      >
+        {/* HEADER STRIP */}
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            marginBottom: 24,
+            gap: 16,
+          }}
+        >
+          <div
+            style={{
+              padding: 10,
+              borderRadius: 999,
+              background:
+                "radial-gradient(circle at 30% 0, #38bdf8 0, #1e40af 55%, #020617 100%)",
+              boxShadow: "0 0 45px rgba(56,189,248,0.4)",
+            }}
+          >
+            <span style={{ fontSize: 22 }}>🧠</span>
+          </div>
+          <div style={{ flex: 1 }}>
+            <div
+              style={{
+                display: "inline-flex",
+                alignItems: "center",
+                gap: 10,
+                padding: "4px 10px",
+                borderRadius: 999,
+                border: "1px solid rgba(148,163,184,0.4)",
+                marginBottom: 6,
+                background:
+                  "linear-gradient(90deg, rgba(15,23,42,0.9), rgba(15,23,42,0))",
+              }}
+            >
+              <span
+                style={{
+                  fontSize: 11,
+                  letterSpacing: 1.2,
+                  textTransform: "uppercase",
+                  color: "#e5e7eb",
+                }}
+              >
+                Elite Compliance Engine V2
+              </span>
+              <span
+                style={{
+                  fontSize: 10,
+                  color: "#a5b4fc",
+                  letterSpacing: 1,
+                  textTransform: "uppercase",
+                }}
+              >
+                Drag • Score • Automate
+              </span>
+            </div>
+            <h1
+              style={{
+                fontSize: 28,
+                fontWeight: 600,
+                letterSpacing: 0.1,
+                margin: 0,
+              }}
+            >
+              Rules that feel{" "}
+              <span
+                style={{
+                  background:
+                    "linear-gradient(90deg,#38bdf8,#e0f2fe,#e5e7eb,#a5b4fc)",
+                  WebkitBackgroundClip: "text",
+                  color: "transparent",
+                }}
+              >
+                cinematic
+              </span>{" "}
+              but work like a{" "}
+              <span
+                style={{
+                  background: "linear-gradient(90deg,#22c55e,#4ade80)",
+                  WebkitBackgroundClip: "text",
+                  color: "transparent",
+                }}
+              >
+                scoring engine
+              </span>
+              .
+            </h1>
+            <p
+              style={{
+                marginTop: 6,
+                marginBottom: 0,
+                color: "#cbd5f5",
+                fontSize: 13,
+                maxWidth: 640,
+              }}
+            >
+              Define logic once, drag and reorder, and let the AI-assisted rule
+              engine monitor every vendor, every certificate, every endorsement
+              in real time.
+            </p>
+          </div>
+
+          {/* HEADER ACTIONS */}
+          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+            <button
+              disabled={!canEdit}
+              onClick={handleAiSuggest}
+              style={{
+                padding: "10px 16px",
+                borderRadius: 999,
+                border: "1px solid rgba(94,234,212,0.5)",
+                background:
+                  "radial-gradient(circle at top left,#22c55e,#16a34a,#0f766e)",
+                boxShadow:
+                  "0 14px 35px rgba(34,197,94,0.45), 0 0 0 1px rgba(15,23,42,0.8) inset",
+                color: "white",
+                fontSize: 12,
+                fontWeight: 600,
+                letterSpacing: 0.6,
+                textTransform: "uppercase",
+                cursor: canEdit ? "pointer" : "not-allowed",
+                opacity: canEdit ? 1 : 0.45,
+                display: "flex",
+                alignItems: "center",
+                gap: 8,
+                justifyContent: "center",
+              }}
+            >
+              {aiLoading ? (
+                <>
+                  <span
+                    style={{
+                      width: 14,
+                      height: 14,
+                      borderRadius: "999px",
+                      border: "2px solid rgba(226,232,240,0.6)",
+                      borderTopColor: "transparent",
+                      animation: "spin 0.8s linear infinite",
+                    }}
+                  />
+                  <span>Asking AI for a rule…</span>
+                </>
+              ) : (
+                <>
+                  <span>✨</span>
+                  <span>AI — suggest a rule</span>
+                </>
+              )}
+            </button>
+            <span
+              style={{
+                fontSize: 11,
+                color: "#9ca3af",
+                textAlign: "right",
+              }}
+            >
+              {orgId ? `Org: ${orgId}` : "Org context active"}
+            </span>
+          </div>
+        </div>
+
+        {aiError && (
+          <div
+            style={{
+              marginBottom: 16,
+              padding: "10px 12px",
+              borderRadius: 10,
+              background: "rgba(248,113,113,0.08)",
+              border: "1px solid rgba(248,113,113,0.6)",
+              color: "#fecaca",
+              fontSize: 12,
+            }}
+          >
+            {aiError}
+          </div>
+        )}
+
+        {!canEdit && (
+          <div
+            style={{
+              marginBottom: 18,
+              padding: "10px 12px",
+              borderRadius: 10,
+              background: "rgba(55,65,81,0.7)",
+              border: "1px solid rgba(148,163,184,0.5)",
+              fontSize: 12,
+              color: "#e5e7eb",
+            }}
+          >
+            You are in read-only mode. Rules will still run for this
+            organization, but only admins and managers can edit them.
+          </div>
+        )}
+
+        {/* MAIN LAYOUT */}
+        <div
+          style={{
+            display: "grid",
+            gridTemplateColumns: "280px minmax(0, 1.4fr) minmax(0, 1.2fr)",
+            gap: 18,
+            alignItems: "stretch",
+          }}
+        >
+          {/* LEFT — GROUPS */}
+          <GroupColumn
+            groups={groups}
+            selectedGroupId={selectedGroup?.id}
+            onSelectGroup={setSelectedGroupId}
+            onCreateGroup={handleCreateGroup}
+            onEditGroup={setEditingGroup}
+            onDeleteGroup={handleDeleteGroup}
+            moveGroup={moveGroup}
+            canEdit={canEdit}
+          />
+
+          {/* CENTER — RULE CARDS */}
+          <RuleBoard
+            group={selectedGroup}
+            rules={filteredRules}
+            severityFilter={severityFilter}
+            onSeverityChange={setSeverityFilter}
+            searchTerm={searchTerm}
+            onSearchChange={setSearchTerm}
+            showInactive={showInactive}
+            onToggleShowInactive={setShowInactive}
+            moveRule={moveRule}
+            onToggleRuleActive={(ruleId) =>
+              toggleRuleActive(selectedGroup.id, ruleId)
+            }
+            onEditRule={setEditingRule}
+            onDeleteRule={handleDeleteRule}
+            onCreateRule={handleCreateRule}
+            canEdit={canEdit}
+          />
+
+          {/* RIGHT — SCORE + PREVIEW */}
+          <ScoringPanel groups={groups} selectedGroup={selectedGroup} />
+        </div>
+
+        {/* MODALS */}
+        {editingRule && (
+          <RuleEditorModal
+            open={!!editingRule}
+            rule={editingRule}
+            onClose={() => setEditingRule(null)}
+            onSave={handleSaveRule}
+          />
+        )}
+
+        {editingGroup && (
+          <GroupEditorModal
+            open={!!editingGroup}
+            group={editingGroup}
+            onClose={() => setEditingGroup(null)}
+            onSave={handleSaveGroup}
+          />
+        )}
+
+        {/* keyframes (simple inline style hack) */}
+        <style jsx>{`
+          @keyframes spin {
+            to {
+              transform: rotate(360deg);
+            }
+          }
+        `}</style>
+      </div>
+    </DndProvider>
   );
 }
 
-/* INPUT STYLES */
-const labelStyle = { fontSize: 12, fontWeight: 600, color: GP.inkSoft, marginBottom: 4 };
-const inputStyle = {
-  width: "100%",
-  padding: "8px 10px",
-  borderRadius: 10,
-  border: "1px solid #E5E7EB",
-  fontSize: 13,
-  background: "#FFF",
-};
-
-/* VALIDATE LOGIC */
-function validateRuleLogic(logic) {
-  if (!logic || !logic.trim()) return "No logic expression defined.";
-  if (!logic.includes(">") && !logic.includes("<") && !logic.includes("=="))
-    return "Logic should contain >=, <=, or ==.";
-  return null;
-}
-
-/* ====================== */
-/*   EDIT RULE MODAL      */
-/* ====================== */
-function EditRuleModal({ rule, onClose, onSave }) {
-  const [name, setName] = useState(rule.name || "");
-  const [severity, setSeverity] = useState(rule.severity || "medium");
-  const [status, setStatus] = useState(rule.status || "active");
-  const [description, setDescription] = useState(rule.description || "");
-  const [logic, setLogic] = useState(rule.logic || "");
-
-  const logicWarning = validateRuleLogic(logic);
-
-  function handleSubmit(e) {
-    e.preventDefault();
-    onSave({ ...rule, name, severity, status, description, logic });
-  }
-
+/* ===========================
+   GROUP COLUMN
+=========================== */
+function GroupColumn({
+  groups,
+  selectedGroupId,
+  onSelectGroup,
+  onCreateGroup,
+  onEditGroup,
+  onDeleteGroup,
+  moveGroup,
+  canEdit,
+}) {
   return (
     <div
       style={{
-        position: "fixed",
-        inset: 0,
-        background: "rgba(15,23,42,0.35)",
-        backdropFilter: "blur(8px)",
+        borderRadius: 24,
+        padding: 14,
+        background:
+          "linear-gradient(145deg, rgba(15,23,42,0.96), rgba(15,23,42,0.86))",
+        border: "1px solid rgba(148,163,184,0.5)",
+        boxShadow: "0 20px 40px rgba(15,23,42,0.9)",
         display: "flex",
-        alignItems: "center",
-        justifyContent: "center",
-        zIndex: 200,
+        flexDirection: "column",
+        gap: 10,
       }}
     >
       <div
         style={{
-          width: 580,
-          maxWidth: "95vw",
-          borderRadius: 24,
-          background: "#F8FAFC",
-          border: "1px solid rgba(226,232,240,0.9)",
-          padding: 24,
-          boxShadow: "0 30px 80px rgba(15,23,42,0.45)",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
+          marginBottom: 4,
         }}
       >
-        <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 14 }}>
-          <div>
-            <div style={{ fontSize: 12, textTransform: "uppercase", color: GP.inkSoft }}>
-              Edit Rule
-            </div>
-            <div style={{ fontSize: 18, fontWeight: 700, color: GP.ink }}>
-              {rule.name}
-            </div>
-          </div>
-
-          <button
-            onClick={onClose}
+        <div>
+          <div
             style={{
-              background: "transparent",
-              border: "none",
-              fontSize: 18,
-              cursor: "pointer",
-              color: "#64748B",
+              fontSize: 11,
+              textTransform: "uppercase",
+              letterSpacing: 1.3,
+              color: "#9ca3af",
+              marginBottom: 4,
             }}
           >
-            ✕
+            Rule Groups
+          </div>
+          <div style={{ fontSize: 13, color: "#e5e7eb" }}>
+            Drag to reorder how groups appear on this screen.
+          </div>
+        </div>
+        <button
+          disabled={!canEdit}
+          onClick={onCreateGroup}
+          style={{
+            borderRadius: 999,
+            padding: "6px 11px",
+            border: "1px solid rgba(129,140,248,0.7)",
+            background:
+              "radial-gradient(circle at top left,#4f46e5,#1d4ed8,#020617)",
+            color: "white",
+            fontSize: 11,
+            fontWeight: 500,
+            cursor: canEdit ? "pointer" : "not-allowed",
+            opacity: canEdit ? 1 : 0.45,
+          }}
+        >
+          + New group
+        </button>
+      </div>
+
+      <div
+        style={{
+          marginTop: 4,
+          display: "flex",
+          flexDirection: "column",
+          gap: 8,
+          maxHeight: 520,
+          overflowY: "auto",
+        }}
+      >
+        {groups.map((group, index) => (
+          <GroupCard
+            key={group.id}
+            group={group}
+            index={index}
+            isSelected={group.id === selectedGroupId}
+            onSelect={() => onSelectGroup(group.id)}
+            onEdit={() => onEditGroup(group)}
+            onDelete={() => onDeleteGroup(group.id)}
+            moveGroup={moveGroup}
+            canEdit={canEdit}
+          />
+        ))}
+
+        {groups.length === 0 && (
+          <div
+            style={{
+              padding: "12px 10px",
+              borderRadius: 14,
+              border: "1px dashed rgba(148,163,184,0.7)",
+              fontSize: 12,
+              color: "#9ca3af",
+            }}
+          >
+            No groups yet. Create your first high-level bucket like{" "}
+            <span style={{ color: "#e5e7eb" }}>
+              “Expired / Missing Insurance”
+            </span>{" "}
+            or{" "}
+            <span style={{ color: "#e5e7eb" }}>“Coverage Limits By Vendor”</span>
+            .
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function GroupCard({
+  group,
+  index,
+  isSelected,
+  onSelect,
+  onEdit,
+  onDelete,
+  moveGroup,
+  canEdit,
+}) {
+  const { ref, isDragging } = useDraggableGroup(group, index, moveGroup);
+
+  return (
+    <div
+      ref={ref}
+      onClick={onSelect}
+      style={{
+        position: "relative",
+        borderRadius: 16,
+        padding: "9px 10px 10px",
+        background: isSelected
+          ? "linear-gradient(135deg, rgba(56,189,248,0.16), rgba(37,99,235,0.04))"
+          : "linear-gradient(135deg, rgba(15,23,42,0.9), rgba(15,23,42,0.92))",
+        border: isSelected
+          ? "1px solid rgba(59,130,246,0.9)"
+          : "1px solid rgba(51,65,85,0.9)",
+        boxShadow: isSelected
+          ? "0 20px 40px rgba(37,99,235,0.45)"
+          : "0 8px 26px rgba(15,23,42,0.9)",
+        cursor: "pointer",
+        opacity: isDragging ? 0.45 : 1,
+        display: "flex",
+        gap: 10,
+        alignItems: "flex-start",
+        transition:
+          "transform 0.12s ease-out, box-shadow 0.15s ease-out, border-color 0.12s ease-out, background 0.15s ease-out",
+      }}
+    >
+      <div
+        style={{
+          width: 30,
+          height: 30,
+          borderRadius: 999,
+          background:
+            "radial-gradient(circle at 30% 0, rgba(56,189,248,0.4), rgba(37,99,235,0.3), rgba(15,23,42,1))",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          flexShrink: 0,
+        }}
+      >
+        <span style={{ fontSize: 16 }}>{group.icon || "⚙️"}</span>
+      </div>
+
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <div
+          style={{
+            display: "flex",
+            alignItems: "baseline",
+            justifyContent: "space-between",
+            gap: 6,
+          }}
+        >
+          <div
+            style={{
+              fontSize: 13,
+              fontWeight: 500,
+              color: "#e5e7eb",
+              whiteSpace: "nowrap",
+              textOverflow: "ellipsis",
+              overflow: "hidden",
+            }}
+          >
+            {group.label}
+          </div>
+          <div style={{ fontSize: 11, color: "#9ca3af", flexShrink: 0 }}>
+            {group.rules.length} rule
+            {group.rules.length !== 1 ? "s" : ""}
+          </div>
+        </div>
+        {group.description && (
+          <div
+            style={{
+              fontSize: 11,
+              color: "#9ca3af",
+              marginTop: 4,
+              lineHeight: 1.35,
+            }}
+          >
+            {group.description}
+          </div>
+        )}
+      </div>
+
+      {/* Actions */}
+      <div
+        style={{
+          display: "flex",
+          flexDirection: "column",
+          gap: 4,
+          marginLeft: 4,
+        }}
+        onClick={(e) => e.stopPropagation()}
+      >
+        <button
+          disabled={!canEdit}
+          onClick={onEdit}
+          style={{
+            borderRadius: 999,
+            border: "1px solid rgba(148,163,184,0.7)",
+            background: "rgba(15,23,42,0.9)",
+            color: "#e5e7eb",
+            fontSize: 10,
+            padding: "2px 7px",
+            cursor: canEdit ? "pointer" : "not-allowed",
+          }}
+        >
+          Edit
+        </button>
+        <button
+          disabled={!canEdit}
+          onClick={onDelete}
+          style={{
+            borderRadius: 999,
+            border: "1px solid rgba(248,113,113,0.6)",
+            background: "rgba(127,29,29,0.9)",
+            color: "#fecaca",
+            fontSize: 10,
+            padding: "2px 7px",
+            cursor: canEdit ? "pointer" : "not-allowed",
+          }}
+        >
+          Delete
+        </button>
+      </div>
+    </div>
+  );
+}
+
+/* ===========================
+   RULE BOARD
+=========================== */
+function RuleBoard({
+  group,
+  rules,
+  severityFilter,
+  onSeverityChange,
+  searchTerm,
+  onSearchChange,
+  showInactive,
+  onToggleShowInactive,
+  moveRule,
+  onToggleRuleActive,
+  onEditRule,
+  onDeleteRule,
+  onCreateRule,
+  canEdit,
+}) {
+  return (
+    <div
+      style={{
+        borderRadius: 24,
+        padding: 16,
+        background:
+          "radial-gradient(circle at top left, rgba(15,23,42,0.97), rgba(15,23,42,0.9))",
+        border: "1px solid rgba(148,163,184,0.55)",
+        boxShadow: "0 24px 60px rgba(15,23,42,0.95)",
+        display: "flex",
+        flexDirection: "column",
+        gap: 10,
+      }}
+    >
+      {/* Header */}
+      <div
+        style={{
+          display: "flex",
+          alignItems: "flex-start",
+          justifyContent: "space-between",
+          gap: 10,
+          marginBottom: 2,
+        }}
+      >
+        <div>
+          <div
+            style={{
+              fontSize: 11,
+              textTransform: "uppercase",
+              letterSpacing: 1.3,
+              color: "#9ca3af",
+              marginBottom: 6,
+            }}
+          >
+            {group ? group.label : "Rules"}
+          </div>
+          <div style={{ fontSize: 13, color: "#e5e7eb", maxWidth: 380 }}>
+            {group?.description ||
+              "Select a group on the left to manage its logic."}
+          </div>
+        </div>
+        <div
+          style={{
+            display: "flex",
+            flexDirection: "column",
+            gap: 6,
+            alignItems: "flex-end",
+          }}
+        >
+          <button
+            disabled={!canEdit}
+            onClick={onCreateRule}
+            style={{
+              borderRadius: 999,
+              padding: "7px 13px",
+              border: "1px solid rgba(56,189,248,0.8)",
+              background:
+                "linear-gradient(120deg, rgba(8,47,73,1), rgba(15,23,42,1))",
+              color: "#e0f2fe",
+              fontSize: 11,
+              fontWeight: 500,
+              cursor: canEdit ? "pointer" : "not-allowed",
+              opacity: canEdit ? 1 : 0.45,
+            }}
+          >
+            + New rule
           </button>
+          <div style={{ fontSize: 10, color: "#9ca3af" }}>
+            Drag cards to reorder. The order is how rules evaluate.
+          </div>
+        </div>
+      </div>
+
+      {/* Filters */}
+      <div
+        style={{
+          display: "flex",
+          alignItems: "center",
+          gap: 10,
+          marginBottom: 6,
+          flexWrap: "wrap",
+        }}
+      >
+        {/* Severity chips */}
+        <div
+          style={{
+            display: "inline-flex",
+            alignItems: "center",
+            gap: 6,
+            padding: "4px 5px",
+            borderRadius: 999,
+            background: "rgba(15,23,42,0.8)",
+            border: "1px solid rgba(51,65,85,0.9)",
+          }}
+        >
+          {severityOptions.map((opt) => {
+            const active = opt === severityFilter;
+            return (
+              <button
+                key={opt}
+                onClick={() => onSeverityChange(opt)}
+                style={{
+                  borderRadius: 999,
+                  border: "none",
+                  padding: "4px 8px",
+                  fontSize: 11,
+                  cursor: "pointer",
+                  background: active
+                    ? "radial-gradient(circle at top,#f97316,#ea580c,#451a03)"
+                    : "transparent",
+                  color: active ? "#fef3c7" : "#cbd5f5",
+                  boxShadow: active
+                    ? "0 0 18px rgba(248,250,252,0.25)"
+                    : "none",
+                }}
+              >
+                {opt}
+              </button>
+            );
+          })}
         </div>
 
-        <form onSubmit={handleSubmit}>
-          <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-            <div>
-              <label style={labelStyle}>Rule name</label>
-              <input
-                style={inputStyle}
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-                required
-              />
+        {/* Search */}
+        <div
+          style={{
+            flex: 1,
+            minWidth: 120,
+            display: "flex",
+            alignItems: "center",
+            gap: 6,
+            padding: "4px 9px",
+            borderRadius: 999,
+            border: "1px solid rgba(51,65,85,0.9)",
+            background: "rgba(15,23,42,0.9)",
+          }}
+        >
+          <span style={{ fontSize: 13, color: "#6b7280" }}>🔍</span>
+          <input
+            value={searchTerm}
+            onChange={(e) => onSearchChange(e.target.value)}
+            placeholder="Search logic, conditions, vendors…"
+            style={{
+              flex: 1,
+              border: "none",
+              outline: "none",
+              background: "transparent",
+              color: "#e5e7eb",
+              fontSize: 12,
+            }}
+          />
+        </div>
+
+        {/* Inactive toggle */}
+        <label
+          style={{
+            display: "inline-flex",
+            alignItems: "center",
+            gap: 6,
+            fontSize: 11,
+            color: "#9ca3af",
+            cursor: "pointer",
+          }}
+        >
+          <input
+            type="checkbox"
+            checked={showInactive}
+            onChange={(e) => onToggleShowInactive(e.target.checked)}
+            style={{ cursor: "pointer" }}
+          />
+          Show inactive
+        </label>
+      </div>
+
+      {/* Cards */}
+      <div
+        style={{
+          display: "grid",
+          gridTemplateColumns: "repeat(auto-fill, minmax(260px, 1fr))",
+          gap: 12,
+          marginTop: 4,
+        }}
+      >
+        {group && rules.length > 0 ? (
+          rules.map((rule, index) => (
+            <RuleCard
+              key={rule.id}
+              rule={rule}
+              index={index}
+              groupId={group.id}
+              moveRule={moveRule}
+              onToggleActive={() => onToggleRuleActive(rule.id)}
+              onEdit={() => onEditRule(rule)}
+              onDelete={() => onDeleteRule(rule.id)}
+              canEdit={canEdit}
+            />
+          ))
+        ) : (
+          <div
+            style={{
+              borderRadius: 18,
+              border: "1px dashed rgba(75,85,99,0.9)",
+              padding: "16px 14px",
+              fontSize: 12,
+              color: "#9ca3af",
+            }}
+          >
+            {group
+              ? "This group doesn’t have any rules yet. Start with 2–3 high-impact checks, then refine."
+              : "Select a group on the left to see its rules."}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function severityChipStyle(severity) {
+  switch (severity) {
+    case "Critical":
+      return {
+        label: "Critical",
+        bg: "rgba(248,113,113,0.14)",
+        border: "rgba(248,113,113,0.8)",
+        dot: "#fecaca",
+        text: "#fee2e2",
+      };
+    case "High":
+      return {
+        label: "High",
+        bg: "rgba(250,204,21,0.08)",
+        border: "rgba(250,204,21,0.7)",
+        dot: "#facc15",
+        text: "#fef9c3",
+      };
+    case "Medium":
+      return {
+        label: "Medium",
+        bg: "rgba(56,189,248,0.08)",
+        border: "rgba(56,189,248,0.7)",
+        dot: "#38bdf8",
+        text: "#e0f2fe",
+      };
+    case "Low":
+      return {
+        label: "Low",
+        bg: "rgba(52,211,153,0.08)",
+        border: "rgba(52,211,153,0.7)",
+        dot: "#34d399",
+        text: "#ccfbf1",
+      };
+    default:
+      return {
+        label: severity || "Unset",
+        bg: "rgba(148,163,184,0.08)",
+        border: "rgba(148,163,184,0.7)",
+        dot: "#e5e7eb",
+        text: "#e5e7eb",
+      };
+  }
+}
+
+function RuleCard({
+  rule,
+  index,
+  groupId,
+  moveRule,
+  onToggleActive,
+  onEdit,
+  onDelete,
+  canEdit,
+}) {
+  const { ref, isDragging } = useDraggableRule(rule, index, moveRule, groupId);
+
+  const sev = severityChipStyle(rule.severity);
+
+  return (
+    <div
+      ref={ref}
+      style={{
+        position: "relative",
+        borderRadius: 18,
+        padding: 12,
+        background:
+          "radial-gradient(circle at top left, rgba(15,23,42,0.98), rgba(15,23,42,0.92))",
+        border: `1px solid ${
+          rule._aiSuggested
+            ? "rgba(56,189,248,0.7)"
+            : "rgba(55,65,81,0.95)"
+        }`,
+        boxShadow: rule._aiSuggested
+          ? "0 18px 45px rgba(56,189,248,0.35)"
+          : "0 18px 45px rgba(15,23,42,0.95)",
+        opacity: isDragging ? 0.4 : 1,
+        cursor: "grab",
+        overflow: "hidden",
+      }}
+    >
+      {/* Glow accent */}
+      <div
+        style={{
+          position: "absolute",
+          inset: -2,
+          background:
+            "radial-gradient(circle at -10% -20%, rgba(56,189,248,0.22), transparent 55%)",
+          opacity: 0.9,
+          pointerEvents: "none",
+        }}
+      />
+
+      {/* Content */}
+      <div style={{ position: "relative", zIndex: 1 }}>
+        <div
+          style={{
+            display: "flex",
+            alignItems: "flex-start",
+            justifyContent: "space-between",
+            gap: 10,
+            marginBottom: 6,
+          }}
+        >
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div
+              style={{
+                fontSize: 13,
+                fontWeight: 500,
+                color: "#e5e7eb",
+                marginBottom: 3,
+                whiteSpace: "nowrap",
+                textOverflow: "ellipsis",
+                overflow: "hidden",
+              }}
+            >
+              {rule.label}
             </div>
-
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
-              <div>
-                <label style={labelStyle}>Severity</label>
-                <select
-                  style={inputStyle}
-                  value={severity}
-                  onChange={(e) => setSeverity(e.target.value)}
-                >
-                  <option value="high">High</option>
-                  <option value="medium">Medium</option>
-                  <option value="low">Low</option>
-                </select>
-              </div>
-
-              <div>
-                <label style={labelStyle}>Status</label>
-                <select
-                  style={inputStyle}
-                  value={status}
-                  onChange={(e) => setStatus(e.target.value)}
-                >
-                  <option value="active">Active</option>
-                  <option value="draft">Draft</option>
-                  <option value="disabled">Disabled</option>
-                </select>
-              </div>
-            </div>
-
-            <div>
-              <label style={labelStyle}>Description</label>
-              <textarea
-                style={{ ...inputStyle, resize: "vertical" }}
-                rows={3}
-                value={description}
-                onChange={(e) => setDescription(e.target.value)}
-              />
-            </div>
-
-            <div>
-              <label style={labelStyle}>Rule logic</label>
-              <textarea
+            {rule.description && (
+              <div
                 style={{
-                  ...inputStyle,
-                  background: "#1E293B",
-                  color: "#FFF",
-                  fontFamily: "monospace",
+                  fontSize: 11,
+                  color: "#9ca3af",
+                  lineHeight: 1.35,
                 }}
-                rows={3}
-                value={logic}
-                onChange={(e) => setLogic(e.target.value)}
-              />
-              {logicWarning && (
-                <div style={{ fontSize: 11, marginTop: 4, color: "#B45309" }}>
-                  ⚠️ {logicWarning}
-                </div>
-              )}
+              >
+                {rule.description}
+              </div>
+            )}
+          </div>
+
+          {/* Severity + index */}
+          <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+            <div
+              style={{
+                alignSelf: "flex-end",
+                fontSize: 10,
+                color: "#6b7280",
+              }}
+            >
+              #{index + 1}
             </div>
+            <div
+              style={{
+                display: "inline-flex",
+                alignItems: "center",
+                gap: 6,
+                padding: "2px 7px",
+                borderRadius: 999,
+                background: sev.bg,
+                border: `1px solid ${sev.border}`,
+              }}
+            >
+              <span
+                style={{
+                  width: 7,
+                  height: 7,
+                  borderRadius: 999,
+                  background: sev.dot,
+                  boxShadow: `0 0 12px ${sev.dot}`,
+                }}
+              />
+              <span
+                style={{
+                  fontSize: 10,
+                  textTransform: "uppercase",
+                  letterSpacing: 0.9,
+                  color: sev.text,
+                }}
+              >
+                {sev.label}
+              </span>
+            </div>
+          </div>
+        </div>
+
+        {/* Conditions */}
+        {rule.conditionsSummary && (
+          <div
+            style={{
+              marginTop: 6,
+              padding: "7px 8px",
+              borderRadius: 10,
+              background: "rgba(15,23,42,0.95)",
+              border: "1px solid rgba(31,41,55,0.95)",
+              fontFamily: "ui-monospace, Menlo, SFMono-Regular, monospace",
+              fontSize: 11,
+              color: "#e5e7eb",
+              lineHeight: 1.4,
+              maxHeight: 76,
+              overflow: "hidden",
+            }}
+          >
+            {rule.conditionsSummary}
+          </div>
+        )}
+
+        {/* Footer */}
+        <div
+          style={{
+            marginTop: 8,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+            gap: 10,
+          }}
+        >
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: 8,
+              fontSize: 11,
+              color: "#9ca3af",
+            }}
+          >
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                if (!canEdit) return;
+                onToggleActive();
+              }}
+              style={{
+                display: "inline-flex",
+                alignItems: "center",
+                gap: 5,
+                borderRadius: 999,
+                padding: "3px 9px",
+                border: "1px solid rgba(75,85,99,0.95)",
+                background: rule.active
+                  ? "radial-gradient(circle at top left,#22c55e,#15803d,#052e16)"
+                  : "rgba(15,23,42,0.9)",
+                color: rule.active ? "#bbf7d0" : "#9ca3af",
+                fontSize: 10,
+                textTransform: "uppercase",
+                letterSpacing: 0.7,
+                cursor: canEdit ? "pointer" : "not-allowed",
+                opacity: canEdit ? 1 : 0.5,
+              }}
+            >
+              <span
+                style={{
+                  width: 9,
+                  height: 9,
+                  borderRadius: 999,
+                  border: "2px solid rgba(148,163,184,0.8)",
+                  background: rule.active ? "#bbf7d0" : "transparent",
+                }}
+              />
+              {rule.active ? "Active" : "Inactive"}
+            </button>
+
+            {rule._aiSuggested && (
+              <span
+                style={{
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: 4,
+                  padding: "2px 7px",
+                  borderRadius: 999,
+                  border: "1px solid rgba(56,189,248,0.7)",
+                  background: "rgba(8,47,73,0.9)",
+                  color: "#e0f2fe",
+                  fontSize: 10,
+                }}
+              >
+                <span>✨</span>
+                <span>AI suggested</span>
+              </span>
+            )}
           </div>
 
           <div
             style={{
               display: "flex",
-              justifyContent: "flex-end",
-              gap: 10,
-              marginTop: 18,
+              alignItems: "center",
+              gap: 6,
+              fontSize: 10,
             }}
           >
             <button
-              type="button"
-              onClick={onClose}
+              disabled={!canEdit}
+              onClick={(e) => {
+                e.stopPropagation();
+                onEdit();
+              }}
               style={{
-                padding: "8px 14px",
                 borderRadius: 999,
-                background: "#FFF",
-                border: "1px solid #E5E7EB",
+                padding: "2px 8px",
+                border: "1px solid rgba(148,163,184,0.8)",
+                background: "rgba(15,23,42,0.95)",
+                color: "#e5e7eb",
+                cursor: canEdit ? "pointer" : "not-allowed",
               }}
             >
-              Cancel
+              Edit
             </button>
             <button
-              type="submit"
+              disabled={!canEdit}
+              onClick={(e) => {
+                e.stopPropagation();
+                onDelete();
+              }}
               style={{
-                padding: "8px 16px",
                 borderRadius: 999,
-                background: "linear-gradient(135deg,#0057FF,#00E0FF 70%,#8A2BFF)",
-                border: "none",
-                color: "#FFF",
-                fontWeight: 600,
+                padding: "2px 8px",
+                border: "1px solid rgba(248,113,113,0.8)",
+                background: "rgba(127,29,29,0.95)",
+                color: "#fecaca",
+                cursor: canEdit ? "pointer" : "not-allowed",
               }}
             >
-              Save changes
+              Delete
             </button>
           </div>
-        </form>
+        </div>
       </div>
     </div>
   );
 }
 
-/* ====================== */
-/*   NEW RULE MODAL       */
-/* ====================== */
-function NewRuleModal({ groups, onClose, onCreate, defaultGroupId }) {
-  const [name, setName] = useState("");
-  const [groupId, setGroupId] = useState(defaultGroupId);
-  const [severity, setSeverity] = useState("medium");
-  const [status, setStatus] = useState("active");
-  const [description, setDescription] = useState("");
-  const [logic, setLogic] = useState("");
+/* ===========================
+   SCORING PANEL
+=========================== */
+function ScoringPanel({ groups, selectedGroup }) {
+  const totalRules = groups.reduce((sum, g) => sum + g.rules.length, 0);
+  const activeRules = groups.reduce(
+    (sum, g) => sum + g.rules.filter((r) => r.active).length,
+    0
+  );
+  const criticalHigh = groups.reduce(
+    (sum, g) =>
+      sum +
+      g.rules.filter(
+        (r) =>
+          r.active &&
+          (r.severity === "Critical" || r.severity === "High")
+      ).length,
+    0
+  );
 
-  const logicWarning = validateRuleLogic(logic);
+  const coverageScore =
+    totalRules === 0 ? 0 : Math.round((activeRules / totalRules) * 100);
 
-  function handleSubmit(e) {
-    e.preventDefault();
-    if (!name.trim() || !logic.trim()) return;
+  const highSignalScore =
+    totalRules === 0 ? 0 : Math.min(100, criticalHigh * 12 + 10);
 
-    const newRule = {
-      id: "rule-" + Date.now(),
-      name,
-      groupId,
-      severity,
-      status,
-      description,
-      logic,
-    };
-
-    onCreate(newRule);
-  }
+  const blended = Math.round((coverageScore * 0.6 + highSignalScore * 0.4) / 1);
 
   return (
     <div
       style={{
-        position: "fixed",
-        inset: 0,
-        background: "rgba(15,23,42,0.35)",
-        backdropFilter: "blur(8px)",
+        borderRadius: 24,
+        padding: 16,
+        background:
+          "radial-gradient(circle at top right, rgba(15,23,42,0.8), rgba(15,23,42,1))",
+        border: "1px solid rgba(148,163,184,0.5)",
+        boxShadow: "0 24px 60px rgba(15,23,42,0.95)",
         display: "flex",
-        alignItems: "center",
-        justifyContent: "center",
-        zIndex: 300,
+        flexDirection: "column",
+        gap: 12,
       }}
     >
       <div
         style={{
-          width: 600,
-          maxWidth: "95vw",
-          borderRadius: 24,
-          background: "#F8FAFC",
-          border: "1px solid rgba(226,232,240,0.9)",
-          padding: 24,
-          boxShadow: "0 30px 80px rgba(15,23,42,0.45)",
+          fontSize: 11,
+          textTransform: "uppercase",
+          letterSpacing: 1.3,
+          color: "#9ca3af",
         }}
       >
-        <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 14 }}>
-          <div>
-            <div style={{ fontSize: 12, textTransform: "uppercase", color: GP.inkSoft }}>
-              Create New Rule
-            </div>
-            <div style={{ fontSize: 18, fontWeight: 700, color: GP.ink }}>
-              Add requirement to compliance engine
-            </div>
-          </div>
-
-          <button
-            onClick={onClose}
-            style={{
-              background: "transparent",
-              border: "none",
-              fontSize: 18,
-              cursor: "pointer",
-              color: "#64748B",
-            }}
-          >
-            ✕
-          </button>
-        </div>
-
-        <form onSubmit={handleSubmit}>
-          <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-            <div>
-              <label style={labelStyle}>Rule name</label>
-              <input
-                style={inputStyle}
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-                required
-              />
-            </div>
-
-            <div>
-              <label style={labelStyle}>Coverage Group</label>
-              <select
-                style={inputStyle}
-                value={groupId}
-                onChange={(e) => setGroupId(e.target.value)}
-              >
-                {groups.map((g) => (
-                  <option key={g.id} value={g.id}>
-                    {g.label}
-                  </option>
-                ))}
-              </select>
-            </div>
-
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
-              <div>
-                <label style={labelStyle}>Severity</label>
-                <select
-                  style={inputStyle}
-                  value={severity}
-                  onChange={(e) => setSeverity(e.target.value)}
-                >
-                  <option value="high">High</option>
-                  <option value="medium">Medium</option>
-                  <option value="low">Low</option>
-                </select>
-              </div>
-
-              <div>
-                <label style={labelStyle}>Status</label>
-                <select
-                  style={inputStyle}
-                  value={status}
-                  onChange={(e) => setStatus(e.target.value)}
-                >
-                  <option value="active">Active</option>
-                  <option value="draft">Draft</option>
-                </select>
-              </div>
-            </div>
-
-            <div>
-              <label style={labelStyle}>Description</label>
-              <textarea
-                style={{ ...inputStyle, resize: "vertical" }}
-                rows={3}
-                value={description}
-                onChange={(e) => setDescription(e.target.value)}
-              />
-            </div>
-
-            <div>
-              <label style={labelStyle}>Rule logic</label>
-              <textarea
-                style={{
-                  ...inputStyle,
-                  background: "#1E293B",
-                  color: "#FFF",
-                  fontFamily: "monospace",
-                }}
-                rows={3}
-                value={logic}
-                onChange={(e) => setLogic(e.target.value)}
-              />
-              {logicWarning && (
-                <div style={{ fontSize: 11, marginTop: 4, color: "#B45309" }}>
-                  ⚠️ {logicWarning}
-                </div>
-              )}
-            </div>
-          </div>
-
-          <div style={{ display: "flex", justifyContent: "flex-end", gap: 10, marginTop: 18 }}>
-            <button
-              type="button"
-              onClick={onClose}
-              style={{
-                padding: "8px 14px",
-                borderRadius: 999,
-                background: "#FFF",
-                border: "1px solid #E5E7EB",
-              }}
-            >
-              Cancel
-            </button>
-            <button
-              type="submit"
-              style={{
-                padding: "8px 16px",
-                borderRadius: 999,
-                background: "linear-gradient(135deg,#0057FF,#00E0FF 70%,#8A2BFF)",
-                border: "none",
-                color: "#FFF",
-                fontWeight: 600,
-              }}
-            >
-              Create Rule
-            </button>
-          </div>
-        </form>
+        Compliance Pulse
       </div>
-    </div>
-  );
-}
 
-/* =========================== */
-/*     RULE HISTORY DRAWER     */
-/* =========================== */
-function RuleHistoryDrawer({ open, onClose, items }) {
-  if (!open) return null;
-
-  return (
-    <div
-      style={{
-        position: "fixed",
-        inset: 0,
-        background: "rgba(15,23,42,0.35)",
-        backdropFilter: "blur(6px)",
-        display: "flex",
-        justifyContent: "flex-end",
-        zIndex: 250,
-      }}
-    >
+      {/* Main gauge */}
       <div
         style={{
-          width: 420,
-          maxWidth: "100vw",
-          height: "100%",
-          background: "#0F172A",
-          color: "#E5E7EB",
-          borderLeft: "1px solid rgba(148,163,184,0.4)",
-          boxShadow: "0 0 40px rgba(15,23,42,0.8)",
-          padding: 18,
           display: "flex",
-          flexDirection: "column",
-        }}
-      >
-        <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 10 }}>
-          <div>
-            <div style={{ fontSize: 11, textTransform: "uppercase", color: "#94A3B8" }}>
-              Rule History
-            </div>
-            <div style={{ fontSize: 16, fontWeight: 600 }}>Recent changes</div>
-          </div>
-
-          <button
-            onClick={onClose}
-            style={{
-              background: "transparent",
-              border: "none",
-              fontSize: 18,
-              cursor: "pointer",
-              color: "#9CA3AF",
-            }}
-          >
-            ✕
-          </button>
-        </div>
-
-        <div style={{ fontSize: 12, color: "#9CA3AF", marginBottom: 10 }}>
-          Audit log of all rule changes.
-        </div>
-
-        <div style={{ flex: 1, overflowY: "auto", paddingRight: 4 }}>
-          {items.length === 0 && (
-            <div style={{ fontSize: 12, color: "#9CA3AF", marginTop: 10 }}>
-              No history yet.
-            </div>
-          )}
-
-          {items.map((item) => (
-            <div
-              key={item.id}
-              style={{
-                borderRadius: 10,
-                background: "rgba(15,23,42,0.85)",
-                border: "1px solid rgba(55,65,81,0.8)",
-                padding: 10,
-                marginBottom: 10,
-              }}
-            >
-              <div
-                style={{
-                  display: "flex",
-                  justifyContent: "space-between",
-                  marginBottom: 4,
-                }}
-              >
-                <div style={{ fontSize: 13, fontWeight: 600 }}>
-                  {item.ruleName}
-                </div>
-                <div style={{ fontSize: 11, color: "#9CA3AF" }}>
-                  {item.when}
-                </div>
-              </div>
-
-              <div style={{ fontSize: 11, color: "#D1D5DB", marginBottom: 4 }}>
-                {item.summary}
-              </div>
-            </div>
-          ))}
-        </div>
-      </div>
-    </div>
-  );
-}
-
-/* =========================== */
-/*      AI SUGGEST MODAL       */
-/* =========================== */
-function AiSuggestModal({ open, onClose, suggestions, onApply }) {
-  if (!open) return null;
-
-  return (
-    <div
-      style={{
-        position: "fixed",
-        inset: 0,
-        background: "rgba(15,23,42,0.4)",
-        backdropFilter: "blur(8px)",
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "center",
-        zIndex: 260,
-      }}
-    >
-      <div
-        style={{
-          width: 640,
-          maxWidth: "95vw",
-          maxHeight: "80vh",
-          borderRadius: 24,
-          background: "#020617",
-          color: "#E5E7EB",
-          boxShadow: "0 30px 80px rgba(15,23,42,0.9)",
-          border: "1px solid rgba(30,64,175,0.8)",
-          padding: 20,
-          display: "flex",
-          flexDirection: "column",
+          alignItems: "center",
+          gap: 14,
         }}
       >
         <div
           style={{
-            display: "flex",
-            justifyContent: "space-between",
-            marginBottom: 10,
-            alignItems: "center",
+            position: "relative",
+            width: 112,
+            height: 112,
+            borderRadius: "50%",
+            background:
+              "conic-gradient(from 220deg, #22c55e, #fbbf24, #fb7185, #0f172a)",
+            padding: 4,
+            boxShadow:
+              "0 0 55px rgba(34,197,94,0.35), 0 0 110px rgba(248,250,252,0.17)",
           }}
         >
-          <div>
-            <div
-              style={{
-                fontSize: 11,
-                letterSpacing: "0.14em",
-                textTransform: "uppercase",
-                color: "#9CA3AF",
-                marginBottom: 2,
-              }}
-            >
-              AI Suggestions
-            </div>
-            <div style={{ fontSize: 18, fontWeight: 700 }}>
-              Recommended rules
-            </div>
-          </div>
-          <button
-            onClick={onClose}
+          <div
             style={{
-              background: "transparent",
-              border: "none",
-              fontSize: 18,
-              cursor: "pointer",
-              color: "#9CA3AF",
+              position: "absolute",
+              inset: 10,
+              borderRadius: "50%",
+              background:
+                "radial-gradient(circle at 30% 0, #0f172a, #020617 55%, #000 100%)",
+            }}
+          />
+          <div
+            style={{
+              position: "relative",
+              zIndex: 1,
+              display: "flex",
+              flexDirection: "column",
+              alignItems: "center",
+              justifyContent: "center",
+              height: "100%",
+              color: "#e5e7eb",
             }}
           >
-            ✕
-          </button>
-        </div>
-
-        <div style={{ fontSize: 12, color: "#9CA3AF", marginBottom: 12 }}>
-          These are suggested rules based on common risk scenarios.
-        </div>
-
-        <div style={{ flex: 1, overflowY: "auto", paddingRight: 4 }}>
-          {suggestions.length === 0 && (
-            <div style={{ fontSize: 12, color: "#9CA3AF" }}>
-              No suggestions available.
-            </div>
-          )}
-
-          {suggestions.map((s) => (
             <div
-              key={s.id}
               style={{
-                borderRadius: 14,
-                background:
-                  "linear-gradient(135deg, rgba(15,23,42,0.9), rgba(30,64,175,0.8))",
-                border: "1px solid rgba(37,99,235,0.9)",
-                padding: 12,
-                marginBottom: 10,
+                fontSize: 12,
+                textTransform: "uppercase",
+                letterSpacing: 1.1,
+                color: "#9ca3af",
+                marginBottom: 4,
               }}
             >
-              <div
-                style={{
-                  display: "flex",
-                  justifyContent: "space-between",
-                  marginBottom: 6,
-                  alignItems: "center",
-                }}
-              >
-                <div style={{ fontSize: 14, fontWeight: 600 }}>{s.name}</div>
-                <span
-                  style={{
-                    fontSize: 11,
-                    padding: "2px 8px",
-                    borderRadius: 999,
-                    background:
-                      s.severity === "high"
-                        ? "rgba(239,68,68,0.2)"
-                        : s.severity === "medium"
-                        ? "rgba(245,158,11,0.2)"
-                        : "rgba(34,197,94,0.2)",
-                    border:
-                      s.severity === "high"
-                        ? "1px solid rgba(248,113,113,0.9)"
-                        : s.severity === "medium"
-                        ? "1px solid rgba(250,204,21,0.9)"
-                        : "1px solid rgba(74,222,128,0.9)",
-                  }}
-                >
-                  {s.severity.toUpperCase()}
-                </span>
-              </div>
-
-              <div style={{ fontSize: 12, color: "#E5E7EB", marginBottom: 4 }}>
-                {s.description}
-              </div>
-
-              <div
-                style={{
-                  fontFamily: "monospace",
-                  fontSize: 11,
-                  padding: 8,
-                  borderRadius: 10,
-                  background: "#020617",
-                  border: "1px solid rgba(55,65,81,0.9)",
-                  color: "#E5E7EB",
-                  marginBottom: 8,
-                }}
-              >
-                {s.logic}
-              </div>
-
-              <button
-                onClick={() => onApply(s)}
-                style={{
-                  padding: "6px 12px",
-                  borderRadius: 999,
-                  border: "none",
-                  background:
-                    "linear-gradient(135deg,#22C55E,#22D3EE 70%,#6366F1)",
-                  color: "#FFF",
-                  fontSize: 12,
-                  fontWeight: 600,
-                  cursor: "pointer",
-                }}
-              >
-                ➕ Add this rule
-              </button>
+              Score
             </div>
-          ))}
+            <div
+              style={{
+                fontSize: 28,
+                fontWeight: 600,
+                background:
+                  "linear-gradient(120deg,#22c55e,#bef264,#fbbf24)",
+                WebkitBackgroundClip: "text",
+                color: "transparent",
+              }}
+            >
+              {blended}
+            </div>
+            <div style={{ fontSize: 10, color: "#9ca3af" }}>out of 100</div>
+          </div>
         </div>
+
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div
+            style={{
+              fontSize: 13,
+              color: "#e5e7eb",
+              marginBottom: 6,
+            }}
+          >
+            Rule coverage snapshot
+          </div>
+
+          <div
+            style={{
+              display: "grid",
+              gridTemplateColumns: "repeat(2, minmax(0,1fr))",
+              gap: 8,
+            }}
+          >
+            <MetricPill
+              label="Active rules"
+              value={`${activeRules} / ${totalRules}`}
+              barValue={coverageScore}
+              hint="How much of your logic is currently live."
+            />
+            <MetricPill
+              label="High-severity signals"
+              value={criticalHigh}
+              barValue={highSignalScore}
+              hint="How many rules can stop real risk fast."
+            />
+          </div>
+        </div>
+      </div>
+
+      {/* Selected group preview */}
+      <div
+        style={{
+          marginTop: 6,
+          borderRadius: 16,
+          padding: 10,
+          background: "rgba(15,23,42,0.95)",
+          border: "1px solid rgba(51,65,85,0.95)",
+          display: "flex",
+          gap: 10,
+          alignItems: "flex-start",
+        }}
+      >
+        <div
+          style={{
+            width: 30,
+            height: 30,
+            borderRadius: 999,
+            background:
+              "radial-gradient(circle at 30% 0, rgba(56,189,248,0.3), rgba(15,23,42,1))",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            flexShrink: 0,
+          }}
+        >
+          <span style={{ fontSize: 18 }}>{selectedGroup?.icon || "⚙️"}</span>
+        </div>
+        <div style={{ flex: 1 }}>
+          <div
+            style={{
+              fontSize: 12,
+              color: "#e5e7eb",
+              marginBottom: 2,
+            }}
+          >
+            {selectedGroup
+              ? selectedGroup.label
+              : "Select a group to see its impact."}
+          </div>
+          <div
+            style={{
+              fontSize: 11,
+              color: "#9ca3af",
+              marginBottom: 4,
+            }}
+          >
+            {selectedGroup?.description ||
+              "The engine scores risk based on how many rules you have live across critical categories."}
+          </div>
+          <div
+            style={{
+              fontSize: 11,
+              color: "#6b7280",
+            }}
+          >
+            {selectedGroup
+              ? `${selectedGroup.rules.filter((r) => r.active).length} active · ${
+                  selectedGroup.rules.length
+                } total rules in this lane.`
+              : "No group selected."}
+          </div>
+        </div>
+      </div>
+
+      {/* Bottom text */}
+      <div
+        style={{
+          marginTop: 2,
+          fontSize: 10,
+          color: "#6b7280",
+          lineHeight: 1.4,
+        }}
+      >
+        When this hits{" "}
+        <span style={{ color: "#22c55e" }}>90+</span>, you have a cinematic
+        ruleset that not only looks elite in the UI, but actually blocks risk
+        before it reaches your finance team, ops team, or insurer.
       </div>
     </div>
   );
 }
 
-/* =========================== */
-/*     GROUP EDITOR MODAL      */
-/* =========================== */
+function MetricPill({ label, value, barValue, hint }) {
+  return (
+    <div
+      style={{
+        borderRadius: 14,
+        padding: 9,
+        background: "rgba(15,23,42,0.95)",
+        border: "1px solid rgba(51,65,85,0.9)",
+      }}
+    >
+      <div
+        style={{
+          fontSize: 11,
+          color: "#9ca3af",
+          marginBottom: 4,
+        }}
+      >
+        {label}
+      </div>
+      <div
+        style={{
+          fontSize: 13,
+          color: "#e5e7eb",
+          marginBottom: 6,
+        }}
+      >
+        {value}
+      </div>
+      <div
+        style={{
+          width: "100%",
+          height: 5,
+          borderRadius: 999,
+          background: "rgba(31,41,55,0.9)",
+          overflow: "hidden",
+          marginBottom: 4,
+        }}
+      >
+        <div
+          style={{
+            width: `${Math.max(0, Math.min(barValue, 100))}%`,
+            height: "100%",
+            background:
+              "linear-gradient(90deg,#22c55e,#eab308,#fb7185,#0ea5e9)",
+          }}
+        />
+      </div>
+      <div style={{ fontSize: 10, color: "#6b7280" }}>{hint}</div>
+    </div>
+  );
+}
+
+/* ===========================
+   GROUP EDITOR MODAL
+=========================== */
 function GroupEditorModal({ open, group, onClose, onSave }) {
   const [label, setLabel] = useState(group?.label || "");
   const [description, setDescription] = useState(group?.description || "");
@@ -857,11 +1779,18 @@ function GroupEditorModal({ open, group, onClose, onSave }) {
     }
   }, [group]);
 
-  if (!open || !group) return null;
+  if (!open) return null;
 
   function handleSubmit(e) {
     e.preventDefault();
-    onSave({ ...group, label, description, icon });
+    const trimmed = label.trim();
+    if (!trimmed) return;
+    onSave({
+      id: group.id,
+      label: trimmed,
+      description: description.trim(),
+      icon: icon.trim() || "⚙️",
+    });
   }
 
   return (
@@ -869,92 +1798,185 @@ function GroupEditorModal({ open, group, onClose, onSave }) {
       style={{
         position: "fixed",
         inset: 0,
-        background: "rgba(15,23,42,0.35)",
-        backdropFilter: "blur(8px)",
+        background: "rgba(15,23,42,0.75)",
+        backdropFilter: "blur(12px)",
         display: "flex",
         alignItems: "center",
         justifyContent: "center",
-        zIndex: 270,
+        zIndex: 50,
       }}
+      onClick={onClose}
     >
       <div
+        onClick={(e) => e.stopPropagation()}
         style={{
-          width: 520,
-          maxWidth: "95vw",
-          borderRadius: 24,
-          background: "#F9FAFB",
-          border: "1px solid rgba(209,213,219,0.9)",
-          boxShadow: "0 26px 70px rgba(15,23,42,0.6)",
-          padding: 20,
+          width: "100%",
+          maxWidth: 460,
+          borderRadius: 20,
+          padding: 18,
+          background:
+            "radial-gradient(circle at top, #020617, #020617 55%, #020617 100%)",
+          border: "1px solid rgba(148,163,184,0.7)",
+          boxShadow: "0 30px 80px rgba(15,23,42,1)",
+          color: "#e5e7eb",
         }}
       >
-        <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 10 }}>
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+            marginBottom: 10,
+          }}
+        >
           <div>
-            <div style={{ fontSize: 11, textTransform: "uppercase", color: GP.inkSoft }}>
-              Edit Group
+            <div
+              style={{
+                fontSize: 11,
+                textTransform: "uppercase",
+                letterSpacing: 1.2,
+                color: "#9ca3af",
+              }}
+            >
+              Edit group
             </div>
-            <div style={{ fontSize: 18, fontWeight: 700, color: GP.ink }}>
-              {group.label}
+            <div style={{ fontSize: 14, marginTop: 3 }}>
+              Give this lane a clear{" "}
+              <span style={{ color: "#22c55e" }}>risk theme</span>.
             </div>
           </div>
-
           <button
             onClick={onClose}
             style={{
-              background: "transparent",
-              border: "none",
-              fontSize: 18,
+              borderRadius: 999,
+              width: 26,
+              height: 26,
+              border: "1px solid rgba(148,163,184,0.8)",
+              background: "rgba(15,23,42,0.9)",
+              color: "#e5e7eb",
               cursor: "pointer",
-              color: "#6B7280",
+              fontSize: 14,
             }}
           >
             ✕
           </button>
         </div>
 
-        <form onSubmit={handleSubmit}>
-          <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+        <form
+          onSubmit={handleSubmit}
+          style={{ display: "flex", flexDirection: "column", gap: 10 }}
+        >
+          <div
+            style={{
+              display: "grid",
+              gridTemplateColumns: "64px minmax(0,1fr)",
+              gap: 10,
+              alignItems: "center",
+            }}
+          >
             <div>
-              <label style={labelStyle}>Display label</label>
+              <label
+                style={{
+                  fontSize: 11,
+                  color: "#9ca3af",
+                  marginBottom: 4,
+                  display: "block",
+                }}
+              >
+                Icon
+              </label>
               <input
-                style={inputStyle}
+                value={icon}
+                onChange={(e) => setIcon(e.target.value)}
+                style={{
+                  width: "100%",
+                  borderRadius: 999,
+                  padding: "6px 8px",
+                  border: "1px solid rgba(51,65,85,0.9)",
+                  background: "rgba(15,23,42,0.95)",
+                  color: "#e5e7eb",
+                  fontSize: 16,
+                  textAlign: "center",
+                }}
+                maxLength={2}
+              />
+            </div>
+
+            <div>
+              <label
+                style={{
+                  fontSize: 11,
+                  color: "#9ca3af",
+                  marginBottom: 4,
+                  display: "block",
+                }}
+              >
+                Group name
+              </label>
+              <input
                 value={label}
                 onChange={(e) => setLabel(e.target.value)}
-                required
-              />
-            </div>
-
-            <div>
-              <label style={labelStyle}>Description</label>
-              <textarea
-                style={{ ...inputStyle, resize: "vertical" }}
-                rows={3}
-                value={description}
-                onChange={(e) => setDescription(e.target.value)}
-              />
-            </div>
-
-            <div>
-              <label style={labelStyle}>Icon (emoji)</label>
-              <input
-                style={inputStyle}
-                value={icon}
-                maxLength={3}
-                onChange={(e) => setIcon(e.target.value)}
+                placeholder="Expired / Missing Insurance"
+                style={{
+                  width: "100%",
+                  borderRadius: 999,
+                  padding: "7px 10px",
+                  border: "1px solid rgba(51,65,85,0.9)",
+                  background: "rgba(15,23,42,0.95)",
+                  color: "#e5e7eb",
+                  fontSize: 13,
+                }}
               />
             </div>
           </div>
 
-          <div style={{ display: "flex", justifyContent: "flex-end", gap: 10, marginTop: 16 }}>
+          <div>
+            <label
+              style={{
+                fontSize: 11,
+                color: "#9ca3af",
+                marginBottom: 4,
+                display: "block",
+              }}
+            >
+              Description
+            </label>
+            <textarea
+              value={description}
+              onChange={(e) => setDescription(e.target.value)}
+              placeholder="Describe what risk this lane owns."
+              rows={3}
+              style={{
+                width: "100%",
+                borderRadius: 12,
+                padding: "7px 9px",
+                border: "1px solid rgba(51,65,85,0.9)",
+                background: "rgba(15,23,42,0.95)",
+                color: "#e5e7eb",
+                fontSize: 12,
+                resize: "vertical",
+              }}
+            />
+          </div>
+
+          <div
+            style={{
+              display: "flex",
+              justifyContent: "flex-end",
+              gap: 8,
+              marginTop: 4,
+            }}
+          >
             <button
               type="button"
               onClick={onClose}
               style={{
-                padding: "8px 14px",
                 borderRadius: 999,
-                border: "1px solid #E5E7EB",
-                background: "#FFFFFF",
-                fontSize: 13,
+                padding: "6px 11px",
+                border: "1px solid rgba(148,163,184,0.7)",
+                background: "transparent",
+                color: "#e5e7eb",
+                fontSize: 11,
                 cursor: "pointer",
               }}
             >
@@ -963,14 +1985,14 @@ function GroupEditorModal({ open, group, onClose, onSave }) {
             <button
               type="submit"
               style={{
-                padding: "8px 16px",
                 borderRadius: 999,
+                padding: "6px 13px",
                 border: "none",
                 background:
-                  "linear-gradient(135deg,#0EA5E9,#6366F1 70%,#A855F7)",
-                color: "#FFFFFF",
-                fontSize: 13,
-                fontWeight: 600,
+                  "linear-gradient(120deg,#22c55e,#16a34a,#14532d)",
+                color: "#ecfdf5",
+                fontSize: 11,
+                fontWeight: 500,
                 cursor: "pointer",
               }}
             >
@@ -983,1169 +2005,300 @@ function GroupEditorModal({ open, group, onClose, onSave }) {
   );
 }
 
-/* =========================== */
-/*     DELETE RULE MODAL       */
-/* =========================== */
-function DeleteRuleModal({ open, rule, onCancel, onConfirm }) {
-  if (!open || !rule) return null;
+/* ===========================
+   RULE EDITOR MODAL
+=========================== */
+function RuleEditorModal({ open, rule, onClose, onSave }) {
+  const [label, setLabel] = useState(rule?.label || "");
+  const [description, setDescription] = useState(rule?.description || "");
+  const [severity, setSeverity] = useState(rule?.severity || "Medium");
+  const [conditionsSummary, setConditionsSummary] = useState(
+    rule?.conditionsSummary || ""
+  );
+
+  useEffect(() => {
+    if (rule) {
+      setLabel(rule.label || "");
+      setDescription(rule.description || "");
+      setSeverity(rule.severity || "Medium");
+      setConditionsSummary(rule.conditionsSummary || "");
+    }
+  }, [rule]);
+
+  if (!open) return null;
+
+  function handleSubmit(e) {
+    e.preventDefault();
+    const trimmed = label.trim();
+    if (!trimmed) return;
+    onSave({
+      ...rule,
+      label: trimmed,
+      description: description.trim(),
+      severity,
+      conditionsSummary: conditionsSummary.trim(),
+    });
+  }
 
   return (
     <div
       style={{
         position: "fixed",
         inset: 0,
-        background: "rgba(15,23,42,0.4)",
-        backdropFilter: "blur(4px)",
+        background: "rgba(15,23,42,0.8)",
+        backdropFilter: "blur(12px)",
         display: "flex",
         alignItems: "center",
         justifyContent: "center",
-        zIndex: 280,
+        zIndex: 50,
       }}
+      onClick={onClose}
     >
       <div
+        onClick={(e) => e.stopPropagation()}
         style={{
-          width: 420,
-          maxWidth: "95vw",
+          width: "100%",
+          maxWidth: 620,
           borderRadius: 20,
-          background: "#FEF2F2",
-          border: "1px solid rgba(248,113,113,0.9)",
-          boxShadow: "0 20px 60px rgba(220,38,38,0.5)",
           padding: 18,
+          background:
+            "radial-gradient(circle at top, #020617, #020617 55%, #020617 100%)",
+          border: "1px solid rgba(148,163,184,0.7)",
+          boxShadow: "0 34px 90px rgba(15,23,42,1)",
+          color: "#e5e7eb",
         }}
       >
         <div
           style={{
-            fontSize: 15,
-            fontWeight: 700,
-            color: "#991B1B",
-            marginBottom: 6,
-          }}
-        >
-          Delete this rule?
-        </div>
-        <div
-          style={{
-            fontSize: 13,
-            color: "#7F1D1D",
-            marginBottom: 12,
-          }}
-        >
-          This will permanently delete <strong>{rule.name}</strong>.
-        </div>
-
-        <div style={{ display: "flex", justifyContent: "flex-end", gap: 8 }}>
-          <button
-            type="button"
-            onClick={onCancel}
-            style={{
-              padding: "7px 12px",
-              borderRadius: 999,
-              border: "1px solid #FECACA",
-              background: "#FFFFFF",
-              fontSize: 12,
-              cursor: "pointer",
-            }}
-          >
-            Cancel
-          </button>
-          <button
-            type="button"
-            onClick={onConfirm}
-            style={{
-              padding: "7px 14px",
-              borderRadius: 999,
-              border: "none",
-              background: "#DC2626",
-              color: "#FFFFFF",
-              fontSize: 12,
-              fontWeight: 600,
-              cursor: "pointer",
-            }}
-          >
-            Delete rule
-          </button>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-/* =========================== */
-/*      RULE CARD (DnD)        */
-/* =========================== */
-function RuleCard({
-  rule,
-  index,
-  moveRule,
-  onEdit,
-  onToggleStatus,
-  onDuplicate,
-  onDeleteRequest,
-  onSelect,
-}) {
-  const sev = severityStyle(rule.severity || "low");
-  const ref = useRef(null);
-  const logicWarning = validateRuleLogic(rule.logic);
-
-  const [, drop] = useDrop({
-    accept: RULE_CARD,
-    hover(item, monitor) {
-      if (!ref.current) return;
-
-      const dragId = item.id;
-      const hoverId = rule.id;
-      if (dragId === hoverId) return;
-
-      const rect = ref.current.getBoundingClientRect();
-      const middleY = (rect.bottom - rect.top) / 2;
-      const pointer = monitor.getClientOffset();
-      if (!pointer) return;
-      const hoverY = pointer.y - rect.top;
-      const tolerance = rect.height * 0.25;
-
-      if (item.index < index && hoverY < middleY - tolerance) return;
-      if (item.index > index && hoverY > middleY + tolerance) return;
-
-      moveRule(dragId, hoverId);
-      item.index = index;
-    },
-  });
-
-  const [{ isDragging }, drag] = useDrag({
-    type: RULE_CARD,
-    item: { id: rule.id, index },
-    collect: (monitor) => ({
-      isDragging: monitor.isDragging(),
-    }),
-  });
-
-  drag(drop(ref));
-
-  const disabled = rule.status === "disabled";
-  const [showAdvanced, setShowAdvanced] = useState(false);
-
-  return (
-    <div
-      ref={ref}
-      onClick={onSelect}
-      style={{
-        opacity: isDragging ? 0.45 : disabled ? 0.5 : 1,
-        display: "flex",
-        gap: 14,
-        padding: 16,
-        borderRadius: 16,
-        background: "white",
-        border: "1px solid rgba(226,232,240,0.95)",
-        boxShadow: "0 12px 30px rgba(15,23,42,0.06)",
-        marginBottom: 12,
-        cursor: "pointer",
-      }}
-    >
-      <div
-        style={{
-          width: 18,
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "center",
-          color: "#CBD5F5",
-          cursor: "grab",
-          userSelect: "none",
-        }}
-      >
-        ⋮⋮
-      </div>
-
-      <div style={{ flex: 1 }}>
-        <div
-          style={{
             display: "flex",
-            justifyContent: "space-between",
-            marginBottom: 6,
-          }}
-        >
-          <div>
-            <div
-              style={{
-                fontSize: 12,
-                color: GP.inkSoft,
-                textTransform: "uppercase",
-                letterSpacing: "0.08em",
-                marginBottom: 2,
-              }}
-            >
-              Rule {index + 1}
-            </div>
-            <div style={{ fontSize: 15, fontWeight: 600, color: GP.ink }}>
-              {rule.name}
-            </div>
-          </div>
-
-          <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-            <div
-              style={{
-                padding: "4px 10px",
-                borderRadius: 999,
-                background: sev.bg,
-                border: sev.border,
-                color: sev.color,
-                fontSize: 11,
-                fontWeight: 600,
-              }}
-            >
-              {sev.label} Severity
-            </div>
-            <RuleStatusPill status={rule.status} />
-          </div>
-        </div>
-
-        <p style={{ fontSize: 13, color: GP.inkSoft, marginBottom: 8 }}>
-          {rule.description || "No description provided."}
-        </p>
-
-        <div
-          style={{
-            fontFamily: "monospace",
-            fontSize: 11,
-            padding: "8px 10px",
-            borderRadius: 10,
-            background: "#020617",
-            color: "#E5E7EB",
-            border: "1px solid rgba(148,163,184,0.4)",
-            whiteSpace: "pre-wrap",
-            wordBreak: "break-word",
-          }}
-        >
-          {rule.logic || "// No logic yet"}
-        </div>
-
-        {logicWarning && (
-          <div style={{ marginTop: 4, fontSize: 11, color: "#B45309" }}>
-            ⚠️ {logicWarning}
-          </div>
-        )}
-
-        <button
-          type="button"
-          onClick={(e) => {
-            e.stopPropagation();
-            setShowAdvanced((s) => !s);
-          }}
-          style={{
-            marginTop: 8,
-            fontSize: 11,
-            color: GP.inkSoft,
-            border: "none",
-            background: "transparent",
-            cursor: "pointer",
-          }}
-        >
-          {showAdvanced ? "▾ Hide advanced" : "▸ Show advanced"}
-        </button>
-
-        {showAdvanced && (
-          <div
-            style={{
-              marginTop: 6,
-              fontSize: 11,
-              color: GP.inkSoft,
-              display: "grid",
-              gridTemplateColumns: "1fr 1fr",
-              gap: 6,
-            }}
-          >
-            <div>
-              <div style={{ fontWeight: 600, marginBottom: 2 }}>ID</div>
-              <div style={{ wordBreak: "break-all" }}>{rule.id}</div>
-            </div>
-            <div>
-              <div style={{ fontWeight: 600, marginBottom: 2 }}>Group</div>
-              <div>{rule.groupId || rule.group_id || "—"}</div>
-            </div>
-          </div>
-        )}
-
-        <div
-          style={{
-            display: "flex",
-            justifyContent: "space-between",
-            marginTop: 10,
-            fontSize: 11,
-          }}
-        >
-          <button
-            type="button"
-            onClick={(e) => {
-              e.stopPropagation();
-              onToggleStatus(rule);
-            }}
-            style={{
-              borderRadius: 999,
-              padding: "6px 10px",
-              border: "1px solid #E5E7EB",
-              background: disabled ? "#FFF7ED" : "#ECFDF3",
-              color: disabled ? "#92400E" : "#166534",
-              cursor: "pointer",
-            }}
-          >
-            {disabled ? "Enable rule" : "Disable rule"}
-          </button>
-
-          <div style={{ display: "flex", gap: 8 }}>
-            <button
-              type="button"
-              onClick={(e) => {
-                e.stopPropagation();
-                onEdit();
-              }}
-              style={{
-                borderRadius: 999,
-                padding: "6px 10px",
-                border: "1px solid #E5E7EB",
-                background: "#FFF",
-                cursor: "pointer",
-              }}
-            >
-              Edit
-            </button>
-            <button
-              type="button"
-              onClick={(e) => {
-                e.stopPropagation();
-                onDuplicate(rule);
-              }}
-              style={{
-                borderRadius: 999,
-                padding: "6px 10px",
-                border: "1px solid #E5E7EB",
-                background: "#F9FAFB",
-                cursor: "pointer",
-              }}
-            >
-              Duplicate
-            </button>
-            <button
-              type="button"
-              onClick={(e) => {
-                e.stopPropagation();
-                onDeleteRequest(rule);
-              }}
-              style={{
-                borderRadius: 999,
-                padding: "6px 10px",
-                border: "none",
-                background: "rgba(239,68,68,0.08)",
-                color: "#B91C1C",
-                cursor: "pointer",
-              }}
-            >
-              Delete
-            </button>
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-/* =========================== */
-/*    MAIN ELITE RULES PAGE    */
-/* =========================== */
-export default function EliteRulesPage() {
-  const { isAdmin } = useRole();
-  const { activeOrgId } = useOrg();
-
-  const [groups, setGroups] = useState(SAMPLE_GROUPS);
-  const [rules, setRules] = useState(SAMPLE_RULES);
-  const [selectedGroupId, setSelectedGroupId] = useState("general-liability");
-  const [selectedRuleId, setSelectedRuleId] = useState(null);
-
-  const [loading, setLoading] = useState(false);
-  const [aiThinking, setAiThinking] = useState(false);
-  const [error, setError] = useState(null);
-
-  const [editingRule, setEditingRule] = useState(null);
-  const [showNewRule, setShowNewRule] = useState(false);
-
-  const [historyOpen, setHistoryOpen] = useState(false);
-  const [historyItems, setHistoryItems] = useState([]);
-
-  const [aiModalOpen, setAiModalOpen] = useState(false);
-  const [aiSuggestions, setAiSuggestions] = useState([]);
-
-  const [groupEditorOpen, setGroupEditorOpen] = useState(false);
-  const [groupDraft, setGroupDraft] = useState(null);
-
-  const [deleteModalOpen, setDeleteModalOpen] = useState(false);
-  const [ruleToDelete, setRuleToDelete] = useState(null);
-
-  const [severityWeights, setSeverityWeights] = useState(() => {
-    const initial = {};
-    SAMPLE_GROUPS.forEach((g) => {
-      initial[g.id] = { ...DEFAULT_WEIGHTS };
-    });
-    return initial;
-  });
-
-  /* LOAD HYBRID DATA */
-  useEffect(() => {
-    let cancelled = false;
-
-    async function load() {
-      setLoading(true);
-      try {
-        const [gRes, rRes] = await Promise.all([
-          fetch("/api/requirements-v2/groups").catch(() => null),
-          fetch("/api/requirements-v2/rules").catch(() => null),
-        ]);
-
-        const g = gRes ? await gRes.json().catch(() => null) : null;
-        const r = rRes ? await rRes.json().catch(() => null) : null;
-
-        if (!cancelled) {
-          if (g?.groups?.length) {
-            setGroups(g.groups);
-            setSeverityWeights((prev) => {
-              const next = { ...prev };
-              g.groups.forEach((grp) => {
-                if (!next[grp.id]) next[grp.id] = { ...DEFAULT_WEIGHTS };
-              });
-              return next;
-            });
-          }
-
-          if (r?.rules?.length) setRules(r.rules);
-        }
-      } catch (err) {
-        if (!cancelled) setError("Failed to load rules.");
-      } finally {
-        if (!cancelled) setLoading(false);
-      }
-    }
-
-    load();
-    return () => {
-      cancelled = true;
-    };
-  }, []);
-
-  /* FILTER VISIBLE RULES */
-  const visibleRules = useMemo(
-    () =>
-      rules.filter(
-        (r) => r.groupId === selectedGroupId || r.group_id === selectedGroupId
-      ),
-    [rules, selectedGroupId]
-  );
-
-  /* AUTO SELECT FIRST RULE */
-  useEffect(() => {
-    if (visibleRules.length > 0) {
-      setSelectedRuleId(visibleRules[0].id);
-    } else {
-      setSelectedRuleId(null);
-    }
-  }, [visibleRules]);
-
-  const selectedRule = useMemo(
-    () => rules.find((r) => r.id === selectedRuleId) || null,
-    [rules, selectedRuleId]
-  );
-
-  /* UPDATE RULE (RIGHT PANEL) */
-  const handleUpdateRule = (id, updates) => {
-    setRules((prev) => prev.map((r) => (r.id === id ? { ...r, ...updates } : r)));
-  };
-
-  /* AI EXPAND FOR RIGHT PANEL */
-  async function handleAIExpand(prompt) {
-    try {
-      const res = await fetch("/api/elite/expand-rule", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ prompt, rule: selectedRule }),
-      });
-      const data = await res.json();
-      if (!data.ok) throw new Error(data.error || "AI expansion failed");
-      return data.expanded;
-    } catch (err) {
-      console.error(err);
-      return null;
-    }
-  }
-
-  /* REORDER RULES */
-  function moveRule(dragId, hoverId) {
-    setRules((prev) => {
-      const list = [...prev];
-      const dragIndex = list.findIndex((x) => x.id === dragId);
-      const hoverIndex = list.findIndex((x) => x.id === hoverId);
-      if (dragIndex === -1 || hoverIndex === -1) return prev;
-      const [removed] = list.splice(dragIndex, 1);
-      list.splice(hoverIndex, 0, removed);
-      return list;
-    });
-  }
-
-  /* SAVE EDITED RULE */
-  function handleSaveRule(updated) {
-    setRules((prev) =>
-      prev.map((r) => (r.id === updated.id ? updated : r))
-    );
-    setEditingRule(null);
-    setHistoryItems((prev) => [
-      {
-        id: "h-" + Date.now(),
-        ruleId: updated.id,
-        ruleName: updated.name,
-        when: new Date().toLocaleString(),
-        summary: "Rule edited",
-      },
-      ...prev,
-    ]);
-  }
-
-  /* CREATE NEW RULE */
-  function handleCreateRule(newRule) {
-    setRules((prev) => [...prev, newRule]);
-    setShowNewRule(false);
-    setSelectedRuleId(newRule.id);
-    setHistoryItems((prev) => [
-      {
-        id: "h-" + Date.now(),
-        ruleId: newRule.id,
-        ruleName: newRule.name,
-        when: new Date().toLocaleString(),
-        summary: "Rule created",
-      },
-      ...prev,
-    ]);
-  }
-
-  /* TOGGLE STATUS */
-  function handleToggleStatus(rule) {
-    const newStatus = rule.status === "disabled" ? "active" : "disabled";
-    setRules((prev) =>
-      prev.map((r) =>
-        r.id === rule.id ? { ...r, status: newStatus } : r
-      )
-    );
-    setHistoryItems((prev) => [
-      {
-        id: "h-" + Date.now(),
-        ruleId: rule.id,
-        ruleName: rule.name,
-        when: new Date().toLocaleString(),
-        summary:
-          newStatus === "active" ? "Rule re-enabled" : "Rule disabled",
-      },
-      ...prev,
-    ]);
-  }
-
-  /* DUPLICATE RULE */
-  function handleDuplicateRule(rule) {
-    const clone = {
-      ...rule,
-      id: "rule-" + Date.now(),
-      name: rule.name + " (copy)",
-      status: "draft",
-    };
-    handleCreateRule(clone);
-  }
-
-  /* DELETE FLOW */
-  function handleDeleteRequest(rule) {
-    setRuleToDelete(rule);
-    setDeleteModalOpen(true);
-  }
-
-  function handleDeleteConfirm() {
-    if (!ruleToDelete) return;
-    const deleted = ruleToDelete;
-    setRules((prev) => prev.filter((r) => r.id !== deleted.id));
-    setHistoryItems((prev) => [
-      {
-        id: "h-" + Date.now(),
-        ruleId: deleted.id,
-        ruleName: deleted.name,
-        when: new Date().toLocaleString(),
-        summary: "Rule deleted",
-      },
-      ...prev,
-    ]);
-    setRuleToDelete(null);
-    setDeleteModalOpen(false);
-  }
-
-  /* GROUP EDIT */
-  function handleGroupEditOpen() {
-    const g = groups.find((x) => x.id === selectedGroupId);
-    if (!g) return;
-    setGroupDraft(g);
-    setGroupEditorOpen(true);
-  }
-
-  function handleGroupSave(updatedGroup) {
-    setGroups((prev) =>
-      prev.map((g) => (g.id === updatedGroup.id ? updatedGroup : g))
-    );
-    setGroupEditorOpen(false);
-  }
-
-  /* AI SUGGESTIONS */
-  function handleAiBuild() {
-    setAiThinking(true);
-    const stub = [
-      {
-        id: "s1",
-        groupId: selectedGroupId,
-        name: "GL Additional Insured Endorsement",
-        severity: "high",
-        description:
-          "Require vendors to list your org as Additional Insured on GL.",
-        logic: "has_additional_insured_endorsement == true",
-        status: "draft",
-      },
-      {
-        id: "s2",
-        groupId: selectedGroupId,
-        name: "Primary & Non-Contributory Wording",
-        severity: "medium",
-        description:
-          "Prefer GL policies with primary + non-contributory wording.",
-        logic: "has_primary_non_contrib == true",
-        status: "draft",
-      },
-    ];
-    setTimeout(() => {
-      setAiSuggestions(stub);
-      setAiThinking(false);
-      setAiModalOpen(true);
-    }, 400);
-  }
-
-  /* SEVERITY WEIGHT HANDLER */
-  function handleWeightChange(groupId, key, value) {
-    const numeric = parseFloat(value);
-    if (isNaN(numeric)) return;
-    setSeverityWeights((prev) => ({
-      ...prev,
-      [groupId]: {
-        ...(prev[groupId] || DEFAULT_WEIGHTS),
-        [key]: numeric,
-      },
-    }));
-  }
-
-  const weights = severityWeights[selectedGroupId] || DEFAULT_WEIGHTS;
-
-  return (
-    <div style={{ minHeight: "100vh", background: GP.surface, paddingLeft: 220 }}>
-      <div style={{ padding: "30px 40px" }}>
-        {/* HEADER */}
-        <div
-          style={{
-            display: "flex",
-            justifyContent: "space-between",
-            marginBottom: 24,
-            gap: 20,
-          }}
-        >
-          <div>
-            <div
-              style={{
-                fontSize: 12,
-                textTransform: "uppercase",
-                letterSpacing: "0.16em",
-                color: GP.inkSoft,
-                marginBottom: 6,
-              }}
-            >
-              Elite Rule Engine V2
-            </div>
-
-            <h1
-              style={{
-                fontSize: 30,
-                fontWeight: 700,
-                color: GP.ink,
-                marginBottom: 4,
-              }}
-            >
-              Requirements & Risk Logic
-            </h1>
-
-            <p style={{ fontSize: 14, color: GP.inkSoft, maxWidth: 520 }}>
-              Design, reorder, and score the rules powering your AI-driven vendor
-              compliance engine.
-            </p>
-
-            {error && (
-              <p style={{ marginTop: 8, fontSize: 12, color: "#B45309" }}>
-                ⚠️ {error}
-              </p>
-            )}
-          </div>
-
-          <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-            <button
-              onClick={() => setHistoryOpen(true)}
-              style={{
-                padding: "9px 14px",
-                borderRadius: 999,
-                border: "1px solid #E5E7EB",
-                background: "#FFF",
-                cursor: "pointer",
-              }}
-            >
-              View Rule History
-            </button>
-
-            <button
-              onClick={() => setShowNewRule(true)}
-              style={{
-                padding: "9px 14px",
-                borderRadius: 999,
-                background:
-                  "linear-gradient(135deg,#0057FF,#00E0FF 70%,#8A2BFF)",
-                color: "#FFF",
-                fontWeight: 600,
-                boxShadow: "0 14px 35px rgba(37,99,235,0.45)",
-                border: "none",
-                cursor: "pointer",
-              }}
-            >
-              ＋ New Rule
-            </button>
-
-            <button
-              onClick={handleAiBuild}
-              disabled={aiThinking}
-              style={{
-                padding: "7px 12px",
-                borderRadius: 999,
-                background: "rgba(56,189,248,0.12)",
-                color: "#0369A1",
-                border: "none",
-                fontSize: 12,
-                cursor: "pointer",
-              }}
-            >
-              {aiThinking ? "Thinking…" : "✨ AI: Suggest Rules"}
-            </button>
-          </div>
-        </div>
-
-        {/* MAIN GRID */}
-        <div
-          style={{
-            display: "grid",
-            gridTemplateColumns: "320px minmax(0, 1.4fr) 380px",
-            gap: 24,
             alignItems: "flex-start",
+            justifyContent: "space-between",
+            marginBottom: 10,
           }}
         >
-          {/* LEFT: GROUP LIST */}
-          <div
-            style={{
-              background: GP.panel,
-              borderRadius: 20,
-              border: "1px solid rgba(226,232,240,0.95)",
-              boxShadow: GP.shadow,
-              padding: 18,
-            }}
-          >
+          <div>
             <div
               style={{
-                fontSize: 13,
-                fontWeight: 600,
+                fontSize: 11,
                 textTransform: "uppercase",
-                letterSpacing: "0.12em",
-                color: GP.inkSoft,
-                marginBottom: 8,
+                letterSpacing: 1.2,
+                color: "#9ca3af",
               }}
             >
-              Requirement Groups
+              Edit rule
+            </div>
+            <div style={{ fontSize: 14, marginTop: 3 }}>
+              Turn a vague “policy check” into explicit, machine-readable logic.
+            </div>
+          </div>
+          <button
+            onClick={onClose}
+            style={{
+              borderRadius: 999,
+              width: 26,
+              height: 26,
+              border: "1px solid rgba(148,163,184,0.8)",
+              background: "rgba(15,23,42,0.9)",
+              color: "#e5e7eb",
+              cursor: "pointer",
+              fontSize: 14,
+            }}
+          >
+            ✕
+          </button>
+        </div>
+
+        <form
+          onSubmit={handleSubmit}
+          style={{ display: "flex", flexDirection: "column", gap: 10 }}
+        >
+          {/* Top row */}
+          <div
+            style={{
+              display: "grid",
+              gridTemplateColumns: "minmax(0,2.1fr) minmax(0,1fr)",
+              gap: 10,
+            }}
+          >
+            <div>
+              <label
+                style={{
+                  fontSize: 11,
+                  color: "#9ca3af",
+                  marginBottom: 4,
+                  display: "block",
+                }}
+              >
+                Rule name
+              </label>
+              <input
+                value={label}
+                onChange={(e) => setLabel(e.target.value)}
+                placeholder="Expires Within 30 Days"
+                style={{
+                  width: "100%",
+                  borderRadius: 999,
+                  padding: "7px 10px",
+                  border: "1px solid rgba(51,65,85,0.9)",
+                  background: "rgba(15,23,42,0.95)",
+                  color: "#e5e7eb",
+                  fontSize: 13,
+                }}
+              />
             </div>
 
-            <p style={{ fontSize: 12, color: GP.inkSoft, marginBottom: 14 }}>
-              Select a coverage group to view and reorder its rules.
-            </p>
-
-            <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-              {groups.map((g) => {
-                const selected = g.id === selectedGroupId;
-
-                return (
-                  <button
-                    key={g.id}
-                    onClick={() => setSelectedGroupId(g.id)}
-                    style={{
-                      textAlign: "left",
-                      padding: "10px 12px",
-                      borderRadius: 14,
-                      border: selected
-                        ? "1px solid rgba(37,99,235,0.6)"
-                        : "1px solid rgba(226,232,240,0.95)",
-                      background: selected
-                        ? "linear-gradient(135deg,#EEF2FF,#EFF6FF)"
-                        : "#FFF",
-                      cursor: "pointer",
-                      display: "flex",
-                      gap: 10,
-                      alignItems: "flex-start",
-                    }}
-                  >
-                    <div
-                      style={{
-                        width: 28,
-                        height: 28,
-                        borderRadius: 999,
-                        background: selected
-                          ? "rgba(37,99,235,0.1)"
-                          : "rgba(15,23,42,0.03)",
-                        display: "flex",
-                        justifyContent: "center",
-                        alignItems: "center",
-                        fontSize: 16,
-                      }}
-                    >
-                      {g.icon}
-                    </div>
-
-                    <div>
-                      <div
-                        style={{
-                          fontSize: 14,
-                          fontWeight: 600,
-                          color: GP.ink,
-                          marginBottom: 2,
-                        }}
-                      >
-                        {g.label}
-                      </div>
-
-                      <div style={{ fontSize: 12, color: GP.inkSoft }}>
-                        {g.description}
-                      </div>
-                    </div>
-                  </button>
-                );
-              })}
+            <div>
+              <label
+                style={{
+                  fontSize: 11,
+                  color: "#9ca3af",
+                  marginBottom: 4,
+                  display: "block",
+                }}
+              >
+                Severity
+              </label>
+              <select
+                value={severity}
+                onChange={(e) => setSeverity(e.target.value)}
+                style={{
+                  width: "100%",
+                  borderRadius: 999,
+                  padding: "7px 10px",
+                  border: "1px solid rgba(51,65,85,0.9)",
+                  background: "rgba(15,23,42,0.95)",
+                  color: "#e5e7eb",
+                  fontSize: 13,
+                }}
+              >
+                <option value="Critical">Critical</option>
+                <option value="High">High</option>
+                <option value="Medium">Medium</option>
+                <option value="Low">Low</option>
+              </select>
             </div>
+          </div>
 
+          {/* Description */}
+          <div>
+            <label
+              style={{
+                fontSize: 11,
+                color: "#9ca3af",
+                marginBottom: 4,
+                display: "block",
+              }}
+            >
+              Human-readable description
+            </label>
+            <textarea
+              value={description}
+              onChange={(e) => setDescription(e.target.value)}
+              placeholder="What risk does this catch? E.g. “Policy expires within 30 days while vendor is still active.”"
+              rows={2}
+              style={{
+                width: "100%",
+                borderRadius: 12,
+                padding: "7px 9px",
+                border: "1px solid rgba(51,65,85,0.9)",
+                background: "rgba(15,23,42,0.95)",
+                color: "#e5e7eb",
+                fontSize: 12,
+                resize: "vertical",
+              }}
+            />
+          </div>
+
+          {/* Conditions */}
+          <div>
+            <label
+              style={{
+                fontSize: 11,
+                color: "#9ca3af",
+                marginBottom: 4,
+                display: "block",
+              }}
+            >
+              Logic (pseudo-SQL / DSL)
+            </label>
+            <textarea
+              value={conditionsSummary}
+              onChange={(e) => setConditionsSummary(e.target.value)}
+              placeholder={`Certificate.expirationDate <= today + 30 days
+AND Vendor.isActive = true`}
+              rows={4}
+              style={{
+                width: "100%",
+                borderRadius: 12,
+                padding: "7px 9px",
+                border: "1px solid rgba(30,64,175,0.9)",
+                background: "rgba(15,23,42,0.98)",
+                color: "#e5e7eb",
+                fontFamily:
+                  "ui-monospace, Menlo, SFMono-Regular, SFMono-Regular, monospace",
+                fontSize: 12,
+                resize: "vertical",
+              }}
+            />
+            <div
+              style={{
+                fontSize: 10,
+                color: "#6b7280",
+                marginTop: 4,
+                lineHeight: 1.4,
+              }}
+            >
+              Keep it literal. Imagine this is a DSL your engine reads. You can
+              reference{" "}
+              <span style={{ color: "#e5e7eb" }}>
+                Vendor, Certificate, Endorsement, Org
+              </span>{" "}
+              objects.
+            </div>
+          </div>
+
+          <div
+            style={{
+              display: "flex",
+              justifyContent: "flex-end",
+              gap: 8,
+              marginTop: 4,
+            }}
+          >
             <button
               type="button"
-              onClick={handleGroupEditOpen}
+              onClick={onClose}
               style={{
-                marginTop: 12,
-                fontSize: 12,
                 borderRadius: 999,
-                padding: "7px 12px",
-                border: "1px dashed rgba(148,163,184,0.8)",
-                background: "#F9FAFB",
-                color: GP.inkSoft,
+                padding: "6px 11px",
+                border: "1px solid rgba(148,163,184,0.7)",
+                background: "transparent",
+                color: "#e5e7eb",
+                fontSize: 11,
                 cursor: "pointer",
               }}
             >
-              ✏️ Edit selected group
+              Cancel
             </button>
-          </div>
-
-          {/* MIDDLE: RULE LIST */}
-          <DndProvider backend={HTML5Backend}>
-            <div
+            <button
+              type="submit"
               style={{
-                background: GP.panel,
-                borderRadius: 20,
-                border: "1px solid rgba(226,232,240,0.95)",
-                boxShadow: GP.shadow,
-                padding: 18,
-                overflow: "hidden",
+                borderRadius: 999,
+                padding: "6px 13px",
+                border: "none",
+                background:
+                  "linear-gradient(120deg,#22c55e,#16a34a,#15803d)",
+                color: "#ecfdf5",
+                fontSize: 11,
+                fontWeight: 500,
+                cursor: "pointer",
               }}
             >
-              <div
-                style={{
-                  display: "flex",
-                  justifyContent: "space-between",
-                  marginBottom: 10,
-                  alignItems: "center",
-                }}
-              >
-                <div>
-                  <div
-                    style={{
-                      fontSize: 13,
-                      fontWeight: 600,
-                      textTransform: "uppercase",
-                      letterSpacing: "0.12em",
-                      color: GP.inkSoft,
-                      marginBottom: 3,
-                    }}
-                  >
-                    {groups.find((g) => g.id === selectedGroupId)?.label ||
-                      "Rules"}
-                  </div>
-
-                  <div
-                    style={{
-                      fontSize: 16,
-                      fontWeight: 700,
-                      color: GP.ink,
-                    }}
-                  >
-                    Execution order & severity scoring
-                  </div>
-                </div>
-
-                <div
-                  style={{
-                    fontSize: 11,
-                    color: GP.inkSoft,
-                    textAlign: "right",
-                  }}
-                >
-                  {visibleRules.length} rule
-                  {visibleRules.length === 1 ? "" : "s"}
-                  <br />
-                  <span style={{ opacity: 0.75 }}>
-                    Drag to reorder (top = highest priority)
-                  </span>
-                </div>
-              </div>
-
-              {/* SEVERITY WEIGHTING STRIP */}
-              <div
-                style={{
-                  marginBottom: 16,
-                  padding: 10,
-                  borderRadius: 14,
-                  border: "1px dashed rgba(148,163,184,0.5)",
-                  background: "rgba(248,250,252,0.9)",
-                }}
-              >
-                <div
-                  style={{
-                    display: "flex",
-                    justifyContent: "space-between",
-                    marginBottom: 6,
-                    alignItems: "center",
-                    gap: 8,
-                  }}
-                >
-                  <div
-                    style={{
-                      fontSize: 12,
-                      fontWeight: 600,
-                      color: GP.inkSoft,
-                      textTransform: "uppercase",
-                      letterSpacing: "0.1em",
-                    }}
-                  >
-                    Severity weighting
-                  </div>
-                  <div
-                    style={{
-                      fontSize: 11,
-                      color: GP.inkSoft,
-                      textAlign: "right",
-                    }}
-                  >
-                    These weights influence scoring & AI reasoning.
-                  </div>
-                </div>
-
-                <div
-                  style={{
-                    display: "grid",
-                    gridTemplateColumns: "repeat(3, minmax(0, 1fr))",
-                    gap: 10,
-                  }}
-                >
-                  <div>
-                    <div
-                      style={{
-                        fontSize: 11,
-                        fontWeight: 600,
-                        color: "#B91C1C",
-                        marginBottom: 2,
-                      }}
-                    >
-                      High
-                    </div>
-                    <input
-                      type="number"
-                      step="0.1"
-                      min="0"
-                      max="3"
-                      value={weights.high}
-                      onChange={(e) =>
-                        handleWeightChange(selectedGroupId, "high", e.target.value)
-                      }
-                      style={{
-                        ...inputStyle,
-                        padding: "6px 8px",
-                        fontSize: 12,
-                      }}
-                    />
-                  </div>
-
-                  <div>
-                    <div
-                      style={{
-                        fontSize: 11,
-                        fontWeight: 600,
-                        color: "#92400E",
-                        marginBottom: 2,
-                      }}
-                    >
-                      Medium
-                    </div>
-                    <input
-                      type="number"
-                      step="0.1"
-                      min="0"
-                      max="3"
-                      value={weights.medium}
-                      onChange={(e) =>
-                        handleWeightChange(selectedGroupId, "medium", e.target.value)
-                      }
-                      style={{
-                        ...inputStyle,
-                        padding: "6px 8px",
-                        fontSize: 12,
-                      }}
-                    />
-                  </div>
-
-                  <div>
-                    <div
-                      style={{
-                        fontSize: 11,
-                        fontWeight: 600,
-                        color: "#166534",
-                        marginBottom: 2,
-                      }}
-                    >
-                      Low
-                    </div>
-                    <input
-                      type="number"
-                      step="0.1"
-                      min="0"
-                      max="3"
-                      value={weights.low}
-                      onChange={(e) =>
-                        handleWeightChange(selectedGroupId, "low", e.target.value)
-                      }
-                      style={{
-                        ...inputStyle,
-                        padding: "6px 8px",
-                        fontSize: 12,
-                      }}
-                    />
-                  </div>
-                </div>
-              </div>
-
-              {loading && (
-                <div style={{ color: GP.inkSoft, fontSize: 12 }}>
-                  Loading rules…
-                </div>
-              )}
-
-              {!loading && visibleRules.length === 0 && (
-                <div style={{ fontSize: 13, color: GP.inkSoft }}>
-                  No rules yet. Use <strong>New Rule</strong> above.
-                </div>
-              )}
-
-              {!loading &&
-                visibleRules.length > 0 &&
-                visibleRules.map((r, i) => (
-                  <RuleCard
-                    key={r.id}
-                    rule={r}
-                    index={i}
-                    moveRule={moveRule}
-                    onEdit={() => {
-                      setEditingRule(r);
-                      setSelectedRuleId(r.id);
-                    }}
-                    onToggleStatus={handleToggleStatus}
-                    onDuplicate={handleDuplicateRule}
-                    onDeleteRequest={handleDeleteRequest}
-                    onSelect={() => setSelectedRuleId(r.id)}
-                  />
-                ))}
-            </div>
-          </DndProvider>
-
-          {/* RIGHT: AI RULE PANEL */}
-          <RuleEnginePanel
-            selectedRule={selectedRule}
-            onUpdateRule={handleUpdateRule}
-            onAIExpand={handleAIExpand}
-          />
-        </div>
+              Save rule
+            </button>
+          </div>
+        </form>
       </div>
-
-      {/* MODALS */}
-      {editingRule && (
-        <EditRuleModal
-          rule={editingRule}
-          onClose={() => setEditingRule(null)}
-          onSave={handleSaveRule}
-        />
-      )}
-
-      {showNewRule && (
-        <NewRuleModal
-          groups={groups}
-          defaultGroupId={selectedGroupId}
-          onCreate={handleCreateRule}
-          onClose={() => setShowNewRule(false)}
-        />
-      )}
-
-      <RuleHistoryDrawer
-        open={historyOpen}
-        onClose={() => setHistoryOpen(false)}
-        items={historyItems}
-      />
-
-      <AiSuggestModal
-        open={aiModalOpen}
-        onClose={() => setAiModalOpen(false)}
-        suggestions={aiSuggestions}
-        onApply={(s) => {
-          const newRule = {
-            id: "rule-" + Date.now(),
-            name: s.name,
-            groupId: s.groupId,
-            severity: s.severity,
-            status: s.status,
-            description: s.description,
-            logic: s.logic,
-          };
-          handleCreateRule(newRule);
-          setAiModalOpen(false);
-        }}
-      />
-
-      <GroupEditorModal
-        open={groupEditorOpen}
-        group={groupDraft}
-        onSave={handleGroupSave}
-        onClose={() => setGroupEditorOpen(false)}
-      />
-
-      <DeleteRuleModal
-        open={deleteModalOpen}
-        rule={ruleToDelete}
-        onCancel={() => setDeleteModalOpen(false)}
-        onConfirm={handleDeleteConfirm}
-      />
     </div>
   );
 }
