@@ -214,6 +214,116 @@ export default function AlertsDashboardPage() {
     </div>
   );
 }
+
+/* ======================================================
+   ALERTS HEADER
+====================================================== */
+function AlertsHeader({ stats }) {
+  return (
+    <div
+      style={{
+        display: "flex",
+        alignItems: "flex-start",
+        justifyContent: "space-between",
+        gap: 24,
+        marginBottom: 24,
+      }}
+    >
+      {/* Left side — Title */}
+      <div style={{ flex: 1 }}>
+        <div
+          style={{
+            display: "inline-flex",
+            alignItems: "center",
+            gap: 10,
+            padding: "4px 10px",
+            borderRadius: 999,
+            border: "1px solid rgba(148,163,184,0.45)",
+            background:
+              "linear-gradient(90deg,rgba(15,23,42,0.95),rgba(15,23,42,0.35))",
+            marginBottom: 8,
+          }}
+        >
+          <span
+            style={{
+              width: 22,
+              height: 22,
+              borderRadius: "999px",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              background:
+                "radial-gradient(circle at 30% 0,#f97316,#facc15,#b45309)",
+              boxShadow: "0 0 25px rgba(248,181,82,0.6)",
+              fontSize: 14,
+            }}
+          >
+            🚨
+          </span>
+          <span
+            style={{
+              fontSize: 11,
+              textTransform: "uppercase",
+              letterSpacing: 1.2,
+              color: "#e5e7eb",
+            }}
+          >
+            Alerts Dashboard V2
+          </span>
+          <span
+            style={{
+              fontSize: 10,
+              textTransform: "uppercase",
+              letterSpacing: 1,
+              color: "#facc15",
+            }}
+          >
+            Real-time risk pulse
+          </span>
+        </div>
+
+        <h1
+          style={{
+            fontSize: 28,
+            fontWeight: 600,
+            margin: 0,
+            letterSpacing: 0.1,
+          }}
+        >
+          See{" "}
+          <span
+            style={{
+              background:
+                "linear-gradient(90deg,#fb7185,#fde68a,#22c55e,#38bdf8)",
+              WebkitBackgroundClip: "text",
+              color: "transparent",
+            }}
+          >
+            every compliance issue
+          </span>{" "}
+          before it reaches finance, ops, or your insurer.
+        </h1>
+
+        <p
+          style={{
+            marginTop: 8,
+            color: "#cbd5f5",
+            fontSize: 13,
+            maxWidth: 720,
+          }}
+        >
+          This is the live feed of your rule engine and requirements engine
+          firing. Every card is a vendor, a policy, an endorsement, or a
+          document that needs attention.
+        </p>
+      </div>
+
+      {/* Right side — Stats */}
+      <StatsCard stats={stats} />
+    </div>
+  );
+}
+
 /* ======================================================
    MAIN GRID
 ====================================================== */
