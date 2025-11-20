@@ -433,7 +433,7 @@ function NewRuleModal({ groups, onClose, onCreate, defaultGroupId }) {
               Create New Rule
             </div>
             <div style={{ fontSize: 18, fontWeight: 700, color: GP.ink }}>
-              Add requirement
+              Add requirement to compliance engine
             </div>
           </div>
 
@@ -624,7 +624,7 @@ function RuleHistoryDrawer({ open, onClose, items }) {
         </div>
 
         <div style={{ fontSize: 12, color: "#9CA3AF", marginBottom: 10 }}>
-          Audit log of all rule edits.
+          Audit log of all rule changes.
         </div>
 
         <div style={{ flex: 1, overflowY: "auto", paddingRight: 4 }}>
@@ -663,56 +663,6 @@ function RuleHistoryDrawer({ open, onClose, items }) {
               <div style={{ fontSize: 11, color: "#D1D5DB", marginBottom: 4 }}>
                 {item.summary}
               </div>
-
-              {(item.before || item.after) && (
-                <div
-                  style={{
-                    display: "grid",
-                    gridTemplateColumns: "1fr 1fr",
-                    gap: 6,
-                    marginTop: 4,
-                    fontSize: 10,
-                  }}
-                >
-                  {item.before && (
-                    <div>
-                      <div style={{ color: "#9CA3AF", marginBottom: 2 }}>
-                        Before
-                      </div>
-                      <div
-                        style={{
-                          padding: 6,
-                          borderRadius: 6,
-                          background: "#020617",
-                          border: "1px solid rgba(75,85,99,0.8)",
-                          whiteSpace: "pre-wrap",
-                        }}
-                      >
-                        {item.before}
-                      </div>
-                    </div>
-                  )}
-
-                  {item.after && (
-                    <div>
-                      <div style={{ color: "#9CA3AF", marginBottom: 2 }}>
-                        After
-                      </div>
-                      <div
-                        style={{
-                          padding: 6,
-                          borderRadius: 6,
-                          background: "#020617",
-                          border: "1px solid rgba(75,85,99,0.8)",
-                          whiteSpace: "pre-wrap",
-                        }}
-                      >
-                        {item.after}
-                      </div>
-                    </div>
-                  )}
-                </div>
-              )}
             </div>
           ))}
         </div>
@@ -794,7 +744,7 @@ function AiSuggestModal({ open, onClose, suggestions, onApply }) {
         </div>
 
         <div style={{ fontSize: 12, color: "#9CA3AF", marginBottom: 12 }}>
-          These are suggested rules based on common insurance requirements.
+          These are suggested rules based on common risk scenarios.
         </div>
 
         <div style={{ flex: 1, overflowY: "auto", paddingRight: 4 }}>
@@ -970,6 +920,7 @@ function GroupEditorModal({ open, group, onClose, onSave }) {
                 style={inputStyle}
                 value={label}
                 onChange={(e) => setLabel(e.target.value)}
+                required
               />
             </div>
 
@@ -1119,3 +1070,1082 @@ function DeleteRuleModal({ open, rule, onCancel, onConfirm }) {
   );
 }
 
+/* =========================== */
+/*      RULE CARD (DnD)        */
+/* =========================== */
+function RuleCard({
+  rule,
+  index,
+  moveRule,
+  onEdit,
+  onToggleStatus,
+  onDuplicate,
+  onDeleteRequest,
+  onSelect,
+}) {
+  const sev = severityStyle(rule.severity || "low");
+  const ref = useRef(null);
+  const logicWarning = validateRuleLogic(rule.logic);
+
+  const [, drop] = useDrop({
+    accept: RULE_CARD,
+    hover(item, monitor) {
+      if (!ref.current) return;
+
+      const dragId = item.id;
+      const hoverId = rule.id;
+      if (dragId === hoverId) return;
+
+      const rect = ref.current.getBoundingClientRect();
+      const middleY = (rect.bottom - rect.top) / 2;
+      const pointer = monitor.getClientOffset();
+      if (!pointer) return;
+      const hoverY = pointer.y - rect.top;
+      const tolerance = rect.height * 0.25;
+
+      if (item.index < index && hoverY < middleY - tolerance) return;
+      if (item.index > index && hoverY > middleY + tolerance) return;
+
+      moveRule(dragId, hoverId);
+      item.index = index;
+    },
+  });
+
+  const [{ isDragging }, drag] = useDrag({
+    type: RULE_CARD,
+    item: { id: rule.id, index },
+    collect: (monitor) => ({
+      isDragging: monitor.isDragging(),
+    }),
+  });
+
+  drag(drop(ref));
+
+  const disabled = rule.status === "disabled";
+  const [showAdvanced, setShowAdvanced] = useState(false);
+
+  return (
+    <div
+      ref={ref}
+      onClick={onSelect}
+      style={{
+        opacity: isDragging ? 0.45 : disabled ? 0.5 : 1,
+        display: "flex",
+        gap: 14,
+        padding: 16,
+        borderRadius: 16,
+        background: "white",
+        border: "1px solid rgba(226,232,240,0.95)",
+        boxShadow: "0 12px 30px rgba(15,23,42,0.06)",
+        marginBottom: 12,
+        cursor: "pointer",
+      }}
+    >
+      <div
+        style={{
+          width: 18,
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          color: "#CBD5F5",
+          cursor: "grab",
+          userSelect: "none",
+        }}
+      >
+        ⋮⋮
+      </div>
+
+      <div style={{ flex: 1 }}>
+        <div
+          style={{
+            display: "flex",
+            justifyContent: "space-between",
+            marginBottom: 6,
+          }}
+        >
+          <div>
+            <div
+              style={{
+                fontSize: 12,
+                color: GP.inkSoft,
+                textTransform: "uppercase",
+                letterSpacing: "0.08em",
+                marginBottom: 2,
+              }}
+            >
+              Rule {index + 1}
+            </div>
+            <div style={{ fontSize: 15, fontWeight: 600, color: GP.ink }}>
+              {rule.name}
+            </div>
+          </div>
+
+          <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+            <div
+              style={{
+                padding: "4px 10px",
+                borderRadius: 999,
+                background: sev.bg,
+                border: sev.border,
+                color: sev.color,
+                fontSize: 11,
+                fontWeight: 600,
+              }}
+            >
+              {sev.label} Severity
+            </div>
+            <RuleStatusPill status={rule.status} />
+          </div>
+        </div>
+
+        <p style={{ fontSize: 13, color: GP.inkSoft, marginBottom: 8 }}>
+          {rule.description || "No description provided."}
+        </p>
+
+        <div
+          style={{
+            fontFamily: "monospace",
+            fontSize: 11,
+            padding: "8px 10px",
+            borderRadius: 10,
+            background: "#020617",
+            color: "#E5E7EB",
+            border: "1px solid rgba(148,163,184,0.4)",
+            whiteSpace: "pre-wrap",
+            wordBreak: "break-word",
+          }}
+        >
+          {rule.logic || "// No logic yet"}
+        </div>
+
+        {logicWarning && (
+          <div style={{ marginTop: 4, fontSize: 11, color: "#B45309" }}>
+            ⚠️ {logicWarning}
+          </div>
+        )}
+
+        <button
+          type="button"
+          onClick={(e) => {
+            e.stopPropagation();
+            setShowAdvanced((s) => !s);
+          }}
+          style={{
+            marginTop: 8,
+            fontSize: 11,
+            color: GP.inkSoft,
+            border: "none",
+            background: "transparent",
+            cursor: "pointer",
+          }}
+        >
+          {showAdvanced ? "▾ Hide advanced" : "▸ Show advanced"}
+        </button>
+
+        {showAdvanced && (
+          <div
+            style={{
+              marginTop: 6,
+              fontSize: 11,
+              color: GP.inkSoft,
+              display: "grid",
+              gridTemplateColumns: "1fr 1fr",
+              gap: 6,
+            }}
+          >
+            <div>
+              <div style={{ fontWeight: 600, marginBottom: 2 }}>ID</div>
+              <div style={{ wordBreak: "break-all" }}>{rule.id}</div>
+            </div>
+            <div>
+              <div style={{ fontWeight: 600, marginBottom: 2 }}>Group</div>
+              <div>{rule.groupId || rule.group_id || "—"}</div>
+            </div>
+          </div>
+        )}
+
+        <div
+          style={{
+            display: "flex",
+            justifyContent: "space-between",
+            marginTop: 10,
+            fontSize: 11,
+          }}
+        >
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              onToggleStatus(rule);
+            }}
+            style={{
+              borderRadius: 999,
+              padding: "6px 10px",
+              border: "1px solid #E5E7EB",
+              background: disabled ? "#FFF7ED" : "#ECFDF3",
+              color: disabled ? "#92400E" : "#166534",
+              cursor: "pointer",
+            }}
+          >
+            {disabled ? "Enable rule" : "Disable rule"}
+          </button>
+
+          <div style={{ display: "flex", gap: 8 }}>
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                onEdit();
+              }}
+              style={{
+                borderRadius: 999,
+                padding: "6px 10px",
+                border: "1px solid #E5E7EB",
+                background: "#FFF",
+                cursor: "pointer",
+              }}
+            >
+              Edit
+            </button>
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                onDuplicate(rule);
+              }}
+              style={{
+                borderRadius: 999,
+                padding: "6px 10px",
+                border: "1px solid #E5E7EB",
+                background: "#F9FAFB",
+                cursor: "pointer",
+              }}
+            >
+              Duplicate
+            </button>
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                onDeleteRequest(rule);
+              }}
+              style={{
+                borderRadius: 999,
+                padding: "6px 10px",
+                border: "none",
+                background: "rgba(239,68,68,0.08)",
+                color: "#B91C1C",
+                cursor: "pointer",
+              }}
+            >
+              Delete
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* =========================== */
+/*    MAIN ELITE RULES PAGE    */
+/* =========================== */
+export default function EliteRulesPage() {
+  const { isAdmin } = useRole();
+  const { activeOrgId } = useOrg();
+
+  const [groups, setGroups] = useState(SAMPLE_GROUPS);
+  const [rules, setRules] = useState(SAMPLE_RULES);
+  const [selectedGroupId, setSelectedGroupId] = useState("general-liability");
+  const [selectedRuleId, setSelectedRuleId] = useState(null);
+
+  const [loading, setLoading] = useState(false);
+  const [aiThinking, setAiThinking] = useState(false);
+  const [error, setError] = useState(null);
+
+  const [editingRule, setEditingRule] = useState(null);
+  const [showNewRule, setShowNewRule] = useState(false);
+
+  const [historyOpen, setHistoryOpen] = useState(false);
+  const [historyItems, setHistoryItems] = useState([]);
+
+  const [aiModalOpen, setAiModalOpen] = useState(false);
+  const [aiSuggestions, setAiSuggestions] = useState([]);
+
+  const [groupEditorOpen, setGroupEditorOpen] = useState(false);
+  const [groupDraft, setGroupDraft] = useState(null);
+
+  const [deleteModalOpen, setDeleteModalOpen] = useState(false);
+  const [ruleToDelete, setRuleToDelete] = useState(null);
+
+  const [severityWeights, setSeverityWeights] = useState(() => {
+    const initial = {};
+    SAMPLE_GROUPS.forEach((g) => {
+      initial[g.id] = { ...DEFAULT_WEIGHTS };
+    });
+    return initial;
+  });
+
+  /* LOAD HYBRID DATA */
+  useEffect(() => {
+    let cancelled = false;
+
+    async function load() {
+      setLoading(true);
+      try {
+        const [gRes, rRes] = await Promise.all([
+          fetch("/api/requirements-v2/groups").catch(() => null),
+          fetch("/api/requirements-v2/rules").catch(() => null),
+        ]);
+
+        const g = gRes ? await gRes.json().catch(() => null) : null;
+        const r = rRes ? await rRes.json().catch(() => null) : null;
+
+        if (!cancelled) {
+          if (g?.groups?.length) {
+            setGroups(g.groups);
+            setSeverityWeights((prev) => {
+              const next = { ...prev };
+              g.groups.forEach((grp) => {
+                if (!next[grp.id]) next[grp.id] = { ...DEFAULT_WEIGHTS };
+              });
+              return next;
+            });
+          }
+
+          if (r?.rules?.length) setRules(r.rules);
+        }
+      } catch (err) {
+        if (!cancelled) setError("Failed to load rules.");
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    }
+
+    load();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  /* FILTER VISIBLE RULES */
+  const visibleRules = useMemo(
+    () =>
+      rules.filter(
+        (r) => r.groupId === selectedGroupId || r.group_id === selectedGroupId
+      ),
+    [rules, selectedGroupId]
+  );
+
+  /* AUTO SELECT FIRST RULE */
+  useEffect(() => {
+    if (visibleRules.length > 0) {
+      setSelectedRuleId(visibleRules[0].id);
+    } else {
+      setSelectedRuleId(null);
+    }
+  }, [visibleRules]);
+
+  const selectedRule = useMemo(
+    () => rules.find((r) => r.id === selectedRuleId) || null,
+    [rules, selectedRuleId]
+  );
+
+  /* UPDATE RULE (RIGHT PANEL) */
+  const handleUpdateRule = (id, updates) => {
+    setRules((prev) => prev.map((r) => (r.id === id ? { ...r, ...updates } : r)));
+  };
+
+  /* AI EXPAND FOR RIGHT PANEL */
+  async function handleAIExpand(prompt) {
+    try {
+      const res = await fetch("/api/elite/expand-rule", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ prompt, rule: selectedRule }),
+      });
+      const data = await res.json();
+      if (!data.ok) throw new Error(data.error || "AI expansion failed");
+      return data.expanded;
+    } catch (err) {
+      console.error(err);
+      return null;
+    }
+  }
+
+  /* REORDER RULES */
+  function moveRule(dragId, hoverId) {
+    setRules((prev) => {
+      const list = [...prev];
+      const dragIndex = list.findIndex((x) => x.id === dragId);
+      const hoverIndex = list.findIndex((x) => x.id === hoverId);
+      if (dragIndex === -1 || hoverIndex === -1) return prev;
+      const [removed] = list.splice(dragIndex, 1);
+      list.splice(hoverIndex, 0, removed);
+      return list;
+    });
+  }
+
+  /* SAVE EDITED RULE */
+  function handleSaveRule(updated) {
+    setRules((prev) =>
+      prev.map((r) => (r.id === updated.id ? updated : r))
+    );
+    setEditingRule(null);
+    setHistoryItems((prev) => [
+      {
+        id: "h-" + Date.now(),
+        ruleId: updated.id,
+        ruleName: updated.name,
+        when: new Date().toLocaleString(),
+        summary: "Rule edited",
+      },
+      ...prev,
+    ]);
+  }
+
+  /* CREATE NEW RULE */
+  function handleCreateRule(newRule) {
+    setRules((prev) => [...prev, newRule]);
+    setShowNewRule(false);
+    setSelectedRuleId(newRule.id);
+    setHistoryItems((prev) => [
+      {
+        id: "h-" + Date.now(),
+        ruleId: newRule.id,
+        ruleName: newRule.name,
+        when: new Date().toLocaleString(),
+        summary: "Rule created",
+      },
+      ...prev,
+    ]);
+  }
+
+  /* TOGGLE STATUS */
+  function handleToggleStatus(rule) {
+    const newStatus = rule.status === "disabled" ? "active" : "disabled";
+    setRules((prev) =>
+      prev.map((r) =>
+        r.id === rule.id ? { ...r, status: newStatus } : r
+      )
+    );
+    setHistoryItems((prev) => [
+      {
+        id: "h-" + Date.now(),
+        ruleId: rule.id,
+        ruleName: rule.name,
+        when: new Date().toLocaleString(),
+        summary:
+          newStatus === "active" ? "Rule re-enabled" : "Rule disabled",
+      },
+      ...prev,
+    ]);
+  }
+
+  /* DUPLICATE RULE */
+  function handleDuplicateRule(rule) {
+    const clone = {
+      ...rule,
+      id: "rule-" + Date.now(),
+      name: rule.name + " (copy)",
+      status: "draft",
+    };
+    handleCreateRule(clone);
+  }
+
+  /* DELETE FLOW */
+  function handleDeleteRequest(rule) {
+    setRuleToDelete(rule);
+    setDeleteModalOpen(true);
+  }
+
+  function handleDeleteConfirm() {
+    if (!ruleToDelete) return;
+    const deleted = ruleToDelete;
+    setRules((prev) => prev.filter((r) => r.id !== deleted.id));
+    setHistoryItems((prev) => [
+      {
+        id: "h-" + Date.now(),
+        ruleId: deleted.id,
+        ruleName: deleted.name,
+        when: new Date().toLocaleString(),
+        summary: "Rule deleted",
+      },
+      ...prev,
+    ]);
+    setRuleToDelete(null);
+    setDeleteModalOpen(false);
+  }
+
+  /* GROUP EDIT */
+  function handleGroupEditOpen() {
+    const g = groups.find((x) => x.id === selectedGroupId);
+    if (!g) return;
+    setGroupDraft(g);
+    setGroupEditorOpen(true);
+  }
+
+  function handleGroupSave(updatedGroup) {
+    setGroups((prev) =>
+      prev.map((g) => (g.id === updatedGroup.id ? updatedGroup : g))
+    );
+    setGroupEditorOpen(false);
+  }
+
+  /* AI SUGGESTIONS */
+  function handleAiBuild() {
+    setAiThinking(true);
+    const stub = [
+      {
+        id: "s1",
+        groupId: selectedGroupId,
+        name: "GL Additional Insured Endorsement",
+        severity: "high",
+        description:
+          "Require vendors to list your org as Additional Insured on GL.",
+        logic: "has_additional_insured_endorsement == true",
+        status: "draft",
+      },
+      {
+        id: "s2",
+        groupId: selectedGroupId,
+        name: "Primary & Non-Contributory Wording",
+        severity: "medium",
+        description:
+          "Prefer GL policies with primary + non-contributory wording.",
+        logic: "has_primary_non_contrib == true",
+        status: "draft",
+      },
+    ];
+    setTimeout(() => {
+      setAiSuggestions(stub);
+      setAiThinking(false);
+      setAiModalOpen(true);
+    }, 400);
+  }
+
+  /* SEVERITY WEIGHT HANDLER */
+  function handleWeightChange(groupId, key, value) {
+    const numeric = parseFloat(value);
+    if (isNaN(numeric)) return;
+    setSeverityWeights((prev) => ({
+      ...prev,
+      [groupId]: {
+        ...(prev[groupId] || DEFAULT_WEIGHTS),
+        [key]: numeric,
+      },
+    }));
+  }
+
+  const weights = severityWeights[selectedGroupId] || DEFAULT_WEIGHTS;
+
+  return (
+    <div style={{ minHeight: "100vh", background: GP.surface, paddingLeft: 220 }}>
+      <div style={{ padding: "30px 40px" }}>
+        {/* HEADER */}
+        <div
+          style={{
+            display: "flex",
+            justifyContent: "space-between",
+            marginBottom: 24,
+            gap: 20,
+          }}
+        >
+          <div>
+            <div
+              style={{
+                fontSize: 12,
+                textTransform: "uppercase",
+                letterSpacing: "0.16em",
+                color: GP.inkSoft,
+                marginBottom: 6,
+              }}
+            >
+              Elite Rule Engine V2
+            </div>
+
+            <h1
+              style={{
+                fontSize: 30,
+                fontWeight: 700,
+                color: GP.ink,
+                marginBottom: 4,
+              }}
+            >
+              Requirements & Risk Logic
+            </h1>
+
+            <p style={{ fontSize: 14, color: GP.inkSoft, maxWidth: 520 }}>
+              Design, reorder, and score the rules powering your AI-driven vendor
+              compliance engine.
+            </p>
+
+            {error && (
+              <p style={{ marginTop: 8, fontSize: 12, color: "#B45309" }}>
+                ⚠️ {error}
+              </p>
+            )}
+          </div>
+
+          <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+            <button
+              onClick={() => setHistoryOpen(true)}
+              style={{
+                padding: "9px 14px",
+                borderRadius: 999,
+                border: "1px solid #E5E7EB",
+                background: "#FFF",
+                cursor: "pointer",
+              }}
+            >
+              View Rule History
+            </button>
+
+            <button
+              onClick={() => setShowNewRule(true)}
+              style={{
+                padding: "9px 14px",
+                borderRadius: 999,
+                background:
+                  "linear-gradient(135deg,#0057FF,#00E0FF 70%,#8A2BFF)",
+                color: "#FFF",
+                fontWeight: 600,
+                boxShadow: "0 14px 35px rgba(37,99,235,0.45)",
+                border: "none",
+                cursor: "pointer",
+              }}
+            >
+              ＋ New Rule
+            </button>
+
+            <button
+              onClick={handleAiBuild}
+              disabled={aiThinking}
+              style={{
+                padding: "7px 12px",
+                borderRadius: 999,
+                background: "rgba(56,189,248,0.12)",
+                color: "#0369A1",
+                border: "none",
+                fontSize: 12,
+                cursor: "pointer",
+              }}
+            >
+              {aiThinking ? "Thinking…" : "✨ AI: Suggest Rules"}
+            </button>
+          </div>
+        </div>
+
+        {/* MAIN GRID */}
+        <div
+          style={{
+            display: "grid",
+            gridTemplateColumns: "320px minmax(0, 1.4fr) 380px",
+            gap: 24,
+            alignItems: "flex-start",
+          }}
+        >
+          {/* LEFT: GROUP LIST */}
+          <div
+            style={{
+              background: GP.panel,
+              borderRadius: 20,
+              border: "1px solid rgba(226,232,240,0.95)",
+              boxShadow: GP.shadow,
+              padding: 18,
+            }}
+          >
+            <div
+              style={{
+                fontSize: 13,
+                fontWeight: 600,
+                textTransform: "uppercase",
+                letterSpacing: "0.12em",
+                color: GP.inkSoft,
+                marginBottom: 8,
+              }}
+            >
+              Requirement Groups
+            </div>
+
+            <p style={{ fontSize: 12, color: GP.inkSoft, marginBottom: 14 }}>
+              Select a coverage group to view and reorder its rules.
+            </p>
+
+            <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+              {groups.map((g) => {
+                const selected = g.id === selectedGroupId;
+
+                return (
+                  <button
+                    key={g.id}
+                    onClick={() => setSelectedGroupId(g.id)}
+                    style={{
+                      textAlign: "left",
+                      padding: "10px 12px",
+                      borderRadius: 14,
+                      border: selected
+                        ? "1px solid rgba(37,99,235,0.6)"
+                        : "1px solid rgba(226,232,240,0.95)",
+                      background: selected
+                        ? "linear-gradient(135deg,#EEF2FF,#EFF6FF)"
+                        : "#FFF",
+                      cursor: "pointer",
+                      display: "flex",
+                      gap: 10,
+                      alignItems: "flex-start",
+                    }}
+                  >
+                    <div
+                      style={{
+                        width: 28,
+                        height: 28,
+                        borderRadius: 999,
+                        background: selected
+                          ? "rgba(37,99,235,0.1)"
+                          : "rgba(15,23,42,0.03)",
+                        display: "flex",
+                        justifyContent: "center",
+                        alignItems: "center",
+                        fontSize: 16,
+                      }}
+                    >
+                      {g.icon}
+                    </div>
+
+                    <div>
+                      <div
+                        style={{
+                          fontSize: 14,
+                          fontWeight: 600,
+                          color: GP.ink,
+                          marginBottom: 2,
+                        }}
+                      >
+                        {g.label}
+                      </div>
+
+                      <div style={{ fontSize: 12, color: GP.inkSoft }}>
+                        {g.description}
+                      </div>
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
+
+            <button
+              type="button"
+              onClick={handleGroupEditOpen}
+              style={{
+                marginTop: 12,
+                fontSize: 12,
+                borderRadius: 999,
+                padding: "7px 12px",
+                border: "1px dashed rgba(148,163,184,0.8)",
+                background: "#F9FAFB",
+                color: GP.inkSoft,
+                cursor: "pointer",
+              }}
+            >
+              ✏️ Edit selected group
+            </button>
+          </div>
+
+          {/* MIDDLE: RULE LIST */}
+          <DndProvider backend={HTML5Backend}>
+            <div
+              style={{
+                background: GP.panel,
+                borderRadius: 20,
+                border: "1px solid rgba(226,232,240,0.95)",
+                boxShadow: GP.shadow,
+                padding: 18,
+                overflow: "hidden",
+              }}
+            >
+              <div
+                style={{
+                  display: "flex",
+                  justifyContent: "space-between",
+                  marginBottom: 10,
+                  alignItems: "center",
+                }}
+              >
+                <div>
+                  <div
+                    style={{
+                      fontSize: 13,
+                      fontWeight: 600,
+                      textTransform: "uppercase",
+                      letterSpacing: "0.12em",
+                      color: GP.inkSoft,
+                      marginBottom: 3,
+                    }}
+                  >
+                    {groups.find((g) => g.id === selectedGroupId)?.label ||
+                      "Rules"}
+                  </div>
+
+                  <div
+                    style={{
+                      fontSize: 16,
+                      fontWeight: 700,
+                      color: GP.ink,
+                    }}
+                  >
+                    Execution order & severity scoring
+                  </div>
+                </div>
+
+                <div
+                  style={{
+                    fontSize: 11,
+                    color: GP.inkSoft,
+                    textAlign: "right",
+                  }}
+                >
+                  {visibleRules.length} rule
+                  {visibleRules.length === 1 ? "" : "s"}
+                  <br />
+                  <span style={{ opacity: 0.75 }}>
+                    Drag to reorder (top = highest priority)
+                  </span>
+                </div>
+              </div>
+
+              {/* SEVERITY WEIGHTING STRIP */}
+              <div
+                style={{
+                  marginBottom: 16,
+                  padding: 10,
+                  borderRadius: 14,
+                  border: "1px dashed rgba(148,163,184,0.5)",
+                  background: "rgba(248,250,252,0.9)",
+                }}
+              >
+                <div
+                  style={{
+                    display: "flex",
+                    justifyContent: "space-between",
+                    marginBottom: 6,
+                    alignItems: "center",
+                    gap: 8,
+                  }}
+                >
+                  <div
+                    style={{
+                      fontSize: 12,
+                      fontWeight: 600,
+                      color: GP.inkSoft,
+                      textTransform: "uppercase",
+                      letterSpacing: "0.1em",
+                    }}
+                  >
+                    Severity weighting
+                  </div>
+                  <div
+                    style={{
+                      fontSize: 11,
+                      color: GP.inkSoft,
+                      textAlign: "right",
+                    }}
+                  >
+                    These weights influence scoring & AI reasoning.
+                  </div>
+                </div>
+
+                <div
+                  style={{
+                    display: "grid",
+                    gridTemplateColumns: "repeat(3, minmax(0, 1fr))",
+                    gap: 10,
+                  }}
+                >
+                  <div>
+                    <div
+                      style={{
+                        fontSize: 11,
+                        fontWeight: 600,
+                        color: "#B91C1C",
+                        marginBottom: 2,
+                      }}
+                    >
+                      High
+                    </div>
+                    <input
+                      type="number"
+                      step="0.1"
+                      min="0"
+                      max="3"
+                      value={weights.high}
+                      onChange={(e) =>
+                        handleWeightChange(selectedGroupId, "high", e.target.value)
+                      }
+                      style={{
+                        ...inputStyle,
+                        padding: "6px 8px",
+                        fontSize: 12,
+                      }}
+                    />
+                  </div>
+
+                  <div>
+                    <div
+                      style={{
+                        fontSize: 11,
+                        fontWeight: 600,
+                        color: "#92400E",
+                        marginBottom: 2,
+                      }}
+                    >
+                      Medium
+                    </div>
+                    <input
+                      type="number"
+                      step="0.1"
+                      min="0"
+                      max="3"
+                      value={weights.medium}
+                      onChange={(e) =>
+                        handleWeightChange(selectedGroupId, "medium", e.target.value)
+                      }
+                      style={{
+                        ...inputStyle,
+                        padding: "6px 8px",
+                        fontSize: 12,
+                      }}
+                    />
+                  </div>
+
+                  <div>
+                    <div
+                      style={{
+                        fontSize: 11,
+                        fontWeight: 600,
+                        color: "#166534",
+                        marginBottom: 2,
+                      }}
+                    >
+                      Low
+                    </div>
+                    <input
+                      type="number"
+                      step="0.1"
+                      min="0"
+                      max="3"
+                      value={weights.low}
+                      onChange={(e) =>
+                        handleWeightChange(selectedGroupId, "low", e.target.value)
+                      }
+                      style={{
+                        ...inputStyle,
+                        padding: "6px 8px",
+                        fontSize: 12,
+                      }}
+                    />
+                  </div>
+                </div>
+              </div>
+
+              {loading && (
+                <div style={{ color: GP.inkSoft, fontSize: 12 }}>
+                  Loading rules…
+                </div>
+              )}
+
+              {!loading && visibleRules.length === 0 && (
+                <div style={{ fontSize: 13, color: GP.inkSoft }}>
+                  No rules yet. Use <strong>New Rule</strong> above.
+                </div>
+              )}
+
+              {!loading &&
+                visibleRules.length > 0 &&
+                visibleRules.map((r, i) => (
+                  <RuleCard
+                    key={r.id}
+                    rule={r}
+                    index={i}
+                    moveRule={moveRule}
+                    onEdit={() => {
+                      setEditingRule(r);
+                      setSelectedRuleId(r.id);
+                    }}
+                    onToggleStatus={handleToggleStatus}
+                    onDuplicate={handleDuplicateRule}
+                    onDeleteRequest={handleDeleteRequest}
+                    onSelect={() => setSelectedRuleId(r.id)}
+                  />
+                ))}
+            </div>
+          </DndProvider>
+
+          {/* RIGHT: AI RULE PANEL */}
+          <RuleEnginePanel
+            selectedRule={selectedRule}
+            onUpdateRule={handleUpdateRule}
+            onAIExpand={handleAIExpand}
+          />
+        </div>
+      </div>
+
+      {/* MODALS */}
+      {editingRule && (
+        <EditRuleModal
+          rule={editingRule}
+          onClose={() => setEditingRule(null)}
+          onSave={handleSaveRule}
+        />
+      )}
+
+      {showNewRule && (
+        <NewRuleModal
+          groups={groups}
+          defaultGroupId={selectedGroupId}
+          onCreate={handleCreateRule}
+          onClose={() => setShowNewRule(false)}
+        />
+      )}
+
+      <RuleHistoryDrawer
+        open={historyOpen}
+        onClose={() => setHistoryOpen(false)}
+        items={historyItems}
+      />
+
+      <AiSuggestModal
+        open={aiModalOpen}
+        onClose={() => setAiModalOpen(false)}
+        suggestions={aiSuggestions}
+        onApply={(s) => {
+          const newRule = {
+            id: "rule-" + Date.now(),
+            name: s.name,
+            groupId: s.groupId,
+            severity: s.severity,
+            status: s.status,
+            description: s.description,
+            logic: s.logic,
+          };
+          handleCreateRule(newRule);
+          setAiModalOpen(false);
+        }}
+      />
+
+      <GroupEditorModal
+        open={groupEditorOpen}
+        group={groupDraft}
+        onSave={handleGroupSave}
+        onClose={() => setGroupEditorOpen(false)}
+      />
+
+      <DeleteRuleModal
+        open={deleteModalOpen}
+        rule={ruleToDelete}
+        onCancel={() => setDeleteModalOpen(false)}
+        onConfirm={handleDeleteConfirm}
+      />
+    </div>
+  );
+}
