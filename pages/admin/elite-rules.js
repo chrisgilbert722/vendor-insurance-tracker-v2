@@ -102,6 +102,13 @@ const SAMPLE_RULES = [
   },
 ];
 
+/* DEFAULT SEVERITY WEIGHTS (used by UI) */
+const DEFAULT_WEIGHTS = {
+  high: 1.0,
+  medium: 0.7,
+  low: 0.4,
+};
+
 /* SEVERITY CHIP */
 function severityStyle(level) {
   switch (level) {
@@ -178,6 +185,7 @@ const inputStyle = {
   fontSize: 13,
   background: "#FFF",
 };
+
 /* EDIT RULE MODAL */
 function EditRuleModal({ rule, onClose, onSave }) {
   const [name, setName] = useState(rule.name || "");
@@ -637,7 +645,6 @@ function NewRuleModal({ groups, onClose, onCreate, defaultGroupId }) {
     </div>
   );
 }
-
 /* DnD-enabled RuleCard */
 function RuleCard({ rule, index, moveRule, onEdit }) {
   const sev = severityStyle(rule.severity || "low");
@@ -810,6 +817,7 @@ function RuleCard({ rule, index, moveRule, onEdit }) {
     </div>
   );
 }
+
 /* MAIN RULE ENGINE PAGE */
 export default function EliteRulesPage() {
   const { isAdmin } = useRole();
@@ -823,6 +831,15 @@ export default function EliteRulesPage() {
   const [error, setError] = useState(null);
   const [editingRule, setEditingRule] = useState(null);
   const [showNewRule, setShowNewRule] = useState(false);
+
+  /* NEW: Severity weights per group */
+  const [severityWeights, setSeverityWeights] = useState(() => {
+    const initial = {};
+    SAMPLE_GROUPS.forEach((g) => {
+      initial[g.id] = { ...DEFAULT_WEIGHTS };
+    });
+    return initial;
+  });
 
   /* HYBRID LOADER */
   useEffect(() => {
@@ -843,6 +860,16 @@ export default function EliteRulesPage() {
         if (!cancelled) {
           if (g && Array.isArray(g.groups) && g.groups.length > 0) {
             setGroups(g.groups);
+            // ensure weights exist for any API groups
+            setSeverityWeights((prev) => {
+              const next = { ...prev };
+              g.groups.forEach((group) => {
+                if (!next[group.id]) {
+                  next[group.id] = { ...DEFAULT_WEIGHTS };
+                }
+              });
+              return next;
+            });
           }
 
           if (r && Array.isArray(r.rules) && r.rules.length > 0) {
@@ -916,6 +943,22 @@ export default function EliteRulesPage() {
       return list;
     });
     setShowNewRule(false);
+  }
+
+  function getWeightsForGroup(groupId) {
+    return severityWeights[groupId] || DEFAULT_WEIGHTS;
+  }
+
+  function handleWeightChange(groupId, key, value) {
+    const numeric = parseFloat(value);
+    if (Number.isNaN(numeric)) return;
+    setSeverityWeights((prev) => ({
+      ...prev,
+      [groupId]: {
+        ...(prev[groupId] || DEFAULT_WEIGHTS),
+        [key]: numeric,
+      },
+    }));
   }
   return (
     <div style={{ minHeight: "100vh", background: GP.surface }}>
@@ -1173,6 +1216,157 @@ export default function EliteRulesPage() {
                 </div>
               </div>
 
+              {/* 🔥 NEW: SEVERITY WEIGHTING STRIP */}
+              {(() => {
+                const w = getWeightsForGroup(selectedGroupId);
+                return (
+                  <div
+                    style={{
+                      marginBottom: 16,
+                      padding: 10,
+                      borderRadius: 14,
+                      border: "1px dashed rgba(148,163,184,0.5)",
+                      background: "rgba(248,250,252,0.9)",
+                    }}
+                  >
+                    <div
+                      style={{
+                        display: "flex",
+                        justifyContent: "space-between",
+                        marginBottom: 6,
+                        alignItems: "center",
+                        gap: 8,
+                      }}
+                    >
+                      <div
+                        style={{
+                          fontSize: 12,
+                          fontWeight: 600,
+                          color: GP.inkSoft,
+                          textTransform: "uppercase",
+                          letterSpacing: "0.1em",
+                        }}
+                      >
+                        Severity weighting
+                      </div>
+                      <div
+                        style={{
+                          fontSize: 11,
+                          color: GP.inkSoft,
+                          textAlign: "right",
+                        }}
+                      >
+                        These weights will influence future risk scoring and AI
+                        reasoning.
+                      </div>
+                    </div>
+
+                    <div
+                      style={{
+                        display: "grid",
+                        gridTemplateColumns: "repeat(3, minmax(0, 1fr))",
+                        gap: 10,
+                      }}
+                    >
+                      <div>
+                        <div
+                          style={{
+                            fontSize: 11,
+                            fontWeight: 600,
+                            color: "#B91C1C",
+                            marginBottom: 2,
+                          }}
+                        >
+                          High
+                        </div>
+                        <input
+                          type="number"
+                          step="0.1"
+                          min="0"
+                          max="3"
+                          value={w.high}
+                          onChange={(e) =>
+                            handleWeightChange(
+                              selectedGroupId,
+                              "high",
+                              e.target.value
+                            )
+                          }
+                          style={{
+                            ...inputStyle,
+                            padding: "6px 8px",
+                            fontSize: 12,
+                          }}
+                        />
+                      </div>
+
+                      <div>
+                        <div
+                          style={{
+                            fontSize: 11,
+                            fontWeight: 600,
+                            color: "#92400E",
+                            marginBottom: 2,
+                          }}
+                        >
+                          Medium
+                        </div>
+                        <input
+                          type="number"
+                          step="0.1"
+                          min="0"
+                          max="3"
+                          value={w.medium}
+                          onChange={(e) =>
+                            handleWeightChange(
+                              selectedGroupId,
+                              "medium",
+                              e.target.value
+                            )
+                          }
+                          style={{
+                            ...inputStyle,
+                            padding: "6px 8px",
+                            fontSize: 12,
+                          }}
+                        />
+                      </div>
+
+                      <div>
+                        <div
+                          style={{
+                            fontSize: 11,
+                            fontWeight: 600,
+                            color: "#166534",
+                            marginBottom: 2,
+                          }}
+                        >
+                          Low
+                        </div>
+                        <input
+                          type="number"
+                          step="0.1"
+                          min="0"
+                          max="3"
+                          value={w.low}
+                          onChange={(e) =>
+                            handleWeightChange(
+                              selectedGroupId,
+                              "low",
+                              e.target.value
+                            )
+                          }
+                          style={{
+                            ...inputStyle,
+                            padding: "6px 8px",
+                            fontSize: 12,
+                          }}
+                        />
+                      </div>
+                    </div>
+                  </div>
+                );
+              })()}
               {/* RULE LIST */}
               {loading && (
                 <div style={{ color: GP.inkSoft, fontSize: 12 }}>
