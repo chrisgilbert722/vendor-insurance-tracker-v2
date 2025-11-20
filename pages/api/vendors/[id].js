@@ -1,392 +1,239 @@
-// pages/vendor/[id].js
-import { useRouter } from "next/router";
-import { useEffect, useState } from "react";
+// pages/api/vendors/[id].js
 
-export default function VendorPage() {
-  const router = useRouter();
-  const { id } = router.query;
+// TEMP MOCK IMPLEMENTATION
+// Later: replace with real Postgres query using vendorId + orgId, etc.
 
-  const [vendor, setVendor] = useState(null);
-  const [org, setOrg] = useState(null);
-  const [policies, setPolicies] = useState([]);
-  const [compliance, setCompliance] = useState(null);
+const mockVendors = {
+  "summit-roofing": {
+    id: "summit-roofing",
+    name: "Summit Roofing & Coatings",
+    category: "Roofing / Exterior Work",
+    location: "Denver, CO",
+    tags: ["Onsite contractor", "High risk", "Exterior work"],
+    contactEmail: "risk@summitroofing.example",
+    complianceScore: 72,
+    status: "At Risk",
+    riskLevel: "High",
+    alertsOpen: 3,
+    criticalIssues: 1,
+    lastUpdated: "2025-11-20T14:23:00Z",
+    aiSummary:
+      "Vendor is 72% compliant. GL limits are below blueprint, Workers Comp is missing for onsite crew, and the primary COI expires in 23 days. Treat as high risk until limits and coverage are corrected.",
 
-  const [loadingVendor, setLoadingVendor] = useState(true);
-  const [loadingCompliance, setLoadingCompliance] = useState(true);
-  const [error, setError] = useState("");
+    coverage: [
+      {
+        id: "gl-each-occurrence",
+        label: "General Liability — Each Occurrence",
+        required: 1000000,
+        actual: 500000,
+        unit: "per occurrence",
+        status: "Fail",
+        severity: "High",
+        field: "Certificate.glEachOccurrence",
+      },
+      {
+        id: "gl-aggregate",
+        label: "General Liability — General Aggregate",
+        required: 2000000,
+        actual: 2000000,
+        unit: "aggregate",
+        status: "Pass",
+        severity: "Medium",
+        field: "Certificate.glGeneralAggregate",
+      },
+      {
+        id: "auto-liab",
+        label: "Auto Liability — Combined Single Limit",
+        required: 1000000,
+        actual: 1000000,
+        unit: "combined single limit",
+        status: "Pass",
+        severity: "High",
+        field: "Certificate.autoLiability",
+      },
+      {
+        id: "umbrella",
+        label: "Umbrella / Excess",
+        required: 5000000,
+        actual: 3000000,
+        unit: "limit",
+        status: "Fail",
+        severity: "High",
+        field: "Certificate.umbrellaLimit",
+      },
+    ],
 
-  // Fix Plan State
-  const [fixLoading, setFixLoading] = useState(false);
-  const [fixError, setFixError] = useState("");
-  const [fixSteps, setFixSteps] = useState([]);
-  const [fixSubject, setFixSubject] = useState("");
-  const [fixBody, setFixBody] = useState("");
-  const [fixInternalNotes, setFixInternalNotes] = useState("");
+    endorsements: [
+      {
+        id: "ai",
+        label: "Additional Insured – Ongoing Operations",
+        required: true,
+        present: false,
+        severity: "Critical",
+        expectation: "AI wording (CG 20 10 or equivalent) naming your org.",
+        finding: "No AI wording detected on COI or endorsements.",
+      },
+      {
+        id: "waiver",
+        label: "Waiver of Subrogation",
+        required: true,
+        present: true,
+        severity: "Medium",
+        expectation:
+          "Named waiver of subrogation in favor of your organization.",
+        finding: "Generic waiver wording present; does not name your org.",
+      },
+    ],
 
-  // ---------------- LOAD VENDOR & POLICIES ----------------
-  useEffect(() => {
-    if (!id) return;
+    documents: [
+      {
+        id: "coi",
+        label: "Certificate of Insurance",
+        type: "COI",
+        status: "Expires in 23 days",
+        severity: "Medium",
+        present: true,
+      },
+      {
+        id: "contract",
+        label: "Signed Contract / MSA",
+        type: "Contract",
+        status: "On file",
+        severity: "Low",
+        present: true,
+      },
+      {
+        id: "safety",
+        label: "Safety Program / OSHA Docs",
+        type: "Safety",
+        status: "Missing",
+        severity: "Low",
+        present: false,
+      },
+    ],
 
-    async function loadVendor() {
-      try {
-        setLoadingVendor(true);
+    rulesFired: [
+      {
+        id: "r1",
+        severity: "Critical",
+        label: "General Liability Below Required",
+        description:
+          "GL each occurrence limit is below blueprint requirement while vendor is active.",
+        dsl: "Certificate.glEachOccurrence < Org.requiredGLEachOccurrence AND Vendor.isActive = true",
+        timestamp: "2025-11-20T14:23:00Z",
+      },
+      {
+        id: "r2",
+        severity: "High",
+        label: "Onsite Contractor Requires Workers Comp",
+        description:
+          "Vendor flagged as onsite contractor but no Workers Compensation coverage found.",
+        dsl: "Vendor.category IN ('Onsite Contractor','Construction') AND Certificate.workersComp IS NULL",
+        timestamp: "2025-11-18T13:40:00Z",
+      },
+      {
+        id: "r3",
+        severity: "Medium",
+        label: "Expires Within 30 Days",
+        description:
+          "Primary GL policy expiration within next 30 days for active vendor.",
+        dsl: "Certificate.glExpirationDate <= today + 30 days AND Vendor.isActive = true",
+        timestamp: "2025-11-17T10:30:00Z",
+      },
+    ],
 
-        const res = await fetch(`/api/vendors/${id}`);
-        const data = await res.json();
-        if (!res.ok || !data.ok) throw new Error(data.error);
+    requirementsSummary: {
+      total: 14,
+      passed: 10,
+      failed: 4,
+      byType: {
+        coverage: { passed: 2, failed: 2 },
+        endorsements: { passed: 1, failed: 1 },
+        documents: { passed: 2, failed: 1 },
+        logical: { passed: 5, failed: 0 },
+      },
+    },
 
-        setVendor(data.vendor);
-        setOrg(data.organization);
-        setPolicies(data.policies);
+    timeline: [
+      {
+        id: "t1",
+        type: "Rule",
+        label: "GL limit below required",
+        severity: "Critical",
+        timestamp: "2025-11-20T14:23:00Z",
+        detail:
+          "GL each occurrence $500,000. Blueprint requires $1,000,000 per occurrence.",
+      },
+      {
+        id: "t2",
+        type: "Rule",
+        label: "Onsite contractor missing Workers Comp",
+        severity: "High",
+        timestamp: "2025-11-18T13:40:00Z",
+        detail:
+          "Vendor category = Onsite contractor; Workers Comp coverage not detected on any policy.",
+      },
+      {
+        id: "t3",
+        type: "Rule",
+        label: "GL policy expires in 23 days",
+        severity: "Medium",
+        timestamp: "2025-11-17T10:30:00Z",
+        detail:
+          "Primary GL expiration in 23 days. Email notification sent to vendor contact.",
+      },
+      {
+        id: "t4",
+        type: "Document",
+        label: "Contract uploaded",
+        severity: "Low",
+        timestamp: "2025-11-12T09:10:00Z",
+        detail: "Signed MSA (3-year term) uploaded and linked to vendor.",
+      },
+    ],
+  },
+};
 
-        if (data.vendor?.org_id) {
-          await loadCompliance(data.vendor.id, data.vendor.org_id);
-        }
-      } catch (err) {
-        setError(err.message);
-      } finally {
-        setLoadingVendor(false);
-      }
+export default async function handler(req, res) {
+  const { id } = req.query;
+
+  try {
+    // Later: fetch from Postgres instead of mock
+    const vendor = mockVendors[id] || mockVendors["summit-roofing"];
+
+    if (!vendor) {
+      return res
+        .status(404)
+        .json({ ok: false, error: "Vendor not found" });
     }
 
-    async function loadCompliance(vendorId, orgId) {
-      try {
-        setLoadingCompliance(true);
-        const res = await fetch(
-          `/api/requirements/check?vendorId=${vendorId}&orgId=${orgId}`
-        );
-        const data = await res.json();
-        if (!data.ok) throw new Error(data.error);
+    // For compatibility with older code that expects org + policies:
+    const organization = {
+      id: "demo-org",
+      name: "Demo Organization",
+    };
 
-        setCompliance(data);
-      } catch (err) {
-        setCompliance({ error: err.message });
-      } finally {
-        setLoadingCompliance(false);
-      }
-    }
+    const policies = (vendor.coverage || []).map((c, idx) => ({
+      id: `policy-${idx}`,
+      coverage_type: c.label,
+      policy_number: "DEMO-123",
+      carrier: "Demo Carrier",
+      effective_date: "2025-01-01",
+      expiration_date: "2025-12-31",
+      limit_each_occurrence: c.required,
+      limit_aggregate: c.required * 2,
+    }));
 
-    loadVendor();
-  }, [id]);
-
-  // ---------------- FIX PLAN GENERATOR ----------------
-  async function loadFixPlan() {
-    if (!vendor || !org) return;
-
-    try {
-      setFixLoading(true);
-      setFixError("");
-      setFixSteps([]);
-      setFixSubject("");
-      setFixBody("");
-      setFixInternalNotes("");
-
-      const res = await fetch(
-        `/api/vendor/fix-plan?vendorId=${vendor.id}&orgId=${org.id}`
-      );
-      const data = await res.json();
-      if (!data.ok) throw new Error(data.error);
-
-      setFixSteps(data.steps);
-      setFixSubject(data.vendorEmailSubject);
-      setFixBody(data.vendorEmailBody);
-      setFixInternalNotes(data.internalNotes);
-    } catch (err) {
-      setFixError(err.message);
-    } finally {
-      setFixLoading(false);
-    }
+    return res.status(200).json({
+      ok: true,
+      vendor,
+      organization,
+      policies,
+    });
+  } catch (err) {
+    console.error("Vendor API error:", err);
+    return res
+      .status(500)
+      .json({ ok: false, error: err.message || "Server error" });
   }
-
-  // AUTO RUN FIX PLAN WHEN COMING FROM ALERTS
-  useEffect(() => {
-    if (router.query.fixPlan === "1" && vendor && org) {
-      loadFixPlan();
-    }
-  }, [router.query, vendor, org]);
-
-  // ---------------- PAGE STATES ----------------
-  if (loadingVendor) return <div style={{ padding: 40 }}>Loading vendor…</div>;
-  if (error) return <div style={{ padding: 40, color: "red" }}>{error}</div>;
-  if (!vendor) return <div style={{ padding: 40 }}>Vendor not found</div>;
-
-  // ---------------- UI ----------------
-  return (
-    <div style={{ padding: "30px 40px", maxWidth: 900, margin: "0 auto" }}>
-      <h1 style={{ fontSize: 32, fontWeight: 700 }}>{vendor.name}</h1>
-
-      {org && (
-        <p style={{ fontSize: 13, color: "#6b7280" }}>
-          Organization: <strong>{org.name}</strong>
-        </p>
-      )}
-
-      {/* ---------------- COMPLIANCE ---------------- */}
-      <div
-        style={{
-          background: "white",
-          border: "1px solid #e5e7eb",
-          borderRadius: 12,
-          padding: 20,
-          marginBottom: 30
-        }}
-      >
-        <h2 style={{ fontSize: 18, marginBottom: 8 }}>Compliance Summary</h2>
-
-        {loadingCompliance && <p>Checking compliance…</p>}
-        {compliance?.error && (
-          <p style={{ color: "red" }}>❌ {compliance.error}</p>
-        )}
-
-        {!loadingCompliance && compliance && !compliance.error && (
-          <>
-            <p style={{ fontWeight: 600 }}>{compliance.summary}</p>
-
-            {compliance.missing?.length > 0 && (
-              <>
-                <h4 style={{ color: "#b91c1c" }}>Missing Coverage</h4>
-                <ul>
-                  {compliance.missing.map((m, i) => (
-                    <li key={i}>{m.coverage_type}</li>
-                  ))}
-                </ul>
-              </>
-            )}
-
-            {compliance.failing?.length > 0 && (
-              <>
-                <h4 style={{ color: "#b45309" }}>Failing Requirements</h4>
-                <ul>
-                  {compliance.failing.map((f, i) => (
-                    <li key={i}>
-                      {f.coverage_type}: {f.reason}
-                    </li>
-                  ))}
-                </ul>
-              </>
-            )}
-
-            {compliance.passing?.length > 0 && (
-              <>
-                <h4 style={{ color: "#15803d" }}>Passing</h4>
-                <ul>
-                  {compliance.passing.map((p, i) => (
-                    <li key={i}>{p.coverage_type}</li>
-                  ))}
-                </ul>
-              </>
-            )}
-          </>
-        )}
-      </div>
-
-      {/* ---------------- FIX PLAN ---------------- */}
-      <div
-        style={{
-          background: "white",
-          border: "1px solid #e5e7eb",
-          borderRadius: 12,
-          padding: 20,
-          marginBottom: 30
-        }}
-      >
-        <div style={{ display: "flex", justifyContent: "space-between" }}>
-          <div>
-            <h2 style={{ fontSize: 18 }}>AI Fix Plan</h2>
-            <p style={{ color: "#6b7280", fontSize: 13 }}>
-              Hybrid G+Legal remediation plan
-            </p>
-          </div>
-
-          <button
-            onClick={loadFixPlan}
-            disabled={fixLoading}
-            style={{
-              padding: "8px 14px",
-              borderRadius: 999,
-              background: "#0f172a",
-              color: "white",
-              border: "none",
-              cursor: "pointer",
-              fontWeight: 600
-            }}
-          >
-            {fixLoading ? "Generating…" : "Generate Fix Plan"}
-          </button>
-        </div>
-
-        {fixError && <p style={{ color: "red" }}>{fixError}</p>}
-
-        {fixSteps.length > 0 && (
-          <>
-            <h3 style={{ marginTop: 10 }}>Action Steps</h3>
-            <ol>
-              {fixSteps.map((s, i) => (
-                <li key={i}>{s}</li>
-              ))}
-            </ol>
-          </>
-        )}
-
-        {fixSubject && (
-          <>
-            <h3 style={{ marginTop: 15 }}>Vendor Email Subject</h3>
-            <p
-              style={{
-                border: "1px solid #e5e7eb",
-                padding: 8,
-                borderRadius: 8
-              }}
-            >
-              {fixSubject}
-            </p>
-          </>
-        )}
-
-        {fixBody && (
-          <>
-            <h3 style={{ marginTop: 15 }}>Vendor Email Body</h3>
-            <textarea
-              readOnly
-              value={fixBody}
-              style={{
-                width: "100%",
-                minHeight: 140,
-                padding: 10,
-                borderRadius: 8,
-                border: "1px solid #e5e7eb",
-                fontFamily: "system-ui"
-              }}
-            />
-
-            {/* SEND FIX EMAIL */}
-            <button
-              onClick={async () => {
-                try {
-                  const res = await fetch("/api/vendor/send-fix-email", {
-                    method: "POST",
-                    headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify({
-                      vendorId: vendor.id,
-                      orgId: org.id,
-                      subject: fixSubject,
-                      body: fixBody
-                    })
-                  });
-
-                  const data = await res.json();
-                  if (!data.ok) throw new Error(data.error);
-
-                  alert(`Email sent to ${data.sentTo}`);
-                } catch (err) {
-                  alert("Email error: " + err.message);
-                }
-              }}
-              style={{
-                padding: "10px 14px",
-                borderRadius: 8,
-                background: "#0f172a",
-                color: "white",
-                width: "100%",
-                marginTop: 10,
-                fontWeight: 600
-              }}
-            >
-              📬 Send Fix Email
-            </button>
-
-            {/* EXPORT PDF */}
-            <button
-              onClick={async () => {
-                try {
-                  const res = await fetch("/api/vendor/fix-plan-pdf", {
-                    method: "POST",
-                    headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify({
-                      vendorName: vendor.name,
-                      steps: fixSteps,
-                      subject: fixSubject,
-                      body: fixBody,
-                      internalNotes: fixInternalNotes
-                    })
-                  });
-
-                  if (!res.ok) throw new Error("PDF failed");
-
-                  const blob = await res.blob();
-                  const url = window.URL.createObjectURL(blob);
-
-                  const a = document.createElement("a");
-                  a.href = url;
-                  a.download = `${vendor.name}-Fix-Plan.pdf`;
-                  a.click();
-                  window.URL.revokeObjectURL(url);
-                } catch (err) {
-                  alert("PDF error: " + err.message);
-                }
-              }}
-              style={{
-                padding: "10px 14px",
-                borderRadius: 8,
-                background: "#111827",
-                color: "white",
-                width: "100%",
-                marginTop: 10,
-                fontWeight: 600
-              }}
-            >
-              📄 Export Fix Plan PDF
-            </button>
-          </>
-        )}
-
-        {fixInternalNotes && (
-          <>
-            <h3 style={{ marginTop: 15 }}>Internal Notes</h3>
-            <pre>{fixInternalNotes}</pre>
-          </>
-        )}
-      </div>
-
-      {/* ---------------- POLICIES ---------------- */}
-      <div
-        style={{
-          background: "white",
-          border: "1px solid #e5e7eb",
-          borderRadius: 12,
-          padding: 20
-        }}
-      >
-        <h2>Policies</h2>
-        {policies.length === 0 && <p>No policies.</p>}
-        {policies.map((p) => (
-          <div
-            key={p.id}
-            style={{
-              background: "#f9fafb",
-              padding: 12,
-              borderRadius: 10,
-              marginBottom: 10
-            }}
-          >
-            <p><strong>{p.coverage_type}</strong></p>
-            <p>Policy #: {p.policy_number || "—"}</p>
-            <p>Carrier: {p.carrier || "—"}</p>
-            <p>
-              Effective: {p.effective_date || "—"} — Expires:{" "}
-              {p.expiration_date || "—"}
-            </p>
-            <p>
-              Limits: {p.limit_each_occurrence || "—"} /{" "}
-              {p.limit_aggregate || "—"}
-            </p>
-          </div>
-        ))}
-      </div>
-
-      <a href="/dashboard" style={{ color: "#2563eb", marginTop: 20 }}>
-        ← Back to Dashboard
-      </a>
-    </div>
-  );
 }
