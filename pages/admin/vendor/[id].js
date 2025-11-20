@@ -1,6 +1,6 @@
 // pages/admin/vendor/[id].js
 import { useRouter } from "next/router";
-import { useMemo, useState } from "react";
+import { useMemo, useState, useEffect } from "react";
 
 /* ===========================
    THEME TOKENS
@@ -21,8 +21,7 @@ const GP = {
 };
 
 /* ===========================
-   MOCK VENDOR PROFILES
-   (Later: replace with real data)
+   MOCK VENDOR PROFILES (fallback)
 =========================== */
 const vendorProfiles = {
   "summit-roofing": {
@@ -31,6 +30,7 @@ const vendorProfiles = {
     category: "Roofing / Exterior Work",
     location: "Denver, CO",
     tags: ["Onsite contractor", "High risk", "Exterior work"],
+    contactEmail: "risk@summitroofing.example", // demo
     complianceScore: 72,
     status: "At Risk",
     riskLevel: "High",
@@ -207,13 +207,13 @@ const vendorProfiles = {
     ],
   },
 
-  // Fallback / example if ID not found
   default: {
     id: "example-vendor",
     name: "Example Vendor, Inc.",
     category: "General Services",
     location: "Your City, USA",
     tags: ["Demo vendor"],
+    contactEmail: "vendor@example.com",
     complianceScore: 88,
     status: "Compliant",
     riskLevel: "Medium",
@@ -303,14 +303,17 @@ function formatTimeAgo(iso) {
   return diffDays + " d ago";
 }
 
-/* Build list of issues + email template */
+/* Build list of issues + email template (polished copy) */
 function buildOutreachContext(vendor, coverage, endorsements, documents, rules) {
   const failingCoverage = (coverage || []).filter((c) => c.status === "Fail");
   const missingEndorsements = (endorsements || []).filter(
     (e) => e.required && !e.present
   );
   const softEndorseIssues = (endorsements || []).filter(
-    (e) => e.present && e.finding && e.finding.toLowerCase().includes("generic")
+    (e) =>
+      e.present &&
+      e.finding &&
+      e.finding.toLowerCase().includes("generic")
   );
   const missingDocs = (documents || []).filter(
     (d) =>
@@ -346,20 +349,28 @@ function buildEmailTemplate({
   rules,
 }) {
   const name = vendor?.name || "your company";
-  const ctx = buildOutreachContext(vendor, coverage, endorsements, documents, rules);
+  const ctx = buildOutreachContext(
+    vendor,
+    coverage,
+    endorsements,
+    documents,
+    rules
+  );
 
   const bullets = [];
 
   ctx.failingCoverage.slice(0, 3).forEach((c) => {
     bullets.push(
-      `• ${c.label}: detected ${formatMoney(c.actual)} ${c.unit}, blueprint requires ${formatMoney(
-        c.required
-      )} ${c.unit}.`
+      `• ${c.label}: detected ${formatMoney(
+        c.actual
+      )} ${c.unit}, blueprint requires ${formatMoney(c.required)} ${c.unit}.`
     );
   });
 
   ctx.missingEndorsements.slice(0, 3).forEach((e) => {
-    bullets.push(`• ${e.label}: required but not detected on COI or endorsements.`);
+    bullets.push(
+      `• ${e.label}: required but not detected on COI or endorsements.`
+    );
   });
 
   ctx.softEndorseIssues.slice(0, 2).forEach((e) => {
@@ -381,58 +392,54 @@ function buildEmailTemplate({
   });
 
   if (bullets.length === 0) {
-    bullets.push("• Our records show at least one item that needs review to stay compliant.");
+    bullets.push(
+      "• Our records show at least one item that needs review to stay compliant."
+    );
   }
 
-  let greeting = "Dear " + name + " team,";
-  let closing = "Thank you in advance for your prompt attention to this.";
+  // Polished tone variants
+  let greeting = `Dear ${name} team,`;
+  let closing =
+    "Thank you for your prompt attention to this and for helping us keep everything compliant.";
+  let intro =
+    "During our recent compliance review, we identified several items that must be updated to keep your account aligned with our insurance requirements.";
+  let subtitle =
+    "The following updates are needed based on the certificates, endorsements, and documents we currently have on file:";
+  let subject = `Insurance & compliance updates needed for ${name}`;
+  let actions =
+    "Please send updated certificates, endorsements, or documents addressing these items. You may reply directly with updated PDFs or upload them via your secure upload link.";
 
   if (tone === "friendly") {
-    greeting = "Hi " + name + " team,";
+    greeting = `Hi ${name} team,`;
+    intro =
+      "Our system noticed a few insurance items that need a quick refresh to keep everything current.";
     closing =
-      "We really appreciate the partnership and your help keeping everything current.";
+      "We really appreciate the partnership and your help keeping everything up to date.";
+    subject = `Quick update needed for your insurance documents`;
   } else if (tone === "strict") {
-    greeting = "To the insurance and risk contact for " + name + ":";
+    greeting = `To the insurance and risk contact for ${name}:`;
+    intro =
+      "Our compliance engine has flagged your account as not currently meeting our insurance requirements.";
     closing =
-      "Please treat this as a priority compliance matter. We may need to pause work if we do not receive updated evidence of coverage.";
+      "Please treat this as a priority compliance matter. We may need to pause work if updated evidence of coverage is not received.";
+    subject = `Urgent: Insurance compliance updates required for ${name}`;
   } else if (tone === "expiring") {
-    greeting = "Hi " + name + " team,";
+    greeting = `Hi ${name} team,`;
+    intro =
+      "Our records show one or more insurance items approaching expiration.";
     closing =
       "To avoid any disruption, please send updated documentation before the current policy expires.";
+    subject = `Action needed: expiring policy / COI on file`;
   } else if (tone === "missingDocs") {
-    greeting = "Hi " + name + " team,";
+    greeting = `Hi ${name} team,`;
+    intro =
+      "We are missing one or more required documents needed to keep your account compliant.";
     closing =
       "Once these documents are uploaded, your profile will return to compliant status.";
+    subject = `Missing / outdated documents for ${name}`;
   }
 
-  const introBase =
-    "As part of our ongoing vendor insurance and risk review, our system identified a few items that need to be updated to keep your account compliant with our current requirements.";
-  const introStrict =
-    "Our compliance engine has flagged your account as not currently meeting our insurance requirements.";
-  const introFriendly =
-    "Our compliance system did a recent sweep of vendor certificates and found a couple of items that need a quick refresh.";
-
-  let intro = introBase;
-  if (tone === "strict") intro = introStrict;
-  if (tone === "friendly") intro = introFriendly;
-
-  const subtitle =
-    "Based on the certificates, endorsements, and documents we have on file, the following items require attention:";
-
   const bulletBlock = bullets.join("\n");
-
-  const actions =
-    "Please share updated certificates of insurance, endorsements, or documents that address the items above. You can reply directly to this email with updated PDFs, or upload them using your usual secure upload link.";
-
-  const subjectBase = `Insurance & compliance updates needed for ${name}`;
-  const subjectStrict = `Urgent: Insurance compliance updates required for ${name}`;
-  const subjectExpiring = `Action requested: expiring policy / COI on file for ${name}`;
-  const subjectMissingDocs = `Missing / outdated documents for ${name} — please upload`;
-
-  let subject = subjectBase;
-  if (tone === "strict") subject = subjectStrict;
-  else if (tone === "expiring") subject = subjectExpiring;
-  else if (tone === "missingDocs") subject = subjectMissingDocs;
 
   const footer =
     "If you believe any of these items are already satisfied, please let us know and include supporting documentation so we can update our records.";
@@ -448,8 +455,6 @@ function buildEmailTemplate({
     actions,
     "",
     footer,
-    "",
-    closing,
     "",
     "Best regards,",
     "Compliance Team",
@@ -470,10 +475,69 @@ export default function VendorProfilePage() {
   const router = useRouter();
   const { id } = router.query;
 
-  const vendor = useMemo(() => {
-    if (!id) return vendorProfiles["default"];
-    return vendorProfiles[id] || vendorProfiles["default"];
+  const [vendor, setVendor] = useState(null);
+  const [loading, setLoading] = useState(false);
+  const [loadError, setLoadError] = useState("");
+
+  // Fetch real vendor from API, fallback to mock
+  useEffect(() => {
+    if (!id) return;
+
+    let cancelled = false;
+    async function loadVendor() {
+      try {
+        setLoading(true);
+        setLoadError("");
+        const res = await fetch(`/api/vendors/${id}`);
+        if (!res.ok) {
+          throw new Error(`API returned ${res.status}`);
+        }
+        const data = await res.json();
+        if (!data.ok || !data.vendor) {
+          throw new Error("No vendor in API response");
+        }
+        if (!cancelled) {
+          setVendor(data.vendor);
+        }
+      } catch (err) {
+        console.error("Vendor API error, falling back to mock:", err);
+        if (!cancelled) {
+          setLoadError("Using demo vendor profile until real data is wired.");
+          const fallback =
+            vendorProfiles[id] || vendorProfiles["default"] || null;
+          setVendor(fallback);
+        }
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    }
+
+    loadVendor();
+    return () => {
+      cancelled = true;
+    };
   }, [id]);
+
+  // While loading + no vendor yet
+  if (!vendor) {
+    return (
+      <div
+        style={{
+          minHeight: "100vh",
+          background:
+            "radial-gradient(circle at top left,#020617 0,#020617 45%,#000000 100%)",
+          padding: "32px 40px 40px",
+          color: "white",
+          fontFamily:
+            "-apple-system,BlinkMacSystemFont,system-ui,Segoe UI,sans-serif",
+        }}
+      >
+        <div style={{ fontSize: 14, color: "#e5e7eb" }}>
+          {loading ? "Loading vendor profile…" : "No vendor found."}
+        </div>
+      </div>
+    );
+  }
 
   const [outreachOpen, setOutreachOpen] = useState(false);
 
@@ -674,6 +738,18 @@ export default function VendorProfilePage() {
             {vendor.aiSummary ||
               "AI summary will describe this vendor’s current compliance posture once rules and requirements are evaluated."}
           </div>
+
+          {loadError && (
+            <div
+              style={{
+                marginTop: 6,
+                fontSize: 11,
+                color: "#f97316",
+              }}
+            >
+              {loadError}
+            </div>
+          )}
 
           <div
             style={{
@@ -1323,8 +1399,16 @@ export default function VendorProfilePage() {
 function CoverageCard({ coverage }) {
   const statusColor =
     coverage.status === "Pass"
-      ? { bg: "rgba(34,197,94,0.15)", border: "rgba(34,197,94,0.85)", text: "#bbf7d0" }
-      : { bg: "rgba(248,113,113,0.15)", border: "rgba(248,113,113,0.9)", text: "#fecaca" };
+      ? {
+          bg: "rgba(34,197,94,0.15)",
+          border: "rgba(34,197,94,0.85)",
+          text: "#bbf7d0",
+        }
+      : {
+          bg: "rgba(248,113,113,0.15)",
+          border: "rgba(248,113,113,0.9)",
+          text: "#fecaca",
+        };
 
   const sev = severityStyle(coverage.severity);
 
@@ -1845,6 +1929,9 @@ function AiOutreachDrawer({
   const [tone, setTone] = useState("standard");
   const [includeSummary, setIncludeSummary] = useState(true);
   const [copyStatus, setCopyStatus] = useState("");
+  const [toEmail, setToEmail] = useState(vendor.contactEmail || "");
+  const [sending, setSending] = useState(false);
+  const [sendStatus, setSendStatus] = useState("");
 
   if (!open) return null;
 
@@ -1867,6 +1954,43 @@ function AiOutreachDrawer({
       setCopyStatus("Clipboard not available");
     }
     setTimeout(() => setCopyStatus(""), 2000);
+  }
+
+  async function handleSend() {
+    if (!toEmail) {
+      setSendStatus("Add a recipient email first.");
+      return;
+    }
+    try {
+      setSending(true);
+      setSendStatus("");
+      const res = await fetch("/api/outreach/send", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          to: toEmail,
+          subject,
+          body:
+            includeSummary && vendor.aiSummary
+              ? vendor.aiSummary +
+                "\n\n" +
+                body
+              : body,
+          vendorId: vendor.id,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok || !data.ok) {
+        throw new Error(data.error || "Failed to send");
+      }
+      setSendStatus("Sent via Resend ✅");
+    } catch (err) {
+      console.error(err);
+      setSendStatus("Error sending email. Check API / logs.");
+    } finally {
+      setSending(false);
+      setTimeout(() => setSendStatus(""), 4000);
+    }
   }
 
   const toneLabel = {
@@ -1957,6 +2081,37 @@ function AiOutreachDrawer({
           >
             ✕
           </button>
+        </div>
+
+        {/* TO EMAIL */}
+        <div
+          style={{
+            marginBottom: 8,
+          }}
+        >
+          <div
+            style={{
+              fontSize: 11,
+              color: "#9ca3af",
+              marginBottom: 3,
+            }}
+          >
+            Recipient email
+          </div>
+          <input
+            value={toEmail}
+            onChange={(e) => setToEmail(e.target.value)}
+            placeholder="vendor-compliance-contact@example.com"
+            style={{
+              width: "100%",
+              borderRadius: 999,
+              padding: "6px 9px",
+              border: "1px solid rgba(51,65,85,0.98)",
+              background: "rgba(15,23,42,0.98)",
+              color: "#e5e7eb",
+              fontSize: 12,
+            }}
+          />
         </div>
 
         {/* tone selector */}
@@ -2062,7 +2217,7 @@ function AiOutreachDrawer({
           </ul>
         </div>
 
-        {/* toggle summary (for future use) */}
+        {/* toggle summary */}
         <label
           style={{
             display: "flex",
@@ -2128,16 +2283,12 @@ function AiOutreachDrawer({
               marginBottom: 3,
             }}
           >
-            Email body (ready to copy)
+            Email body (ready to copy or send)
           </div>
           <textarea
             value={
               includeSummary && vendor.aiSummary
-                ? body.replace(
-                    "As part of our ongoing vendor insurance and risk review, our system identified a few items that need to be updated to keep your account compliant with our current requirements.",
-                    vendor.aiSummary +
-                      "\n\nAs part of our ongoing vendor insurance and risk review, our system identified a few items that need to be updated to keep your account compliant with our current requirements."
-                  )
+                ? vendor.aiSummary + "\n\n" + body
                 : body
             }
             readOnly
@@ -2195,32 +2346,41 @@ function AiOutreachDrawer({
               <span>Copy subject + body</span>
             </button>
             <button
-              type="button"
+              onClick={handleSend}
+              disabled={sending}
               style={{
                 borderRadius: 999,
-                padding: "6px 10px",
-                border: "1px solid rgba(148,163,184,0.7)",
-                background: "transparent",
-                color: "#e5e7eb",
+                padding: "6px 12px",
+                border: "1px solid rgba(52,211,153,0.9)",
+                background:
+                  "linear-gradient(120deg,#22c55e,#16a34a,#15803d)",
+                color: "#ecfdf5",
                 fontSize: 11,
-                cursor: "default",
+                fontWeight: 500,
+                cursor: sending ? "wait" : "pointer",
+                display: "inline-flex",
+                alignItems: "center",
+                gap: 6,
+                opacity: sending ? 0.7 : 1,
               }}
             >
-              Tone: {toneLabel}
+              <span>📨</span>
+              <span>{sending ? "Sending…" : "Send with Resend"}</span>
             </button>
           </div>
           <div
             style={{
               fontSize: 10,
+              textAlign: "right",
               color:
                 copyStatus === "Copied!"
                   ? "#bbf7d0"
-                  : copyStatus
-                  ? "#fecaca"
+                  : sendStatus
+                  ? "#e5e7eb"
                   : "#6b7280",
             }}
           >
-            {copyStatus || "Paste into your email tool or CRM to send."}
+            {copyStatus || sendStatus || "Paste into your email tool or send via Resend."}
           </div>
         </div>
       </div>
