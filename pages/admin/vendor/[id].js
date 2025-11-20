@@ -1,4 +1,7 @@
+// pages/admin/vendor/[id].js
 import { useRouter } from "next/router";
+import { useMemo, useState, useEffect } from "react";
+
 export default function VendorProfilePage() {
   const router = useRouter();
   const { id } = router.query;
