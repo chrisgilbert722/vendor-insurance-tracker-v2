@@ -103,7 +103,7 @@ const SAMPLE_RULES = [
   },
 ];
 
-/* DEFAULT SEVERITY WEIGHTS (used by UI) */
+/* DEFAULT SEVERITY WEIGHTS */
 const DEFAULT_WEIGHTS = {
   high: 1.0,
   medium: 0.7,
@@ -137,22 +137,25 @@ function severityStyle(level) {
   }
 }
 
-/* Status pill */
+/* STATUS PILL */
 function RuleStatusPill({ status }) {
   const label =
     status === "draft" ? "Draft" : status === "disabled" ? "Disabled" : "Active";
+
   const bg =
     status === "draft"
       ? "rgba(148,163,184,0.16)"
       : status === "disabled"
       ? "rgba(148,163,184,0.12)"
       : "rgba(34,197,94,0.12)";
+
   const border =
     status === "draft"
       ? "1px solid rgba(156,163,175,0.5)"
       : status === "disabled"
       ? "1px solid rgba(148,163,184,0.6)"
       : "1px solid rgba(134,239,172,0.8)";
+
   const color =
     status === "draft"
       ? "#4B5563"
@@ -169,9 +172,9 @@ function RuleStatusPill({ status }) {
         background: bg,
         border,
         color,
-        textTransform: "uppercase",
-        letterSpacing: "0.08em",
         fontWeight: 600,
+        letterSpacing: "0.08em",
+        textTransform: "uppercase",
       }}
     >
       {label}
@@ -179,12 +182,11 @@ function RuleStatusPill({ status }) {
   );
 }
 
-// shared form styles
+/* BASIC INPUT STYLES */
 const labelStyle = {
   fontSize: 12,
   fontWeight: 600,
   color: GP.inkSoft,
-  display: "block",
   marginBottom: 4,
 };
 
@@ -197,17 +199,17 @@ const inputStyle = {
   background: "#FFF",
 };
 
-/* SIMPLE LOGIC VALIDATION */
+/* VALIDATE LOGIC */
 function validateRuleLogic(logic) {
-  if (!logic || !logic.trim()) return "No logic expression defined.";
-  if (!logic.includes(">") && !logic.includes("<") && !logic.includes("==")) {
-    return "Logic should usually contain a comparison operator (>=, <=, ==, etc.).";
-  }
-  // super light touch for now
+  if (!logic?.trim()) return "No logic expression defined.";
+  if (!logic.includes(">") && !logic.includes("<") && !logic.includes("=="))
+    return "Logic should contain >=, <=, or ==.";
   return null;
 }
 
-/* EDIT RULE MODAL */
+/* ====================== */
+/*   EDIT RULE MODAL      */
+/* ====================== */
 function EditRuleModal({ rule, onClose, onSave }) {
   const [name, setName] = useState(rule.name || "");
   const [severity, setSeverity] = useState(rule.severity || "medium");
@@ -215,19 +217,12 @@ function EditRuleModal({ rule, onClose, onSave }) {
   const [description, setDescription] = useState(rule.description || "");
   const [logic, setLogic] = useState(rule.logic || "");
 
+  const logicWarning = validateRuleLogic(logic);
+
   function handleSubmit(e) {
     e.preventDefault();
-    onSave({
-      ...rule,
-      name,
-      severity,
-      status,
-      description,
-      logic,
-    });
+    onSave({ ...rule, name, severity, status, description, logic });
   }
-
-  const logicWarning = validateRuleLogic(logic);
 
   return (
     <div
@@ -247,53 +242,31 @@ function EditRuleModal({ rule, onClose, onSave }) {
           width: 580,
           maxWidth: "95vw",
           borderRadius: 24,
-          background: "rgba(248,250,252,0.98)",
-          boxShadow: "0 30px 80px rgba(15,23,42,0.45)",
+          background: "#F8FAFC",
           border: "1px solid rgba(226,232,240,0.9)",
           padding: 24,
+          boxShadow: "0 30px 80px rgba(15,23,42,0.45)",
         }}
       >
         {/* Header */}
-        <div
-          style={{
-            display: "flex",
-            justifyContent: "space-between",
-            marginBottom: 14,
-            alignItems: "center",
-          }}
-        >
+        <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 14 }}>
           <div>
-            <div
-              style={{
-                fontSize: 12,
-                letterSpacing: "0.12em",
-                textTransform: "uppercase",
-                color: GP.inkSoft,
-                marginBottom: 4,
-              }}
-            >
+            <div style={{ fontSize: 12, textTransform: "uppercase", color: GP.inkSoft }}>
               Edit Rule
             </div>
-            <div
-              style={{
-                fontSize: 18,
-                fontWeight: 700,
-                color: GP.ink,
-              }}
-            >
-              {rule.name || "Untitled Rule"}
+            <div style={{ fontSize: 18, fontWeight: 700, color: GP.ink }}>
+              {rule.name}
             </div>
           </div>
 
           <button
-            type="button"
             onClick={onClose}
             style={{
-              border: "none",
               background: "transparent",
+              border: "none",
               fontSize: 18,
               cursor: "pointer",
-              color: "#6B7280",
+              color: "#64748B",
             }}
           >
             ✕
@@ -303,33 +276,15 @@ function EditRuleModal({ rule, onClose, onSave }) {
         {/* Form */}
         <form onSubmit={handleSubmit}>
           <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-            {/* Name */}
             <div>
               <label style={labelStyle}>Rule name</label>
-              <input
-                type="text"
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-                style={inputStyle}
-                required
-              />
+              <input style={inputStyle} value={name} onChange={(e) => setName(e.target.value)} required />
             </div>
 
-            {/* Row: severity + status */}
-            <div
-              style={{
-                display: "grid",
-                gridTemplateColumns: "1fr 1fr",
-                gap: 12,
-              }}
-            >
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
               <div>
                 <label style={labelStyle}>Severity</label>
-                <select
-                  value={severity}
-                  onChange={(e) => setSeverity(e.target.value)}
-                  style={inputStyle}
-                >
+                <select style={inputStyle} value={severity} onChange={(e) => setSeverity(e.target.value)}>
                   <option value="high">High</option>
                   <option value="medium">Medium</option>
                   <option value="low">Low</option>
@@ -338,11 +293,7 @@ function EditRuleModal({ rule, onClose, onSave }) {
 
               <div>
                 <label style={labelStyle}>Status</label>
-                <select
-                  value={status}
-                  onChange={(e) => setStatus(e.target.value)}
-                  style={inputStyle}
-                >
+                <select style={inputStyle} value={status} onChange={(e) => setStatus(e.target.value)}>
                   <option value="active">Active</option>
                   <option value="draft">Draft</option>
                   <option value="disabled">Disabled</option>
@@ -350,312 +301,39 @@ function EditRuleModal({ rule, onClose, onSave }) {
               </div>
             </div>
 
-            {/* Description */}
             <div>
               <label style={labelStyle}>Description</label>
               <textarea
+                style={{ ...inputStyle, resize: "vertical" }}
+                rows={3}
                 value={description}
                 onChange={(e) => setDescription(e.target.value)}
-                rows={3}
-                style={{ ...inputStyle, resize: "vertical" }}
               />
             </div>
 
-            {/* Logic */}
             <div>
-              <label style={labelStyle}>
-                Rule logic (expression evaluated by engine)
-              </label>
+              <label style={labelStyle}>Rule logic</label>
               <textarea
-                value={logic}
-                onChange={(e) => setLogic(e.target.value)}
-                rows={3}
                 style={{
                   ...inputStyle,
-                  fontSize: 12,
-                  fontFamily:
-                    "SFMono-Regular, Menlo, Monaco, Consolas, monospace",
-                  background: "#020617",
-                  color: "#E5E7EB",
+                  fontFamily: "monospace",
+                  background: "#1E293B",
+                  color: "white",
                 }}
+                rows={3}
+                value={logic}
+                onChange={(e) => setLogic(e.target.value)}
               />
+
               {logicWarning && (
-                <div
-                  style={{
-                    marginTop: 4,
-                    fontSize: 11,
-                    color: "#B45309",
-                  }}
-                >
+                <div style={{ marginTop: 4, fontSize: 11, color: "#B45309" }}>
                   ⚠️ {logicWarning}
                 </div>
               )}
             </div>
           </div>
 
-          {/* Actions */}
-          <div
-            style={{
-              display: "flex",
-              justifyContent: "flex-end",
-              gap: 10,
-              marginTop: 18,
-            }}
-          >
-            <button
-              type="button"
-              onClick={onClose}
-              style={{
-                padding: "8px 14px",
-                borderRadius: 999,
-                border: "1px solid #E5E7EB",
-                background: "#FFFFFF",
-                fontSize: 13,
-                cursor: "pointer",
-              }}
-            >
-              Cancel
-            </button>
-            <button
-              type="submit"
-              style={{
-                padding: "8px 16px",
-                borderRadius: 999,
-                border: "none",
-                background:
-                  "linear-gradient(135deg,#0057FF,#00E0FF 70%,#8A2BFF)",
-                color: "#FFFFFF",
-                fontSize: 13,
-                fontWeight: 600,
-                cursor: "pointer",
-                boxShadow: "0 12px 30px rgba(37,99,235,0.5)",
-              }}
-            >
-              Save changes
-            </button>
-          </div>
-        </form>
-      </div>
-    </div>
-  );
-}
-/* CREATE RULE MODAL */
-function NewRuleModal({ groups, onClose, onCreate, defaultGroupId }) {
-  const [name, setName] = useState("");
-  const [groupId, setGroupId] = useState(defaultGroupId);
-  const [severity, setSeverity] = useState("medium");
-  const [status, setStatus] = useState("active");
-  const [description, setDescription] = useState("");
-  const [logic, setLogic] = useState("");
-
-  function handleSubmit(e) {
-    e.preventDefault();
-    if (!name.trim() || !logic.trim()) return;
-
-    const newRule = {
-      id: "rule-" + Date.now(),
-      name,
-      groupId,
-      severity,
-      status,
-      description,
-      logic,
-    };
-
-    onCreate(newRule);
-  }
-
-  const logicWarning = validateRuleLogic(logic);
-
-  return (
-    <div
-      style={{
-        position: "fixed",
-        inset: 0,
-        background: "rgba(15,23,42,0.35)",
-        backdropFilter: "blur(8px)",
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "center",
-        zIndex: 300,
-      }}
-    >
-      <div
-        style={{
-          width: 600,
-          maxWidth: "95vw",
-          borderRadius: 24,
-          background: "rgba(248,250,252,0.98)",
-          boxShadow: "0 30px 80px rgba(15,23,42,0.45)",
-          border: "1px solid rgba(226,232,240,0.9)",
-          padding: 24,
-        }}
-      >
-        {/* Header */}
-        <div
-          style={{
-            display: "flex",
-            justifyContent: "space-between",
-            marginBottom: 14,
-            alignItems: "center",
-          }}
-        >
-          <div>
-            <div
-              style={{
-                fontSize: 12,
-                letterSpacing: "0.12em",
-                textTransform: "uppercase",
-                color: GP.inkSoft,
-                marginBottom: 4,
-              }}
-            >
-              Create New Rule
-            </div>
-
-            <div
-              style={{
-                fontSize: 18,
-                fontWeight: 700,
-                color: GP.ink,
-              }}
-            >
-              Add requirement to compliance engine
-            </div>
-          </div>
-
-          <button
-            type="button"
-            onClick={onClose}
-            style={{
-              border: "none",
-              background: "transparent",
-              fontSize: 18,
-              cursor: "pointer",
-              color: "#6B7280",
-            }}
-          >
-            ✕
-          </button>
-        </div>
-
-        {/* FORM */}
-        <form onSubmit={handleSubmit}>
-          <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-            {/* NAME */}
-            <div>
-              <label style={labelStyle}>Rule name</label>
-              <input
-                type="text"
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-                style={inputStyle}
-                placeholder="e.g., GL Each Occurrence ≥ $1M"
-                required
-              />
-            </div>
-
-            {/* GROUP */}
-            <div>
-              <label style={labelStyle}>Coverage Group</label>
-              <select
-                value={groupId}
-                onChange={(e) => setGroupId(e.target.value)}
-                style={inputStyle}
-              >
-                {groups.map((g) => (
-                  <option key={g.id} value={g.id}>
-                    {g.label}
-                  </option>
-                ))}
-              </select>
-            </div>
-
-            {/* Severity + Status */}
-            <div
-              style={{
-                display: "grid",
-                gridTemplateColumns: "1fr 1fr",
-                gap: 12,
-              }}
-            >
-              <div>
-                <label style={labelStyle}>Severity</label>
-                <select
-                  value={severity}
-                  onChange={(e) => setSeverity(e.target.value)}
-                  style={inputStyle}
-                >
-                  <option value="high">High</option>
-                  <option value="medium">Medium</option>
-                  <option value="low">Low</option>
-                </select>
-              </div>
-
-              <div>
-                <label style={labelStyle}>Status</label>
-                <select
-                  value={status}
-                  onChange={(e) => setStatus(e.target.value)}
-                  style={inputStyle}
-                >
-                  <option value="active">Active</option>
-                  <option value="draft">Draft</option>
-                </select>
-              </div>
-            </div>
-
-            {/* DESCRIPTION */}
-            <div>
-              <label style={labelStyle}>Description</label>
-              <textarea
-                rows={3}
-                value={description}
-                onChange={(e) => setDescription(e.target.value)}
-                style={{ ...inputStyle, resize: "vertical" }}
-                placeholder="Explain the requirement..."
-              />
-            </div>
-
-            {/* LOGIC */}
-            <div>
-              <label style={labelStyle}>Rule Logic (engine expression)</label>
-              <textarea
-                rows={3}
-                value={logic}
-                onChange={(e) => setLogic(e.target.value)}
-                style={{
-                  ...inputStyle,
-                  fontFamily: "SFMono-Regular, Menlo, Consolas, monospace",
-                  background: "#020617",
-                  color: "#E5E7EB",
-                }}
-                placeholder="limit_each_occurrence >= 1000000"
-                required
-              />
-              {logicWarning && (
-                <div
-                  style={{
-                    marginTop: 4,
-                    fontSize: 11,
-                    color: "#B45309",
-                  }}
-                >
-                  ⚠️ {logicWarning}
-                </div>
-              )}
-            </div>
-          </div>
-
-          {/* ACTIONS */}
-          <div
-            style={{
-              display: "flex",
-              justifyContent: "flex-end",
-              gap: 10,
-              marginTop: 20,
-            }}
-          >
+          <div style={{ display: "flex", justifyContent: "flex-end", gap: 10, marginTop: 18 }}>
             <button
               type="button"
               onClick={onClose}
@@ -675,599 +353,14 @@ function NewRuleModal({ groups, onClose, onCreate, defaultGroupId }) {
               style={{
                 padding: "8px 16px",
                 borderRadius: 999,
-                border: "none",
-                background:
-                  "linear-gradient(135deg,#0057FF,#00E0FF 70%,#8A2BFF)",
+                background: "linear-gradient(135deg,#0057FF,#00E0FF 70%,#8A2BFF)",
                 color: "#FFF",
-                fontWeight: 600,
-                cursor: "pointer",
-                boxShadow: "0 14px 35px rgba(37,99,235,0.45)",
-              }}
-            >
-              Create Rule
-            </button>
-          </div>
-        </form>
-      </div>
-    </div>
-  );
-}
-
-/* RULE HISTORY DRAWER */
-function RuleHistoryDrawer({ open, onClose, items }) {
-  if (!open) return null;
-
-  return (
-    <div
-      style={{
-        position: "fixed",
-        inset: 0,
-        background: "rgba(15,23,42,0.35)",
-        backdropFilter: "blur(6px)",
-        display: "flex",
-        justifyContent: "flex-end",
-        zIndex: 250,
-      }}
-    >
-      <div
-        style={{
-          width: 420,
-          maxWidth: "100vw",
-          height: "100%",
-          background: "#0F172A",
-          color: "#E5E7EB",
-          boxShadow: "0 0 40px rgba(15,23,42,0.8)",
-          borderLeft: "1px solid rgba(148,163,184,0.4)",
-          padding: 18,
-          display: "flex",
-          flexDirection: "column",
-        }}
-      >
-        {/* Header */}
-        <div
-          style={{
-            display: "flex",
-            justifyContent: "space-between",
-            marginBottom: 10,
-            alignItems: "center",
-          }}
-        >
-          <div>
-            <div
-              style={{
-                fontSize: 11,
-                letterSpacing: "0.12em",
-                textTransform: "uppercase",
-                color: "#9CA3AF",
-                marginBottom: 2,
-              }}
-            >
-              Rule History
-            </div>
-            <div style={{ fontSize: 16, fontWeight: 600 }}>Recent changes</div>
-          </div>
-
-          <button
-            type="button"
-            onClick={onClose}
-            style={{
-              border: "none",
-              background: "transparent",
-              fontSize: 18,
-              cursor: "pointer",
-              color: "#9CA3AF",
-            }}
-          >
-            ✕
-          </button>
-        </div>
-
-        <div
-          style={{
-            fontSize: 12,
-            color: "#9CA3AF",
-            marginBottom: 10,
-          }}
-        >
-          Visual timeline of rule edits. Later this will be backed by a real
-          audit log.
-        </div>
-
-        <div
-          style={{
-            flex: 1,
-            overflowY: "auto",
-            paddingRight: 4,
-            marginTop: 4,
-          }}
-        >
-          {items.length === 0 && (
-            <div
-              style={{
-                fontSize: 12,
-                color: "#9CA3AF",
-                marginTop: 10,
-              }}
-            >
-              No recorded history yet.
-            </div>
-          )}
-
-          {items.map((item) => (
-            <div
-              key={item.id}
-              style={{
-                borderRadius: 10,
-                background: "rgba(15,23,42,0.85)",
-                border: "1px solid rgba(55,65,81,0.8)",
-                padding: 10,
-                marginBottom: 10,
-              }}
-            >
-              <div
-                style={{
-                  display: "flex",
-                  justifyContent: "space-between",
-                  marginBottom: 4,
-                }}
-              >
-                <div
-                  style={{
-                    fontSize: 13,
-                    fontWeight: 600,
-                  }}
-                >
-                  {item.ruleName}
-                </div>
-                <div
-                  style={{
-                    fontSize: 11,
-                    color: "#9CA3AF",
-                  }}
-                >
-                  {item.when}
-                </div>
-              </div>
-
-              <div
-                style={{
-                  fontSize: 11,
-                  color: "#D1D5DB",
-                  marginBottom: 4,
-                }}
-              >
-                {item.summary}
-              </div>
-
-              {(item.before || item.after) && (
-                <div
-                  style={{
-                    display: "grid",
-                    gridTemplateColumns: "1fr 1fr",
-                    gap: 6,
-                    marginTop: 4,
-                    fontSize: 10,
-                  }}
-                >
-                  {item.before && (
-                    <div>
-                      <div
-                        style={{
-                          textTransform: "uppercase",
-                          letterSpacing: "0.08em",
-                          color: "#9CA3AF",
-                          marginBottom: 2,
-                        }}
-                      >
-                        Before
-                      </div>
-                      <div
-                        style={{
-                          padding: 6,
-                          borderRadius: 6,
-                          background: "#020617",
-                          border: "1px solid rgba(75,85,99,0.8)",
-                          whiteSpace: "pre-wrap",
-                        }}
-                      >
-                        {item.before}
-                      </div>
-                    </div>
-                  )}
-                  {item.after && (
-                    <div>
-                      <div
-                        style={{
-                          textTransform: "uppercase",
-                          letterSpacing: "0.08em",
-                          color: "#9CA3AF",
-                          marginBottom: 2,
-                        }}
-                      >
-                        After
-                      </div>
-                      <div
-                        style={{
-                          padding: 6,
-                          borderRadius: 6,
-                          background: "#020617",
-                          border: "1px solid rgba(75,85,99,0.8)",
-                          whiteSpace: "pre-wrap",
-                        }}
-                      >
-                        {item.after}
-                      </div>
-                    </div>
-                  )}
-                </div>
-              )}
-            </div>
-          ))}
-        </div>
-      </div>
-    </div>
-  );
-}
-
-/* AI SUGGEST RULES MODAL — UI ONLY (stub) */
-function AiSuggestModal({ open, onClose, suggestions, onApply }) {
-  if (!open) return null;
-
-  return (
-    <div
-      style={{
-        position: "fixed",
-        inset: 0,
-        background: "rgba(15,23,42,0.4)",
-        backdropFilter: "blur(8px)",
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "center",
-        zIndex: 260,
-      }}
-    >
-      <div
-        style={{
-          width: 640,
-          maxWidth: "95vw",
-          maxHeight: "80vh",
-          borderRadius: 24,
-          background: "#020617",
-          color: "#E5E7EB",
-          boxShadow: "0 30px 80px rgba(15,23,42,0.9)",
-          border: "1px solid rgba(30,64,175,0.8)",
-          padding: 20,
-          display: "flex",
-          flexDirection: "column",
-        }}
-      >
-        {/* Header */}
-        <div
-          style={{
-            display: "flex",
-            justifyContent: "space-between",
-            marginBottom: 10,
-            alignItems: "center",
-          }}
-        >
-          <div>
-            <div
-              style={{
-                fontSize: 11,
-                letterSpacing: "0.14em",
-                textTransform: "uppercase",
-                color: "#9CA3AF",
-                marginBottom: 2,
-              }}
-            >
-              AI Suggestions
-            </div>
-            <div style={{ fontSize: 18, fontWeight: 700 }}>
-              Recommended rules for this group
-            </div>
-          </div>
-          <button
-            type="button"
-            onClick={onClose}
-            style={{
-              border: "none",
-              background: "transparent",
-              fontSize: 18,
-              cursor: "pointer",
-              color: "#9CA3AF",
-            }}
-          >
-            ✕
-          </button>
-        </div>
-
-        <div
-          style={{
-            fontSize: 12,
-            color: "#9CA3AF",
-            marginBottom: 12,
-          }}
-        >
-          These are AI-generated ideas based on typical requirements. Later
-          we’ll connect this to live carrier and policy data.
-        </div>
-
-        <div
-          style={{
-            flex: 1,
-            overflowY: "auto",
-            paddingRight: 4,
-          }}
-        >
-          {suggestions.length === 0 && (
-            <div style={{ fontSize: 12, color: "#9CA3AF" }}>
-              No suggestions available yet.
-            </div>
-          )}
-
-          {suggestions.map((s) => (
-            <div
-              key={s.id}
-              style={{
-                borderRadius: 14,
-                background:
-                  "linear-gradient(135deg, rgba(15,23,42,0.9), rgba(30,64,175,0.8))",
-                border: "1px solid rgba(37,99,235,0.9)",
-                padding: 12,
-                marginBottom: 10,
-              }}
-            >
-              <div
-                style={{
-                  display: "flex",
-                  justifyContent: "space-between",
-                  marginBottom: 6,
-                  alignItems: "center",
-                }}
-              >
-                <div
-                  style={{
-                    fontSize: 14,
-                    fontWeight: 600,
-                  }}
-                >
-                  {s.name}
-                </div>
-                <span
-                  style={{
-                    fontSize: 11,
-                    padding: "2px 8px",
-                    borderRadius: 999,
-                    background:
-                      s.severity === "high"
-                        ? "rgba(239,68,68,0.2)"
-                        : s.severity === "medium"
-                        ? "rgba(245,158,11,0.2)"
-                        : "rgba(34,197,94,0.2)",
-                    border:
-                      s.severity === "high"
-                        ? "1px solid rgba(248,113,113,0.9)"
-                        : s.severity === "medium"
-                        ? "1px solid rgba(250,204,21,0.9)"
-                        : "1px solid rgba(74,222,128,0.9)",
-                  }}
-                >
-                  {s.severity.toUpperCase()} SUGGESTION
-                </span>
-              </div>
-
-              <div
-                style={{
-                  fontSize: 12,
-                  color: "#E5E7EB",
-                  marginBottom: 4,
-                }}
-              >
-                {s.description}
-              </div>
-
-              <div
-                style={{
-                  fontFamily:
-                    "SFMono-Regular, Menlo, Monaco, Consolas, monospace",
-                  fontSize: 11,
-                  padding: 8,
-                  borderRadius: 10,
-                  background: "#020617",
-                  border: "1px solid rgba(55,65,81,0.9)",
-                  color: "#E5E7EB",
-                  marginBottom: 8,
-                }}
-              >
-                {s.logic}
-              </div>
-
-              <button
-                type="button"
-                onClick={() => onApply(s)}
-                style={{
-                  padding: "6px 12px",
-                  borderRadius: 999,
-                  border: "none",
-                  background:
-                    "linear-gradient(135deg,#22C55E,#22D3EE 70%,#6366F1)",
-                  color: "#FFF",
-                  fontSize: 12,
-                  fontWeight: 600,
-                  cursor: "pointer",
-                  boxShadow: "0 8px 20px rgba(34,197,94,0.6)",
-                }}
-              >
-                ➕ Add this rule
-              </button>
-            </div>
-          ))}
-        </div>
-      </div>
-    </div>
-  );
-}
-/* GROUP EDITOR MODAL */
-function GroupEditorModal({ open, group, onClose, onSave }) {
-  const [label, setLabel] = useState(group?.label || "");
-  const [description, setDescription] = useState(group?.description || "");
-  const [icon, setIcon] = useState(group?.icon || "⚙️");
-
-  useEffect(() => {
-    if (group) {
-      setLabel(group.label || "");
-      setDescription(group.description || "");
-      setIcon(group.icon || "⚙️");
-    }
-  }, [group]);
-
-  if (!open || !group) return null;
-
-  function handleSubmit(e) {
-    e.preventDefault();
-    onSave({
-      ...group,
-      label,
-      description,
-      icon,
-    });
-  }
-
-  return (
-    <div
-      style={{
-        position: "fixed",
-        inset: 0,
-        background: "rgba(15,23,42,0.35)",
-        backdropFilter: "blur(8px)",
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "center",
-        zIndex: 270,
-      }}
-    >
-      <div
-        style={{
-          width: 520,
-          maxWidth: "95vw",
-          borderRadius: 24,
-          background: "#F9FAFB",
-          boxShadow: "0 26px 70px rgba(15,23,42,0.6)",
-          border: "1px solid rgba(209,213,219,0.9)",
-          padding: 20,
-        }}
-      >
-        <div
-          style={{
-            display: "flex",
-            justifyContent: "space-between",
-            marginBottom: 10,
-            alignItems: "center",
-          }}
-        >
-          <div>
-            <div
-              style={{
-                fontSize: 11,
-                letterSpacing: "0.12em",
-                textTransform: "uppercase",
-                color: GP.inkSoft,
-                marginBottom: 2,
-              }}
-            >
-              Edit Group
-            </div>
-            <div style={{ fontSize: 18, fontWeight: 700, color: GP.ink }}>
-              {group.label}
-            </div>
-          </div>
-          <button
-            type="button"
-            onClick={onClose}
-            style={{
-              border: "none",
-              background: "transparent",
-              fontSize: 18,
-              cursor: "pointer",
-              color: "#6B7280",
-            }}
-          >
-            ✕
-          </button>
-        </div>
-
-        <form onSubmit={handleSubmit}>
-          <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-            <div>
-              <label style={labelStyle}>Display label</label>
-              <input
-                type="text"
-                value={label}
-                onChange={(e) => setLabel(e.target.value)}
-                style={inputStyle}
-              />
-            </div>
-
-            <div>
-              <label style={labelStyle}>Description</label>
-              <textarea
-                rows={3}
-                value={description}
-                onChange={(e) => setDescription(e.target.value)}
-                style={{ ...inputStyle, resize: "vertical" }}
-              />
-            </div>
-
-            <div>
-              <label style={labelStyle}>Icon (emoji)</label>
-              <input
-                type="text"
-                value={icon}
-                onChange={(e) => setIcon(e.target.value)}
-                style={inputStyle}
-                maxLength={3}
-              />
-            </div>
-          </div>
-
-          <div
-            style={{
-              display: "flex",
-              justifyContent: "flex-end",
-              gap: 10,
-              marginTop: 16,
-            }}
-          >
-            <button
-              type="button"
-              onClick={onClose}
-              style={{
-                padding: "8px 14px",
-                borderRadius: 999,
-                border: "1px solid #E5E7EB",
-                background: "#FFFFFF",
-                fontSize: 13,
-                cursor: "pointer",
-              }}
-            >
-              Cancel
-            </button>
-            <button
-              type="submit"
-              style={{
-                padding: "8px 16px",
-                borderRadius: 999,
                 border: "none",
-                background:
-                  "linear-gradient(135deg,#0EA5E9,#6366F1 70%,#A855F7)",
-                color: "#FFFFFF",
-                fontSize: 13,
                 fontWeight: 600,
                 cursor: "pointer",
-                boxShadow: "0 12px 30px rgba(59,130,246,0.6)",
               }}
             >
-              Save group
+              Save changes
             </button>
           </div>
         </form>
@@ -1275,100 +368,10 @@ function GroupEditorModal({ open, group, onClose, onSave }) {
     </div>
   );
 }
+/* ====================== */
+/*      RULE CARD         */
+/* ====================== */
 
-/* DELETE RULE CONFIRM MODAL */
-function DeleteRuleModal({ open, rule, onCancel, onConfirm }) {
-  if (!open || !rule) return null;
-
-  return (
-    <div
-      style={{
-        position: "fixed",
-        inset: 0,
-        background: "rgba(15,23,42,0.4)",
-        backdropFilter: "blur(4px)",
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "center",
-        zIndex: 280,
-      }}
-    >
-      <div
-        style={{
-          width: 420,
-          maxWidth: "95vw",
-          borderRadius: 20,
-          background: "#FEF2F2",
-          border: "1px solid rgba(248,113,113,0.9)",
-          boxShadow: "0 20px 60px rgba(220,38,38,0.5)",
-          padding: 18,
-        }}
-      >
-        <div
-          style={{
-            fontSize: 15,
-            fontWeight: 700,
-            color: "#991B1B",
-            marginBottom: 6,
-          }}
-        >
-          Delete this rule?
-        </div>
-        <div
-          style={{
-            fontSize: 13,
-            color: "#7F1D1D",
-            marginBottom: 12,
-          }}
-        >
-          You are about to permanently remove{" "}
-          <strong>{rule.name}</strong>. This cannot be undone in this UI.
-        </div>
-
-        <div
-          style={{
-            display: "flex",
-            justifyContent: "flex-end",
-            gap: 8,
-          }}
-        >
-          <button
-            type="button"
-            onClick={onCancel}
-            style={{
-              padding: "7px 12px",
-              borderRadius: 999,
-              border: "1px solid #FECACA",
-              background: "#FFFFFF",
-              fontSize: 12,
-              cursor: "pointer",
-            }}
-          >
-            Cancel
-          </button>
-          <button
-            type="button"
-            onClick={onConfirm}
-            style={{
-              padding: "7px 14px",
-              borderRadius: 999,
-              border: "none",
-              background: "#DC2626",
-              color: "#FFFFFF",
-              fontSize: 12,
-              fontWeight: 600,
-              cursor: "pointer",
-            }}
-          >
-            Delete rule
-          </button>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-/* DnD-enabled RuleCard */
 function RuleCard({
   rule,
   index,
@@ -1383,6 +386,7 @@ function RuleCard({
   const ref = useRef(null);
   const logicWarning = validateRuleLogic(rule.logic);
 
+  /* DND: DROP TARGET */
   const [, drop] = useDrop({
     accept: RULE_CARD,
     hover(item, monitor) {
@@ -1394,7 +398,6 @@ function RuleCard({
 
       const rect = ref.current.getBoundingClientRect();
       const middleY = (rect.bottom - rect.top) / 2;
-
       const pointer = monitor.getClientOffset();
       if (!pointer) return;
 
@@ -1409,12 +412,11 @@ function RuleCard({
     },
   });
 
+  /* DND: DRAG SOURCE */
   const [{ isDragging }, drag] = useDrag({
     type: RULE_CARD,
     item: { id: rule.id, index },
-    collect: (monitor) => ({
-      isDragging: monitor.isDragging(),
-    }),
+    collect: (monitor) => ({ isDragging: monitor.isDragging() }),
   });
 
   drag(drop(ref));
@@ -1432,14 +434,15 @@ function RuleCard({
         gap: 14,
         padding: 16,
         borderRadius: 16,
-        background: "white",
+        background: "#FFF",
         border: "1px solid rgba(226,232,240,0.95)",
         boxShadow: "0 12px 30px rgba(15,23,42,0.06)",
         marginBottom: 12,
-        transition: "opacity 0.12s ease-out",
         cursor: "pointer",
+        transition: "opacity 0.12s ease-out",
       }}
     >
+      {/* Drag Handle */}
       <div
         style={{
           width: 18,
@@ -1455,22 +458,22 @@ function RuleCard({
       </div>
 
       <div style={{ flex: 1 }}>
-        {/* Top row */}
+        {/* --- Header Row --- */}
         <div
           style={{
             display: "flex",
             justifyContent: "space-between",
-            marginBottom: 6,
             gap: 8,
+            marginBottom: 6,
           }}
         >
           <div>
             <div
               style={{
                 fontSize: 12,
-                color: GP.inkSoft,
                 textTransform: "uppercase",
                 letterSpacing: "0.08em",
+                color: GP.inkSoft,
                 marginBottom: 2,
               }}
             >
@@ -1481,7 +484,7 @@ function RuleCard({
             </div>
           </div>
 
-          <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+          <div style={{ display: "flex", gap: 8 }}>
             <div
               style={{
                 padding: "4px 10px",
@@ -1495,25 +498,28 @@ function RuleCard({
             >
               {sev.label} Severity
             </div>
+
             <RuleStatusPill status={rule.status} />
           </div>
         </div>
 
-        {/* Description */}
+        {/* --- Description --- */}
         <p style={{ fontSize: 13, color: GP.inkSoft, marginBottom: 8 }}>
           {rule.description || "No description provided."}
         </p>
 
-        {/* Logic */}
+        {/* --- Logic --- */}
         <div
           style={{
-            fontFamily: "SFMono-Regular, Menlo, Monaco, Consolas, monospace",
+            fontFamily: "monospace",
             fontSize: 11,
             padding: "8px 10px",
             borderRadius: 10,
             background: "#020617",
             color: "#E5E7EB",
             border: "1px solid rgba(148,163,184,0.4)",
+            whiteSpace: "pre-wrap",
+            wordBreak: "break-word",
           }}
         >
           {rule.logic || "// No logic set yet"}
@@ -1521,18 +527,12 @@ function RuleCard({
 
         {/* Logic warning */}
         {logicWarning && (
-          <div
-            style={{
-              marginTop: 4,
-              fontSize: 11,
-              color: "#B45309",
-            }}
-          >
+          <div style={{ fontSize: 11, color: "#B45309", marginTop: 4 }}>
             ⚠️ {logicWarning}
           </div>
         )}
 
-        {/* Advanced accordion */}
+        {/* --- Advanced Toggle --- */}
         <button
           type="button"
           onClick={(e) => {
@@ -1543,8 +543,8 @@ function RuleCard({
             marginTop: 8,
             fontSize: 11,
             color: GP.inkSoft,
-            border: "none",
             background: "transparent",
+            border: "none",
             cursor: "pointer",
             display: "flex",
             alignItems: "center",
@@ -1554,6 +554,7 @@ function RuleCard({
           {showAdvanced ? "▾ Hide advanced" : "▸ Show advanced"}
         </button>
 
+        {/* --- Advanced Grid --- */}
         {showAdvanced && (
           <div
             style={{
@@ -1566,17 +567,18 @@ function RuleCard({
             }}
           >
             <div>
-              <div style={{ fontWeight: 600, marginBottom: 2 }}>ID</div>
+              <div style={{ fontWeight: 600 }}>ID</div>
               <div style={{ wordBreak: "break-all" }}>{rule.id}</div>
             </div>
+
             <div>
-              <div style={{ fontWeight: 600, marginBottom: 2 }}>Group</div>
+              <div style={{ fontWeight: 600 }}>Group</div>
               <div>{rule.groupId || rule.group_id || "—"}</div>
             </div>
           </div>
         )}
 
-        {/* Actions */}
+        {/* --- Card Actions --- */}
         <div
           style={{
             display: "flex",
@@ -1585,7 +587,7 @@ function RuleCard({
             fontSize: 11,
           }}
         >
-          {/* Left: status toggle */}
+          {/* Toggle Status */}
           <button
             type="button"
             onClick={(e) => {
@@ -1593,8 +595,8 @@ function RuleCard({
               onToggleStatus(rule);
             }}
             style={{
-              borderRadius: 999,
               padding: "6px 10px",
+              borderRadius: 999,
               border: "1px solid #E5E7EB",
               background: disabled ? "#FFF7ED" : "#ECFDF3",
               color: disabled ? "#92400E" : "#166534",
@@ -1604,8 +606,8 @@ function RuleCard({
             {disabled ? "Enable rule" : "Disable rule"}
           </button>
 
-          {/* Right: edit / duplicate / delete */}
           <div style={{ display: "flex", gap: 8 }}>
+            {/* Edit */}
             <button
               type="button"
               onClick={(e) => {
@@ -1613,8 +615,8 @@ function RuleCard({
                 onEdit();
               }}
               style={{
-                borderRadius: 999,
                 padding: "6px 10px",
+                borderRadius: 999,
                 border: "1px solid #E5E7EB",
                 background: "#FFF",
                 cursor: "pointer",
@@ -1622,6 +624,8 @@ function RuleCard({
             >
               Edit
             </button>
+
+            {/* Duplicate */}
             <button
               type="button"
               onClick={(e) => {
@@ -1629,8 +633,8 @@ function RuleCard({
                 onDuplicate(rule);
               }}
               style={{
-                borderRadius: 999,
                 padding: "6px 10px",
+                borderRadius: 999,
                 border: "1px solid #E5E7EB",
                 background: "#F9FAFB",
                 cursor: "pointer",
@@ -1638,6 +642,8 @@ function RuleCard({
             >
               Duplicate
             </button>
+
+            {/* Delete */}
             <button
               type="button"
               onClick={(e) => {
@@ -1645,11 +651,11 @@ function RuleCard({
                 onDeleteRequest(rule);
               }}
               style={{
-                borderRadius: 999,
                 padding: "6px 10px",
-                border: "none",
+                borderRadius: 999,
                 background: "rgba(239,68,68,0.08)",
                 color: "#B91C1C",
+                border: "none",
                 cursor: "pointer",
               }}
             >
@@ -1661,23 +667,29 @@ function RuleCard({
     </div>
   );
 }
-/* MAIN RULE ENGINE PAGE */
+/* =============================== */
+/*     MAIN RULE ENGINE PAGE       */
+/* =============================== */
+
 export default function EliteRulesPage() {
   const { isAdmin } = useRole();
   const { activeOrgId } = useOrg();
 
+  /* ---------------- State ---------------- */
   const [groups, setGroups] = useState(SAMPLE_GROUPS);
   const [rules, setRules] = useState(SAMPLE_RULES);
+
   const [selectedGroupId, setSelectedGroupId] = useState("general-liability");
   const [selectedRuleId, setSelectedRuleId] = useState(null);
 
   const [loading, setLoading] = useState(false);
   const [aiThinking, setAiThinking] = useState(false);
   const [error, setError] = useState(null);
+
   const [editingRule, setEditingRule] = useState(null);
   const [showNewRule, setShowNewRule] = useState(false);
 
-  /* NEW: Severity weights per group */
+  /* Severity weights */
   const [severityWeights, setSeverityWeights] = useState(() => {
     const initial = {};
     SAMPLE_GROUPS.forEach((g) => {
@@ -1686,33 +698,33 @@ export default function EliteRulesPage() {
     return initial;
   });
 
-  /* NEW: Rule History UI state */
+  /* Rule History */
   const [historyOpen, setHistoryOpen] = useState(false);
   const [historyItems, setHistoryItems] = useState([
     {
       id: "h1",
       ruleId: "r1",
       ruleName: "GL Each Occurrence ≥ $1M",
-      when: "Today, 2:14 PM",
-      summary: "Updated rule from medium → high severity.",
+      when: new Date().toLocaleString(),
+      summary: "Updated rule severity Medium → High",
       before: "Severity: Medium",
       after: "Severity: High",
     },
   ]);
 
-  /* NEW: AI Suggest state */
+  /* AI Suggest */
   const [aiModalOpen, setAiModalOpen] = useState(false);
   const [aiSuggestions, setAiSuggestions] = useState([]);
 
-  /* NEW: Group Editor state */
+  /* Group Editor */
   const [groupEditorOpen, setGroupEditorOpen] = useState(false);
   const [groupDraft, setGroupDraft] = useState(null);
 
-  /* NEW: Delete modal state */
+  /* Delete Rule Modal */
   const [deleteModalOpen, setDeleteModalOpen] = useState(false);
   const [ruleToDelete, setRuleToDelete] = useState(null);
 
-  /* HYBRID LOADER */
+  /* ---------------- Load rules + groups (Hybrid Loader) ---------------- */
   useEffect(() => {
     let cancelled = false;
 
@@ -1729,22 +741,20 @@ export default function EliteRulesPage() {
         const r = rRes ? await rRes.json().catch(() => null) : null;
 
         if (!cancelled) {
-          if (g && Array.isArray(g.groups) && g.groups.length > 0) {
+          if (g?.groups?.length > 0) {
             setGroups(g.groups);
+
+            /* Ensure severity weights exist for any API groups */
             setSeverityWeights((prev) => {
               const next = { ...prev };
-              g.groups.forEach((group) => {
-                if (!next[group.id]) {
-                  next[group.id] = { ...DEFAULT_WEIGHTS };
-                }
+              g.groups.forEach((grp) => {
+                if (!next[grp.id]) next[grp.id] = { ...DEFAULT_WEIGHTS };
               });
               return next;
             });
           }
 
-          if (r && Array.isArray(r.rules) && r.rules.length > 0) {
-            setRules(r.rules);
-          }
+          if (r?.rules?.length > 0) setRules(r.rules);
         }
       } finally {
         if (!cancelled) setLoading(false);
@@ -1752,23 +762,25 @@ export default function EliteRulesPage() {
     }
 
     load();
-    return () => {
-      cancelled = true;
-    };
+    return () => (cancelled = true);
   }, []);
 
-  /* AUTO-SELECT FIRST RULE IN GROUP */
+  /* Auto-select first rule when group changes */
   useEffect(() => {
     const first = rules.find(
-      (r) => r.groupId === selectedGroupId || r.group_id === selectedGroupId
+      (r) =>
+        r.groupId === selectedGroupId || r.group_id === selectedGroupId
     );
     setSelectedRuleId(first ? first.id : null);
   }, [rules, selectedGroupId]);
 
+  /* Visible rules for selected group */
   const visibleRules = useMemo(
     () =>
       rules.filter(
-        (r) => r.groupId === selectedGroupId || r.group_id === selectedGroupId
+        (r) =>
+          r.groupId === selectedGroupId ||
+          r.group_id === selectedGroupId
       ),
     [rules, selectedGroupId]
   );
@@ -1778,31 +790,36 @@ export default function EliteRulesPage() {
     [rules, selectedRuleId]
   );
 
-  /* AI EXPAND FOR RIGHT PANEL */
-  const handleAIExpand = async (prompt) => {
-    const res = await fetch("/api/elite/expand-rule", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        prompt,
-        rule: selectedRule || null,
-      }),
-    });
+  /* ---------------- AI Expand handler ---------------- */
+  async function handleAIExpand(prompt) {
+    try {
+      const res = await fetch("/api/elite/expand-rule", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          prompt,
+          rule: selectedRule || null,
+        }),
+      });
 
-    const data = await res.json();
-    if (!data.ok) {
-      throw new Error(data.error || "AI expansion failed.");
+      const data = await res.json();
+      if (!data.ok) throw new Error(data.error);
+
+      return data.expanded;
+    } catch (err) {
+      console.error(err);
+      return null;
     }
-    return data.expanded;
-  };
+  }
 
-  /* SIMPLE UPDATE PATCHER FOR RIGHT PANEL */
-  const handleUpdateRule = (id, updates) => {
+  /* ---------------- Update Rule (Right Panel) ---------------- */
+  function handleUpdateRule(id, updates) {
     setRules((prev) =>
       prev.map((r) => (r.id === id ? { ...r, ...updates } : r))
     );
-  };
+  }
 
+  /* ---------------- AI Build Suggestions ---------------- */
   function handleAiBuild() {
     setAiThinking(true);
 
@@ -1813,7 +830,7 @@ export default function EliteRulesPage() {
         name: "GL Additional Insured Endorsement",
         severity: "high",
         description:
-          "Require vendors to list your organization as Additional Insured on GL.",
+          "Require vendors to list your org as Additional Insured on GL.",
         logic: "has_additional_insured_endorsement == true",
         status: "draft",
       },
@@ -1823,7 +840,7 @@ export default function EliteRulesPage() {
         name: "Primary & Non-Contributory Wording",
         severity: "medium",
         description:
-          "Prefer GL policies that include primary and non-contributory wording.",
+          "Prefer GL policies with primary + non-contributory wording.",
         logic: "has_primary_non_contrib == true",
         status: "draft",
       },
@@ -1831,32 +848,34 @@ export default function EliteRulesPage() {
 
     setTimeout(() => {
       setAiSuggestions(stub);
-      setAiModalOpen(true);
       setAiThinking(false);
-    }, 600);
+      setAiModalOpen(true);
+    }, 500);
   }
 
-  /* CLEAN REORDER LOGIC */
+  /* ---------------- Reorder Rules ---------------- */
   function moveRule(dragId, hoverId) {
     setRules((prev) => {
       const list = [...prev];
 
-      const dragIndex = list.findIndex((r) => r.id === dragId);
-      const hoverIndex = list.findIndex((r) => r.id === hoverId);
+      const dragIdx = list.findIndex((r) => r.id === dragId);
+      const hoverIdx = list.findIndex((r) => r.id === hoverId);
 
-      if (dragIndex === -1 || hoverIndex === -1) return prev;
+      if (dragIdx === -1 || hoverIdx === -1) return prev;
 
-      const [removed] = list.splice(dragIndex, 1);
-      list.splice(hoverIndex, 0, removed);
+      const [removed] = list.splice(dragIdx, 1);
+      list.splice(hoverIdx, 0, removed);
 
       return list;
     });
   }
 
+  /* ---------------- Save Edited Rule ---------------- */
   function handleSaveRule(updated) {
     setRules((prev) =>
-      prev.map((r) => (r.id === updated.id ? { ...r, ...updated } : r))
+      prev.map((r) => (r.id === updated.id ? updated : r))
     );
+
     setEditingRule(null);
 
     setHistoryItems((prev) => [
@@ -1865,7 +884,7 @@ export default function EliteRulesPage() {
         ruleId: updated.id,
         ruleName: updated.name,
         when: new Date().toLocaleString(),
-        summary: "Rule edited.",
+        summary: "Rule edited",
         before: "",
         after: JSON.stringify(
           {
@@ -1881,77 +900,49 @@ export default function EliteRulesPage() {
     ]);
   }
 
+  /* ---------------- Create New Rule ---------------- */
   function handleCreateRule(newRule) {
     setRules((prev) => {
       const list = [...prev];
-      const indexOfFirstInGroup = list.findIndex(
+
+      const idx = list.findIndex(
         (r) =>
-          r.groupId === newRule.groupId || r.group_id === newRule.groupId
+          r.groupId === newRule.groupId ||
+          r.group_id === newRule.groupId
       );
-      if (indexOfFirstInGroup === -1) {
-        list.push(newRule);
-      } else {
-        list.splice(indexOfFirstInGroup, 0, newRule);
-      }
+
+      if (idx === -1) list.push(newRule);
+      else list.splice(idx, 0, newRule);
+
       return list;
     });
+
     setShowNewRule(false);
     setSelectedRuleId(newRule.id);
-
-    setHistoryItems((prev) => [
-      {
-        id: "h-" + Date.now(),
-        ruleId: newRule.id,
-        ruleName: newRule.name,
-        when: new Date().toLocaleString(),
-        summary: "Rule created.",
-        before: "",
-        after: JSON.stringify(
-          {
-            severity: newRule.severity,
-            status: newRule.status,
-            logic: newRule.logic,
-          },
-          null,
-          2
-        ),
-      },
-      ...prev,
-    ]);
   }
 
-  function getWeightsForGroup(groupId) {
-    return severityWeights[groupId] || DEFAULT_WEIGHTS;
-  }
-
+  /* ---------------- Severity Weight Change ---------------- */
   function handleWeightChange(groupId, key, value) {
-    const numeric = parseFloat(value);
-    if (Number.isNaN(numeric)) return;
-    setSeverityWeights((prev) => ({
-      ...prev,
-      [groupId]: {
-        ...(prev[groupId] || DEFAULT_WEIGHTS),
-        [key]: numeric,
-      },
-    }));
+    const num = parseFloat(value);
+    if (!isNaN(num)) {
+      setSeverityWeights((prev) => ({
+        ...prev,
+        [groupId]: {
+          ...(prev[groupId] || DEFAULT_WEIGHTS),
+          [key]: num,
+        },
+      }));
+    }
   }
 
-  function openHistory() {
-    setHistoryOpen(true);
-  }
-  function closeHistory() {
-    setHistoryOpen(false);
-  }
-
+  /* ---------------- Status Toggle ---------------- */
   function handleToggleStatus(rule) {
+    const newStatus =
+      rule.status === "disabled" ? "active" : "disabled";
+
     setRules((prev) =>
       prev.map((r) =>
-        r.id === rule.id
-          ? {
-              ...r,
-              status: r.status === "disabled" ? "active" : "disabled",
-            }
-          : r
+        r.id === rule.id ? { ...r, status: newStatus } : r
       )
     );
 
@@ -1962,28 +953,27 @@ export default function EliteRulesPage() {
         ruleName: rule.name,
         when: new Date().toLocaleString(),
         summary:
-          rule.status === "disabled"
-            ? "Rule re-enabled."
-            : "Rule disabled.",
-        before: "",
-        after: "Status: " + (rule.status === "disabled" ? "active" : "disabled"),
+          newStatus === "active"
+            ? "Rule re-enabled"
+            : "Rule disabled",
       },
       ...prev,
     ]);
   }
 
+  /* ---------------- Duplicate ---------------- */
   function handleDuplicateRule(rule) {
-    const cloneId = "rule-" + Date.now();
     const clone = {
       ...rule,
-      id: cloneId,
-      name: rule.name + " (copy)",
+      id: "rule-" + Date.now(),
+      name: `${rule.name} (copy)`,
       status: "draft",
     };
 
     handleCreateRule(clone);
   }
 
+  /* ---------------- Delete ---------------- */
   function handleDeleteRequest(rule) {
     setRuleToDelete(rule);
     setDeleteModalOpen(true);
@@ -1991,61 +981,68 @@ export default function EliteRulesPage() {
 
   function handleDeleteConfirm() {
     if (!ruleToDelete) return;
-    const deleted = ruleToDelete;
-    setRules((prev) => prev.filter((r) => r.id !== deleted.id));
+
+    setRules((prev) =>
+      prev.filter((r) => r.id !== ruleToDelete.id)
+    );
+
     setHistoryItems((prev) => [
       {
         id: "h-" + Date.now(),
-        ruleId: deleted.id,
-        ruleName: deleted.name,
+        ruleId: ruleToDelete.id,
+        ruleName: ruleToDelete.name,
         when: new Date().toLocaleString(),
-        summary: "Rule deleted.",
-        before: "",
-        after: "",
+        summary: "Rule deleted",
       },
       ...prev,
     ]);
-    setRuleToDelete(null);
+
     setDeleteModalOpen(false);
+    setRuleToDelete(null);
   }
 
+  /* ---------------- Group Editor ---------------- */
   function handleGroupEditOpen() {
     const group = groups.find((g) => g.id === selectedGroupId);
     if (!group) return;
+
     setGroupDraft(group);
     setGroupEditorOpen(true);
   }
 
   function handleGroupSave(updatedGroup) {
     setGroups((prev) =>
-      prev.map((g) => (g.id === updatedGroup.id ? updatedGroup : g))
+      prev.map((g) =>
+        g.id === updatedGroup.id ? updatedGroup : g
+      )
     );
     setGroupEditorOpen(false);
   }
-
-  function handleApplyAiSuggestion(suggestion) {
-    handleCreateRule({
-      id: "rule-" + Date.now(),
-      name: suggestion.name,
-      groupId: suggestion.groupId,
-      severity: suggestion.severity,
-      status: suggestion.status,
-      description: suggestion.description,
-      logic: suggestion.logic,
-    });
-  }
+  /* =============================== */
+  /*        PAGE WRAPPER + HEADER   */
+  /* =============================== */
 
   return (
-    <div style={{ minHeight: "100vh", background: GP.surface }}>
+    <div
+      style={{
+        minHeight: "100vh",
+        background: GP.surface,
+
+        /* 🔥 FIX #1 — sidebar overlap */
+        paddingLeft: "240px",
+      }}
+    >
       <div style={{ padding: "30px 40px" }}>
-        {/* HEADER */}
+        {/* PAGE HEADER */}
         <div
           style={{
             display: "flex",
             justifyContent: "space-between",
             marginBottom: 24,
+            gap: 20,
           }}
         >
+          {/* LEFT SIDE HEADER */}
           <div>
             <div
               style={{
@@ -2076,7 +1073,7 @@ export default function EliteRulesPage() {
             </p>
 
             {error && (
-              <p style={{ marginTop: 8, color: "#B45309", fontSize: 12 }}>
+              <p style={{ marginTop: 8, fontSize: 12, color: "#B45309" }}>
                 ⚠️ {error}
               </p>
             )}
@@ -2085,6 +1082,7 @@ export default function EliteRulesPage() {
           {/* RIGHT HEADER ACTIONS */}
           <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
             <button
+              onClick={() => setHistoryOpen(true)}
               style={{
                 padding: "9px 14px",
                 borderRadius: 999,
@@ -2092,12 +1090,12 @@ export default function EliteRulesPage() {
                 background: "#FFF",
                 cursor: "pointer",
               }}
-              onClick={openHistory}
             >
               View Rule History
             </button>
 
             <button
+              onClick={() => setShowNewRule(true)}
               style={{
                 padding: "9px 14px",
                 borderRadius: 999,
@@ -2105,25 +1103,24 @@ export default function EliteRulesPage() {
                   "linear-gradient(135deg,#0057FF,#00E0FF 70%,#8A2BFF)",
                 color: "#FFF",
                 fontWeight: 600,
-                boxShadow: "0 14px 35px rgba(37,99,235,0.45)",
                 border: "none",
                 cursor: "pointer",
+                boxShadow: "0 14px 35px rgba(37,99,235,0.45)",
               }}
-              onClick={() => setShowNewRule(true)}
             >
               ＋ New Rule
             </button>
 
             <button
-              onClick={handleAiBuild}
               disabled={aiThinking}
+              onClick={handleAiBuild}
               style={{
                 padding: "7px 12px",
                 borderRadius: 999,
                 background: "rgba(56,189,248,0.12)",
                 color: "#0369A1",
-                border: "none",
                 fontSize: 12,
+                border: "none",
                 cursor: "pointer",
               }}
             >
@@ -2132,16 +1129,29 @@ export default function EliteRulesPage() {
           </div>
         </div>
 
-        {/* MAIN GRID: GROUPS | RULES | AI PANEL */}
+        {/* ========================= */}
+        {/*    3-COLUMN LAYOUT FIX    */}
+        {/* ========================= */}
+
         <div
           style={{
             display: "grid",
+
+            /* 🔥 FIX #2 — stable 3-column grid */
             gridTemplateColumns: "320px minmax(0, 1.4fr) 380px",
+
             gap: 24,
             alignItems: "flex-start",
+
+            /* 🔥 FIX #3 — prevents layout collapse on Vercel */
+            width: "100%",
+            overflow: "visible",
           }}
         >
-          {/* LEFT: GROUP LIST */}
+          {/* ========================= */}
+          {/*     LEFT: GROUP LIST     */}
+          {/* ========================= */}
+
           <div
             style={{
               background: GP.panel,
@@ -2164,10 +1174,17 @@ export default function EliteRulesPage() {
               Requirement Groups
             </div>
 
-            <p style={{ fontSize: 12, color: GP.inkSoft, marginBottom: 14 }}>
+            <p
+              style={{
+                fontSize: 12,
+                color: GP.inkSoft,
+                marginBottom: 14,
+              }}
+            >
               Select a coverage group to view and reorder its rules.
             </p>
 
+            {/* GROUP BUTTONS */}
             <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
               {groups.map((g) => {
                 const selected = g.id === selectedGroupId;
@@ -2180,35 +1197,39 @@ export default function EliteRulesPage() {
                       textAlign: "left",
                       padding: "10px 12px",
                       borderRadius: 14,
-                      border: selected
-                        ? "1px solid rgba(37,99,235,0.6)"
-                        : "1px solid rgba(226,232,240,0.95)",
-                      background: selected
-                        ? "linear-gradient(135deg,#EEF2FF,#EFF6FF)"
-                        : "#FFF",
                       cursor: "pointer",
                       display: "flex",
                       gap: 10,
                       alignItems: "flex-start",
+
+                      background: selected
+                        ? "linear-gradient(135deg,#EEF2FF,#EFF6FF)"
+                        : "#FFF",
+
+                      border: selected
+                        ? "1px solid rgba(37,99,235,0.65)"
+                        : "1px solid rgba(226,232,240,0.95)",
                     }}
                   >
+                    {/* ICON BUBBLE */}
                     <div
                       style={{
                         width: 28,
                         height: 28,
                         borderRadius: 999,
-                        background: selected
-                          ? "rgba(37,99,235,0.1)"
-                          : "rgba(15,23,42,0.03)",
                         display: "flex",
                         justifyContent: "center",
                         alignItems: "center",
                         fontSize: 16,
+                        background: selected
+                          ? "rgba(37,99,235,0.15)"
+                          : "rgba(15,23,42,0.05)",
                       }}
                     >
                       {g.icon}
                     </div>
 
+                    {/* LABEL + DESCRIPTION */}
                     <div>
                       <div
                         style={{
@@ -2230,6 +1251,7 @@ export default function EliteRulesPage() {
               })}
             </div>
 
+            {/* EDIT GROUP BUTTON */}
             <button
               type="button"
               onClick={handleGroupEditOpen}
@@ -2247,8 +1269,10 @@ export default function EliteRulesPage() {
               ✏️ Edit selected group
             </button>
           </div>
+          {/* ========================= */}
+          {/*   MIDDLE: RULE LIST       */}
+          {/* ========================= */}
 
-          {/* MIDDLE: RULE LIST - DND ENABLED */}
           <DndProvider backend={HTML5Backend}>
             <div
               style={{
@@ -2257,14 +1281,17 @@ export default function EliteRulesPage() {
                 border: "1px solid rgba(226,232,240,0.95)",
                 boxShadow: GP.shadow,
                 padding: 18,
+
+                /* 🔥 FIX — prevents overflow pushing AI panel */
+                overflow: "hidden",
               }}
             >
-              {/* RIGHT HEADER */}
+              {/* Header */}
               <div
                 style={{
                   display: "flex",
                   justifyContent: "space-between",
-                  marginBottom: 10,
+                  marginBottom: 12,
                   alignItems: "center",
                 }}
               >
@@ -2310,58 +1337,61 @@ export default function EliteRulesPage() {
                 </div>
               </div>
 
-              {/* 🔥 SEVERITY WEIGHTING STRIP */}
+              {/* ======================= */}
+              {/*  SEVERITY WEIGHT STRIP  */}
+              {/* ======================= */}
+
               {(() => {
-                const w = getWeightsForGroup(selectedGroupId);
+                const w = severityWeights[selectedGroupId];
+
                 return (
                   <div
                     style={{
-                      marginBottom: 16,
-                      padding: 10,
+                      marginBottom: 18,
+                      padding: 12,
                       borderRadius: 14,
-                      border: "1px dashed rgba(148,163,184,0.5)",
-                      background: "rgba(248,250,252,0.9)",
+                      border: "1px dashed rgba(148,163,184,0.45)",
+                      background: "rgba(248,250,252,0.95)",
                     }}
                   >
                     <div
                       style={{
                         display: "flex",
                         justifyContent: "space-between",
-                        marginBottom: 6,
                         alignItems: "center",
-                        gap: 8,
+                        marginBottom: 8,
                       }}
                     >
                       <div
                         style={{
                           fontSize: 12,
                           fontWeight: 600,
-                          color: GP.inkSoft,
                           textTransform: "uppercase",
                           letterSpacing: "0.1em",
+                          color: GP.inkSoft,
                         }}
                       >
                         Severity weighting
                       </div>
+
                       <div
                         style={{
                           fontSize: 11,
                           color: GP.inkSoft,
-                          textAlign: "right",
                         }}
                       >
-                        These weights influence compliance scoring & AI
-                        reasoning.
+                        Adjust weights to influence scoring & AI reasoning.
                       </div>
                     </div>
 
                     <div
                       style={{
                         display: "grid",
-                        gridTemplateColumns: "repeat(3, minmax(0, 1fr))",
+                        gridTemplateColumns: "repeat(3, 1fr)",
                         gap: 10,
                       }}
                     >
+                      {/* HIGH */}
                       <div>
                         <div
                           style={{
@@ -2394,6 +1424,7 @@ export default function EliteRulesPage() {
                         />
                       </div>
 
+                      {/* MEDIUM */}
                       <div>
                         <div
                           style={{
@@ -2426,6 +1457,7 @@ export default function EliteRulesPage() {
                         />
                       </div>
 
+                      {/* LOW */}
                       <div>
                         <div
                           style={{
@@ -2464,7 +1496,7 @@ export default function EliteRulesPage() {
 
               {/* RULE LIST */}
               {loading && (
-                <div style={{ color: GP.inkSoft, fontSize: 12 }}>
+                <div style={{ fontSize: 12, color: GP.inkSoft }}>
                   Loading rules…
                 </div>
               )}
@@ -2477,26 +1509,28 @@ export default function EliteRulesPage() {
 
               {!loading &&
                 visibleRules.length > 0 &&
-                visibleRules.map((r, i) => (
+                visibleRules.map((rule, i) => (
                   <RuleCard
-                    key={r.id}
-                    rule={r}
+                    key={rule.id}
+                    rule={rule}
                     index={i}
                     moveRule={moveRule}
                     onEdit={() => {
-                      setEditingRule(r);
-                      setSelectedRuleId(r.id);
+                      setEditingRule(rule);
+                      setSelectedRuleId(rule.id);
                     }}
                     onToggleStatus={handleToggleStatus}
                     onDuplicate={handleDuplicateRule}
                     onDeleteRequest={handleDeleteRequest}
-                    onSelect={() => setSelectedRuleId(r.id)}
+                    onSelect={() => setSelectedRuleId(rule.id)}
                   />
                 ))}
             </div>
           </DndProvider>
+          {/* ========================= */}
+          {/*     RIGHT: AI PANEL       */}
+          {/* ========================= */}
 
-          {/* RIGHT: AI RULE PANEL */}
           <RuleEnginePanel
             selectedRule={selectedRule}
             onUpdateRule={handleUpdateRule}
@@ -2505,7 +1539,11 @@ export default function EliteRulesPage() {
         </div>
       </div>
 
-      {/* EDIT MODAL */}
+      {/* ========================= */}
+      {/*          MODALS           */}
+      {/* ========================= */}
+
+      {/* EDIT RULE MODAL */}
       {editingRule && (
         <EditRuleModal
           rule={editingRule}
@@ -2524,14 +1562,14 @@ export default function EliteRulesPage() {
         />
       )}
 
-      {/* RULE HISTORY DRAWER */}
+      {/* RULE HISTORY */}
       <RuleHistoryDrawer
         open={historyOpen}
-        onClose={closeHistory}
+        onClose={() => setHistoryOpen(false)}
         items={historyItems}
       />
 
-      {/* AI SUGGEST MODAL */}
+      {/* AI SUGGESTIONS */}
       <AiSuggestModal
         open={aiModalOpen}
         onClose={() => setAiModalOpen(false)}
@@ -2539,7 +1577,7 @@ export default function EliteRulesPage() {
         onApply={handleApplyAiSuggestion}
       />
 
-      {/* GROUP EDITOR MODAL */}
+      {/* GROUP EDITOR */}
       <GroupEditorModal
         open={groupEditorOpen}
         group={groupDraft}
@@ -2547,7 +1585,7 @@ export default function EliteRulesPage() {
         onSave={handleGroupSave}
       />
 
-      {/* DELETE RULE MODAL */}
+      {/* DELETE CONFIRM */}
       <DeleteRuleModal
         open={deleteModalOpen}
         rule={ruleToDelete}
