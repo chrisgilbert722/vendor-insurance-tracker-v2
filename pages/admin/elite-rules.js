@@ -4,6 +4,7 @@ import { useRole } from "../../lib/useRole";
 import { useOrg } from "../../context/OrgContext";
 import { DndProvider, useDrag, useDrop } from "react-dnd";
 import { HTML5Backend } from "react-dnd-html5-backend";
+import RuleEnginePanel from "../../components/elite/RuleEnginePanel";
 
 /* THEME TOKENS */
 const GP = {
@@ -438,7 +439,6 @@ function EditRuleModal({ rule, onClose, onSave }) {
     </div>
   );
 }
-
 /* CREATE RULE MODAL */
 function NewRuleModal({ groups, onClose, onCreate, defaultGroupId }) {
   const [name, setName] = useState("");
@@ -692,6 +692,7 @@ function NewRuleModal({ groups, onClose, onCreate, defaultGroupId }) {
     </div>
   );
 }
+
 /* RULE HISTORY DRAWER */
 function RuleHistoryDrawer({ open, onClose, items }) {
   if (!open) return null;
@@ -1106,7 +1107,6 @@ function AiSuggestModal({ open, onClose, suggestions, onApply }) {
     </div>
   );
 }
-
 /* GROUP EDITOR MODAL */
 function GroupEditorModal({ open, group, onClose, onSave }) {
   const [label, setLabel] = useState(group?.label || "");
@@ -1367,6 +1367,7 @@ function DeleteRuleModal({ open, rule, onCancel, onConfirm }) {
     </div>
   );
 }
+
 /* DnD-enabled RuleCard */
 function RuleCard({
   rule,
@@ -1376,6 +1377,7 @@ function RuleCard({
   onToggleStatus,
   onDuplicate,
   onDeleteRequest,
+  onSelect,
 }) {
   const sev = severityStyle(rule.severity || "low");
   const ref = useRef(null);
@@ -1418,12 +1420,12 @@ function RuleCard({
   drag(drop(ref));
 
   const disabled = rule.status === "disabled";
-
   const [showAdvanced, setShowAdvanced] = useState(false);
 
   return (
     <div
       ref={ref}
+      onClick={onSelect}
       style={{
         opacity: isDragging ? 0.45 : disabled ? 0.5 : 1,
         display: "flex",
@@ -1435,6 +1437,7 @@ function RuleCard({
         boxShadow: "0 12px 30px rgba(15,23,42,0.06)",
         marginBottom: 12,
         transition: "opacity 0.12s ease-out",
+        cursor: "pointer",
       }}
     >
       <div
@@ -1532,7 +1535,10 @@ function RuleCard({
         {/* Advanced accordion */}
         <button
           type="button"
-          onClick={() => setShowAdvanced((s) => !s)}
+          onClick={(e) => {
+            e.stopPropagation();
+            setShowAdvanced((s) => !s);
+          }}
           style={{
             marginTop: 8,
             fontSize: 11,
@@ -1582,7 +1588,10 @@ function RuleCard({
           {/* Left: status toggle */}
           <button
             type="button"
-            onClick={() => onToggleStatus(rule)}
+            onClick={(e) => {
+              e.stopPropagation();
+              onToggleStatus(rule);
+            }}
             style={{
               borderRadius: 999,
               padding: "6px 10px",
@@ -1599,7 +1608,10 @@ function RuleCard({
           <div style={{ display: "flex", gap: 8 }}>
             <button
               type="button"
-              onClick={onEdit}
+              onClick={(e) => {
+                e.stopPropagation();
+                onEdit();
+              }}
               style={{
                 borderRadius: 999,
                 padding: "6px 10px",
@@ -1612,7 +1624,10 @@ function RuleCard({
             </button>
             <button
               type="button"
-              onClick={() => onDuplicate(rule)}
+              onClick={(e) => {
+                e.stopPropagation();
+                onDuplicate(rule);
+              }}
               style={{
                 borderRadius: 999,
                 padding: "6px 10px",
@@ -1625,7 +1640,10 @@ function RuleCard({
             </button>
             <button
               type="button"
-              onClick={() => onDeleteRequest(rule)}
+              onClick={(e) => {
+                e.stopPropagation();
+                onDeleteRequest(rule);
+              }}
               style={{
                 borderRadius: 999,
                 padding: "6px 10px",
@@ -1643,7 +1661,6 @@ function RuleCard({
     </div>
   );
 }
-
 /* MAIN RULE ENGINE PAGE */
 export default function EliteRulesPage() {
   const { isAdmin } = useRole();
@@ -1652,6 +1669,8 @@ export default function EliteRulesPage() {
   const [groups, setGroups] = useState(SAMPLE_GROUPS);
   const [rules, setRules] = useState(SAMPLE_RULES);
   const [selectedGroupId, setSelectedGroupId] = useState("general-liability");
+  const [selectedRuleId, setSelectedRuleId] = useState(null);
+
   const [loading, setLoading] = useState(false);
   const [aiThinking, setAiThinking] = useState(false);
   const [error, setError] = useState(null);
@@ -1712,7 +1731,6 @@ export default function EliteRulesPage() {
         if (!cancelled) {
           if (g && Array.isArray(g.groups) && g.groups.length > 0) {
             setGroups(g.groups);
-            // ensure weights exist for any API groups
             setSeverityWeights((prev) => {
               const next = { ...prev };
               g.groups.forEach((group) => {
@@ -1739,6 +1757,14 @@ export default function EliteRulesPage() {
     };
   }, []);
 
+  /* AUTO-SELECT FIRST RULE IN GROUP */
+  useEffect(() => {
+    const first = rules.find(
+      (r) => r.groupId === selectedGroupId || r.group_id === selectedGroupId
+    );
+    setSelectedRuleId(first ? first.id : null);
+  }, [rules, selectedGroupId]);
+
   const visibleRules = useMemo(
     () =>
       rules.filter(
@@ -1747,10 +1773,39 @@ export default function EliteRulesPage() {
     [rules, selectedGroupId]
   );
 
+  const selectedRule = useMemo(
+    () => rules.find((r) => r.id === selectedRuleId) || null,
+    [rules, selectedRuleId]
+  );
+
+  /* AI EXPAND FOR RIGHT PANEL */
+  const handleAIExpand = async (prompt) => {
+    const res = await fetch("/api/elite/expand-rule", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        prompt,
+        rule: selectedRule || null,
+      }),
+    });
+
+    const data = await res.json();
+    if (!data.ok) {
+      throw new Error(data.error || "AI expansion failed.");
+    }
+    return data.expanded;
+  };
+
+  /* SIMPLE UPDATE PATCHER FOR RIGHT PANEL */
+  const handleUpdateRule = (id, updates) => {
+    setRules((prev) =>
+      prev.map((r) => (r.id === id ? { ...r, ...updates } : r))
+    );
+  };
+
   function handleAiBuild() {
     setAiThinking(true);
 
-    // For now: stub suggestions. Later: call real /api/elite/suggest
     const stub = [
       {
         id: "s1",
@@ -1841,6 +1896,7 @@ export default function EliteRulesPage() {
       return list;
     });
     setShowNewRule(false);
+    setSelectedRuleId(newRule.id);
 
     setHistoryItems((prev) => [
       {
@@ -1978,6 +2034,7 @@ export default function EliteRulesPage() {
       logic: suggestion.logic,
     });
   }
+
   return (
     <div style={{ minHeight: "100vh", background: GP.surface }}>
       <div style={{ padding: "30px 40px" }}>
@@ -2014,8 +2071,8 @@ export default function EliteRulesPage() {
             </h1>
 
             <p style={{ fontSize: 14, color: GP.inkSoft, maxWidth: 520 }}>
-              Design, reorder, and score the rules that power your AI-driven vendor
-              compliance engine.
+              Design, reorder, and score the rules that power your AI-driven
+              vendor compliance engine.
             </p>
 
             {error && (
@@ -2075,12 +2132,13 @@ export default function EliteRulesPage() {
           </div>
         </div>
 
-        {/* MAIN GRID */}
+        {/* MAIN GRID: GROUPS | RULES | AI PANEL */}
         <div
           style={{
             display: "grid",
-            gridTemplateColumns: "minmax(0, 1.15fr) minmax(0, 2fr)",
+            gridTemplateColumns: "320px minmax(0, 1.4fr) 380px",
             gap: 24,
+            alignItems: "flex-start",
           }}
         >
           {/* LEFT: GROUP LIST */}
@@ -2190,7 +2248,7 @@ export default function EliteRulesPage() {
             </button>
           </div>
 
-          {/* RIGHT: RULE LIST - DND ENABLED */}
+          {/* MIDDLE: RULE LIST - DND ENABLED */}
           <DndProvider backend={HTML5Backend}>
             <div
               style={{
@@ -2292,7 +2350,8 @@ export default function EliteRulesPage() {
                           textAlign: "right",
                         }}
                       >
-                        These weights influence compliance scoring & AI reasoning.
+                        These weights influence compliance scoring & AI
+                        reasoning.
                       </div>
                     </div>
 
@@ -2424,14 +2483,25 @@ export default function EliteRulesPage() {
                     rule={r}
                     index={i}
                     moveRule={moveRule}
-                    onEdit={() => setEditingRule(r)}
+                    onEdit={() => {
+                      setEditingRule(r);
+                      setSelectedRuleId(r.id);
+                    }}
                     onToggleStatus={handleToggleStatus}
                     onDuplicate={handleDuplicateRule}
                     onDeleteRequest={handleDeleteRequest}
+                    onSelect={() => setSelectedRuleId(r.id)}
                   />
                 ))}
             </div>
           </DndProvider>
+
+          {/* RIGHT: AI RULE PANEL */}
+          <RuleEnginePanel
+            selectedRule={selectedRule}
+            onUpdateRule={handleUpdateRule}
+            onAIExpand={handleAIExpand}
+          />
         </div>
       </div>
 
