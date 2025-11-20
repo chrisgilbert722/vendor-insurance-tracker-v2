@@ -1,476 +1,3 @@
-// pages/admin/vendor/[id].js
-import { useRouter } from "next/router";
-import { useMemo, useState, useEffect } from "react";
-
-/* ===========================
-   THEME TOKENS
-=========================== */
-const GP = {
-  primary: "#0057FF",
-  primaryDark: "#003BB3",
-  accent1: "#00E0FF",
-  accent2: "#8A2BFF",
-  red: "#FF3B3B",
-  orange: "#FF9800",
-  yellow: "#FFC107",
-  green: "#00C27A",
-  ink: "#0D1623",
-  inkSoft: "#64748B",
-  surface: "#020617",
-  border: "#1E293B",
-};
-
-/* ===========================
-   MOCK VENDOR PROFILES (fallback)
-=========================== */
-const vendorProfiles = {
-  "summit-roofing": {
-    id: "summit-roofing",
-    name: "Summit Roofing & Coatings",
-    category: "Roofing / Exterior Work",
-    location: "Denver, CO",
-    tags: ["Onsite contractor", "High risk", "Exterior work"],
-    contactEmail: "risk@summitroofing.example", // demo
-    complianceScore: 72,
-    status: "At Risk",
-    riskLevel: "High",
-    alertsOpen: 3,
-    criticalIssues: 1,
-    lastUpdated: "2025-11-20T14:23:00Z",
-    aiSummary:
-      "Vendor is 72% compliant. GL limits are below blueprint, Workers Comp is missing for onsite crew, and the primary COI expires in 23 days. Treat as high risk until limits and coverage are corrected.",
-    coverage: [
-      {
-        id: "gl-each-occurrence",
-        label: "General Liability — Each Occurrence",
-        required: 1000000,
-        actual: 500000,
-        unit: "per occurrence",
-        status: "Fail",
-        severity: "High",
-        field: "Certificate.glEachOccurrence",
-      },
-      {
-        id: "gl-aggregate",
-        label: "General Liability — General Aggregate",
-        required: 2000000,
-        actual: 2000000,
-        unit: "aggregate",
-        status: "Pass",
-        severity: "Medium",
-        field: "Certificate.glGeneralAggregate",
-      },
-      {
-        id: "auto-liab",
-        label: "Auto Liability — Combined Single Limit",
-        required: 1000000,
-        actual: 1000000,
-        unit: "combined single limit",
-        status: "Pass",
-        severity: "High",
-        field: "Certificate.autoLiability",
-      },
-      {
-        id: "umbrella",
-        label: "Umbrella / Excess",
-        required: 5000000,
-        actual: 3000000,
-        unit: "limit",
-        status: "Fail",
-        severity: "High",
-        field: "Certificate.umbrellaLimit",
-      },
-    ],
-    endorsements: [
-      {
-        id: "ai",
-        label: "Additional Insured – Ongoing Operations",
-        required: true,
-        present: false,
-        severity: "Critical",
-        expectation: "AI wording (CG 20 10 or equivalent) naming your org.",
-        finding: "No AI wording detected on COI or endorsements.",
-      },
-      {
-        id: "waiver",
-        label: "Waiver of Subrogation",
-        required: true,
-        present: true,
-        severity: "Medium",
-        expectation:
-          "Named waiver of subrogation in favor of your organization.",
-        finding: "Generic waiver wording present; does not name your org.",
-      },
-    ],
-    documents: [
-      {
-        id: "coi",
-        label: "Certificate of Insurance",
-        type: "COI",
-        status: "Expires in 23 days",
-        severity: "Medium",
-        present: true,
-      },
-      {
-        id: "contract",
-        label: "Signed Contract / MSA",
-        type: "Contract",
-        status: "On file",
-        severity: "Low",
-        present: true,
-      },
-      {
-        id: "safety",
-        label: "Safety Program / OSHA Docs",
-        type: "Safety",
-        status: "Missing",
-        severity: "Low",
-        present: false,
-      },
-    ],
-    rulesFired: [
-      {
-        id: "r1",
-        severity: "Critical",
-        label: "General Liability Below Required",
-        description:
-          "GL each occurrence limit is below blueprint requirement while vendor is active.",
-        dsl: "Certificate.glEachOccurrence < Org.requiredGLEachOccurrence AND Vendor.isActive = true",
-        timestamp: "2025-11-20T14:23:00Z",
-      },
-      {
-        id: "r2",
-        severity: "High",
-        label: "Onsite Contractor Requires Workers Comp",
-        description:
-          "Vendor flagged as onsite contractor but no Workers Compensation coverage found.",
-        dsl: "Vendor.category IN ('Onsite Contractor','Construction') AND Certificate.workersComp IS NULL",
-        timestamp: "2025-11-18T13:40:00Z",
-      },
-      {
-        id: "r3",
-        severity: "Medium",
-        label: "Expires Within 30 Days",
-        description:
-          "Primary GL policy expiration within next 30 days for active vendor.",
-        dsl: "Certificate.glExpirationDate <= today + 30 days AND Vendor.isActive = true",
-        timestamp: "2025-11-17T10:30:00Z",
-      },
-    ],
-    requirementsSummary: {
-      total: 14,
-      passed: 10,
-      failed: 4,
-      byType: {
-        coverage: { passed: 2, failed: 2 },
-        endorsements: { passed: 1, failed: 1 },
-        documents: { passed: 2, failed: 1 },
-        logical: { passed: 5, failed: 0 },
-      },
-    },
-    timeline: [
-      {
-        id: "t1",
-        type: "Rule",
-        label: "GL limit below required",
-        severity: "Critical",
-        timestamp: "2025-11-20T14:23:00Z",
-        detail:
-          "GL each occurrence $500,000. Blueprint requires $1,000,000 per occurrence.",
-      },
-      {
-        id: "t2",
-        type: "Rule",
-        label: "Onsite contractor missing Workers Comp",
-        severity: "High",
-        timestamp: "2025-11-18T13:40:00Z",
-        detail:
-          "Vendor category = Onsite contractor; Workers Comp coverage not detected on any policy.",
-      },
-      {
-        id: "t3",
-        type: "Rule",
-        label: "GL policy expires in 23 days",
-        severity: "Medium",
-        timestamp: "2025-11-17T10:30:00Z",
-        detail:
-          "Primary GL expiration in 23 days. Email notification sent to vendor contact.",
-      },
-      {
-        id: "t4",
-        type: "Document",
-        label: "Contract uploaded",
-        severity: "Low",
-        timestamp: "2025-11-12T09:10:00Z",
-        detail: "Signed MSA (3-year term) uploaded and linked to vendor.",
-      },
-    ],
-  },
-
-  default: {
-    id: "example-vendor",
-    name: "Example Vendor, Inc.",
-    category: "General Services",
-    location: "Your City, USA",
-    tags: ["Demo vendor"],
-    contactEmail: "vendor@example.com",
-    complianceScore: 88,
-    status: "Compliant",
-    riskLevel: "Medium",
-    alertsOpen: 1,
-    criticalIssues: 0,
-    lastUpdated: "2025-11-20T11:00:00Z",
-    aiSummary:
-      "Vendor is 88% compliant with one open medium-severity alert. Coverage and documents match blueprint for most lines.",
-    coverage: [],
-    endorsements: [],
-    documents: [],
-    rulesFired: [],
-    requirementsSummary: {
-      total: 0,
-      passed: 0,
-      failed: 0,
-      byType: {
-        coverage: { passed: 0, failed: 0 },
-        endorsements: { passed: 0, failed: 0 },
-        documents: { passed: 0, failed: 0 },
-        logical: { passed: 0, failed: 0 },
-      },
-    },
-    timeline: [],
-  },
-};
-
-/* ===========================
-   HELPERS
-=========================== */
-function severityStyle(sev) {
-  switch (sev) {
-    case "Critical":
-      return {
-        bg: "rgba(248,113,113,0.14)",
-        border: "rgba(248,113,113,0.9)",
-        text: "#fee2e2",
-      };
-    case "High":
-      return {
-        bg: "rgba(250,204,21,0.14)",
-        border: "rgba(250,204,21,0.9)",
-        text: "#fef9c3",
-      };
-    case "Medium":
-      return {
-        bg: "rgba(56,189,248,0.14)",
-        border: "rgba(56,189,248,0.9)",
-        text: "#e0f2fe",
-      };
-    case "Low":
-      return {
-        bg: "rgba(52,211,153,0.14)",
-        border: "rgba(52,211,153,0.9)",
-        text: "#ccfbf1",
-      };
-    default:
-      return {
-        bg: "rgba(148,163,184,0.14)",
-        border: "rgba(148,163,184,0.9)",
-        text: "#e5e7eb",
-      };
-  }
-}
-
-function formatShortDate(iso) {
-  if (!iso) return "";
-  const d = new Date(iso);
-  return d.toLocaleDateString(undefined, {
-    month: "short",
-    day: "numeric",
-    year: "numeric",
-  });
-}
-
-function formatTimeAgo(iso) {
-  if (!iso) return "";
-  const d = new Date(iso);
-  const now = new Date();
-  const diffMs = now - d;
-  const diffMins = Math.round(diffMs / 60000);
-  if (diffMins < 1) return "just now";
-  if (diffMins < 60) return diffMins + " min ago";
-  const diffHours = Math.round(diffMins / 60);
-  if (diffHours < 24) return diffHours + " h ago";
-  const diffDays = Math.round(diffHours / 24);
-  return diffDays + " d ago";
-}
-
-/* Build list of issues + email template (polished copy) */
-function buildOutreachContext(vendor, coverage, endorsements, documents, rules) {
-  const failingCoverage = (coverage || []).filter((c) => c.status === "Fail");
-  const missingEndorsements = (endorsements || []).filter(
-    (e) => e.required && !e.present
-  );
-  const softEndorseIssues = (endorsements || []).filter(
-    (e) =>
-      e.present &&
-      e.finding &&
-      e.finding.toLowerCase().includes("generic")
-  );
-  const missingDocs = (documents || []).filter(
-    (d) =>
-      !d.present ||
-      (d.status && d.status.toLowerCase().includes("missing"))
-  );
-  const expiringDocs = (documents || []).filter(
-    (d) =>
-      d.status &&
-      (d.status.toLowerCase().includes("expires") ||
-        d.status.toLowerCase().includes("expiring"))
-  );
-  const criticalRules = (rules || []).filter(
-    (r) => r.severity === "Critical" || r.severity === "High"
-  );
-
-  return {
-    failingCoverage,
-    missingEndorsements,
-    softEndorseIssues,
-    missingDocs,
-    expiringDocs,
-    criticalRules,
-  };
-}
-
-function buildEmailTemplate({
-  vendor,
-  tone,
-  coverage,
-  endorsements,
-  documents,
-  rules,
-}) {
-  const name = vendor?.name || "your company";
-  const ctx = buildOutreachContext(
-    vendor,
-    coverage,
-    endorsements,
-    documents,
-    rules
-  );
-
-  const bullets = [];
-
-  ctx.failingCoverage.slice(0, 3).forEach((c) => {
-    bullets.push(
-      `• ${c.label}: detected ${formatMoney(
-        c.actual
-      )} ${c.unit}, blueprint requires ${formatMoney(c.required)} ${c.unit}.`
-    );
-  });
-
-  ctx.missingEndorsements.slice(0, 3).forEach((e) => {
-    bullets.push(
-      `• ${e.label}: required but not detected on COI or endorsements.`
-    );
-  });
-
-  ctx.softEndorseIssues.slice(0, 2).forEach((e) => {
-    bullets.push(
-      `• ${e.label}: wording appears generic; blueprint expects: ${e.expectation}.`
-    );
-  });
-
-  ctx.missingDocs.slice(0, 3).forEach((d) => {
-    bullets.push(`• ${d.label}: no current document on file.`);
-  });
-
-  ctx.expiringDocs.slice(0, 2).forEach((d) => {
-    bullets.push(`• ${d.label}: ${d.status}.`);
-  });
-
-  ctx.criticalRules.slice(0, 3).forEach((r) => {
-    bullets.push(`• Rule triggered: ${r.label}.`);
-  });
-
-  if (bullets.length === 0) {
-    bullets.push(
-      "• Our records show at least one item that needs review to stay compliant."
-    );
-  }
-
-  // Polished tone variants
-  let greeting = `Dear ${name} team,`;
-  let closing =
-    "Thank you for your prompt attention to this and for helping us keep everything compliant.";
-  let intro =
-    "During our recent compliance review, we identified several items that must be updated to keep your account aligned with our insurance requirements.";
-  let subtitle =
-    "The following updates are needed based on the certificates, endorsements, and documents we currently have on file:";
-  let subject = `Insurance & compliance updates needed for ${name}`;
-  let actions =
-    "Please send updated certificates, endorsements, or documents addressing these items. You may reply directly with updated PDFs or upload them via your secure upload link.";
-
-  if (tone === "friendly") {
-    greeting = `Hi ${name} team,`;
-    intro =
-      "Our system noticed a few insurance items that need a quick refresh to keep everything current.";
-    closing =
-      "We really appreciate the partnership and your help keeping everything up to date.";
-    subject = `Quick update needed for your insurance documents`;
-  } else if (tone === "strict") {
-    greeting = `To the insurance and risk contact for ${name}:`;
-    intro =
-      "Our compliance engine has flagged your account as not currently meeting our insurance requirements.";
-    closing =
-      "Please treat this as a priority compliance matter. We may need to pause work if updated evidence of coverage is not received.";
-    subject = `Urgent: Insurance compliance updates required for ${name}`;
-  } else if (tone === "expiring") {
-    greeting = `Hi ${name} team,`;
-    intro =
-      "Our records show one or more insurance items approaching expiration.";
-    closing =
-      "To avoid any disruption, please send updated documentation before the current policy expires.";
-    subject = `Action needed: expiring policy / COI on file`;
-  } else if (tone === "missingDocs") {
-    greeting = `Hi ${name} team,`;
-    intro =
-      "We are missing one or more required documents needed to keep your account compliant.";
-    closing =
-      "Once these documents are uploaded, your profile will return to compliant status.";
-    subject = `Missing / outdated documents for ${name}`;
-  }
-
-  const bulletBlock = bullets.join("\n");
-
-  const footer =
-    "If you believe any of these items are already satisfied, please let us know and include supporting documentation so we can update our records.";
-
-  const body = [
-    greeting,
-    "",
-    intro,
-    "",
-    subtitle,
-    bulletBlock,
-    "",
-    actions,
-    "",
-    footer,
-    "",
-    "Best regards,",
-    "Compliance Team",
-  ].join("\n");
-
-  return { subject, body, bullets, context: ctx };
-}
-
-function formatMoney(num) {
-  if (num == null || isNaN(Number(num))) return "—";
-  return Number(num).toLocaleString();
-}
-
-/* ===========================
-   MAIN PAGE
-=========================== */
 export default function VendorProfilePage() {
   const router = useRouter();
   const { id } = router.query;
@@ -479,28 +6,77 @@ export default function VendorProfilePage() {
   const [loading, setLoading] = useState(false);
   const [loadError, setLoadError] = useState("");
 
-  // Fetch real vendor from API, fallback to mock
+  // Default summary fallback (never crash even if missing)
+  const defaultSummary = {
+    total: 0,
+    passed: 0,
+    failed: 0,
+    byType: {
+      coverage: { passed: 0, failed: 0 },
+      endorsements: { passed: 0, failed: 0 },
+      documents: { passed: 0, failed: 0 },
+      logical: { passed: 0, failed: 0 },
+    },
+  };
+
+  /* ============================================================
+     LOAD VENDOR — WITH FULL NORMALIZATION (NO CRASHES)
+     ============================================================ */
   useEffect(() => {
     if (!id) return;
 
     let cancelled = false;
+
     async function loadVendor() {
       try {
         setLoading(true);
         setLoadError("");
+
         const res = await fetch(`/api/vendors/${id}`);
-        if (!res.ok) {
-          throw new Error(`API returned ${res.status}`);
-        }
+        if (!res.ok) throw new Error(`API returned ${res.status}`);
+
         const data = await res.json();
-        if (!data.ok || !data.vendor) {
-          throw new Error("No vendor in API response");
-        }
-        if (!cancelled) {
-          setVendor(data.vendor);
-        }
+        if (!data.ok || !data.vendor) throw new Error("Missing vendor");
+
+        const v = data.vendor;
+
+        // ⭐ Patch ALL possible missing fields so UI never breaks
+        const normalized = {
+          ...v,
+          // identity
+          name: v.name || "Unnamed Vendor",
+          category: v.category || "General Services",
+          location: v.location || v.address || "",
+          contactEmail: v.contactEmail || v.email || "",
+
+          // tags
+          tags: Array.isArray(v.tags) ? v.tags : [],
+
+          // compliance basics
+          complianceScore: v.complianceScore ?? 0,
+          status: v.status || "Unknown",
+          riskLevel: v.riskLevel || "Medium",
+          alertsOpen: v.alertsOpen ?? 0,
+          criticalIssues: v.criticalIssues ?? 0,
+
+          // last updated
+          lastUpdated: v.lastUpdated || new Date().toISOString(),
+
+          // sections — ALWAYS arrays
+          coverage: Array.isArray(v.coverage) ? v.coverage : [],
+          endorsements: Array.isArray(v.endorsements) ? v.endorsements : [],
+          documents: Array.isArray(v.documents) ? v.documents : [],
+          rulesFired: Array.isArray(v.rulesFired) ? v.rulesFired : [],
+          timeline: Array.isArray(v.timeline) ? v.timeline : [],
+
+          // requirements summary
+          requirementsSummary: v.requirementsSummary || defaultSummary,
+        };
+
+        if (!cancelled) setVendor(normalized);
       } catch (err) {
-        console.error("Vendor API error, falling back to mock:", err);
+        console.error("Vendor API error — using fallback:", err);
+
         if (!cancelled) {
           setLoadError("Using demo vendor profile until real data is wired.");
           const fallback =
@@ -518,7 +94,7 @@ export default function VendorProfilePage() {
     };
   }, [id]);
 
-  // While loading + no vendor yet
+  // Loading state
   if (!vendor) {
     return (
       <div
@@ -538,7 +114,6 @@ export default function VendorProfilePage() {
       </div>
     );
   }
-
   const [outreachOpen, setOutreachOpen] = useState(false);
 
   const reqSummary = vendor.requirementsSummary || {
@@ -553,8 +128,10 @@ export default function VendorProfilePage() {
     },
   };
 
+  // PASS RATES (safe defaults)
   const coveragePassRate =
-    reqSummary.byType.coverage.passed + reqSummary.byType.coverage.failed === 0
+    reqSummary.byType?.coverage?.passed + reqSummary.byType?.coverage?.failed ===
+    0
       ? 0
       : Math.round(
           (reqSummary.byType.coverage.passed /
@@ -564,8 +141,8 @@ export default function VendorProfilePage() {
         );
 
   const endorsementPassRate =
-    reqSummary.byType.endorsements.passed +
-      reqSummary.byType.endorsements.failed ===
+    reqSummary.byType?.endorsements?.passed +
+      reqSummary.byType?.endorsements?.failed ===
     0
       ? 0
       : Math.round(
@@ -576,7 +153,8 @@ export default function VendorProfilePage() {
         );
 
   const docsPassRate =
-    reqSummary.byType.documents.passed + reqSummary.byType.documents.failed === 0
+    reqSummary.byType?.documents?.passed + reqSummary.byType?.documents?.failed ===
+    0
       ? 0
       : Math.round(
           (reqSummary.byType.documents.passed /
@@ -597,7 +175,9 @@ export default function VendorProfilePage() {
           "-apple-system,BlinkMacSystemFont,system-ui,Segoe UI,sans-serif",
       }}
     >
-      {/* HEADER */}
+      {/* ===========================
+          HEADER
+      ============================ */}
       <div
         style={{
           display: "flex",
@@ -607,8 +187,9 @@ export default function VendorProfilePage() {
           marginBottom: 24,
         }}
       >
-        {/* Vendor identity + AI summary */}
+        {/* LEFT — Vendor identity + AI summary */}
         <div style={{ flex: 1 }}>
+          {/* IDENTITY HEADER */}
           <div
             style={{
               display: "inline-flex",
@@ -660,6 +241,7 @@ export default function VendorProfilePage() {
             </span>
           </div>
 
+          {/* NAME + CATEGORY */}
           <h1
             style={{
               fontSize: 26,
@@ -668,7 +250,7 @@ export default function VendorProfilePage() {
               letterSpacing: 0.1,
             }}
           >
-            {vendor.name}{" "}
+            {vendor.name || "Unnamed Vendor"}{" "}
             <span
               style={{
                 fontSize: 14,
@@ -676,10 +258,11 @@ export default function VendorProfilePage() {
                 fontWeight: 400,
               }}
             >
-              · {vendor.category}
+              · {vendor.category || "General Services"}
             </span>
           </h1>
 
+          {/* TAGS + LOCATION */}
           <div
             style={{
               marginTop: 6,
@@ -690,10 +273,11 @@ export default function VendorProfilePage() {
               fontSize: 11,
             }}
           >
-            {vendor.location && (
+            {vendor.location ? (
               <span style={{ color: "#9ca3af" }}>{vendor.location}</span>
-            )}
-            {vendor.tags?.map((tag) => (
+            ) : null}
+
+            {(vendor.tags || []).map((tag) => (
               <span
                 key={tag}
                 style={{
@@ -709,7 +293,7 @@ export default function VendorProfilePage() {
             ))}
           </div>
 
-          {/* AI summary */}
+          {/* AI SUMMARY */}
           <div
             style={{
               marginTop: 10,
@@ -736,9 +320,10 @@ export default function VendorProfilePage() {
               AI overview
             </span>
             {vendor.aiSummary ||
-              "AI summary will describe this vendor’s current compliance posture once rules and requirements are evaluated."}
+              "AI summary will appear when rules + requirements are fully wired."}
           </div>
 
+          {/* ERROR (if using fallback) */}
           {loadError && (
             <div
               style={{
@@ -751,6 +336,7 @@ export default function VendorProfilePage() {
             </div>
           )}
 
+          {/* LAST UPDATED */}
           <div
             style={{
               marginTop: 6,
@@ -765,7 +351,9 @@ export default function VendorProfilePage() {
           </div>
         </div>
 
-        {/* Compliance gauge + status + outreach button */}
+        {/* ===========================
+            RIGHT — COMPLIANCE SCORE CARD
+        ============================ */}
         <div
           style={{
             padding: 12,
@@ -780,6 +368,7 @@ export default function VendorProfilePage() {
             gap: 10,
           }}
         >
+          {/* SCORE HEADER */}
           <div
             style={{
               fontSize: 11,
@@ -793,6 +382,7 @@ export default function VendorProfilePage() {
             }}
           >
             <span>Compliance score</span>
+
             <button
               onClick={() => setOutreachOpen(true)}
               style={{
@@ -814,6 +404,7 @@ export default function VendorProfilePage() {
             </button>
           </div>
 
+          {/* SCORE GAUGE */}
           <div
             style={{
               display: "flex",
@@ -821,7 +412,7 @@ export default function VendorProfilePage() {
               gap: 12,
             }}
           >
-            {/* Gauge */}
+            {/* Circle Gauge */}
             <div
               style={{
                 position: "relative",
@@ -844,6 +435,7 @@ export default function VendorProfilePage() {
                     "radial-gradient(circle at 30% 0,#020617,#020617 55%,#000)",
                 }}
               />
+
               <div
                 style={{
                   position: "relative",
@@ -866,6 +458,7 @@ export default function VendorProfilePage() {
                 >
                   Score
                 </div>
+
                 <div
                   style={{
                     fontSize: 24,
@@ -878,6 +471,7 @@ export default function VendorProfilePage() {
                 >
                   {vendor.complianceScore ?? 0}
                 </div>
+
                 <div
                   style={{
                     fontSize: 10,
@@ -889,7 +483,7 @@ export default function VendorProfilePage() {
               </div>
             </div>
 
-            {/* Status labels */}
+            {/* STATUS */}
             <div style={{ flex: 1, minWidth: 0 }}>
               <div
                 style={{
@@ -912,6 +506,7 @@ export default function VendorProfilePage() {
                 >
                   Status: {vendor.status || "Unknown"}
                 </span>
+
                 <span
                   style={{
                     padding: "3px 9px",
@@ -927,17 +522,18 @@ export default function VendorProfilePage() {
                         : "#22c55e",
                   }}
                 >
-                  Risk: {vendor.riskLevel || "Unknown"}
+                  Risk: {vendor.riskLevel || "Medium"}
                 </span>
               </div>
+
               <div
                 style={{
                   fontSize: 11,
                   color: "#9ca3af",
                 }}
               >
-                {vendor.alertsOpen} open alerts ·{" "}
-                {vendor.criticalIssues} critical.
+                {vendor.alertsOpen ?? 0} open alerts ·{" "}
+                {vendor.criticalIssues ?? 0} critical.
               </div>
             </div>
           </div>
@@ -965,14 +561,16 @@ export default function VendorProfilePage() {
                 {reqSummary.passed} passed · {reqSummary.failed} failed
               </span>
             </div>
+
             <div style={{ color: "#6b7280" }}>
-              Coverage, endorsements, documents, and logical checks combined.
+              Coverage, endorsements, documents, logical checks.
             </div>
           </div>
         </div>
       </div>
-
-      {/* MAIN GRID */}
+      {/* ===========================
+          MAIN GRID
+      ============================ */}
       <div
         style={{
           display: "grid",
@@ -981,7 +579,9 @@ export default function VendorProfilePage() {
           alignItems: "stretch",
         }}
       >
-        {/* LEFT — COVERAGE + REQUIREMENTS */}
+        {/* ===========================
+            LEFT — COVERAGE + ENDORSEMENTS + DOCUMENTS
+        ============================ */}
         <div
           style={{
             borderRadius: 24,
@@ -995,7 +595,9 @@ export default function VendorProfilePage() {
             gap: 12,
           }}
         >
-          {/* Coverage panel */}
+          {/* ===========================
+              COVERAGE PANEL
+          ============================ */}
           <div
             style={{
               borderRadius: 18,
@@ -1029,9 +631,10 @@ export default function VendorProfilePage() {
                     color: "#e5e7eb",
                   }}
                 >
-                  Limits by line of coverage.
+                  Limits by line of coverage
                 </div>
               </div>
+
               <div
                 style={{
                   fontSize: 11,
@@ -1039,10 +642,11 @@ export default function VendorProfilePage() {
                   textAlign: "right",
                 }}
               >
-                {coveragePassRate}% of coverage requirements met
+                {coveragePassRate}% requirements met
               </div>
             </div>
 
+            {/* Coverage grid */}
             <div
               style={{
                 marginTop: 6,
@@ -1051,8 +655,8 @@ export default function VendorProfilePage() {
                 gap: 8,
               }}
             >
-              {vendor.coverage?.length ? (
-                vendor.coverage.map((cov) => (
+              {(vendor.coverage ?? []).length > 0 ? (
+                (vendor.coverage ?? []).map((cov) => (
                   <CoverageCard key={cov.id} coverage={cov} />
                 ))
               ) : (
@@ -1065,14 +669,16 @@ export default function VendorProfilePage() {
                     color: "#9ca3af",
                   }}
                 >
-                  No coverage data attached yet. Once policies and COIs are
-                  parsed, they’ll render here.
+                  No coverage data available yet. Once policies and COIs are
+                  parsed, they will appear here.
                 </div>
               )}
             </div>
           </div>
 
-          {/* Endorsements + docs */}
+          {/* ===========================
+              ENDORSEMENTS + DOCUMENTS
+          ============================ */}
           <div
             style={{
               display: "grid",
@@ -1080,7 +686,7 @@ export default function VendorProfilePage() {
               gap: 10,
             }}
           >
-            {/* Endorsements */}
+            {/* ===== ENDORSEMENTS ===== */}
             <div
               style={{
                 borderRadius: 18,
@@ -1100,6 +706,7 @@ export default function VendorProfilePage() {
               >
                 Endorsements
               </div>
+
               <div
                 style={{
                   fontSize: 11,
@@ -1117,8 +724,8 @@ export default function VendorProfilePage() {
                   gap: 6,
                 }}
               >
-                {vendor.endorsements?.length ? (
-                  vendor.endorsements.map((e) => (
+                {(vendor.endorsements ?? []).length > 0 ? (
+                  (vendor.endorsements ?? []).map((e) => (
                     <EndorsementRow key={e.id} endorsement={e} />
                   ))
                 ) : (
@@ -1131,13 +738,13 @@ export default function VendorProfilePage() {
                       color: "#9ca3af",
                     }}
                   >
-                    No endorsement checks configured for this vendor yet.
+                    No endorsement evaluations yet.
                   </div>
                 )}
               </div>
             </div>
 
-            {/* Documents */}
+            {/* ===== DOCUMENTS ===== */}
             <div
               style={{
                 borderRadius: 18,
@@ -1157,6 +764,7 @@ export default function VendorProfilePage() {
               >
                 Documents on file
               </div>
+
               <div
                 style={{
                   fontSize: 11,
@@ -1174,8 +782,8 @@ export default function VendorProfilePage() {
                   gap: 6,
                 }}
               >
-                {vendor.documents?.length ? (
-                  vendor.documents.map((doc) => (
+                {(vendor.documents ?? []).length > 0 ? (
+                  (vendor.documents ?? []).map((doc) => (
                     <DocumentRow key={doc.id} document={doc} />
                   ))
                 ) : (
@@ -1188,16 +796,16 @@ export default function VendorProfilePage() {
                       color: "#9ca3af",
                     }}
                   >
-                    No documents linked yet. COIs, contracts, and supporting
-                    docs will show here.
+                    No documents found. Uploads will appear here.
                   </div>
                 )}
               </div>
             </div>
           </div>
         </div>
-
-        {/* RIGHT — RULE ACTIVITY + TIMELINE */}
+        {/* ===========================
+            RIGHT — RULE ACTIVITY + TIMELINE
+        ============================ */}
         <div
           style={{
             borderRadius: 24,
@@ -1211,7 +819,9 @@ export default function VendorProfilePage() {
             gap: 12,
           }}
         >
-          {/* Rules fired */}
+          {/* ===========================
+              RULES FIRED PANEL
+          ============================ */}
           <div
             style={{
               borderRadius: 18,
@@ -1231,6 +841,7 @@ export default function VendorProfilePage() {
             >
               Rules firing for this vendor
             </div>
+
             <div
               style={{
                 fontSize: 11,
@@ -1238,9 +849,11 @@ export default function VendorProfilePage() {
                 marginBottom: 6,
               }}
             >
-              Live view from your Elite Compliance Engine. Critical rules should
-              be cleared before vendor is fully approved.
+              Live view from your Elite Rule Engine. Critical issues should be
+              resolved before vendor approval.
             </div>
+
+            {/* Rule list */}
             <div
               style={{
                 display: "flex",
@@ -1250,9 +863,9 @@ export default function VendorProfilePage() {
                 overflowY: "auto",
               }}
             >
-              {vendor.rulesFired?.length ? (
-                vendor.rulesFired.map((rule) => (
-                  <RuleRow key={rule.id} rule={rule} />
+              {(vendor.rulesFired ?? []).length > 0 ? (
+                (vendor.rulesFired ?? []).map((rule) => (
+                  <RuleRow key={rule.id || rule.label} rule={rule} />
                 ))
               ) : (
                 <div
@@ -1264,14 +877,15 @@ export default function VendorProfilePage() {
                     color: "#9ca3af",
                   }}
                 >
-                  No rules have fired for this vendor. Once policies and
-                  documents are evaluated, triggered rules will show up here.
+                  No rules have fired yet for this vendor.
                 </div>
               )}
             </div>
           </div>
 
-          {/* Timeline */}
+          {/* ===========================
+              TIMELINE PANEL
+          ============================ */}
           <div
             style={{
               borderRadius: 18,
@@ -1294,6 +908,7 @@ export default function VendorProfilePage() {
             >
               Compliance timeline
             </div>
+
             <div
               style={{
                 fontSize: 11,
@@ -1301,10 +916,10 @@ export default function VendorProfilePage() {
                 marginBottom: 6,
               }}
             >
-              Every event — uploads, rule triggers, expirations — in a single
-              scroll.
+              Every event — uploads, rule triggers, expirations — in one list.
             </div>
 
+            {/* TIMELINE LIST */}
             <div
               style={{
                 position: "relative",
@@ -1313,6 +928,7 @@ export default function VendorProfilePage() {
                 paddingTop: 2,
               }}
             >
+              {/* Vertical guide line */}
               <div
                 style={{
                   position: "absolute",
@@ -1324,6 +940,7 @@ export default function VendorProfilePage() {
                     "linear-gradient(to bottom,rgba(56,189,248,0.35),rgba(56,189,248,0))",
                 }}
               />
+
               <div
                 style={{
                   display: "flex",
@@ -1332,10 +949,10 @@ export default function VendorProfilePage() {
                   paddingLeft: 0,
                 }}
               >
-                {vendor.timeline?.length ? (
-                  vendor.timeline.map((evt, idx) => (
+                {(vendor.timeline ?? []).length > 0 ? (
+                  (vendor.timeline ?? []).map((evt, idx) => (
                     <TimelineItem
-                      key={evt.id}
+                      key={evt.id || idx}
                       event={evt}
                       isFirst={idx === 0}
                     />
@@ -1351,8 +968,8 @@ export default function VendorProfilePage() {
                       color: "#9ca3af",
                     }}
                   >
-                    Timeline will fill as rules fire, documents are uploaded,
-                    and expirations approach.
+                    Timeline will populate as rules fire, documents are uploaded,
+                    and expirations are detected.
                   </div>
                 )}
               </div>
@@ -1361,15 +978,17 @@ export default function VendorProfilePage() {
         </div>
       </div>
 
-      {/* AI OUTREACH SLIDE-OVER */}
+      {/* ===========================
+          AI OUTREACH SLIDE-OVER
+      ============================ */}
       <AiOutreachDrawer
         open={outreachOpen}
         onClose={() => setOutreachOpen(false)}
         vendor={vendor}
-        coverage={vendor.coverage || []}
-        endorsements={vendor.endorsements || []}
-        documents={vendor.documents || []}
-        rules={vendor.rulesFired || []}
+        coverage={vendor.coverage ?? []}
+        endorsements={vendor.endorsements ?? []}
+        documents={vendor.documents ?? []}
+        rules={vendor.rulesFired ?? []}
         requirementsSummary={reqSummary}
       />
 
@@ -1389,1001 +1008,6 @@ export default function VendorProfilePage() {
           }
         }
       `}</style>
-    </div>
-  );
-}
-
-/* ===========================
-   COVERAGE CARD
-=========================== */
-function CoverageCard({ coverage }) {
-  const statusColor =
-    coverage.status === "Pass"
-      ? {
-          bg: "rgba(34,197,94,0.15)",
-          border: "rgba(34,197,94,0.85)",
-          text: "#bbf7d0",
-        }
-      : {
-          bg: "rgba(248,113,113,0.15)",
-          border: "rgba(248,113,113,0.9)",
-          text: "#fecaca",
-        };
-
-  const sev = severityStyle(coverage.severity);
-
-  return (
-    <div
-      style={{
-        position: "relative",
-        borderRadius: 14,
-        padding: 10,
-        border: "1px solid rgba(51,65,85,0.98)",
-        background:
-          "radial-gradient(circle at top left,rgba(15,23,42,0.98),rgba(15,23,42,0.94))",
-        boxShadow: "0 16px 34px rgba(15,23,42,0.9)",
-      }}
-    >
-      <div
-        style={{
-          position: "absolute",
-          inset: -2,
-          background:
-            "radial-gradient(circle at -10% -20%,rgba(56,189,248,0.18),transparent 60%)",
-          pointerEvents: "none",
-        }}
-      />
-      <div style={{ position: "relative", zIndex: 1 }}>
-        <div
-          style={{
-            fontSize: 12,
-            color: "#e5e7eb",
-            marginBottom: 4,
-          }}
-        >
-          {coverage.label}
-        </div>
-
-        <div
-          style={{
-            display: "flex",
-            alignItems: "center",
-            gap: 6,
-            marginBottom: 6,
-            fontSize: 10,
-          }}
-        >
-          <div
-            style={{
-              padding: "2px 7px",
-              borderRadius: 999,
-              border: `1px solid ${statusColor.border}`,
-              background: statusColor.bg,
-              color: statusColor.text,
-            }}
-          >
-            {coverage.status === "Pass" ? "Meets requirement" : "Below required"}
-          </div>
-          <div
-            style={{
-              padding: "2px 7px",
-              borderRadius: 999,
-              border: `1px solid ${sev.border}`,
-              background: sev.bg,
-              color: sev.text,
-            }}
-          >
-            {coverage.severity}
-          </div>
-        </div>
-
-        <div
-          style={{
-            display: "flex",
-            gap: 8,
-            alignItems: "center",
-            fontSize: 11,
-          }}
-        >
-          <div
-            style={{
-              flex: 1,
-              borderRadius: 10,
-              padding: "6px 7px",
-              border: "1px solid rgba(30,64,175,0.9)",
-              background: "rgba(15,23,42,0.98)",
-            }}
-          >
-            <div style={{ color: "#9ca3af", marginBottom: 2 }}>Required</div>
-            <div style={{ color: "#e5e7eb" }}>
-              ${coverage.required?.toLocaleString() || "—"}{" "}
-              <span style={{ color: "#9ca3af" }}>{coverage.unit}</span>
-            </div>
-          </div>
-          <div
-            style={{
-              flex: 1,
-              borderRadius: 10,
-              padding: "6px 7px",
-              border: "1px solid rgba(51,65,85,0.98)",
-              background: "rgba(15,23,42,0.98)",
-            }}
-          >
-            <div style={{ color: "#9ca3af", marginBottom: 2 }}>Detected</div>
-            <div
-              style={{
-                color:
-                  coverage.status === "Pass" ? "#bbf7d0" : "#fecaca",
-              }}
-            >
-              ${coverage.actual?.toLocaleString() || "—"}{" "}
-              <span style={{ color: "#9ca3af" }}>{coverage.unit}</span>
-            </div>
-          </div>
-        </div>
-
-        <div
-          style={{
-            marginTop: 4,
-            fontSize: 10,
-            color: "#6b7280",
-          }}
-        >
-          Field:{" "}
-          <span style={{ color: "#e5e7eb" }}>{coverage.field || "—"}</span>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-/* ===========================
-   ENDORSEMENT ROW
-=========================== */
-function EndorsementRow({ endorsement }) {
-  const sev = severityStyle(endorsement.severity);
-
-  return (
-    <div
-      style={{
-        borderRadius: 12,
-        padding: 8,
-        border: "1px solid rgba(51,65,85,0.98)",
-        background: "rgba(15,23,42,1)",
-      }}
-    >
-      <div
-        style={{
-          display: "flex",
-          justifyContent: "space-between",
-          gap: 8,
-        }}
-      >
-        <div style={{ flex: 1 }}>
-          <div
-            style={{
-              fontSize: 12,
-              color: "#e5e7eb",
-              marginBottom: 2,
-            }}
-          >
-            {endorsement.label}
-          </div>
-          <div
-            style={{
-              fontSize: 11,
-              color: "#9ca3af",
-              marginBottom: 4,
-            }}
-          >
-            Expected:{" "}
-            <span style={{ color: "#e5e7eb" }}>
-              {endorsement.expectation || "Defined in requirements."}
-            </span>
-          </div>
-          <div
-            style={{
-              fontSize: 11,
-              color: "#9ca3af",
-            }}
-          >
-            Found:{" "}
-            <span style={{ color: "#e5e7eb" }}>
-              {endorsement.finding || "Not evaluated yet."}
-            </span>
-          </div>
-        </div>
-        <div
-          style={{
-            display: "flex",
-            flexDirection: "column",
-            gap: 6,
-            alignItems: "flex-end",
-            minWidth: 70,
-          }}
-        >
-          <div
-            style={{
-              padding: "2px 7px",
-              borderRadius: 999,
-              border: `1px solid ${sev.border}`,
-              background: sev.bg,
-              color: sev.text,
-              fontSize: 10,
-            }}
-          >
-            {endorsement.severity}
-          </div>
-          <div
-            style={{
-              padding: "2px 7px",
-              borderRadius: 999,
-              border: "1px solid rgba(51,65,85,0.98)",
-              background: "rgba(15,23,42,1)",
-              fontSize: 10,
-              color: endorsement.present ? "#bbf7d0" : "#fecaca",
-            }}
-          >
-            {endorsement.present ? "Present" : "Missing"}
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-/* ===========================
-   DOCUMENT ROW
-=========================== */
-function DocumentRow({ document }) {
-  const sev = severityStyle(document.severity);
-
-  return (
-    <div
-      style={{
-        borderRadius: 12,
-        padding: 8,
-        border: "1px solid rgba(51,65,85,0.98)",
-        background: "rgba(15,23,42,1)",
-        fontSize: 11,
-      }}
-    >
-      <div
-        style={{
-          display: "flex",
-          justifyContent: "space-between",
-          gap: 8,
-        }}
-      >
-        <div style={{ flex: 1 }}>
-          <div
-            style={{
-              color: "#e5e7eb",
-              marginBottom: 2,
-            }}
-          >
-            {document.label}
-          </div>
-          <div style={{ color: "#9ca3af" }}>{document.status}</div>
-        </div>
-        <div
-          style={{
-            display: "flex",
-            flexDirection: "column",
-            gap: 4,
-            alignItems: "flex-end",
-            minWidth: 70,
-          }}
-        >
-          <div
-            style={{
-              padding: "2px 7px",
-              borderRadius: 999,
-              border: `1px solid ${sev.border}`,
-              background: sev.bg,
-              color: sev.text,
-            }}
-          >
-            {document.severity}
-          </div>
-          <div
-            style={{
-              padding: "2px 7px",
-              borderRadius: 999,
-              border: "1px solid rgba(51,65,85,0.98)",
-              background: "rgba(15,23,42,1)",
-              color: document.present ? "#bbf7d0" : "#fecaca",
-            }}
-          >
-            {document.present ? "On file" : "Missing"}
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-/* ===========================
-   RULE ROW
-=========================== */
-function RuleRow({ rule }) {
-  const sev = severityStyle(rule.severity);
-
-  return (
-    <div
-      style={{
-        borderRadius: 12,
-        padding: 8,
-        border: "1px solid rgba(51,65,85,0.98)",
-        background: "rgba(15,23,42,1)",
-        fontSize: 11,
-      }}
-    >
-      <div
-        style={{
-          display: "flex",
-          justifyContent: "space-between",
-          gap: 8,
-        }}
-      >
-        <div style={{ flex: 1 }}>
-          <div
-            style={{
-              color: "#e5e7eb",
-              marginBottom: 2,
-            }}
-          >
-            {rule.label}
-          </div>
-          <div
-            style={{
-              color: "#9ca3af",
-              marginBottom: 4,
-            }}
-          >
-            {rule.description}
-          </div>
-        </div>
-        <div
-          style={{
-            textAlign: "right",
-            color: "#6b7280",
-            fontSize: 10,
-          }}
-        >
-          {formatTimeAgo(rule.timestamp)}
-        </div>
-      </div>
-      <div
-        style={{
-          marginTop: 4,
-          borderRadius: 8,
-          padding: "6px 7px",
-          border: "1px solid rgba(30,64,175,0.98)",
-          background: "rgba(15,23,42,0.98)",
-          fontFamily: "ui-monospace,Menlo,SFMono-Regular,monospace",
-          fontSize: 10,
-          color: "#e5e7eb",
-        }}
-      >
-        {rule.dsl}
-      </div>
-      <div
-        style={{
-          marginTop: 4,
-          display: "inline-flex",
-          alignItems: "center",
-          gap: 6,
-        }}
-      >
-        <div
-          style={{
-            padding: "2px 7px",
-            borderRadius: 999,
-            border: `1px solid ${sev.border}`,
-            background: sev.bg,
-            color: sev.text,
-          }}
-        >
-          {rule.severity}
-        </div>
-      </div>
-    </div>
-  );
-}
-
-/* ===========================
-   TIMELINE ITEM
-=========================== */
-function TimelineItem({ event, isFirst }) {
-  const sev = severityStyle(event.severity);
-
-  return (
-    <div
-      style={{
-        display: "grid",
-        gridTemplateColumns: "20px minmax(0,1fr)",
-        gap: 10,
-      }}
-    >
-      {/* dot */}
-      <div
-        style={{
-          display: "flex",
-          justifyContent: "center",
-          paddingTop: 3,
-        }}
-      >
-        <div
-          style={{
-            width: 10,
-            height: 10,
-            borderRadius: 999,
-            border: "2px solid rgba(56,189,248,0.9)",
-            background: isFirst
-              ? "rgba(56,189,248,0.9)"
-              : "rgba(15,23,42,1)",
-            boxShadow: isFirst
-              ? "0 0 18px rgba(56,189,248,0.9)"
-              : "0 0 0 rgba(0,0,0,0)",
-            animation: isFirst ? "pulseDot 1300ms ease-in-out infinite" : "none",
-          }}
-        />
-      </div>
-
-      {/* card */}
-      <div
-        style={{
-          borderRadius: 12,
-          padding: "8px 9px",
-          border: "1px solid rgba(51,65,85,0.98)",
-          background: "rgba(15,23,42,1)",
-          fontSize: 11,
-        }}
-      >
-        <div
-          style={{
-            display: "flex",
-            justifyContent: "space-between",
-            gap: 8,
-          }}
-        >
-          <div>
-            <div
-              style={{
-                color: "#e5e7eb",
-                marginBottom: 2,
-              }}
-            >
-              {event.label}
-            </div>
-            <div
-              style={{
-                color: "#9ca3af",
-                marginBottom: 4,
-              }}
-            >
-              {event.detail}
-            </div>
-          </div>
-          <div
-            style={{
-              color: "#6b7280",
-              fontSize: 10,
-              textAlign: "right",
-            }}
-          >
-            {formatTimeAgo(event.timestamp)}
-          </div>
-        </div>
-        <div
-          style={{
-            display: "flex",
-            gap: 6,
-            marginTop: 2,
-          }}
-        >
-          <div
-            style={{
-              padding: "2px 7px",
-              borderRadius: 999,
-              border: `1px solid ${sev.border}`,
-              background: sev.bg,
-              color: sev.text,
-              fontSize: 10,
-            }}
-          >
-            {event.severity}
-          </div>
-          <div
-            style={{
-              padding: "2px 7px",
-              borderRadius: 999,
-              border: "1px solid rgba(51,65,85,0.98)",
-              background: "rgba(15,23,42,1)",
-              fontSize: 10,
-              color: "#e5e7eb",
-            }}
-          >
-            {event.type}
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-/* ===========================
-   AI OUTREACH DRAWER
-=========================== */
-function AiOutreachDrawer({
-  open,
-  onClose,
-  vendor,
-  coverage,
-  endorsements,
-  documents,
-  rules,
-  requirementsSummary,
-}) {
-  const [tone, setTone] = useState("standard");
-  const [includeSummary, setIncludeSummary] = useState(true);
-  const [copyStatus, setCopyStatus] = useState("");
-  const [toEmail, setToEmail] = useState(vendor.contactEmail || "");
-  const [sending, setSending] = useState(false);
-  const [sendStatus, setSendStatus] = useState("");
-
-  if (!open) return null;
-
-  const { subject, body, bullets, context } = buildEmailTemplate({
-    vendor,
-    tone,
-    coverage,
-    endorsements,
-    documents,
-    rules,
-  });
-
-  function handleCopy() {
-    if (typeof navigator !== "undefined" && navigator.clipboard) {
-      navigator.clipboard
-        .writeText("Subject: " + subject + "\n\n" + body)
-        .then(() => setCopyStatus("Copied!"))
-        .catch(() => setCopyStatus("Copy failed"));
-    } else {
-      setCopyStatus("Clipboard not available");
-    }
-    setTimeout(() => setCopyStatus(""), 2000);
-  }
-
-  async function handleSend() {
-    if (!toEmail) {
-      setSendStatus("Add a recipient email first.");
-      return;
-    }
-    try {
-      setSending(true);
-      setSendStatus("");
-      const res = await fetch("/api/outreach/send", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          to: toEmail,
-          subject,
-          body:
-            includeSummary && vendor.aiSummary
-              ? vendor.aiSummary +
-                "\n\n" +
-                body
-              : body,
-          vendorId: vendor.id,
-        }),
-      });
-      const data = await res.json();
-      if (!res.ok || !data.ok) {
-        throw new Error(data.error || "Failed to send");
-      }
-      setSendStatus("Sent via Resend ✅");
-    } catch (err) {
-      console.error(err);
-      setSendStatus("Error sending email. Check API / logs.");
-    } finally {
-      setSending(false);
-      setTimeout(() => setSendStatus(""), 4000);
-    }
-  }
-
-  const toneLabel = {
-    standard: "Standard",
-    friendly: "Friendly",
-    strict: "Strict",
-    expiring: "Expiring soon",
-    missingDocs: "Missing docs",
-  }[tone];
-
-  return (
-    <div
-      style={{
-        position: "fixed",
-        inset: 0,
-        zIndex: 60,
-        display: "flex",
-        justifyContent: "flex-end",
-      }}
-    >
-      {/* overlay */}
-      <div
-        onClick={onClose}
-        style={{
-          flex: 1,
-          background: "rgba(15,23,42,0.75)",
-          backdropFilter: "blur(10px)",
-        }}
-      />
-      {/* drawer */}
-      <div
-        style={{
-          width: 440,
-          maxWidth: "100%",
-          background:
-            "radial-gradient(circle at top,#020617,#020617 65%,#000)",
-          borderLeft: "1px solid rgba(30,41,59,0.98)",
-          boxShadow: "-24px 0 60px rgba(15,23,42,0.95)",
-          padding: 16,
-          display: "flex",
-          flexDirection: "column",
-          color: "white",
-        }}
-      >
-        {/* header */}
-        <div
-          style={{
-            display: "flex",
-            justifyContent: "space-between",
-            gap: 8,
-            alignItems: "center",
-            marginBottom: 10,
-          }}
-        >
-          <div>
-            <div
-              style={{
-                fontSize: 11,
-                textTransform: "uppercase",
-                letterSpacing: 1.2,
-                color: "#9ca3af",
-                marginBottom: 3,
-              }}
-            >
-              AI Outreach Panel
-            </div>
-            <div
-              style={{
-                fontSize: 14,
-                color: "#e5e7eb",
-              }}
-            >
-              Email to {vendor.name || "Vendor"}
-            </div>
-          </div>
-          <button
-            onClick={onClose}
-            style={{
-              borderRadius: 999,
-              width: 28,
-              height: 28,
-              border: "1px solid rgba(148,163,184,0.7)",
-              background: "rgba(15,23,42,0.95)",
-              color: "#e5e7eb",
-              cursor: "pointer",
-              fontSize: 14,
-            }}
-          >
-            ✕
-          </button>
-        </div>
-
-        {/* TO EMAIL */}
-        <div
-          style={{
-            marginBottom: 8,
-          }}
-        >
-          <div
-            style={{
-              fontSize: 11,
-              color: "#9ca3af",
-              marginBottom: 3,
-            }}
-          >
-            Recipient email
-          </div>
-          <input
-            value={toEmail}
-            onChange={(e) => setToEmail(e.target.value)}
-            placeholder="vendor-compliance-contact@example.com"
-            style={{
-              width: "100%",
-              borderRadius: 999,
-              padding: "6px 9px",
-              border: "1px solid rgba(51,65,85,0.98)",
-              background: "rgba(15,23,42,0.98)",
-              color: "#e5e7eb",
-              fontSize: 12,
-            }}
-          />
-        </div>
-
-        {/* tone selector */}
-        <div
-          style={{
-            marginBottom: 10,
-            display: "flex",
-            flexDirection: "column",
-            gap: 6,
-          }}
-        >
-          <div
-            style={{
-              fontSize: 11,
-              color: "#9ca3af",
-            }}
-          >
-            Tone / template
-          </div>
-          <div
-            style={{
-              display: "flex",
-              flexWrap: "wrap",
-              gap: 6,
-            }}
-          >
-            {[
-              { id: "standard", label: "Standard" },
-              { id: "friendly", label: "Friendly" },
-              { id: "strict", label: "Strict" },
-              { id: "expiring", label: "Expiring soon" },
-              { id: "missingDocs", label: "Missing docs" },
-            ].map((t) => {
-              const active = t.id === tone;
-              return (
-                <button
-                  key={t.id}
-                  onClick={() => setTone(t.id)}
-                  style={{
-                    borderRadius: 999,
-                    padding: "4px 9px",
-                    border: active
-                      ? "1px solid rgba(56,189,248,0.9)"
-                      : "1px solid rgba(51,65,85,0.98)",
-                    background: active
-                      ? "radial-gradient(circle at top,#0ea5e9,#1d4ed8,#020617)"
-                      : "rgba(15,23,42,0.98)",
-                    color: active ? "#e0f2fe" : "#e5e7eb",
-                    fontSize: 11,
-                    cursor: "pointer",
-                  }}
-                >
-                  {t.label}
-                </button>
-              );
-            })}
-          </div>
-        </div>
-
-        {/* key issues summary */}
-        <div
-          style={{
-            borderRadius: 14,
-            padding: 8,
-            border: "1px solid rgba(51,65,85,0.98)",
-            background: "rgba(15,23,42,0.98)",
-            fontSize: 11,
-            marginBottom: 10,
-          }}
-        >
-          <div
-            style={{
-              marginBottom: 4,
-              display: "flex",
-              justifyContent: "space-between",
-              alignItems: "center",
-              gap: 6,
-            }}
-          >
-            <span style={{ color: "#9ca3af" }}>Issues referenced in email</span>
-            <span style={{ color: "#e5e7eb" }}>
-              {context.failingCoverage.length +
-                context.missingEndorsements.length +
-                context.missingDocs.length +
-                context.criticalRules.length}{" "}
-              items
-            </span>
-          </div>
-          <ul
-            style={{
-              margin: 0,
-              paddingLeft: 16,
-              color: "#cbd5f5",
-              maxHeight: 90,
-              overflowY: "auto",
-            }}
-          >
-            {bullets.slice(0, 6).map((b, idx) => (
-              <li key={idx} style={{ marginBottom: 2 }}>
-                {b.replace(/^•\s*/, "")}
-              </li>
-            ))}
-          </ul>
-        </div>
-
-        {/* toggle summary */}
-        <label
-          style={{
-            display: "flex",
-            alignItems: "center",
-            gap: 6,
-            fontSize: 11,
-            color: "#9ca3af",
-            marginBottom: 8,
-          }}
-        >
-          <input
-            type="checkbox"
-            checked={includeSummary}
-            onChange={(e) => setIncludeSummary(e.target.checked)}
-            style={{ cursor: "pointer" }}
-          />
-          Include AI overview sentence in email body
-        </label>
-
-        {/* subject */}
-        <div
-          style={{
-            marginBottom: 6,
-          }}
-        >
-          <div
-            style={{
-              fontSize: 11,
-              color: "#9ca3af",
-              marginBottom: 3,
-            }}
-          >
-            Subject
-          </div>
-          <input
-            value={subject}
-            readOnly
-            style={{
-              width: "100%",
-              borderRadius: 999,
-              padding: "6px 9px",
-              border: "1px solid rgba(51,65,85,0.98)",
-              background: "rgba(15,23,42,0.98)",
-              color: "#e5e7eb",
-              fontSize: 12,
-            }}
-          />
-        </div>
-
-        {/* body */}
-        <div
-          style={{
-            marginBottom: 8,
-            display: "flex",
-            flexDirection: "column",
-            flex: 1,
-          }}
-        >
-          <div
-            style={{
-              fontSize: 11,
-              color: "#9ca3af",
-              marginBottom: 3,
-            }}
-          >
-            Email body (ready to copy or send)
-          </div>
-          <textarea
-            value={
-              includeSummary && vendor.aiSummary
-                ? vendor.aiSummary + "\n\n" + body
-                : body
-            }
-            readOnly
-            rows={16}
-            style={{
-              flex: 1,
-              width: "100%",
-              borderRadius: 12,
-              padding: "8px 9px",
-              border: "1px solid rgba(30,64,175,0.98)",
-              background: "rgba(15,23,42,0.98)",
-              color: "#e5e7eb",
-              fontSize: 12,
-              fontFamily: "system-ui, -apple-system, BlinkMacSystemFont",
-              resize: "none",
-              lineHeight: 1.45,
-            }}
-          />
-        </div>
-
-        {/* actions */}
-        <div
-          style={{
-            display: "flex",
-            justifyContent: "space-between",
-            alignItems: "center",
-            gap: 8,
-            marginTop: 4,
-          }}
-        >
-          <div
-            style={{
-              display: "flex",
-              gap: 8,
-            }}
-          >
-            <button
-              onClick={handleCopy}
-              style={{
-                borderRadius: 999,
-                padding: "6px 12px",
-                border: "1px solid rgba(56,189,248,0.9)",
-                background:
-                  "linear-gradient(120deg,#0ea5e9,#2563eb,#1d4ed8)",
-                color: "#e0f2fe",
-                fontSize: 11,
-                fontWeight: 500,
-                cursor: "pointer",
-                display: "inline-flex",
-                alignItems: "center",
-                gap: 6,
-              }}
-            >
-              <span>📋</span>
-              <span>Copy subject + body</span>
-            </button>
-            <button
-              onClick={handleSend}
-              disabled={sending}
-              style={{
-                borderRadius: 999,
-                padding: "6px 12px",
-                border: "1px solid rgba(52,211,153,0.9)",
-                background:
-                  "linear-gradient(120deg,#22c55e,#16a34a,#15803d)",
-                color: "#ecfdf5",
-                fontSize: 11,
-                fontWeight: 500,
-                cursor: sending ? "wait" : "pointer",
-                display: "inline-flex",
-                alignItems: "center",
-                gap: 6,
-                opacity: sending ? 0.7 : 1,
-              }}
-            >
-              <span>📨</span>
-              <span>{sending ? "Sending…" : "Send with Resend"}</span>
-            </button>
-          </div>
-          <div
-            style={{
-              fontSize: 10,
-              textAlign: "right",
-              color:
-                copyStatus === "Copied!"
-                  ? "#bbf7d0"
-                  : sendStatus
-                  ? "#e5e7eb"
-                  : "#6b7280",
-            }}
-          >
-            {copyStatus || sendStatus || "Paste into your email tool or send via Resend."}
-          </div>
-        </div>
-      </div>
     </div>
   );
 }
