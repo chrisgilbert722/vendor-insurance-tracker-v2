@@ -261,7 +261,11 @@ function MainGrid({
         selectedAlert={selectedAlert}
       />
 
-      <RightPanel stats={stats} alerts={filteredAlerts} selectedAlert={selectedAlert} />
+      <RightPanel
+        stats={stats}
+        alerts={filteredAlerts}
+        selectedAlert={selectedAlert}
+      />
     </div>
   );
 }
@@ -340,7 +344,7 @@ function FiltersRow({
 }) {
   return (
     <>
-      {/* Severity */}
+      {/* Severity Filter */}
       <div
         style={{
           display: "inline-flex",
@@ -368,6 +372,9 @@ function FiltersRow({
                   ? "radial-gradient(circle at top,#f97316,#ea580c,#451a03)"
                   : "transparent",
                 color: active ? "#fef3c7" : "#cbd5f5",
+                boxShadow: active
+                  ? "0 0 18px rgba(248,250,252,0.25)"
+                  : "none",
               }}
             >
               {sev}
@@ -376,8 +383,12 @@ function FiltersRow({
         })}
       </div>
 
-      {/* Type */}
-      <select value={typeFilter} onChange={(e) => setTypeFilter(e.target.value)} style={selectStyle}>
+      {/* Type Filter */}
+      <select
+        value={typeFilter}
+        onChange={(e) => setTypeFilter(e.target.value)}
+        style={selectStyle}
+      >
         <option value="All">All types</option>
         <option value="Coverage">Coverage</option>
         <option value="Endorsement">Endorsements</option>
@@ -385,21 +396,29 @@ function FiltersRow({
         <option value="rule_failure">Rule triggers</option>
       </select>
 
-      {/* Status */}
-      <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)} style={selectStyle}>
+      {/* Status Filter */}
+      <select
+        value={statusFilter}
+        onChange={(e) => setStatusFilter(e.target.value)}
+        style={selectStyle}
+      >
         <option value="Open">Open only</option>
         <option value="All">All</option>
       </select>
 
-      {/* Time */}
-      <select value={timeFilter} onChange={(e) => setTimeFilter(e.target.value)} style={selectStyle}>
+      {/* Time Filter */}
+      <select
+        value={timeFilter}
+        onChange={(e) => setTimeFilter(e.target.value)}
+        style={selectStyle}
+      >
         <option value="24h">Last 24 hours</option>
         <option value="7d">Last 7 days</option>
         <option value="30d">Last 30 days</option>
         <option value="all">All time</option>
       </select>
 
-      {/* Search */}
+      {/* Search Bar */}
       <div
         style={{
           display: "flex",
@@ -415,7 +434,7 @@ function FiltersRow({
         <input
           value={searchTerm}
           onChange={(e) => setSearchTerm(e.target.value)}
-          placeholder="Search alerts…"
+          placeholder="Search alerts, vendors, rules…"
           style={{
             flex: 1,
             border: "none",
@@ -440,9 +459,14 @@ const selectStyle = {
 };
 
 /* ======================================================
-   ALERTS TIMELINE
+   TIMELINE
 ====================================================== */
-function AlertsTimeline({ filteredAlerts, selectedAlert, selectedAlertId, setSelectedAlertId }) {
+function AlertsTimeline({
+  filteredAlerts,
+  selectedAlert,
+  selectedAlertId,
+  setSelectedAlertId,
+}) {
   return (
     <div
       style={{
@@ -465,10 +489,20 @@ function AlertsTimeline({ filteredAlerts, selectedAlert, selectedAlertId, setSel
         }}
       >
         <span>Alerts timeline</span>
-        <span style={{ color: "#e5e7eb" }}>{filteredAlerts.length} events</span>
+        <span style={{ color: "#e5e7eb" }}>
+          {filteredAlerts.length} events
+        </span>
       </div>
 
-      <div style={{ display: "flex", flexDirection: "column", gap: 8, position: "relative" }}>
+      <div
+        style={{
+          display: "flex",
+          flexDirection: "column",
+          gap: 8,
+          position: "relative",
+        }}
+      >
+        {/* Vertical timeline line */}
         <div
           style={{
             position: "absolute",
@@ -476,10 +510,12 @@ function AlertsTimeline({ filteredAlerts, selectedAlert, selectedAlertId, setSel
             top: 0,
             bottom: 0,
             width: 2,
-            background: "linear-gradient(to bottom,rgba(56,189,248,0.3),rgba(56,189,248,0))",
+            background:
+              "linear-gradient(to bottom,rgba(56,189,248,0.3),rgba(56,189,248,0))",
           }}
         />
 
+        {/* List items */}
         {filteredAlerts.map((alert, idx) => (
           <AlertTimelineItem
             key={alert.id}
@@ -490,7 +526,8 @@ function AlertsTimeline({ filteredAlerts, selectedAlert, selectedAlertId, setSel
           />
         ))}
 
-               {filteredAlerts.length === 0 && (
+        {/* No alerts */}
+        {filteredAlerts.length === 0 && (
           <div
             style={{
               padding: "14px 10px",
@@ -509,10 +546,15 @@ function AlertsTimeline({ filteredAlerts, selectedAlert, selectedAlertId, setSel
   );
 }
 
-/* ===========================
+/* ======================================================
    TIMELINE ITEM
-=========================== */
-function AlertTimelineItem({ alert, isFirst, isSelected, onSelect }) {
+====================================================== */
+function AlertTimelineItem({
+  alert,
+  isFirst,
+  isSelected,
+  onSelect,
+}) {
   const sev = severityPillStyle(alert.severity);
 
   return (
@@ -524,6 +566,116 @@ function AlertTimelineItem({ alert, isFirst, isSelected, onSelect }) {
         gap: 10,
         cursor: "pointer",
         padding: "4px 4px 4px 0",
+        borderRadius: 12,
+        background: isSelected ? "rgba(15,23,42,0.98)" : "transparent",
+      }}
+    >
+      {/* Timeline dot */}
+      <div
+        style={{
+          display: "flex",
+          justifyContent: "center",
+          paddingTop: 3,
+        }}
+      >
+        <div
+          style={{
+            width: 10,
+            height: 10,
+            borderRadius: 999,
+            border: "2px solid rgba(56,189,248,0.9)",
+            background: isFirst ? "rgba(56,189,248,0.9)" : "rgba(15,23,42,1)",
+            boxShadow: isFirst
+              ? "0 0 18px rgba(56,189,248,0.9)"
+              : "none",
+            animation: isFirst ? "pulse 1300ms ease-in-out infinite" : "none",
+          }}
+        />
+      </div>
+
+      {/* Alert card */}
+      <div
+        style={{
+          borderRadius: 14,
+          padding: "8px 10px",
+          border: isSelected
+            ? "1px solid rgba(59,130,246,0.95)"
+            : "1px solid rgba(30,41,59,0.95)",
+          background: "rgba(15,23,42,0.98)",
+          boxShadow: isSelected
+            ? "0 16px 36px rgba(37,99,235,0.55)"
+            : "0 8px 26px rgba(15,23,42,0.95)",
+        }}
+      >
+        <div style={{ display: "flex", justifyContent: "space-between", gap: 6 }}>
+          <div style={{ flex: 1 }}>
+            <div style={{ fontSize: 12, color: "#e5e7eb", marginBottom: 2 }}>
+              {alert.message}
+            </div>
+            <div style={{ fontSize: 11, color: "#9ca3af", marginBottom: 4 }}>
+              {alert.vendor_name}
+            </div>
+          </div>
+
+          <div style={{ fontSize: 10, color: "#6b7280", textAlign: "right" }}>
+            {formatTimeAgo(alert.created_at)}
+          </div>
+        </div>
+
+        {/* Chips */}
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: 8,
+            flexWrap: "wrap",
+            fontSize: 10,
+            marginTop: 4,
+          }}
+        >
+          {/* Severity */}
+          <div
+            style={{
+              padding: "2px 7px",
+              borderRadius: 999,
+              background: sev.bg,
+              border: `1px solid ${sev.border}`,
+              color: sev.text,
+            }}
+          >
+            {alert.severity}
+          </div>
+
+          {/* Type */}
+          <div
+            style={{
+              padding: "2px 7px",
+              borderRadius: 999,
+              border: "1px solid rgba(51,65,85,0.98)",
+              background: "rgba(15,23,42,1)",
+              color: "#e5e7eb",
+            }}
+          >
+            {alert.type}
+          </div>
+
+          {/* Status */}
+          <div
+            style={{
+              padding: "2px 7px",
+              borderRadius: 999,
+              border: "1px solid rgba(51,65,85,0.98)",
+              background: "rgba(15,23,42,1)",
+              color: alert.is_read ? "#9ca3af" : "#f97316",
+            }}
+          >
+            {alert.is_read ? "Resolved" : "Open"}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
 /* ======================================================
    RIGHT PANEL (Heatmap + Selected Alert)
 ====================================================== */
