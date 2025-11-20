@@ -43,12 +43,17 @@ export default async function handler(req, res) {
     });
   }
 
-  const connectionString =
-    process.env.POSTGRES_URL_NO_SSL ||
-    process.env.POSTGRES_URL ||
-    process.env.DATABASE_URL;
+// Prefer a URL that already has sslmode=require (Neon gives you these)
+const connectionString =
+  process.env.POSTGRES_URL_NON_POOLING ||
+  process.env.POSTGRES_PRISMA_URL ||
+  process.env.POSTGRES_URL ||
+  process.env.DATABASE_URL;
 
-  const client = new Client({ connectionString });
+const client = new Client({
+  connectionString,
+  ssl: { rejectUnauthorized: false }, // Neon requires SSL
+});
 
   try {
     await client.connect();
