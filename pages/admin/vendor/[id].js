@@ -1,6 +1,6 @@
 // pages/admin/vendor/[id].js
 import { useRouter } from "next/router";
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 
 /* ===========================
    THEME TOKENS
@@ -303,6 +303,166 @@ function formatTimeAgo(iso) {
   return diffDays + " d ago";
 }
 
+/* Build list of issues + email template */
+function buildOutreachContext(vendor, coverage, endorsements, documents, rules) {
+  const failingCoverage = (coverage || []).filter((c) => c.status === "Fail");
+  const missingEndorsements = (endorsements || []).filter(
+    (e) => e.required && !e.present
+  );
+  const softEndorseIssues = (endorsements || []).filter(
+    (e) => e.present && e.finding && e.finding.toLowerCase().includes("generic")
+  );
+  const missingDocs = (documents || []).filter(
+    (d) =>
+      !d.present ||
+      (d.status && d.status.toLowerCase().includes("missing"))
+  );
+  const expiringDocs = (documents || []).filter(
+    (d) =>
+      d.status &&
+      (d.status.toLowerCase().includes("expires") ||
+        d.status.toLowerCase().includes("expiring"))
+  );
+  const criticalRules = (rules || []).filter(
+    (r) => r.severity === "Critical" || r.severity === "High"
+  );
+
+  return {
+    failingCoverage,
+    missingEndorsements,
+    softEndorseIssues,
+    missingDocs,
+    expiringDocs,
+    criticalRules,
+  };
+}
+
+function buildEmailTemplate({
+  vendor,
+  tone,
+  coverage,
+  endorsements,
+  documents,
+  rules,
+}) {
+  const name = vendor?.name || "your company";
+  const ctx = buildOutreachContext(vendor, coverage, endorsements, documents, rules);
+
+  const bullets = [];
+
+  ctx.failingCoverage.slice(0, 3).forEach((c) => {
+    bullets.push(
+      `• ${c.label}: detected ${formatMoney(c.actual)} ${c.unit}, blueprint requires ${formatMoney(
+        c.required
+      )} ${c.unit}.`
+    );
+  });
+
+  ctx.missingEndorsements.slice(0, 3).forEach((e) => {
+    bullets.push(`• ${e.label}: required but not detected on COI or endorsements.`);
+  });
+
+  ctx.softEndorseIssues.slice(0, 2).forEach((e) => {
+    bullets.push(
+      `• ${e.label}: wording appears generic; blueprint expects: ${e.expectation}.`
+    );
+  });
+
+  ctx.missingDocs.slice(0, 3).forEach((d) => {
+    bullets.push(`• ${d.label}: no current document on file.`);
+  });
+
+  ctx.expiringDocs.slice(0, 2).forEach((d) => {
+    bullets.push(`• ${d.label}: ${d.status}.`);
+  });
+
+  ctx.criticalRules.slice(0, 3).forEach((r) => {
+    bullets.push(`• Rule triggered: ${r.label}.`);
+  });
+
+  if (bullets.length === 0) {
+    bullets.push("• Our records show at least one item that needs review to stay compliant.");
+  }
+
+  let greeting = "Dear " + name + " team,";
+  let closing = "Thank you in advance for your prompt attention to this.";
+
+  if (tone === "friendly") {
+    greeting = "Hi " + name + " team,";
+    closing =
+      "We really appreciate the partnership and your help keeping everything current.";
+  } else if (tone === "strict") {
+    greeting = "To the insurance and risk contact for " + name + ":";
+    closing =
+      "Please treat this as a priority compliance matter. We may need to pause work if we do not receive updated evidence of coverage.";
+  } else if (tone === "expiring") {
+    greeting = "Hi " + name + " team,";
+    closing =
+      "To avoid any disruption, please send updated documentation before the current policy expires.";
+  } else if (tone === "missingDocs") {
+    greeting = "Hi " + name + " team,";
+    closing =
+      "Once these documents are uploaded, your profile will return to compliant status.";
+  }
+
+  const introBase =
+    "As part of our ongoing vendor insurance and risk review, our system identified a few items that need to be updated to keep your account compliant with our current requirements.";
+  const introStrict =
+    "Our compliance engine has flagged your account as not currently meeting our insurance requirements.";
+  const introFriendly =
+    "Our compliance system did a recent sweep of vendor certificates and found a couple of items that need a quick refresh.";
+
+  let intro = introBase;
+  if (tone === "strict") intro = introStrict;
+  if (tone === "friendly") intro = introFriendly;
+
+  const subtitle =
+    "Based on the certificates, endorsements, and documents we have on file, the following items require attention:";
+
+  const bulletBlock = bullets.join("\n");
+
+  const actions =
+    "Please share updated certificates of insurance, endorsements, or documents that address the items above. You can reply directly to this email with updated PDFs, or upload them using your usual secure upload link.";
+
+  const subjectBase = `Insurance & compliance updates needed for ${name}`;
+  const subjectStrict = `Urgent: Insurance compliance updates required for ${name}`;
+  const subjectExpiring = `Action requested: expiring policy / COI on file for ${name}`;
+  const subjectMissingDocs = `Missing / outdated documents for ${name} — please upload`;
+
+  let subject = subjectBase;
+  if (tone === "strict") subject = subjectStrict;
+  else if (tone === "expiring") subject = subjectExpiring;
+  else if (tone === "missingDocs") subject = subjectMissingDocs;
+
+  const footer =
+    "If you believe any of these items are already satisfied, please let us know and include supporting documentation so we can update our records.";
+
+  const body = [
+    greeting,
+    "",
+    intro,
+    "",
+    subtitle,
+    bulletBlock,
+    "",
+    actions,
+    "",
+    footer,
+    "",
+    closing,
+    "",
+    "Best regards,",
+    "Compliance Team",
+  ].join("\n");
+
+  return { subject, body, bullets, context: ctx };
+}
+
+function formatMoney(num) {
+  if (num == null || isNaN(Number(num))) return "—";
+  return Number(num).toLocaleString();
+}
+
 /* ===========================
    MAIN PAGE
 =========================== */
@@ -314,6 +474,8 @@ export default function VendorProfilePage() {
     if (!id) return vendorProfiles["default"];
     return vendorProfiles[id] || vendorProfiles["default"];
   }, [id]);
+
+  const [outreachOpen, setOutreachOpen] = useState(false);
 
   const reqSummary = vendor.requirementsSummary || {
     total: 0,
@@ -527,7 +689,7 @@ export default function VendorProfilePage() {
           </div>
         </div>
 
-        {/* Compliance gauge + status */}
+        {/* Compliance gauge + status + outreach button */}
         <div
           style={{
             padding: 12,
@@ -548,9 +710,32 @@ export default function VendorProfilePage() {
               textTransform: "uppercase",
               letterSpacing: 1.2,
               color: "#9ca3af",
+              display: "flex",
+              justifyContent: "space-between",
+              alignItems: "center",
+              gap: 8,
             }}
           >
-            Compliance score
+            <span>Compliance score</span>
+            <button
+              onClick={() => setOutreachOpen(true)}
+              style={{
+                borderRadius: 999,
+                padding: "4px 9px",
+                border: "1px solid rgba(56,189,248,0.8)",
+                background:
+                  "radial-gradient(circle at top left,#22c55e,#16a34a,#0f766e)",
+                color: "#ecfdf5",
+                fontSize: 10,
+                display: "inline-flex",
+                alignItems: "center",
+                gap: 6,
+                cursor: "pointer",
+              }}
+            >
+              <span>✨</span>
+              <span>AI outreach</span>
+            </button>
           </div>
 
           <div
@@ -1100,6 +1285,18 @@ export default function VendorProfilePage() {
         </div>
       </div>
 
+      {/* AI OUTREACH SLIDE-OVER */}
+      <AiOutreachDrawer
+        open={outreachOpen}
+        onClose={() => setOutreachOpen(false)}
+        vendor={vendor}
+        coverage={vendor.coverage || []}
+        endorsements={vendor.endorsements || []}
+        documents={vendor.documents || []}
+        rules={vendor.rulesFired || []}
+        requirementsSummary={reqSummary}
+      />
+
       <style jsx>{`
         @keyframes pulseDot {
           0% {
@@ -1625,6 +1822,405 @@ function TimelineItem({ event, isFirst }) {
             }}
           >
             {event.type}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ===========================
+   AI OUTREACH DRAWER
+=========================== */
+function AiOutreachDrawer({
+  open,
+  onClose,
+  vendor,
+  coverage,
+  endorsements,
+  documents,
+  rules,
+  requirementsSummary,
+}) {
+  const [tone, setTone] = useState("standard");
+  const [includeSummary, setIncludeSummary] = useState(true);
+  const [copyStatus, setCopyStatus] = useState("");
+
+  if (!open) return null;
+
+  const { subject, body, bullets, context } = buildEmailTemplate({
+    vendor,
+    tone,
+    coverage,
+    endorsements,
+    documents,
+    rules,
+  });
+
+  function handleCopy() {
+    if (typeof navigator !== "undefined" && navigator.clipboard) {
+      navigator.clipboard
+        .writeText("Subject: " + subject + "\n\n" + body)
+        .then(() => setCopyStatus("Copied!"))
+        .catch(() => setCopyStatus("Copy failed"));
+    } else {
+      setCopyStatus("Clipboard not available");
+    }
+    setTimeout(() => setCopyStatus(""), 2000);
+  }
+
+  const toneLabel = {
+    standard: "Standard",
+    friendly: "Friendly",
+    strict: "Strict",
+    expiring: "Expiring soon",
+    missingDocs: "Missing docs",
+  }[tone];
+
+  return (
+    <div
+      style={{
+        position: "fixed",
+        inset: 0,
+        zIndex: 60,
+        display: "flex",
+        justifyContent: "flex-end",
+      }}
+    >
+      {/* overlay */}
+      <div
+        onClick={onClose}
+        style={{
+          flex: 1,
+          background: "rgba(15,23,42,0.75)",
+          backdropFilter: "blur(10px)",
+        }}
+      />
+      {/* drawer */}
+      <div
+        style={{
+          width: 440,
+          maxWidth: "100%",
+          background:
+            "radial-gradient(circle at top,#020617,#020617 65%,#000)",
+          borderLeft: "1px solid rgba(30,41,59,0.98)",
+          boxShadow: "-24px 0 60px rgba(15,23,42,0.95)",
+          padding: 16,
+          display: "flex",
+          flexDirection: "column",
+          color: "white",
+        }}
+      >
+        {/* header */}
+        <div
+          style={{
+            display: "flex",
+            justifyContent: "space-between",
+            gap: 8,
+            alignItems: "center",
+            marginBottom: 10,
+          }}
+        >
+          <div>
+            <div
+              style={{
+                fontSize: 11,
+                textTransform: "uppercase",
+                letterSpacing: 1.2,
+                color: "#9ca3af",
+                marginBottom: 3,
+              }}
+            >
+              AI Outreach Panel
+            </div>
+            <div
+              style={{
+                fontSize: 14,
+                color: "#e5e7eb",
+              }}
+            >
+              Email to {vendor.name || "Vendor"}
+            </div>
+          </div>
+          <button
+            onClick={onClose}
+            style={{
+              borderRadius: 999,
+              width: 28,
+              height: 28,
+              border: "1px solid rgba(148,163,184,0.7)",
+              background: "rgba(15,23,42,0.95)",
+              color: "#e5e7eb",
+              cursor: "pointer",
+              fontSize: 14,
+            }}
+          >
+            ✕
+          </button>
+        </div>
+
+        {/* tone selector */}
+        <div
+          style={{
+            marginBottom: 10,
+            display: "flex",
+            flexDirection: "column",
+            gap: 6,
+          }}
+        >
+          <div
+            style={{
+              fontSize: 11,
+              color: "#9ca3af",
+            }}
+          >
+            Tone / template
+          </div>
+          <div
+            style={{
+              display: "flex",
+              flexWrap: "wrap",
+              gap: 6,
+            }}
+          >
+            {[
+              { id: "standard", label: "Standard" },
+              { id: "friendly", label: "Friendly" },
+              { id: "strict", label: "Strict" },
+              { id: "expiring", label: "Expiring soon" },
+              { id: "missingDocs", label: "Missing docs" },
+            ].map((t) => {
+              const active = t.id === tone;
+              return (
+                <button
+                  key={t.id}
+                  onClick={() => setTone(t.id)}
+                  style={{
+                    borderRadius: 999,
+                    padding: "4px 9px",
+                    border: active
+                      ? "1px solid rgba(56,189,248,0.9)"
+                      : "1px solid rgba(51,65,85,0.98)",
+                    background: active
+                      ? "radial-gradient(circle at top,#0ea5e9,#1d4ed8,#020617)"
+                      : "rgba(15,23,42,0.98)",
+                    color: active ? "#e0f2fe" : "#e5e7eb",
+                    fontSize: 11,
+                    cursor: "pointer",
+                  }}
+                >
+                  {t.label}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+
+        {/* key issues summary */}
+        <div
+          style={{
+            borderRadius: 14,
+            padding: 8,
+            border: "1px solid rgba(51,65,85,0.98)",
+            background: "rgba(15,23,42,0.98)",
+            fontSize: 11,
+            marginBottom: 10,
+          }}
+        >
+          <div
+            style={{
+              marginBottom: 4,
+              display: "flex",
+              justifyContent: "space-between",
+              alignItems: "center",
+              gap: 6,
+            }}
+          >
+            <span style={{ color: "#9ca3af" }}>Issues referenced in email</span>
+            <span style={{ color: "#e5e7eb" }}>
+              {context.failingCoverage.length +
+                context.missingEndorsements.length +
+                context.missingDocs.length +
+                context.criticalRules.length}{" "}
+              items
+            </span>
+          </div>
+          <ul
+            style={{
+              margin: 0,
+              paddingLeft: 16,
+              color: "#cbd5f5",
+              maxHeight: 90,
+              overflowY: "auto",
+            }}
+          >
+            {bullets.slice(0, 6).map((b, idx) => (
+              <li key={idx} style={{ marginBottom: 2 }}>
+                {b.replace(/^•\s*/, "")}
+              </li>
+            ))}
+          </ul>
+        </div>
+
+        {/* toggle summary (for future use) */}
+        <label
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: 6,
+            fontSize: 11,
+            color: "#9ca3af",
+            marginBottom: 8,
+          }}
+        >
+          <input
+            type="checkbox"
+            checked={includeSummary}
+            onChange={(e) => setIncludeSummary(e.target.checked)}
+            style={{ cursor: "pointer" }}
+          />
+          Include AI overview sentence in email body
+        </label>
+
+        {/* subject */}
+        <div
+          style={{
+            marginBottom: 6,
+          }}
+        >
+          <div
+            style={{
+              fontSize: 11,
+              color: "#9ca3af",
+              marginBottom: 3,
+            }}
+          >
+            Subject
+          </div>
+          <input
+            value={subject}
+            readOnly
+            style={{
+              width: "100%",
+              borderRadius: 999,
+              padding: "6px 9px",
+              border: "1px solid rgba(51,65,85,0.98)",
+              background: "rgba(15,23,42,0.98)",
+              color: "#e5e7eb",
+              fontSize: 12,
+            }}
+          />
+        </div>
+
+        {/* body */}
+        <div
+          style={{
+            marginBottom: 8,
+            display: "flex",
+            flexDirection: "column",
+            flex: 1,
+          }}
+        >
+          <div
+            style={{
+              fontSize: 11,
+              color: "#9ca3af",
+              marginBottom: 3,
+            }}
+          >
+            Email body (ready to copy)
+          </div>
+          <textarea
+            value={
+              includeSummary && vendor.aiSummary
+                ? body.replace(
+                    "As part of our ongoing vendor insurance and risk review, our system identified a few items that need to be updated to keep your account compliant with our current requirements.",
+                    vendor.aiSummary +
+                      "\n\nAs part of our ongoing vendor insurance and risk review, our system identified a few items that need to be updated to keep your account compliant with our current requirements."
+                  )
+                : body
+            }
+            readOnly
+            rows={16}
+            style={{
+              flex: 1,
+              width: "100%",
+              borderRadius: 12,
+              padding: "8px 9px",
+              border: "1px solid rgba(30,64,175,0.98)",
+              background: "rgba(15,23,42,0.98)",
+              color: "#e5e7eb",
+              fontSize: 12,
+              fontFamily: "system-ui, -apple-system, BlinkMacSystemFont",
+              resize: "none",
+              lineHeight: 1.45,
+            }}
+          />
+        </div>
+
+        {/* actions */}
+        <div
+          style={{
+            display: "flex",
+            justifyContent: "space-between",
+            alignItems: "center",
+            gap: 8,
+            marginTop: 4,
+          }}
+        >
+          <div
+            style={{
+              display: "flex",
+              gap: 8,
+            }}
+          >
+            <button
+              onClick={handleCopy}
+              style={{
+                borderRadius: 999,
+                padding: "6px 12px",
+                border: "1px solid rgba(56,189,248,0.9)",
+                background:
+                  "linear-gradient(120deg,#0ea5e9,#2563eb,#1d4ed8)",
+                color: "#e0f2fe",
+                fontSize: 11,
+                fontWeight: 500,
+                cursor: "pointer",
+                display: "inline-flex",
+                alignItems: "center",
+                gap: 6,
+              }}
+            >
+              <span>📋</span>
+              <span>Copy subject + body</span>
+            </button>
+            <button
+              type="button"
+              style={{
+                borderRadius: 999,
+                padding: "6px 10px",
+                border: "1px solid rgba(148,163,184,0.7)",
+                background: "transparent",
+                color: "#e5e7eb",
+                fontSize: 11,
+                cursor: "default",
+              }}
+            >
+              Tone: {toneLabel}
+            </button>
+          </div>
+          <div
+            style={{
+              fontSize: 10,
+              color:
+                copyStatus === "Copied!"
+                  ? "#bbf7d0"
+                  : copyStatus
+                  ? "#fecaca"
+                  : "#6b7280",
+            }}
+          >
+            {copyStatus || "Paste into your email tool or CRM to send."}
           </div>
         </div>
       </div>
