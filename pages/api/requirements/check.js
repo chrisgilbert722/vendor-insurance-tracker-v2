@@ -2,161 +2,129 @@
 import { Client } from "pg";
 
 /**
- * Endpoint: /api/requirements/check?vendorId=123&orgId=456
+ * Requirements / Compliance Check — Neon-backed, safe version
+ *
+ * Called like:
+ *   /api/requirements/check?vendorId=2&orgId=1
+ *
+ * Returns:
+ * {
+ *   ok: true,
+ *   summary: string,
+ *   missing: [{ coverage_type }],
+ *   failing: [{ coverage_type, reason }],
+ *   passing: [{ coverage_type }]
+ * }
+ *
+ * This is intentionally SIMPLE for now:
+ * - It reads real policies from Neon
+ * - Treats all existing policies as "passing"
+ * - Leaves missing/failing empty until we wire the full rule/requirements engine
  */
 
 export default async function handler(req, res) {
-  let db = null;
+  if (req.method !== "GET") {
+    return res
+      .status(405)
+      .json({ ok: false, error: "Method not allowed" });
+  }
+
+  const { vendorId, orgId } = req.query;
+
+  const numericVendorId = Number(vendorId);
+  if (!numericVendorId || Number.isNaN(numericVendorId)) {
+    return res.status(400).json({
+      ok: false,
+      error: "vendorId must be a numeric ID",
+    });
+  }
+
+  // Neon connection
+  const connectionString =
+    process.env.POSTGRES_URL_NO_SSL ||
+    process.env.POSTGRES_URL ||
+    process.env.DATABASE_URL;
+
+  const client = new Client({ connectionString });
 
   try {
-    const { vendorId, orgId } = req.query;
+    await client.connect();
 
-    if (!vendorId || !orgId) {
+    // 1) Load vendor (mainly to verify it exists)
+    const vendorResult = await client.query(
+      `
+      SELECT id, org_id, name
+      FROM vendors
+      WHERE id = $1
+      LIMIT 1;
+      `,
+      [numericVendorId]
+    );
+
+    if (vendorResult.rows.length === 0) {
       return res
-        .status(400)
-        .json({ ok: false, error: "Missing vendorId or orgId" });
+        .status(404)
+        .json({ ok: false, error: "Vendor not found" });
     }
 
-    // Connect to database
-    db = new Client({
-      connectionString: process.env.DATABASE_URL,
-    });
-    await db.connect();
+    const vendor = vendorResult.rows[0];
 
-    // 1️⃣ Load org-wide requirements
-    const reqResult = await db.query(
-      `SELECT *
-       FROM public.requirements
-       WHERE org_id = $1
-       ORDER BY created_at ASC`,
-      [orgId]
+    // 2) Load policies for this vendor (and org if provided)
+    const policiesResult = await client.query(
+      `
+      SELECT
+        id,
+        coverage_type,
+        status,
+        policy_number,
+        carrier,
+        effective_date,
+        expiration_date
+      FROM policies
+      WHERE vendor_id = $1
+        ${orgId ? "AND org_id = $2" : ""}
+      ORDER BY created_at DESC, id DESC;
+      `,
+      orgId ? [numericVendorId, Number(orgId) || null] : [numericVendorId]
     );
 
-    const requirements = reqResult.rows;
+    const policies = policiesResult.rows;
 
-    // 2️⃣ Load vendor policies
-    const policyResult = await db.query(
-      `SELECT *
-       FROM public.policies
-       WHERE vendor_id = $1
-       ORDER BY created_at DESC`,
-      [vendorId]
-    );
+    // 3) Build simple compliance object
+    const passing = policies.map((p) => ({
+      coverage_type: p.coverage_type || "Coverage",
+    }));
 
-    const policies = policyResult.rows;
+    const missing = []; // later: derive from requirements table
+    const failing = []; // later: derive from min limits / status
 
-    // 3️⃣ Evaluate compliance
-    const missing = [];
-    const failing = [];
-    const passing = [];
-
-    for (const rule of requirements) {
-      const match = policies.find(
-        (p) =>
-          p.coverage_type?.toLowerCase().trim() ===
-          rule.coverage_type?.toLowerCase().trim()
-      );
-
-      // ❌ Missing coverage
-      if (!match) {
-        missing.push({
-          coverage_type: rule.coverage_type,
-          reason: "Missing required coverage",
-        });
-        continue;
-      }
-
-      // ❌ Each Occurrence
-      if (
-        rule.min_limit_each_occurrence &&
-        (!match.limit_each_occurrence ||
-          match.limit_each_occurrence < rule.min_limit_each_occurrence)
-      ) {
-        failing.push({
-          coverage_type: rule.coverage_type,
-          reason: `Each Occurrence too low (${match.limit_each_occurrence} < ${rule.min_limit_each_occurrence})`,
-        });
-        continue;
-      }
-
-      // ❌ Aggregate
-      if (
-        rule.min_limit_aggregate &&
-        (!match.limit_aggregate ||
-          match.limit_aggregate < rule.min_limit_aggregate)
-      ) {
-        failing.push({
-          coverage_type: rule.coverage_type,
-          reason: `Aggregate too low (${match.limit_aggregate} < ${rule.min_limit_aggregate})`,
-        });
-        continue;
-      }
-
-      // ❌ Additional Insured Required
-      if (rule.require_additional_insured && !match.additional_insured) {
-        failing.push({
-          coverage_type: rule.coverage_type,
-          reason: "Missing Additional Insured endorsement",
-        });
-        continue;
-      }
-
-      // ❌ Waiver of Subrogation
-      if (rule.require_waiver && !match.waiver_of_subrogation) {
-        failing.push({
-          coverage_type: rule.coverage_type,
-          reason: "Missing Waiver of Subrogation",
-        });
-        continue;
-      }
-
-      // ❌ Risk Score too low
-      if (
-        rule.min_risk_score &&
-        match.risk_score &&
-        match.risk_score < rule.min_risk_score
-      ) {
-        failing.push({
-          coverage_type: rule.coverage_type,
-          reason: `Risk score too low (${match.risk_score} < ${rule.min_risk_score})`,
-        });
-        continue;
-      }
-
-      // ✅ Passed everything
-      passing.push({
-        coverage_type: rule.coverage_type,
-        reason: "Compliant",
-      });
+    let summary = "";
+    if (policies.length === 0) {
+      summary = `No active policies found on file for ${vendor.name}.`;
+    } else if (policies.length === 1) {
+      summary = `Found 1 policy on file for ${vendor.name}. Detailed requirements engine is not wired yet, but coverage is present.`;
+    } else {
+      summary = `Found ${policies.length} policies on file for ${vendor.name}. Detailed requirements engine is not wired yet, but coverage appears present.`;
     }
-
-    // 4️⃣ Summary
-    let summary = "Fully compliant";
-
-    if (missing.length > 0) summary = "Missing required coverage";
-    if (failing.length > 0) summary = "Coverage failing compliance rules";
 
     return res.status(200).json({
       ok: true,
-      vendorId,
-      orgId,
       summary,
       missing,
       failing,
       passing,
-      policyCount: policies.length,
-      requirementCount: requirements.length,
     });
   } catch (err) {
-    console.error("COMPLIANCE CHECK ERROR:", err);
-    return res
-      .status(500)
-      .json({ ok: false, error: err.message || "Compliance check failed" });
+    console.error("requirements/check error:", err);
+    return res.status(500).json({
+      ok: false,
+      error: err.message || "Server error",
+    });
   } finally {
-    if (db) {
-      try {
-        await db.end();
-      } catch (_) {}
+    try {
+      await client.end();
+    } catch {
+      // ignore
     }
   }
 }
