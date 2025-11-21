@@ -13,29 +13,23 @@ import SeverityDistributionChart from "../components/charts/SeverityDistribution
 import RiskTimelineChart from "../components/charts/RiskTimelineChart";
 
 /* ===========================
-   THEME — ELECTRIC NEON CINEMATIC
+   ELECTRIC NEON THEME
 =========================== */
 const GP = {
   bg: "#020617",
-  bgSoft: "#020617",
   panel: "rgba(15,23,42,0.98)",
-  panelDeep: "rgba(15,23,42,0.98)",
   borderSoft: "rgba(51,65,85,0.9)",
   borderStrong: "rgba(148,163,184,0.8)",
 
-  primary: "#38bdf8",
-  accentGreen: "#22c55e",
-  accentYellow: "#facc15",
-  accentRed: "#fb7185",
-  accentPurple: "#a855f7",
+  neonBlue: "#38bdf8",
+  neonPurple: "#a855f7",
+  neonGreen: "#22c55e",
+  neonGold: "#facc15",
+  neonRed: "#fb7185",
 
   text: "#e5e7eb",
   textSoft: "#9ca3af",
   textMuted: "#6b7280",
-
-  radiusLg: 24,
-  radiusMd: 18,
-  radiusSm: 12,
 };
 
 /* ===========================
@@ -47,7 +41,9 @@ function parseExpiration(dateStr) {
   if (parts.length !== 3) return null;
   const [mm, dd, yyyy] = parts;
   if (!mm || !dd || !yyyy) return null;
-  return new Date(`${yyyy}-${mm}-${dd}T00:00:00`);
+  const d = new Date(`${yyyy}-${mm}-${dd}T00:00:00`);
+  if (Number.isNaN(d.getTime())) return null;
+  return d;
 }
 
 function computeDaysLeft(dateStr) {
@@ -80,11 +76,11 @@ function computeRisk(p) {
   } else if (daysLeft <= 30) {
     severity = "critical";
     score = 40;
-    flags.push("Expires within 30 days");
+    flags.push("Expires ≤30 days");
   } else if (daysLeft <= 90) {
     severity = "warning";
     score = 70;
-    flags.push("Expires within 90 days");
+    flags.push("Expires ≤90 days");
   }
 
   const tier =
@@ -472,9 +468,10 @@ export default function Dashboard() {
     setDrawerPolicies([]);
   }
 
-  /* ===========================
-     RENDER
-  ============================ */
+  const avgScore = metrics?.avg_score ?? 0;
+  const alertsCount = alerts.length;
+  const totalVendors = Object.keys(eliteMap).length || policies.length;
+
   return (
     <div
       style={{
@@ -487,73 +484,51 @@ export default function Dashboard() {
           "-apple-system,BlinkMacSystemFont,system-ui,Segoe UI,sans-serif",
       }}
     >
-      {/* HEADER */}
+      {/* =======================================
+          HERO COMMAND PANEL
+      ======================================= */}
       <div
         style={{
-          display: "flex",
-          justifyContent: "space-between",
-          alignItems: "flex-start",
-          marginBottom: 26,
+          borderRadius: 28,
+          padding: 22,
+          marginBottom: 30,
+          border: "1px solid rgba(148,163,184,0.45)",
+          background:
+            "radial-gradient(circle at top left,rgba(15,23,42,0.98),rgba(15,23,42,0.92))",
+          boxShadow: `
+            0 0 55px rgba(0,0,0,0.85),
+            0 0 70px rgba(56,189,248,0.35),
+            inset 0 0 25px rgba(0,0,0,0.7)
+          `,
+          display: "grid",
+          gridTemplateColumns: "minmax(0,1.8fr) minmax(0,1.3fr)",
+          gap: 24,
+          position: "relative",
         }}
       >
-        <div>
-          <div
-            style={{
-              display: "inline-flex",
-              alignItems: "center",
-              gap: 10,
-              padding: "4px 12px",
-              borderRadius: 999,
-              border: "1px solid rgba(148,163,184,0.4)",
-              background:
-                "linear-gradient(90deg,rgba(15,23,42,0.95),rgba(15,23,42,0.3))",
-              marginBottom: 8,
-            }}
-          >
-            <span
-              style={{
-                width: 22,
-                height: 22,
-                borderRadius: "999px",
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                background:
-                  "radial-gradient(circle at 30% 0,#38bdf8,#4f46e5,#0f172a)",
-                boxShadow: "0 0 20px rgba(56,189,248,0.5)",
-                fontSize: 13,
-              }}
-            >
-              📊
-            </span>
-            <span
-              style={{
-                fontSize: 11,
-                textTransform: "uppercase",
-                letterSpacing: 1.3,
-                color: "#e5e7eb",
-              }}
-            >
-              Dashboard V2
-            </span>
-            <span
-              style={{
-                fontSize: 10,
-                textTransform: "uppercase",
-                letterSpacing: 1,
-                color: GP.primary,
-              }}
-            >
-              Compliance • Insurance • Risk
-            </span>
-          </div>
+        {/* HUD Top Label */}
+        <div
+          style={{
+            position: "absolute",
+            top: 12,
+            left: 18,
+            fontSize: 10,
+            letterSpacing: "0.18em",
+            textTransform: "uppercase",
+            color: "rgba(148,163,184,0.7)",
+          }}
+        >
+          DASHBOARD V2 • GLOBAL COMPLIANCE ENGINE
+        </div>
 
+        {/* LEFT — Title + AI summary + mini KPIs */}
+        <div style={{ paddingTop: 22 }}>
           <h1
             style={{
               fontSize: 30,
               fontWeight: 600,
               margin: 0,
-              letterSpacing: 0.2,
+              letterSpacing: 0.18,
               background:
                 "linear-gradient(90deg,#38bdf8,#a855f7,#22c55e,#facc15)",
               WebkitBackgroundClip: "text",
@@ -568,63 +543,149 @@ export default function Dashboard() {
               marginTop: 8,
               fontSize: 13,
               color: GP.textSoft,
-              maxWidth: 650,
+              maxWidth: 640,
               lineHeight: 1.5,
             }}
           >
-            Live compliance oversight across all vendors, policies, expirations,
-            and risk engines.
+            Live AI-powered oversight across all vendors, policies, expirations,
+            and risk engines. This is your command center.
           </p>
 
-          {(isAdmin || isManager) && (
-            <a
-              href="/upload-coi"
-              style={{
-                display: "inline-block",
-                marginTop: 16,
-                padding: "8px 16px",
-                borderRadius: 999,
-                background:
-                  "radial-gradient(circle at top left,#0ea5e9,#1d4ed8,#020617)",
-                color: "#e0f2fe",
-                fontSize: 13,
-                fontWeight: 600,
-                textDecoration: "none",
-                boxShadow:
-                  "0 0 18px rgba(56,189,248,0.35),0 0 32px rgba(30,64,175,0.25)",
-              }}
-            >
-              + Upload New COI
-            </a>
-          )}
-        </div>
-
-        {/* ALERTS */}
-        <div style={{ position: "relative", marginTop: 8 }}>
-          <button
-            onClick={() => setShowAlerts((s) => !s)}
+          {/* AI Summary Line */}
+          <div
             style={{
-              padding: "8px 14px",
+              marginTop: 12,
+              fontSize: 12,
+              color: GP.textSoft,
               borderRadius: 999,
-              border: "1px solid rgba(51,65,85,0.9)",
-              background: "rgba(15,23,42,0.9)",
-              cursor: "pointer",
-              display: "flex",
-              gap: 6,
-              fontSize: 13,
-              color: "#e5e7eb",
+              padding: "6px 12px",
+              border: "1px solid rgba(55,65,81,0.9)",
+              background:
+                "linear-gradient(90deg,rgba(15,23,42,0.98),rgba(15,23,42,0.9))",
+              display: "inline-flex",
+              alignItems: "center",
+              gap: 10,
             }}
           >
-            🔔 Alerts ({alerts.length})
-          </button>
+            <span>🤖</span>
+            <span>
+              AI snapshot: system health{" "}
+              <strong
+                style={{
+                  color:
+                    avgScore >= 80
+                      ? GP.neonGreen
+                      : avgScore >= 60
+                      ? GP.neonGold
+                      : GP.neonRed,
+                }}
+              >
+                {avgScore ? avgScore.toFixed(0) : "—"}/100
+              </strong>{" "}
+              across{" "}
+              <strong style={{ color: GP.neonBlue }}>
+                {totalVendors || "—"} vendors
+              </strong>
+              , {alertsCount} active alerts.
+            </span>
+          </div>
 
+          {/* CTA + Alerts Trigger */}
+          <div
+            style={{
+              marginTop: 16,
+              display: "flex",
+              alignItems: "center",
+              gap: 12,
+              flexWrap: "wrap",
+            }}
+          >
+            {(isAdmin || isManager) && (
+              <a
+                href="/upload-coi"
+                style={{
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: 8,
+                  padding: "8px 16px",
+                  borderRadius: 999,
+                  background:
+                    "radial-gradient(circle at top left,#0ea5e9,#1d4ed8,#020617)",
+                  color: "#e0f2fe",
+                  fontSize: 13,
+                  fontWeight: 600,
+                  textDecoration: "none",
+                  boxShadow:
+                    "0 0 18px rgba(56,189,248,0.35),0 0 32px rgba(30,64,175,0.25)",
+                }}
+              >
+                <span>+ Upload New COI</span>
+              </a>
+            )}
+
+            <button
+              onClick={() => setShowAlerts((s) => !s)}
+              style={{
+                padding: "8px 14px",
+                borderRadius: 999,
+                border: "1px solid rgba(51,65,85,0.9)",
+                background: "rgba(15,23,42,0.9)",
+                cursor: "pointer",
+                display: "flex",
+                gap: 6,
+                fontSize: 13,
+                color: "#e5e7eb",
+              }}
+            >
+              🔔 Alerts ({alerts.length})
+            </button>
+          </div>
+
+          {/* MINI KPI STRIP */}
+          <div
+            style={{
+              marginTop: 20,
+              display: "grid",
+              gridTemplateColumns:
+                "repeat(auto-fit,minmax(160px,1fr))",
+              gap: 12,
+            }}
+          >
+            <MiniKpi
+              label="Expired"
+              value={metrics?.expired_count ?? 0}
+              color={GP.neonRed}
+              icon="🔥"
+            />
+            <MiniKpi
+              label="Critical ≤30d"
+              value={metrics?.critical_count ?? 0}
+              color={GP.neonGold}
+              icon="⚠️"
+            />
+            <MiniKpi
+              label="Warning ≤90d"
+              value={metrics?.warning_count ?? 0}
+              color={GP.neonBlue}
+              icon="🟡"
+            />
+            <MiniKpi
+              label="Elite Fails"
+              value={eliteSummary.fail}
+              color={GP.neonRed}
+              icon="🧠"
+            />
+          </div>
+
+          {/* ALERT DROPDOWN */}
           {showAlerts && (
             <div
               style={{
                 position: "absolute",
-                top: "120%",
-                right: 0,
-                width: 300,
+                top: "100%",
+                right: 22,
+                marginTop: 10,
+                width: 320,
                 background:
                   "radial-gradient(circle at top,#020617,#020617 70%,#020617)",
                 border: "1px solid rgba(51,65,85,0.9)",
@@ -654,7 +715,7 @@ export default function Dashboard() {
                       style={{
                         fontSize: 11,
                         fontWeight: 600,
-                        color: GP.primary,
+                        color: GP.neonBlue,
                         textTransform: "uppercase",
                         marginBottom: 2,
                       }}
@@ -679,53 +740,144 @@ export default function Dashboard() {
             </div>
           )}
         </div>
+
+        {/* RIGHT — GLOBAL SCORE GAUGE + ELITE SUMMARY */}
+        <div
+          style={{
+            display: "flex",
+            flexDirection: "column",
+            alignItems: "flex-end",
+            gap: 16,
+            paddingTop: 28,
+          }}
+        >
+          {/* Circular Gauge */}
+          <div
+            style={{
+              position: "relative",
+              width: 160,
+              height: 160,
+              borderRadius: "50%",
+              background:
+                "conic-gradient(from 220deg,#22c55e,#a3e635,#facc15,#fb7185,#0f172a)",
+              padding: 5,
+              boxShadow:
+                "0 0 50px rgba(34,197,94,0.45),0 0 80px rgba(148,163,184,0.3)",
+            }}
+          >
+            <div
+              style={{
+                position: "absolute",
+                inset: 12,
+                borderRadius: "50%",
+                background:
+                  "radial-gradient(circle at 30% 0,#020617,#020617 60%,#000)",
+              }}
+            />
+            <div
+              style={{
+                position: "relative",
+                zIndex: 1,
+                height: "100%",
+                display: "flex",
+                flexDirection: "column",
+                alignItems: "center",
+                justifyContent: "center",
+              }}
+            >
+              <div
+                style={{
+                  fontSize: 11,
+                  letterSpacing: "0.1em",
+                  textTransform: "uppercase",
+                  color: GP.textSoft,
+                  marginBottom: 2,
+                }}
+              >
+                Global Score
+              </div>
+              <div
+                style={{
+                  fontSize: 32,
+                  fontWeight: 700,
+                  background:
+                    "linear-gradient(120deg,#22c55e,#bef264,#facc15)",
+                  WebkitBackgroundClip: "text",
+                  color: "transparent",
+                }}
+              >
+                {avgScore ? avgScore.toFixed(0) : "—"}
+              </div>
+              <div
+                style={{
+                  fontSize: 10,
+                  color: GP.textMuted,
+                }}
+              >
+                /100
+              </div>
+            </div>
+          </div>
+
+          {/* Elite + Status */}
+          <div
+            style={{
+              borderRadius: 18,
+              padding: 12,
+              border: "1px solid rgba(51,65,85,0.9)",
+              background: "rgba(15,23,42,0.98)",
+              minWidth: 220,
+            }}
+          >
+            <div
+              style={{
+                fontSize: 12,
+                color: GP.textSoft,
+                marginBottom: 6,
+              }}
+            >
+              Elite Engine Snapshot
+            </div>
+            <div
+              style={{
+                display: "flex",
+                justifyContent: "space-between",
+                fontSize: 11,
+                color: "#a5b4fc",
+              }}
+            >
+              <span>PASS</span>
+              <span style={{ color: "#4ade80" }}>{eliteSummary.pass}</span>
+            </div>
+            <div
+              style={{
+                display: "flex",
+                justifyContent: "space-between",
+                fontSize: 11,
+                color: "#facc15",
+              }}
+            >
+              <span>WARN</span>
+              <span>{eliteSummary.warn}</span>
+            </div>
+            <div
+              style={{
+                display: "flex",
+                justifyContent: "space-between",
+                fontSize: 11,
+                color: "#fb7185",
+              }}
+            >
+              <span>FAIL</span>
+              <span>{eliteSummary.fail}</span>
+            </div>
+          </div>
+        </div>
       </div>
 
-      {/* KPI STRIP */}
-      <div
-        style={{
-          display: "grid",
-          gridTemplateColumns: "repeat(auto-fit,minmax(190px,1fr))",
-          gap: 16,
-          marginBottom: 30,
-        }}
-      >
-        <CinematicKpi
-          label="Expired"
-          icon="🔥"
-          count={metrics?.expired_count ?? 0}
-          delta={deltas?.expired ?? 0}
-          color={GP.accentRed}
-        />
-        <CinematicKpi
-          label="Critical (≤30 days)"
-          icon="⚠️"
-          count={metrics?.critical_count ?? 0}
-          delta={deltas?.critical ?? 0}
-          color={GP.accentYellow}
-        />
-        <CinematicKpi
-          label="Warning (≤90 days)"
-          icon="🟡"
-          count={metrics?.warning_count ?? 0}
-          delta={deltas?.warning ?? 0}
-          color={GP.primary}
-        />
-        <CinematicKpi
-          label="Active"
-          icon="✅"
-          count={metrics?.ok_count ?? 0}
-          delta={deltas?.ok ?? 0}
-          color={GP.accentGreen}
-        />
-        <CinematicScoreCard
-          avgScore={metrics?.avg_score}
-          delta={deltas?.avg_score}
-        />
-        <CinematicEliteCard counts={eliteSummary} />
-      </div>
-
-      {/* CHARTS ROW */}
+      {/* ===========================
+          CHART STRIP
+      ============================ */}
       <div
         style={{
           marginTop: 10,
@@ -739,12 +891,13 @@ export default function Dashboard() {
         <PassFailDonutChart />
       </div>
 
-      {/* HEATMAP + SEVERITY + TIMELINE */}
       <ExpiringCertsHeatmap policies={policies} />
       <SeverityDistributionChart policies={policies} />
       <RiskTimelineChart policies={policies} />
 
-      {/* POLICIES TABLE HEADER + SEARCH */}
+      {/* ===========================
+          POLICIES TABLE
+      ============================ */}
       <h2
         style={{
           marginTop: 32,
@@ -788,7 +941,7 @@ export default function Dashboard() {
         <>
           <div
             style={{
-              borderRadius: GP.radiusLg,
+              borderRadius: 24,
               border: "1px solid rgba(30,41,59,0.98)",
               background: "rgba(15,23,42,0.98)",
               boxShadow: "0 18px 45px rgba(15,23,42,0.95)",
@@ -844,7 +997,6 @@ export default function Dashboard() {
                       <td style={td}>{p.expiration_date || "—"}</td>
                       <td style={td}>{risk.daysLeft ?? "—"}</td>
 
-                      {/* STATUS BADGE */}
                       <td
                         style={{
                           ...td,
@@ -858,7 +1010,6 @@ export default function Dashboard() {
                             risk.severity.slice(1)}
                       </td>
 
-                      {/* RISK TIER */}
                       <td style={{ ...td, textAlign: "center" }}>
                         <span
                           style={{
@@ -875,7 +1026,6 @@ export default function Dashboard() {
                         </span>
                       </td>
 
-                      {/* AI RISK SCORE */}
                       <td
                         style={{
                           ...td,
@@ -883,10 +1033,10 @@ export default function Dashboard() {
                           fontWeight: 600,
                           color:
                             ai.score >= 80
-                              ? GP.accentGreen
+                              ? GP.neonGreen
                               : ai.score >= 60
-                              ? GP.accentYellow
-                              : GP.accentRed,
+                              ? GP.neonGold
+                              : GP.neonRed,
                         }}
                       >
                         <div>{ai.score}</div>
@@ -908,21 +1058,19 @@ export default function Dashboard() {
                               height: "100%",
                               background:
                                 ai.score >= 80
-                                  ? GP.accentGreen
+                                  ? GP.neonGreen
                                   : ai.score >= 60
-                                  ? GP.accentYellow
-                                  : GP.accentRed,
+                                  ? GP.neonGold
+                                  : GP.neonRed,
                             }}
                           />
                         </div>
                       </td>
 
-                      {/* COMPLIANCE */}
                       <td style={{ ...td, textAlign: "center" }}>
                         {renderComplianceBadge(p.vendor_id, complianceMap)}
                       </td>
 
-                      {/* ELITE */}
                       <td style={{ ...td, textAlign: "center" }}>
                         {elite && !elite.loading && !elite.error ? (
                           <EliteStatusPill status={elite.overall} />
@@ -937,7 +1085,6 @@ export default function Dashboard() {
                         )}
                       </td>
 
-                      {/* FLAGS */}
                       <td style={{ ...td, textAlign: "center" }}>
                         {flags.length > 0 ? (
                           <span
@@ -970,177 +1117,47 @@ export default function Dashboard() {
   );
 }
 
-/* ===========================
-   CINEMATIC KPI CARD
-=========================== */
-function CinematicKpi({ label, icon, color, count, delta }) {
-  let arrow = "➖";
-  let arrowColor = GP.textSoft;
-
-  if (delta > 0) {
-    arrow = "⬆️";
-    arrowColor = GP.accentRed;
-  } else if (delta < 0) {
-    arrow = "⬇️";
-    arrowColor = GP.accentGreen;
-  }
-
+/* MINI KPI INSIDE HERO */
+function MiniKpi({ label, value, color, icon }) {
   return (
     <div
       style={{
-        borderRadius: GP.radiusMd,
-        padding: 16,
+        borderRadius: 16,
+        padding: 10,
         border: "1px solid rgba(51,65,85,0.9)",
         background:
-          "radial-gradient(circle at top left,rgba(15,23,42,0.98),rgba(15,23,42,0.92))",
-        boxShadow: "0 12px 30px rgba(0,0,0,0.6)",
-        textAlign: "center",
-        color: "#e5e7eb",
+          "radial-gradient(circle at top left,rgba(15,23,42,0.98),rgba(15,23,42,0.94))",
+        display: "flex",
+        alignItems: "center",
+        gap: 10,
       }}
     >
-      <div style={{ fontSize: 22, marginBottom: 6 }}>{icon}</div>
-      <div style={{ fontSize: 26, fontWeight: 700, color }}>{count}</div>
-      <div style={{ fontSize: 12, marginTop: 4, color: GP.textSoft }}>
-        {label}
-      </div>
-      <div
-        style={{
-          fontSize: 12,
-          marginTop: 4,
-          color: arrowColor,
-          fontWeight: 600,
-        }}
-      >
-        {arrow} {delta}
+      <div style={{ fontSize: 18 }}>{icon}</div>
+      <div>
+        <div
+          style={{
+            fontSize: 12,
+            color: GP.textSoft,
+            marginBottom: 2,
+          }}
+        >
+          {label}
+        </div>
+        <div
+          style={{
+            fontSize: 16,
+            fontWeight: 600,
+            color,
+          }}
+        >
+          {value}
+        </div>
       </div>
     </div>
   );
 }
 
-/* ===========================
-   CINEMATIC SCORE CARD
-=========================== */
-function CinematicScoreCard({ avgScore, delta }) {
-  const hasScore = avgScore !== null && avgScore !== undefined;
-  const score = hasScore ? Number(avgScore) : 0;
-
-  let arrow = "➖";
-  let arrowColor = GP.textSoft;
-
-  if (typeof delta === "number" && delta > 0) {
-    arrow = "⬆️";
-    arrowColor = GP.accentGreen;
-  } else if (typeof delta === "number" && delta < 0) {
-    arrow = "⬇️";
-    arrowColor = GP.accentRed;
-  }
-
-  const color =
-    score >= 80 ? GP.accentGreen : score >= 60 ? GP.accentYellow : GP.accentRed;
-
-  return (
-    <div
-      style={{
-        borderRadius: GP.radiusMd,
-        padding: 16,
-        border: "1px solid rgba(51,65,85,0.9)",
-        background:
-          "radial-gradient(circle at top left,rgba(15,23,42,0.98),rgba(15,23,42,0.92))",
-        boxShadow: "0 12px 30px rgba(0,0,0,0.6)",
-        textAlign: "center",
-      }}
-    >
-      <div style={{ fontSize: 22 }}>📊</div>
-      <div
-        style={{
-          fontSize: 26,
-          fontWeight: 700,
-          color: hasScore ? color : GP.textSoft,
-        }}
-      >
-        {hasScore ? score.toFixed(0) : "—"}
-      </div>
-      <div style={{ fontSize: 12, marginTop: 4, color: GP.textSoft }}>
-        Avg Score
-      </div>
-      <div
-        style={{
-          fontSize: 12,
-          marginTop: 4,
-          color: arrowColor,
-          fontWeight: 600,
-        }}
-      >
-        {arrow} {typeof delta === "number" ? delta.toFixed(1) : "0.0"}
-      </div>
-    </div>
-  );
-}
-
-/* ===========================
-   CINEMATIC ELITE CARD
-=========================== */
-function CinematicEliteCard({ counts }) {
-  const total = counts.pass + counts.warn + counts.fail;
-
-  return (
-    <div
-      style={{
-        borderRadius: GP.radiusMd,
-        padding: 16,
-        border: "1px solid rgba(51,65,85,0.9)",
-        background:
-          "radial-gradient(circle at top left,rgba(15,23,42,0.98),rgba(15,23,42,0.92))",
-        boxShadow: "0 12px 30px rgba(0,0,0,0.6)",
-        textAlign: "center",
-        color: "#e5e7eb",
-      }}
-    >
-      <div style={{ fontSize: 22 }}>🧠</div>
-      <div style={{ fontSize: 13, marginTop: 4, color: GP.accentPurple }}>
-        Elite Engine
-      </div>
-      <div style={{ fontSize: 12, marginTop: 6 }}>
-        Vendors Evaluated: <strong>{total}</strong>
-      </div>
-
-      <div
-        style={{
-          marginTop: 8,
-          fontSize: 12,
-          color: "#a3e635",
-          fontWeight: 600,
-        }}
-      >
-        PASS: {counts.pass}
-      </div>
-      <div
-        style={{
-          marginTop: 4,
-          fontSize: 12,
-          color: "#facc15",
-          fontWeight: 600,
-        }}
-      >
-        WARN: {counts.warn}
-      </div>
-      <div
-        style={{
-          marginTop: 4,
-          fontSize: 12,
-          color: "#fb7185",
-          fontWeight: 600,
-        }}
-      >
-        FAIL: {counts.fail}
-      </div>
-    </div>
-  );
-}
-
-/* ===========================
-   TABLE HEAD / CELL STYLES
-=========================== */
+/* TABLE STYLES */
 const th = {
   padding: "10px 12px",
   background: "rgba(15,23,42,0.98)",
