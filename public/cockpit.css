@@ -1,7 +1,6 @@
 /* ===========================================================
-   COCKPIT V6 — FULL WEAPONIZED ENVIRONMENT
-   Electric neon, scanlines, parallax, HUD glows.
-   This is the “what the fuck just happened” skin.
+   COCKPIT V9 — FULL WEAPONIZED ENVIRONMENT
+   Electric neon, scanlines, parallax, HUD glows, glass core.
 =========================================================== */
 
 /* ----- Reset & base ----- */
@@ -148,7 +147,6 @@ body::after {
 
 /* ===========================================================
    HERO COMMAND PANEL GLOW (requires .cockpit-hero class)
-   This wraps your hero panel and makes it **explode** with glow.
 =========================================================== */
 .cockpit-hero {
   position: relative;
@@ -207,7 +205,7 @@ body::after {
 }
 
 /* ===========================================================
-   OPTIONAL: Telemetry rails for sections
+   Telemetry rails for sections
    Add className="cockpit-telemetry" to any panel container.
 =========================================================== */
 .cockpit-telemetry {
@@ -240,7 +238,7 @@ body::after {
 }
 
 /* ===========================================================
-   OPTIONAL: AI Pulse Utility
+   AI Pulse Utility
    Add className="cockpit-pulse" to anything you want to “breathe”.
 =========================================================== */
 .cockpit-pulse {
@@ -277,6 +275,68 @@ body::after {
     opacity: 0;
     transform: scale(1.08);
   }
+}
+
+/* ===========================================================
+   COCKPIT V9 — NEON UNDERLIT TABLE GLASS
+   Wrap your table container with className="cockpit-table-shell"
+=========================================================== */
+.cockpit-table-shell {
+  position: relative;
+  border-radius: 24px;
+  overflow: hidden;
+  background: radial-gradient(
+    circle at 50% 0%,
+    rgba(15,23,42,0.96),
+    rgba(15,23,42,0.99)
+  );
+  box-shadow:
+    0 24px 55px rgba(15,23,42,0.96),
+    0 0 30px rgba(15,23,42,0.9);
+}
+
+/* Inner rim glow */
+.cockpit-table-shell::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  border: 1px solid rgba(148,163,184,0.35);
+  box-shadow:
+    0 0 18px rgba(15,23,42,0.9),
+    0 0 24px rgba(30,64,175,0.35);
+  pointer-events: none;
+}
+
+/* Underlight at the bottom of the table */
+.cockpit-table-shell::after {
+  content: "";
+  position: absolute;
+  left: 15%;
+  right: 15%;
+  bottom: -24px;
+  height: 60px;
+  background: radial-gradient(
+    circle at 50% 0%,
+    rgba(56,189,248,0.4),
+    transparent 70%
+  );
+  opacity: 0.8;
+  pointer-events: none;
+}
+
+/* Row hover “pressure” effect */
+.cockpit-table-shell tbody tr {
+  transition:
+    transform 0.12s ease-out,
+    box-shadow 0.12s ease-out,
+    background-color 0.12s ease-out;
+}
+
+.cockpit-table-shell tbody tr:hover {
+  transform: translateY(-1px);
+  background-color: rgba(15,23,42,0.98);
+  box-shadow: 0 0 18px rgba(56,189,248,0.25);
 }
 
 /* ===========================================================
