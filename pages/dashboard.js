@@ -13,27 +13,26 @@ import SeverityDistributionChart from "../components/charts/SeverityDistribution
 import RiskTimelineChart from "../components/charts/RiskTimelineChart";
 
 /* ===========================
-   THEME — CINEMATIC DARK
+   THEME — ELECTRIC NEON CINEMATIC
 =========================== */
 const GP = {
   bg: "#020617",
   bgSoft: "#020617",
-  panel: "#020617",
-  panelDeep: "#020617",
-  borderSoft: "rgba(30,41,59,0.9)",
-  borderStrong: "rgba(148,163,184,0.7)",
+  panel: "rgba(15,23,42,0.98)",
+  panelDeep: "rgba(15,23,42,0.98)",
+  borderSoft: "rgba(51,65,85,0.9)",
+  borderStrong: "rgba(148,163,184,0.8)",
 
   primary: "#38bdf8",
-  primarySoft: "rgba(56,189,248,0.15)",
-  accent1: "#22c55e",
-  accent2: "#facc15",
-  accent3: "#fb7185",
+  accentGreen: "#22c55e",
+  accentYellow: "#facc15",
+  accentRed: "#fb7185",
+  accentPurple: "#a855f7",
 
   text: "#e5e7eb",
   textSoft: "#9ca3af",
   textMuted: "#6b7280",
 
-  chipBg: "rgba(15,23,42,1)",
   radiusLg: 24,
   radiusMd: 18,
   radiusSm: 12,
@@ -104,27 +103,27 @@ function badgeStyle(level) {
   switch (level) {
     case "expired":
       return {
-        background: "rgba(248,113,113,0.16)",
+        background: "rgba(248,113,113,0.18)",
         color: "#fecaca",
-        border: "1px solid rgba(248,113,113,0.85)",
+        border: "1px solid rgba(248,113,113,0.9)",
       };
     case "critical":
       return {
-        background: "rgba(248,181,82,0.16)",
+        background: "rgba(248,181,82,0.18)",
         color: "#fef3c7",
-        border: "1px solid rgba(250,204,21,0.85)",
+        border: "1px solid rgba(250,204,21,0.9)",
       };
     case "warning":
       return {
-        background: "rgba(56,189,248,0.16)",
+        background: "rgba(56,189,248,0.18)",
         color: "#e0f2fe",
-        border: "1px solid rgba(56,189,248,0.85)",
+        border: "1px solid rgba(56,189,248,0.9)",
       };
     case "ok":
       return {
-        background: "rgba(34,197,94,0.15)",
+        background: "rgba(34,197,94,0.18)",
         color: "#bbf7d0",
-        border: "1px solid rgba(34,197,94,0.85)",
+        border: "1px solid rgba(34,197,94,0.9)",
       };
     default:
       return {
@@ -194,7 +193,7 @@ function renderComplianceBadge(vendorId, complianceMap) {
       <span
         style={{
           ...base,
-          background: "rgba(127,29,29,0.4)",
+          background: "rgba(127,29,29,0.5)",
           color: "#fecaca",
           border: "1px solid rgba(127,29,29,0.9)",
         }}
@@ -208,7 +207,7 @@ function renderComplianceBadge(vendorId, complianceMap) {
       <span
         style={{
           ...base,
-          background: "rgba(250,204,21,0.16)",
+          background: "rgba(250,204,21,0.2)",
           color: "#fef3c7",
           border: "1px solid rgba(250,204,21,0.9)",
         }}
@@ -222,7 +221,7 @@ function renderComplianceBadge(vendorId, complianceMap) {
       <span
         style={{
           ...base,
-          background: "rgba(248,113,113,0.16)",
+          background: "rgba(248,113,113,0.2)",
           color: "#fecaca",
           border: "1px solid rgba(248,113,113,0.9)",
         }}
@@ -235,7 +234,7 @@ function renderComplianceBadge(vendorId, complianceMap) {
     <span
       style={{
         ...base,
-        background: "rgba(34,197,94,0.16)",
+        background: "rgba(34,197,94,0.2)",
         color: "#bbf7d0",
         border: "1px solid rgba(34,197,94,0.9)",
       }}
@@ -245,7 +244,9 @@ function renderComplianceBadge(vendorId, complianceMap) {
   );
 }
 
-/* MAIN DASHBOARD */
+/* ===========================
+   MAIN DASHBOARD
+=========================== */
 export default function Dashboard() {
   const [policies, setPolicies] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -379,7 +380,7 @@ export default function Dashboard() {
     setEliteSummary({ pass, warn, fail });
   }, [eliteMap]);
 
-  /* LOG + FETCH ALERTS (Phase F) */
+  /* LOG ALERT */
   async function logAlert(vendorId, type, message) {
     if (!activeOrgId) return;
     await fetch("/api/alerts/log", {
@@ -426,7 +427,7 @@ export default function Dashboard() {
     });
   }, [policies, eliteMap, complianceMap, activeOrgId]);
 
-  /* FETCH ALERTS FOR BADGE */
+  /* FETCH ALERTS */
   useEffect(() => {
     if (!activeOrgId) return;
 
@@ -470,6 +471,10 @@ export default function Dashboard() {
     setDrawerVendor(null);
     setDrawerPolicies([]);
   }
+
+  /* ===========================
+     RENDER
+  ============================ */
   return (
     <div
       style={{
@@ -482,9 +487,7 @@ export default function Dashboard() {
           "-apple-system,BlinkMacSystemFont,system-ui,Segoe UI,sans-serif",
       }}
     >
-      {/* ===========================
-          HEADER ROW
-      ============================ */}
+      {/* HEADER */}
       <div
         style={{
           display: "flex",
@@ -503,7 +506,7 @@ export default function Dashboard() {
               borderRadius: 999,
               border: "1px solid rgba(148,163,184,0.4)",
               background:
-                "linear-gradient(90deg,rgba(15,23,42,0.92),rgba(15,23,42,0.3))",
+                "linear-gradient(90deg,rgba(15,23,42,0.95),rgba(15,23,42,0.3))",
               marginBottom: 8,
             }}
           >
@@ -538,7 +541,7 @@ export default function Dashboard() {
                 fontSize: 10,
                 textTransform: "uppercase",
                 letterSpacing: 1,
-                color: "#38bdf8",
+                color: GP.primary,
               }}
             >
               Compliance • Insurance • Risk
@@ -552,7 +555,7 @@ export default function Dashboard() {
               margin: 0,
               letterSpacing: 0.2,
               background:
-                "linear-gradient(90deg,#38bdf8,#a5b4fc,#22c55e,#facc15)",
+                "linear-gradient(90deg,#38bdf8,#a855f7,#22c55e,#facc15)",
               WebkitBackgroundClip: "text",
               color: "transparent",
             }}
@@ -596,7 +599,7 @@ export default function Dashboard() {
           )}
         </div>
 
-        {/* ALERT BELL */}
+        {/* ALERTS */}
         <div style={{ position: "relative", marginTop: 8 }}>
           <button
             onClick={() => setShowAlerts((s) => !s)}
@@ -623,18 +626,18 @@ export default function Dashboard() {
                 right: 0,
                 width: 300,
                 background:
-                  "radial-gradient(circle at top,#0b1220,#0b1220 70%,#0b1220)",
+                  "radial-gradient(circle at top,#020617,#020617 70%,#020617)",
                 border: "1px solid rgba(51,65,85,0.9)",
                 borderRadius: 16,
                 padding: 12,
                 maxHeight: 340,
                 overflowY: "auto",
-                boxShadow: "0 12px 40px rgba(0,0,0,0.55)",
+                boxShadow: "0 12px 40px rgba(0,0,0,0.7)",
                 zIndex: 20,
               }}
             >
               {alerts.length === 0 ? (
-                <div style={{ fontSize: 12, color: "#6b7280" }}>
+                <div style={{ fontSize: 12, color: GP.textMuted }}>
                   No alerts yet.
                 </div>
               ) : (
@@ -644,14 +647,14 @@ export default function Dashboard() {
                     style={{
                       paddingBottom: 8,
                       marginBottom: 8,
-                      borderBottom: "1px solid rgba(75,85,99,0.5)",
+                      borderBottom: "1px solid rgba(55,65,81,0.8)",
                     }}
                   >
                     <div
                       style={{
                         fontSize: 11,
                         fontWeight: 600,
-                        color: "#38bdf8",
+                        color: GP.primary,
                         textTransform: "uppercase",
                         marginBottom: 2,
                       }}
@@ -664,7 +667,7 @@ export default function Dashboard() {
                     <div
                       style={{
                         fontSize: 10,
-                        color: "#9ca3af",
+                        color: GP.textMuted,
                         marginTop: 2,
                       }}
                     >
@@ -678,16 +681,13 @@ export default function Dashboard() {
         </div>
       </div>
 
-      {/* ===========================
-          KPI BAR — CINEMATIC CARDS
-      ============================ */}
+      {/* KPI STRIP */}
       <div
         style={{
           display: "grid",
-          gridTemplateColumns:
-            "repeat(auto-fit,minmax(180px,1fr))",
+          gridTemplateColumns: "repeat(auto-fit,minmax(190px,1fr))",
           gap: 16,
-          marginBottom: 32,
+          marginBottom: 30,
         }}
       >
         <CinematicKpi
@@ -695,28 +695,28 @@ export default function Dashboard() {
           icon="🔥"
           count={metrics?.expired_count ?? 0}
           delta={deltas?.expired ?? 0}
-          color={GP.accent3}
+          color={GP.accentRed}
         />
         <CinematicKpi
           label="Critical (≤30 days)"
           icon="⚠️"
           count={metrics?.critical_count ?? 0}
           delta={deltas?.critical ?? 0}
-          color={GP.accent2}
+          color={GP.accentYellow}
         />
         <CinematicKpi
           label="Warning (≤90 days)"
           icon="🟡"
           count={metrics?.warning_count ?? 0}
           delta={deltas?.warning ?? 0}
-          color={GP.accent1}
+          color={GP.primary}
         />
         <CinematicKpi
           label="Active"
           icon="✅"
           count={metrics?.ok_count ?? 0}
           delta={deltas?.ok ?? 0}
-          color={GP.primary}
+          color={GP.accentGreen}
         />
         <CinematicScoreCard
           avgScore={metrics?.avg_score}
@@ -725,9 +725,7 @@ export default function Dashboard() {
         <CinematicEliteCard counts={eliteSummary} />
       </div>
 
-      {/* ===========================
-          CHARTS ROW — Compliance Trend + Donut
-      ============================ */}
+      {/* CHARTS ROW */}
       <div
         style={{
           marginTop: 10,
@@ -741,15 +739,12 @@ export default function Dashboard() {
         <PassFailDonutChart />
       </div>
 
-      {/* ===========================
-          HEATMAP + SEVERITY + TIMELINE
-      ============================ */}
+      {/* HEATMAP + SEVERITY + TIMELINE */}
       <ExpiringCertsHeatmap policies={policies} />
       <SeverityDistributionChart policies={policies} />
       <RiskTimelineChart policies={policies} />
-      {/* ===========================
-          POLICIES TABLE HEADER + SEARCH
-      ============================ */}
+
+      {/* POLICIES TABLE HEADER + SEARCH */}
       <h2
         style={{
           marginTop: 32,
@@ -784,14 +779,16 @@ export default function Dashboard() {
         <div style={{ fontSize: 13, color: GP.textSoft }}>Loading policies…</div>
       )}
       {!loading && filtered.length === 0 && (
-        <div style={{ fontSize: 13, color: GP.textSoft }}>No matching policies.</div>
+        <div style={{ fontSize: 13, color: GP.textSoft }}>
+          No matching policies.
+        </div>
       )}
 
       {!loading && filtered.length > 0 && (
         <>
           <div
             style={{
-              borderRadius: 18,
+              borderRadius: GP.radiusLg,
               border: "1px solid rgba(30,41,59,0.98)",
               background: "rgba(15,23,42,0.98)",
               boxShadow: "0 18px 45px rgba(15,23,42,0.95)",
@@ -802,7 +799,7 @@ export default function Dashboard() {
               style={{
                 width: "100%",
                 borderCollapse: "separate",
-                borderSpacing: "0 0",
+                borderSpacing: 0,
                 fontSize: 12,
               }}
             >
@@ -837,7 +834,7 @@ export default function Dashboard() {
                       style={{
                         cursor: "pointer",
                         background:
-                          "linear-gradient(90deg,rgba(15,23,42,0.98),rgba(15,23,42,0.9))",
+                          "linear-gradient(90deg,rgba(15,23,42,0.98),rgba(15,23,42,0.92))",
                       }}
                     >
                       <td style={td}>{p.vendor_name || "—"}</td>
@@ -886,10 +883,10 @@ export default function Dashboard() {
                           fontWeight: 600,
                           color:
                             ai.score >= 80
-                              ? "#22c55e"
+                              ? GP.accentGreen
                               : ai.score >= 60
-                              ? "#facc15"
-                              : "#fb7185",
+                              ? GP.accentYellow
+                              : GP.accentRed,
                         }}
                       >
                         <div>{ai.score}</div>
@@ -911,10 +908,10 @@ export default function Dashboard() {
                               height: "100%",
                               background:
                                 ai.score >= 80
-                                  ? "#22c55e"
+                                  ? GP.accentGreen
                                   : ai.score >= 60
-                                  ? "#facc15"
-                                  : "#fb7185",
+                                  ? GP.accentYellow
+                                  : GP.accentRed,
                             }}
                           />
                         </div>
@@ -972,6 +969,7 @@ export default function Dashboard() {
     </div>
   );
 }
+
 /* ===========================
    CINEMATIC KPI CARD
 =========================== */
@@ -981,10 +979,10 @@ function CinematicKpi({ label, icon, color, count, delta }) {
 
   if (delta > 0) {
     arrow = "⬆️";
-    arrowColor = "#fb7185"; // red
+    arrowColor = GP.accentRed;
   } else if (delta < 0) {
     arrow = "⬇️";
-    arrowColor = "#22c55e"; // green
+    arrowColor = GP.accentGreen;
   }
 
   return (
@@ -995,7 +993,7 @@ function CinematicKpi({ label, icon, color, count, delta }) {
         border: "1px solid rgba(51,65,85,0.9)",
         background:
           "radial-gradient(circle at top left,rgba(15,23,42,0.98),rgba(15,23,42,0.92))",
-        boxShadow: "0 12px 30px rgba(0,0,0,0.45)",
+        boxShadow: "0 12px 30px rgba(0,0,0,0.6)",
         textAlign: "center",
         color: "#e5e7eb",
       }}
@@ -1031,14 +1029,14 @@ function CinematicScoreCard({ avgScore, delta }) {
 
   if (typeof delta === "number" && delta > 0) {
     arrow = "⬆️";
-    arrowColor = "#22c55e";
+    arrowColor = GP.accentGreen;
   } else if (typeof delta === "number" && delta < 0) {
     arrow = "⬇️";
-    arrowColor = "#fb7185";
+    arrowColor = GP.accentRed;
   }
 
   const color =
-    score >= 80 ? "#22c55e" : score >= 60 ? "#facc15" : "#fb7185";
+    score >= 80 ? GP.accentGreen : score >= 60 ? GP.accentYellow : GP.accentRed;
 
   return (
     <div
@@ -1048,7 +1046,7 @@ function CinematicScoreCard({ avgScore, delta }) {
         border: "1px solid rgba(51,65,85,0.9)",
         background:
           "radial-gradient(circle at top left,rgba(15,23,42,0.98),rgba(15,23,42,0.92))",
-        boxShadow: "0 12px 30px rgba(0,0,0,0.45)",
+        boxShadow: "0 12px 30px rgba(0,0,0,0.6)",
         textAlign: "center",
       }}
     >
@@ -1093,13 +1091,13 @@ function CinematicEliteCard({ counts }) {
         border: "1px solid rgba(51,65,85,0.9)",
         background:
           "radial-gradient(circle at top left,rgba(15,23,42,0.98),rgba(15,23,42,0.92))",
-        boxShadow: "0 12px 30px rgba(0,0,0,0.45)",
+        boxShadow: "0 12px 30px rgba(0,0,0,0.6)",
         textAlign: "center",
         color: "#e5e7eb",
       }}
     >
       <div style={{ fontSize: 22 }}>🧠</div>
-      <div style={{ fontSize: 13, marginTop: 4, color: "#a5b4fc" }}>
+      <div style={{ fontSize: 13, marginTop: 4, color: GP.accentPurple }}>
         Elite Engine
       </div>
       <div style={{ fontSize: 12, marginTop: 6 }}>
@@ -1107,17 +1105,32 @@ function CinematicEliteCard({ counts }) {
       </div>
 
       <div
-        style={{ marginTop: 8, fontSize: 12, color: "#a3e635", fontWeight: 600 }}
+        style={{
+          marginTop: 8,
+          fontSize: 12,
+          color: "#a3e635",
+          fontWeight: 600,
+        }}
       >
         PASS: {counts.pass}
       </div>
       <div
-        style={{ marginTop: 4, fontSize: 12, color: "#facc15", fontWeight: 600 }}
+        style={{
+          marginTop: 4,
+          fontSize: 12,
+          color: "#facc15",
+          fontWeight: 600,
+        }}
       >
         WARN: {counts.warn}
       </div>
       <div
-        style={{ marginTop: 4, fontSize: 12, color: "#fb7185", fontWeight: 600 }}
+        style={{
+          marginTop: 4,
+          fontSize: 12,
+          color: "#fb7185",
+          fontWeight: 600,
+        }}
       >
         FAIL: {counts.fail}
       </div>
@@ -1126,7 +1139,7 @@ function CinematicEliteCard({ counts }) {
 }
 
 /* ===========================
-   TABLE CELL STYLES (Dark Mode)
+   TABLE HEAD / CELL STYLES
 =========================== */
 const th = {
   padding: "10px 12px",
