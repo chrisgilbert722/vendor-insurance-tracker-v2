@@ -1,5 +1,6 @@
-  // LIVE ALERTS FOR THIS VENDOR
-  const [vendorAlerts, setVendorAlerts] = useState([]);
+// pages/admin/vendor/[id].js
+import { useRouter } from "next/router";
+import { useMemo, useState, useEffect } from "react";
 
   /* ============================================================
      LOAD LIVE ALERTS FOR THIS VENDOR
