@@ -1,4 +1,5 @@
 // pages/_app.js
+import "../public/cockpit.css";   // ⭐ ADD THIS LINE
 import { OrgProvider } from "../context/OrgContext";
 import Layout from "../components/Layout";
 
