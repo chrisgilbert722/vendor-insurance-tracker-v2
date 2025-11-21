@@ -33,7 +33,7 @@ const GP = {
 };
 
 /* ===========================
-   RISK + SCORE HELPERS
+   RISK / HELPER FUNCTIONS
 =========================== */
 function parseExpiration(dateStr) {
   if (!dateStr) return null;
@@ -88,9 +88,7 @@ function computeRisk(p) {
 
   return { daysLeft, severity, score, flags, tier };
 }
-/* ===========================
-   BADGE STYLES
-=========================== */
+
 function badgeStyle(level) {
   switch (level) {
     case "expired":
@@ -126,9 +124,6 @@ function badgeStyle(level) {
   }
 }
 
-/* ===========================
-   AI RISK SCORE
-=========================== */
 function computeAiRisk({ risk, elite, compliance }) {
   if (!risk) return { score: 0, tier: "Unknown" };
 
@@ -157,9 +152,6 @@ function computeAiRisk({ risk, elite, compliance }) {
   return { score, tier };
 }
 
-/* ===========================
-   COMPLIANCE BADGE RENDERER
-=========================== */
 function renderComplianceBadge(vendorId, complianceMap) {
   const data = complianceMap[vendorId];
   const base = {
@@ -173,7 +165,13 @@ function renderComplianceBadge(vendorId, complianceMap) {
 
   if (!data || data.loading)
     return (
-      <span style={{ ...base, background: "rgba(15,23,42,0.98)", color: GP.textSoft }}>
+      <span
+        style={{
+          ...base,
+          background: "rgba(15,23,42,0.98)",
+          color: GP.textSoft,
+        }}
+      >
         Checking…
       </span>
     );
@@ -235,7 +233,7 @@ function renderComplianceBadge(vendorId, complianceMap) {
 }
 
 /* ===========================
-   MAIN DASHBOARD COMPONENT
+   MAIN DASHBOARD
 =========================== */
 export default function Dashboard() {
   const [policies, setPolicies] = useState([]);
@@ -245,7 +243,11 @@ export default function Dashboard() {
   const [deltas, setDeltas] = useState(null);
   const [complianceMap, setComplianceMap] = useState({});
   const [eliteMap, setEliteMap] = useState({});
-  const [eliteSummary, setEliteSummary] = useState({ pass: 0, warn: 0, fail: 0 });
+  const [eliteSummary, setEliteSummary] = useState({
+    pass: 0,
+    warn: 0,
+    fail: 0,
+  });
 
   const [alerts, setAlerts] = useState([]);
   const [showAlerts, setShowAlerts] = useState(false);
@@ -267,6 +269,7 @@ export default function Dashboard() {
     }
     load();
   }, []);
+
   /* LOAD METRICS */
   useEffect(() => {
     async function loadSummary() {
@@ -471,12 +474,11 @@ export default function Dashboard() {
         color: GP.text,
       }}
     >
-
       {/* =======================================
-          HERO COMMAND PANEL — cockpit-hero
+          HERO COMMAND PANEL — cockpit-hero + cockpit-pulse
       ======================================= */}
       <div
-        className="cockpit-hero"
+        className="cockpit-hero cockpit-pulse"
         style={{
           borderRadius: 28,
           padding: 22,
@@ -495,10 +497,239 @@ export default function Dashboard() {
           position: "relative",
         }}
       >
-        {/* LEFT SIDE CONTENT (continued from Section 3) */}
-        {/* ...left side content already included in Section 3 ... */}
+        {/* HUD LABEL */}
+        <div
+          style={{
+            position: "absolute",
+            top: 12,
+            left: 18,
+            fontSize: 10,
+            letterSpacing: "0.18em",
+            textTransform: "uppercase",
+            color: "rgba(148,163,184,0.7)",
+          }}
+        >
+          DASHBOARD V2 • GLOBAL COMPLIANCE ENGINE
+        </div>
 
-        {/* RIGHT SIDE — GLOBAL SCORE CIRCLE */}
+        {/* LEFT SIDE — Title + AI Summary + CTAs + KPIs */}
+        <div style={{ paddingTop: 22 }}>
+          <h1
+            style={{
+              fontSize: 30,
+              fontWeight: 600,
+              margin: 0,
+              letterSpacing: 0.18,
+              background:
+                "linear-gradient(90deg,#38bdf8,#a855f7,#22c55e,#facc15)",
+              WebkitBackgroundClip: "text",
+              color: "transparent",
+            }}
+          >
+            Vendor Insurance Intelligence
+          </h1>
+
+          <p
+            style={{
+              marginTop: 8,
+              fontSize: 13,
+              color: GP.textSoft,
+              maxWidth: 640,
+              lineHeight: 1.5,
+            }}
+          >
+            Live AI-powered oversight across all vendors, policies, expirations,
+            and risk engines. This is your command center.
+          </p>
+
+          <div
+            style={{
+              marginTop: 12,
+              fontSize: 12,
+              color: GP.textSoft,
+              borderRadius: 999,
+              padding: "6px 12px",
+              border: "1px solid rgba(55,65,81,0.9)",
+              background:
+                "linear-gradient(90deg,rgba(15,23,42,0.98),rgba(15,23,42,0.9))",
+              display: "inline-flex",
+              alignItems: "center",
+              gap: 10,
+            }}
+          >
+            <span>🤖</span>
+            <span>
+              AI snapshot: system health{" "}
+              <strong
+                style={{
+                  color:
+                    Number(avgScore) >= 80
+                      ? GP.neonGreen
+                      : Number(avgScore) >= 60
+                      ? GP.neonGold
+                      : GP.neonRed,
+                }}
+              >
+                {Number(avgScore) ? Number(avgScore).toFixed(0) : "—"}
+              </strong>
+              /100 across{" "}
+              <strong style={{ color: GP.neonBlue }}>
+                {totalVendors || "—"} vendors
+              </strong>
+              , {alertsCount} active alerts.
+            </span>
+          </div>
+
+          <div
+            style={{
+              marginTop: 16,
+              display: "flex",
+              alignItems: "center",
+              gap: 12,
+              flexWrap: "wrap",
+            }}
+          >
+            {(isAdmin || isManager) && (
+              <a
+                href="/upload-coi"
+                style={{
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: 8,
+                  padding: "8px 16px",
+                  borderRadius: 999,
+                  background:
+                    "radial-gradient(circle at top left,#0ea5e9,#1d4ed8,#020617)",
+                  color: "#e0f2fe",
+                  fontSize: 13,
+                  fontWeight: 600,
+                  textDecoration: "none",
+                  boxShadow:
+                    "0 0 18px rgba(56,189,248,0.35),0 0 32px rgba(30,64,175,0.25)",
+                }}
+              >
+                <span>+ Upload New COI</span>
+              </a>
+            )}
+
+            <button
+              onClick={() => setShowAlerts((s) => !s)}
+              style={{
+                padding: "8px 14px",
+                borderRadius: 999,
+                border: "1px solid rgba(51,65,85,0.9)",
+                background: "rgba(15,23,42,0.9)",
+                cursor: "pointer",
+                display: "flex",
+                gap: 6,
+                fontSize: 13,
+                color: "#e5e7eb",
+              }}
+            >
+              🔔 Alerts ({alerts.length})
+            </button>
+          </div>
+
+          {/* MINI KPI STRIP */}
+          <div
+            style={{
+              marginTop: 20,
+              display: "grid",
+              gridTemplateColumns: "repeat(auto-fit,minmax(160px,1fr))",
+              gap: 12,
+            }}
+          >
+            <MiniKpi
+              label="Expired"
+              value={metrics?.expired_count ?? 0}
+              color={GP.neonRed}
+              icon="🔥"
+            />
+            <MiniKpi
+              label="Critical ≤30d"
+              value={metrics?.critical_count ?? 0}
+              color={GP.neonGold}
+              icon="⚠️"
+            />
+            <MiniKpi
+              label="Warning ≤90d"
+              value={metrics?.warning_count ?? 0}
+              color={GP.neonBlue}
+              icon="🟡"
+            />
+            <MiniKpi
+              label="Elite Fails"
+              value={eliteSummary.fail}
+              color={GP.neonRed}
+              icon="🧠"
+            />
+          </div>
+
+          {/* ALERT DROPDOWN */}
+          {showAlerts && (
+            <div
+              style={{
+                position: "absolute",
+                top: "100%",
+                right: 22,
+                marginTop: 10,
+                width: 320,
+                background:
+                  "radial-gradient(circle at top,#020617,#020617 70%,#020617)",
+                border: "1px solid rgba(51,65,85,0.9)",
+                borderRadius: 16,
+                padding: 12,
+                maxHeight: 340,
+                overflowY: "auto",
+                boxShadow: "0 12px 40px rgba(0,0,0,0.7)",
+                zIndex: 20,
+              }}
+            >
+              {alerts.length === 0 ? (
+                <div style={{ fontSize: 12, color: GP.textMuted }}>
+                  No alerts yet.
+                </div>
+              ) : (
+                alerts.map((a) => (
+                  <div
+                    key={a.id}
+                    style={{
+                      paddingBottom: 8,
+                      marginBottom: 8,
+                      borderBottom: "1px solid rgba(55,65,81,0.8)",
+                    }}
+                  >
+                    <div
+                      style={{
+                        fontSize: 11,
+                        fontWeight: 600,
+                        color: GP.neonBlue,
+                        textTransform: "uppercase",
+                        marginBottom: 2,
+                      }}
+                    >
+                      {a.type.replace(/_/g, " ")}
+                    </div>
+                    <div style={{ fontSize: 12, color: "#e5e7eb" }}>
+                      {a.message}
+                    </div>
+                    <div
+                      style={{
+                        fontSize: 10,
+                        color: GP.textMuted,
+                        marginTop: 2,
+                      }}
+                    >
+                      {new Date(a.created_at).toLocaleString()}
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
+          )}
+        </div>
+
+        {/* RIGHT SIDE — GLOBAL SCORE CIRCLE + ELITE SNAPSHOT */}
         <div
           style={{
             display: "flex",
@@ -530,7 +761,6 @@ export default function Dashboard() {
                   "radial-gradient(circle at 30% 0,#020617,#020617 60%,#000)",
               }}
             />
-
             <div
               style={{
                 position: "relative",
@@ -553,7 +783,6 @@ export default function Dashboard() {
               >
                 Global Score
               </div>
-
               <div
                 style={{
                   fontSize: 32,
@@ -566,12 +795,10 @@ export default function Dashboard() {
               >
                 {Number(avgScore) ? Number(avgScore).toFixed(0) : "—"}
               </div>
-
               <div style={{ fontSize: 10, color: GP.textMuted }}>/100</div>
             </div>
           </div>
 
-          {/* Elite Breakdown */}
           <div
             style={{
               borderRadius: 18,
@@ -581,21 +808,45 @@ export default function Dashboard() {
               minWidth: 220,
             }}
           >
-            <div style={{ fontSize: 12, color: GP.textSoft, marginBottom: 6 }}>
+            <div
+              style={{
+                fontSize: 12,
+                color: GP.textSoft,
+                marginBottom: 6,
+              }}
+            >
               Elite Engine Snapshot
             </div>
-
-            <div style={{ display: "flex", justifyContent: "space-between", fontSize: 11, color: "#4ade80" }}>
+            <div
+              style={{
+                display: "flex",
+                justifyContent: "space-between",
+                fontSize: 11,
+                color: "#4ade80",
+              }}
+            >
               <span>PASS</span>
               <span>{eliteSummary.pass}</span>
             </div>
-
-            <div style={{ display: "flex", justifyContent: "space-between", fontSize: 11, color: "#facc15" }}>
+            <div
+              style={{
+                display: "flex",
+                justifyContent: "space-between",
+                fontSize: 11,
+                color: "#facc15",
+              }}
+            >
               <span>WARN</span>
               <span>{eliteSummary.warn}</span>
             </div>
-
-            <div style={{ display: "flex", justifyContent: "space-between", fontSize: 11, color: "#fb7185" }}>
+            <div
+              style={{
+                display: "flex",
+                justifyContent: "space-between",
+                fontSize: 11,
+                color: "#fb7185",
+              }}
+            >
               <span>FAIL</span>
               <span>{eliteSummary.fail}</span>
             </div>
@@ -604,7 +855,7 @@ export default function Dashboard() {
       </div>
 
       {/* =======================================
-          CHART ROW — cockpit-telemetry added
+          CHART ROW — cockpit-telemetry
       ======================================= */}
       <div
         className="cockpit-telemetry"
@@ -620,9 +871,7 @@ export default function Dashboard() {
         <PassFailDonutChart />
       </div>
 
-      {/* =======================================
-          OTHER CHARTS
-      ======================================= */}
+      {/* OTHER CHARTS */}
       <ExpiringCertsHeatmap policies={policies} />
       <SeverityDistributionChart policies={policies} />
       <RiskTimelineChart policies={policies} />
@@ -672,7 +921,9 @@ export default function Dashboard() {
 
       {!loading && filtered.length > 0 && (
         <>
+          {/* TABLE SHELL — wrap in cockpit-table-shell for underlight */}
           <div
+            className="cockpit-table-shell"
             style={{
               borderRadius: 24,
               border: "1px solid rgba(30,41,59,0.98)",
@@ -705,7 +956,6 @@ export default function Dashboard() {
                   <th style={th}>Flags</th>
                 </tr>
               </thead>
-
               <tbody>
                 {filtered.map((p) => {
                   const risk = computeRisk(p);
