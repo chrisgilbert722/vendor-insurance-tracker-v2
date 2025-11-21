@@ -123,7 +123,6 @@ function cloneGroups(groups) {
 
 /* Fake AI suggestion call */
 async function fakeAiSuggestRule(context = {}) {
-  // You can later wire this to /api/elite-rules/ai-suggest
   await new Promise((r) => setTimeout(r, 600));
   const id = generateId("ai-rule");
   return {
@@ -177,7 +176,7 @@ function useDraggableRule(rule, index, moveRule, groupId) {
     accept: ItemTypes.RULE,
     hover(item) {
       if (!ref.current) return;
-      if (item.groupId !== groupId) return; // only reorder within same group for now
+      if (item.groupId !== groupId) return;
       const dragIndex = item.index;
       const hoverIndex = index;
       if (dragIndex === hoverIndex) return;
@@ -372,9 +371,6 @@ export default function EliteRulesPage() {
     }
   }
 
-  /* ===========================
-     RENDER
-  =========================== */
   return (
     <DndProvider backend={HTML5Backend}>
       <div
@@ -645,7 +641,6 @@ export default function EliteRulesPage() {
           />
         )}
 
-        {/* keyframes (simple inline style hack) */}
         <style jsx>{`
           @keyframes spin {
             to {
@@ -871,7 +866,6 @@ function GroupCard({
         )}
       </div>
 
-      {/* Actions */}
       <div
         style={{
           display: "flex",
@@ -1018,7 +1012,6 @@ function RuleBoard({
           flexWrap: "wrap",
         }}
       >
-        {/* Severity chips */}
         <div
           style={{
             display: "inline-flex",
@@ -1057,7 +1050,6 @@ function RuleBoard({
           })}
         </div>
 
-        {/* Search */}
         <div
           style={{
             flex: 1,
@@ -1087,7 +1079,6 @@ function RuleBoard({
           />
         </div>
 
-        {/* Inactive toggle */}
         <label
           style={{
             display: "inline-flex",
@@ -1232,7 +1223,6 @@ function RuleCard({
         overflow: "hidden",
       }}
     >
-      {/* Glow accent */}
       <div
         style={{
           position: "absolute",
@@ -1244,7 +1234,6 @@ function RuleCard({
         }}
       />
 
-      {/* Content */}
       <div style={{ position: "relative", zIndex: 1 }}>
         <div
           style={{
@@ -1282,7 +1271,6 @@ function RuleCard({
             )}
           </div>
 
-          {/* Severity + index */}
           <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
             <div
               style={{
@@ -1327,7 +1315,6 @@ function RuleCard({
           </div>
         </div>
 
-        {/* Conditions */}
         {rule.conditionsSummary && (
           <div
             style={{
@@ -1348,7 +1335,6 @@ function RuleCard({
           </div>
         )}
 
-        {/* Footer */}
         <div
           style={{
             marginTop: 8,
@@ -1525,7 +1511,6 @@ function ScoringPanel({ groups, selectedGroup }) {
         Compliance Pulse
       </div>
 
-      {/* Main gauge */}
       <div
         style={{
           display: "flex",
@@ -1628,7 +1613,6 @@ function ScoringPanel({ groups, selectedGroup }) {
         </div>
       </div>
 
-      {/* Selected group preview */}
       <div
         style={{
           marginTop: 6,
@@ -1693,7 +1677,6 @@ function ScoringPanel({ groups, selectedGroup }) {
         </div>
       </div>
 
-      {/* Bottom text */}
       <div
         style={{
           marginTop: 2,
@@ -2112,7 +2095,6 @@ function RuleEditorModal({ open, rule, onClose, onSave }) {
           onSubmit={handleSubmit}
           style={{ display: "flex", flexDirection: "column", gap: 10 }}
         >
-          {/* Top row */}
           <div
             style={{
               display: "grid",
@@ -2179,7 +2161,6 @@ function RuleEditorModal({ open, rule, onClose, onSave }) {
             </div>
           </div>
 
-          {/* Description */}
           <div>
             <label
               style={{
@@ -2209,7 +2190,6 @@ function RuleEditorModal({ open, rule, onClose, onSave }) {
             />
           </div>
 
-          {/* Conditions */}
           <div>
             <label
               style={{
