@@ -304,17 +304,16 @@ export default function VendorProfilePage() {
                 </div>
 
                 {/* LIVE OPEN ALERTS + CRITICAL COUNT */}
-                <div
-                  style={{
-                    fontSize: 11,
-                    color: "#9ca3af",
-                  }}
-                >
-                  {vendorAlerts.length} open alerts ·{" "}
-                  {
-                    vendorAlerts.filter((a) => a.severity === "Critical")
-                      .length
-                  }{" "}
-                  critical.
-                </div>
-              </div>
+<div
+  style={{
+    fontSize: 11,
+    color: "#9ca3af",
+  }}
+>
+  {vendorAlerts.length} open alerts ·{" "}
+  {
+    vendorAlerts.filter((a) => a.severity === "Critical").length
+  }{" "}
+  critical.
+</div>
+</div>
