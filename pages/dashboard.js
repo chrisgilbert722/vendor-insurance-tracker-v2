@@ -5,34 +5,43 @@ import { useRole } from "../lib/useRole";
 import { useOrg } from "../context/OrgContext";
 import EliteStatusPill from "../components/elite/EliteStatusPill";
 
-// 📊 NEW CHART IMPORTS
+// Charts
 import ComplianceTrajectoryChart from "../components/charts/ComplianceTrajectoryChart";
 import PassFailDonutChart from "../components/charts/PassFailDonutChart";
 import ExpiringCertsHeatmap from "../components/charts/ExpiringCertsHeatmap";
 import SeverityDistributionChart from "../components/charts/SeverityDistributionChart";
 import RiskTimelineChart from "../components/charts/RiskTimelineChart";
 
-/* THEME TOKENS */
+/* ===========================
+   THEME — CINEMATIC DARK
+=========================== */
 const GP = {
-  primary: "#0057FF",
-  primaryDark: "#003BB3",
-  accent1: "#00E0FF",
-  accent2: "#8A2BFF",
-  red: "#FF3B3B",
-  orange: "#FF9800",
-  yellow: "#FFC107",
-  green: "#00C27A",
-  ink: "#0D1623",
-  inkLight: "#2A3647",
-  surface: "#F7F9FC",
-  panel: "#FFFFFF",
-  radius: "14px",
-  shadow: "0 8px 24px rgba(15,23,42,0.08)",
-  text: "#1f2933",
-  textLight: "#7b8794",
+  bg: "#020617",
+  bgSoft: "#020617",
+  panel: "#020617",
+  panelDeep: "#020617",
+  borderSoft: "rgba(30,41,59,0.9)",
+  borderStrong: "rgba(148,163,184,0.7)",
+
+  primary: "#38bdf8",
+  primarySoft: "rgba(56,189,248,0.15)",
+  accent1: "#22c55e",
+  accent2: "#facc15",
+  accent3: "#fb7185",
+
+  text: "#e5e7eb",
+  textSoft: "#9ca3af",
+  textMuted: "#6b7280",
+
+  chipBg: "rgba(15,23,42,1)",
+  radiusLg: 24,
+  radiusMd: 18,
+  radiusSm: 12,
 };
 
-/* RISK + SCORE HELPERS */
+/* ===========================
+   RISK + SCORE HELPERS
+=========================== */
 function parseExpiration(dateStr) {
   if (!dateStr) return null;
   const parts = dateStr.split("/");
@@ -91,19 +100,38 @@ function computeRisk(p) {
   return { daysLeft, severity, score, flags, tier };
 }
 
-/* 🔧 BADGE STYLE — THIS WAS MISSING AND BREAKING THINGS */
 function badgeStyle(level) {
   switch (level) {
     case "expired":
-      return { background: "#ffebee", color: "#b71c1c", fontWeight: 600 };
+      return {
+        background: "rgba(248,113,113,0.16)",
+        color: "#fecaca",
+        border: "1px solid rgba(248,113,113,0.85)",
+      };
     case "critical":
-      return { background: "#fff3e0", color: "#e65100", fontWeight: 600 };
+      return {
+        background: "rgba(248,181,82,0.16)",
+        color: "#fef3c7",
+        border: "1px solid rgba(250,204,21,0.85)",
+      };
     case "warning":
-      return { background: "#fffde7", color: "#f9a825", fontWeight: 600 };
+      return {
+        background: "rgba(56,189,248,0.16)",
+        color: "#e0f2fe",
+        border: "1px solid rgba(56,189,248,0.85)",
+      };
     case "ok":
-      return { background: "#e8f5e9", color: "#1b5e20", fontWeight: 600 };
+      return {
+        background: "rgba(34,197,94,0.15)",
+        color: "#bbf7d0",
+        border: "1px solid rgba(34,197,94,0.85)",
+      };
     default:
-      return { background: "#eceff1", color: "#546e7a", fontWeight: 600 };
+      return {
+        background: "rgba(51,65,85,0.8)",
+        color: "#e5e7eb",
+        border: "1px solid rgba(71,85,105,0.9)",
+      };
   }
 }
 
@@ -150,38 +178,73 @@ function renderComplianceBadge(vendorId, complianceMap) {
 
   if (!data || data.loading)
     return (
-      <span style={{ ...base, background: "#eef0f4", color: "#64748b" }}>
+      <span
+        style={{
+          ...base,
+          background: "rgba(15,23,42,0.98)",
+          color: GP.textSoft,
+        }}
+      >
         Checking…
       </span>
     );
 
   if (data.error)
     return (
-      <span style={{ ...base, background: "#fee2e2", color: "#b91c1c" }}>
+      <span
+        style={{
+          ...base,
+          background: "rgba(127,29,29,0.4)",
+          color: "#fecaca",
+          border: "1px solid rgba(127,29,29,0.9)",
+        }}
+      >
         Error
       </span>
     );
 
   if (data.missing?.length > 0)
     return (
-      <span style={{ ...base, background: "#fef3c7", color: "#b45309" }}>
+      <span
+        style={{
+          ...base,
+          background: "rgba(250,204,21,0.16)",
+          color: "#fef3c7",
+          border: "1px solid rgba(250,204,21,0.9)",
+        }}
+      >
         Missing
       </span>
     );
 
   if (data.failing?.length > 0)
     return (
-      <span style={{ ...base, background: "#fee2e2", color: "#b91c1c" }}>
+      <span
+        style={{
+          ...base,
+          background: "rgba(248,113,113,0.16)",
+          color: "#fecaca",
+          border: "1px solid rgba(248,113,113,0.9)",
+        }}
+      >
         Non-compliant
       </span>
     );
 
   return (
-    <span style={{ ...base, background: "#dcfce7", color: "#166534" }}>
+    <span
+      style={{
+        ...base,
+        background: "rgba(34,197,94,0.16)",
+        color: "#bbf7d0",
+        border: "1px solid rgba(34,197,94,0.9)",
+      }}
+    >
       🛡️ Compliant
     </span>
   );
 }
+
 /* MAIN DASHBOARD */
 export default function Dashboard() {
   const [policies, setPolicies] = useState([]);
@@ -190,11 +253,13 @@ export default function Dashboard() {
   const [metrics, setMetrics] = useState(null);
   const [deltas, setDeltas] = useState(null);
   const [complianceMap, setComplianceMap] = useState({});
-
   const [eliteMap, setEliteMap] = useState({});
-  const [eliteSummary, setEliteSummary] = useState({ pass: 0, warn: 0, fail: 0 });
+  const [eliteSummary, setEliteSummary] = useState({
+    pass: 0,
+    warn: 0,
+    fail: 0,
+  });
 
-  // ⭐ Phase F Alerts
   const [alerts, setAlerts] = useState([]);
   const [showAlerts, setShowAlerts] = useState(false);
 
@@ -314,7 +379,7 @@ export default function Dashboard() {
     setEliteSummary({ pass, warn, fail });
   }, [eliteMap]);
 
-  /* ⭐ Phase F — Log alerts */
+  /* LOG + FETCH ALERTS (Phase F) */
   async function logAlert(vendorId, type, message) {
     if (!activeOrgId) return;
     await fetch("/api/alerts/log", {
@@ -324,7 +389,7 @@ export default function Dashboard() {
     });
   }
 
-  /* ⭐ Phase F — Trigger alerts automatically */
+  /* TRIGGER ALERTS */
   useEffect(() => {
     if (!policies.length || !activeOrgId) return;
 
@@ -361,7 +426,7 @@ export default function Dashboard() {
     });
   }, [policies, eliteMap, complianceMap, activeOrgId]);
 
-  /* ⭐ Phase F — Fetch alerts for dropdown */
+  /* FETCH ALERTS FOR BADGE */
   useEffect(() => {
     if (!activeOrgId) return;
 
@@ -372,7 +437,7 @@ export default function Dashboard() {
     }
 
     loadAlerts();
-    const interval = setInterval(loadAlerts, 5000);
+    const interval = setInterval(loadAlerts, 7000);
     return () => clearInterval(interval);
   }, [activeOrgId]);
 
@@ -405,224 +470,340 @@ export default function Dashboard() {
     setDrawerVendor(null);
     setDrawerPolicies([]);
   }
-
   return (
-    <div style={{ minHeight: "100vh", background: GP.surface }}>
-      <div style={{ padding: "30px 40px", position: "relative" }}>
-        {/* HEADER + ALERTS */}
-        <div style={{ display: "flex", justifyContent: "space-between" }}>
-          <div>
-            <h1 style={{ fontSize: 36, fontWeight: 700, color: GP.ink }}>
-              Vendor Insurance Dashboard
-            </h1>
-            <p style={{ fontSize: 15, color: GP.inkLight }}>
-              Real-time vendor insurance intelligence
-            </p>
-            {(isAdmin || isManager) && (
-              <a
-                href="/upload-coi"
-                style={{
-                  display: "inline-block",
-                  marginTop: 20,
-                  padding: "9px 16px",
-                  background: GP.primary,
-                  color: "white",
-                  borderRadius: 999,
-                  textDecoration: "none",
-                  fontWeight: 600,
-                }}
-              >
-                + Upload New COI
-              </a>
-            )}
-          </div>
-
-          {/* ALERT BELL */}
-          <div style={{ position: "relative", marginTop: 10 }}>
-            <button
-              onClick={() => setShowAlerts((s) => !s)}
+    <div
+      style={{
+        minHeight: "100vh",
+        background:
+          "radial-gradient(circle at top left,#020617 0,#020617 45%,#000000 100%)",
+        padding: "32px 40px 40px",
+        color: GP.text,
+        fontFamily:
+          "-apple-system,BlinkMacSystemFont,system-ui,Segoe UI,sans-serif",
+      }}
+    >
+      {/* ===========================
+          HEADER ROW
+      ============================ */}
+      <div
+        style={{
+          display: "flex",
+          justifyContent: "space-between",
+          alignItems: "flex-start",
+          marginBottom: 26,
+        }}
+      >
+        <div>
+          <div
+            style={{
+              display: "inline-flex",
+              alignItems: "center",
+              gap: 10,
+              padding: "4px 12px",
+              borderRadius: 999,
+              border: "1px solid rgba(148,163,184,0.4)",
+              background:
+                "linear-gradient(90deg,rgba(15,23,42,0.92),rgba(15,23,42,0.3))",
+              marginBottom: 8,
+            }}
+          >
+            <span
               style={{
-                padding: "8px 14px",
-                borderRadius: 999,
-                border: "1px solid #e5e7eb",
-                background: "white",
-                cursor: "pointer",
+                width: 22,
+                height: 22,
+                borderRadius: "999px",
                 display: "flex",
-                gap: 6,
+                alignItems: "center",
+                justifyContent: "center",
+                background:
+                  "radial-gradient(circle at 30% 0,#38bdf8,#4f46e5,#0f172a)",
+                boxShadow: "0 0 20px rgba(56,189,248,0.5)",
                 fontSize: 13,
               }}
             >
-              🔔 Alerts ({alerts.length})
-            </button>
+              📊
+            </span>
+            <span
+              style={{
+                fontSize: 11,
+                textTransform: "uppercase",
+                letterSpacing: 1.3,
+                color: "#e5e7eb",
+              }}
+            >
+              Dashboard V2
+            </span>
+            <span
+              style={{
+                fontSize: 10,
+                textTransform: "uppercase",
+                letterSpacing: 1,
+                color: "#38bdf8",
+              }}
+            >
+              Compliance • Insurance • Risk
+            </span>
+          </div>
 
-            {showAlerts && (
-              <div
-                style={{
-                  position: "absolute",
-                  top: "120%",
-                  right: 0,
-                  width: 300,
-                  background: "white",
-                  border: "1px solid #e5e7eb",
-                  borderRadius: 12,
-                  padding: 12,
-                  maxHeight: 340,
-                  overflowY: "auto",
-                  boxShadow: "0 6px 20px rgba(0,0,0,0.15)",
-                  zIndex: 20,
-                }}
-              >
-                {alerts.length === 0 ? (
-                  <div style={{ fontSize: 12, color: "#6b7280" }}>
-                    No alerts yet.
-                  </div>
-                ) : (
-                  alerts.map((a) => (
+          <h1
+            style={{
+              fontSize: 30,
+              fontWeight: 600,
+              margin: 0,
+              letterSpacing: 0.2,
+              background:
+                "linear-gradient(90deg,#38bdf8,#a5b4fc,#22c55e,#facc15)",
+              WebkitBackgroundClip: "text",
+              color: "transparent",
+            }}
+          >
+            Vendor Insurance Intelligence
+          </h1>
+
+          <p
+            style={{
+              marginTop: 8,
+              fontSize: 13,
+              color: GP.textSoft,
+              maxWidth: 650,
+              lineHeight: 1.5,
+            }}
+          >
+            Live compliance oversight across all vendors, policies, expirations,
+            and risk engines.
+          </p>
+
+          {(isAdmin || isManager) && (
+            <a
+              href="/upload-coi"
+              style={{
+                display: "inline-block",
+                marginTop: 16,
+                padding: "8px 16px",
+                borderRadius: 999,
+                background:
+                  "radial-gradient(circle at top left,#0ea5e9,#1d4ed8,#020617)",
+                color: "#e0f2fe",
+                fontSize: 13,
+                fontWeight: 600,
+                textDecoration: "none",
+                boxShadow:
+                  "0 0 18px rgba(56,189,248,0.35),0 0 32px rgba(30,64,175,0.25)",
+              }}
+            >
+              + Upload New COI
+            </a>
+          )}
+        </div>
+
+        {/* ALERT BELL */}
+        <div style={{ position: "relative", marginTop: 8 }}>
+          <button
+            onClick={() => setShowAlerts((s) => !s)}
+            style={{
+              padding: "8px 14px",
+              borderRadius: 999,
+              border: "1px solid rgba(51,65,85,0.9)",
+              background: "rgba(15,23,42,0.9)",
+              cursor: "pointer",
+              display: "flex",
+              gap: 6,
+              fontSize: 13,
+              color: "#e5e7eb",
+            }}
+          >
+            🔔 Alerts ({alerts.length})
+          </button>
+
+          {showAlerts && (
+            <div
+              style={{
+                position: "absolute",
+                top: "120%",
+                right: 0,
+                width: 300,
+                background:
+                  "radial-gradient(circle at top,#0b1220,#0b1220 70%,#0b1220)",
+                border: "1px solid rgba(51,65,85,0.9)",
+                borderRadius: 16,
+                padding: 12,
+                maxHeight: 340,
+                overflowY: "auto",
+                boxShadow: "0 12px 40px rgba(0,0,0,0.55)",
+                zIndex: 20,
+              }}
+            >
+              {alerts.length === 0 ? (
+                <div style={{ fontSize: 12, color: "#6b7280" }}>
+                  No alerts yet.
+                </div>
+              ) : (
+                alerts.map((a) => (
+                  <div
+                    key={a.id}
+                    style={{
+                      paddingBottom: 8,
+                      marginBottom: 8,
+                      borderBottom: "1px solid rgba(75,85,99,0.5)",
+                    }}
+                  >
                     <div
-                      key={a.id}
                       style={{
-                        paddingBottom: 8,
-                        marginBottom: 8,
-                        borderBottom: "1px solid #f1f5f9",
+                        fontSize: 11,
+                        fontWeight: 600,
+                        color: "#38bdf8",
+                        textTransform: "uppercase",
+                        marginBottom: 2,
                       }}
                     >
-                      <div
-                        style={{
-                          fontSize: 11,
-                          fontWeight: 600,
-                          color: "#111827",
-                          textTransform: "uppercase",
-                          marginBottom: 2,
-                        }}
-                      >
-                        {a.type.replace(/_/g, " ")}
-                      </div>
-                      <div style={{ fontSize: 12 }}>{a.message}</div>
-                      <div
-                        style={{
-                          fontSize: 10,
-                          color: "#6b7280",
-                          marginTop: 2,
-                        }}
-                      >
-                        {new Date(a.created_at).toLocaleString()}
-                      </div>
+                      {a.type.replace(/_/g, " ")}
                     </div>
-                  ))
-                )}
-              </div>
-            )}
-          </div>
+                    <div style={{ fontSize: 12, color: "#e5e7eb" }}>
+                      {a.message}
+                    </div>
+                    <div
+                      style={{
+                        fontSize: 10,
+                        color: "#9ca3af",
+                        marginTop: 2,
+                      }}
+                    >
+                      {new Date(a.created_at).toLocaleString()}
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
+          )}
         </div>
+      </div>
 
-        <hr style={{ margin: "22px 0" }} />
-
-        {/* KPI BAR */}
-        <div
-          style={{
-            display: "flex",
-            gap: 16,
-            marginBottom: 30,
-            background: "white",
-            borderRadius: 12,
-            padding: "20px 26px",
-            border: "1px solid #e3e9f1",
-            boxShadow: GP.shadow,
-          }}
-        >
-          <RiskCard
-            label="Expired"
-            icon="🔥"
-            color={GP.red}
-            count={metrics?.expired_count ?? 0}
-            delta={deltas?.expired ?? 0}
-          />
-          <RiskCard
-            label="Critical (≤30 days)"
-            icon="⚠️"
-            color={GP.orange}
-            count={metrics?.critical_count ?? 0}
-            delta={deltas?.critical ?? 0}
-          />
-          <RiskCard
-            label="Warning (≤90 days)"
-            icon="🟡"
-            color={GP.yellow}
-            count={metrics?.warning_count ?? 0}
-            delta={deltas?.warning ?? 0}
-          />
-          <RiskCard
-            label="Active"
-            icon="✅"
-            color={GP.green}
-            count={metrics?.ok_count ?? 0}
-            delta={deltas?.ok ?? 0}
-          />
-          <ScoreCard avgScore={metrics?.avg_score} delta={deltas?.avg_score} />
-          <EliteCard counts={eliteSummary} />
-        </div>
-
-        {/* 📊 ANALYTICS ROW — COMPLIANCE TRAJECTORY + PASS/FAIL DONUT */}
-        <div
-          style={{
-            marginTop: 10,
-            marginBottom: 40,
-            display: "grid",
-            gridTemplateColumns: "minmax(0, 2fr) minmax(0, 1.2fr)",
-            gap: 24,
-            alignItems: "stretch",
-          }}
-        >
-          <ComplianceTrajectoryChart />
-          <PassFailDonutChart />
-        </div>
-
-{/* 🔥 EXPIRING CERTIFICATES HEATMAP */}
-<ExpiringCertsHeatmap policies={policies} />
-
-  {/* 🔥 Severity Distribution Bar Chart */}
-<SeverityDistributionChart policies={policies} />
-
-  {/* 🔥 Cinematic Risk Timeline */}
-<RiskTimelineChart policies={policies} />
-
-        {/* POLICIES TABLE */}
-        <h2
-          style={{
-            marginBottom: "14px",
-            fontSize: "24px",
-            fontWeight: "700",
-            color: GP.ink,
-          }}
-        >
-          Policies
-        </h2>
-
-        <input
-          type="text"
-          placeholder="Search vendors, carriers, policy #, coverage..."
-          value={filterText}
-          onChange={(e) => setFilterText(e.target.value)}
-          style={{
-            padding: "10px",
-            width: "360px",
-            borderRadius: "8px",
-            border: "1px solid #cfd4dc",
-            marginBottom: "18px",
-            fontSize: "14px",
-          }}
+      {/* ===========================
+          KPI BAR — CINEMATIC CARDS
+      ============================ */}
+      <div
+        style={{
+          display: "grid",
+          gridTemplateColumns:
+            "repeat(auto-fit,minmax(180px,1fr))",
+          gap: 16,
+          marginBottom: 32,
+        }}
+      >
+        <CinematicKpi
+          label="Expired"
+          icon="🔥"
+          count={metrics?.expired_count ?? 0}
+          delta={deltas?.expired ?? 0}
+          color={GP.accent3}
         />
-        {loading && <p>Loading policies…</p>}
-        {!loading && filtered.length === 0 && <p>No matching policies.</p>}
+        <CinematicKpi
+          label="Critical (≤30 days)"
+          icon="⚠️"
+          count={metrics?.critical_count ?? 0}
+          delta={deltas?.critical ?? 0}
+          color={GP.accent2}
+        />
+        <CinematicKpi
+          label="Warning (≤90 days)"
+          icon="🟡"
+          count={metrics?.warning_count ?? 0}
+          delta={deltas?.warning ?? 0}
+          color={GP.accent1}
+        />
+        <CinematicKpi
+          label="Active"
+          icon="✅"
+          count={metrics?.ok_count ?? 0}
+          delta={deltas?.ok ?? 0}
+          color={GP.primary}
+        />
+        <CinematicScoreCard
+          avgScore={metrics?.avg_score}
+          delta={deltas?.avg_score}
+        />
+        <CinematicEliteCard counts={eliteSummary} />
+      </div>
 
-        {!loading && filtered.length > 0 && (
-          <>
+      {/* ===========================
+          CHARTS ROW — Compliance Trend + Donut
+      ============================ */}
+      <div
+        style={{
+          marginTop: 10,
+          marginBottom: 40,
+          display: "grid",
+          gridTemplateColumns: "minmax(0, 2fr) minmax(0, 1.2fr)",
+          gap: 24,
+        }}
+      >
+        <ComplianceTrajectoryChart />
+        <PassFailDonutChart />
+      </div>
+
+      {/* ===========================
+          HEATMAP + SEVERITY + TIMELINE
+      ============================ */}
+      <ExpiringCertsHeatmap policies={policies} />
+      <SeverityDistributionChart policies={policies} />
+      <RiskTimelineChart policies={policies} />
+      {/* ===========================
+          POLICIES TABLE HEADER + SEARCH
+      ============================ */}
+      <h2
+        style={{
+          marginTop: 32,
+          marginBottom: 10,
+          fontSize: 20,
+          fontWeight: 600,
+          color: "#e5e7eb",
+        }}
+      >
+        Policies
+      </h2>
+
+      <input
+        type="text"
+        placeholder="Search vendors, carriers, policy #, coverage…"
+        value={filterText}
+        onChange={(e) => setFilterText(e.target.value)}
+        style={{
+          padding: "8px 12px",
+          width: 320,
+          borderRadius: 999,
+          border: "1px solid rgba(51,65,85,0.95)",
+          background: "rgba(15,23,42,0.96)",
+          color: "#e5e7eb",
+          fontSize: 12,
+          marginBottom: 14,
+          outline: "none",
+        }}
+      />
+
+      {loading && (
+        <div style={{ fontSize: 13, color: GP.textSoft }}>Loading policies…</div>
+      )}
+      {!loading && filtered.length === 0 && (
+        <div style={{ fontSize: 13, color: GP.textSoft }}>No matching policies.</div>
+      )}
+
+      {!loading && filtered.length > 0 && (
+        <>
+          <div
+            style={{
+              borderRadius: 18,
+              border: "1px solid rgba(30,41,59,0.98)",
+              background: "rgba(15,23,42,0.98)",
+              boxShadow: "0 18px 45px rgba(15,23,42,0.95)",
+              overflow: "hidden",
+            }}
+          >
             <table
               style={{
                 width: "100%",
                 borderCollapse: "separate",
-                borderSpacing: "0 8px",
-                fontSize: "13px",
+                borderSpacing: "0 0",
+                fontSize: 12,
               }}
             >
               <thead>
@@ -635,7 +816,7 @@ export default function Dashboard() {
                   <th style={th}>Days Left</th>
                   <th style={th}>Status</th>
                   <th style={th}>Risk Tier</th>
-                  <th style={th}>AI Risk Score</th>
+                  <th style={th}>AI Risk</th>
                   <th style={th}>Compliance</th>
                   <th style={th}>Elite</th>
                   <th style={th}>Flags</th>
@@ -654,9 +835,9 @@ export default function Dashboard() {
                       key={p.id}
                       onClick={() => openDrawer(p.vendor_id)}
                       style={{
-                        background: "#ffffff",
                         cursor: "pointer",
-                        boxShadow: "0 2px 6px rgba(0,0,0,0.05)",
+                        background:
+                          "linear-gradient(90deg,rgba(15,23,42,0.98),rgba(15,23,42,0.9))",
                       }}
                     >
                       <td style={td}>{p.vendor_name || "—"}</td>
@@ -670,8 +851,8 @@ export default function Dashboard() {
                       <td
                         style={{
                           ...td,
-                          ...badgeStyle(risk.severity),
                           textAlign: "center",
+                          ...badgeStyle(risk.severity),
                         }}
                       >
                         {risk.severity === "ok"
@@ -687,10 +868,10 @@ export default function Dashboard() {
                             display: "inline-block",
                             padding: "3px 10px",
                             borderRadius: 999,
-                            background: "#eef0f4",
+                            background: "rgba(15,23,42,0.98)",
+                            border: "1px solid rgba(51,65,85,0.98)",
                             fontSize: 11,
-                            fontWeight: 600,
-                            color: GP.inkLight,
+                            color: GP.textSoft,
                           }}
                         >
                           {risk.tier}
@@ -702,24 +883,23 @@ export default function Dashboard() {
                         style={{
                           ...td,
                           textAlign: "center",
-                          fontWeight: "700",
+                          fontWeight: 600,
                           color:
                             ai.score >= 80
-                              ? GP.green
+                              ? "#22c55e"
                               : ai.score >= 60
-                              ? GP.yellow
-                              : GP.red,
+                              ? "#facc15"
+                              : "#fb7185",
                         }}
                       >
                         <div>{ai.score}</div>
-
                         <div
                           style={{
                             marginTop: 4,
                             height: 4,
                             width: 70,
                             borderRadius: 999,
-                            background: "#eceff1",
+                            background: "rgba(15,23,42,1)",
                             overflow: "hidden",
                             marginLeft: "auto",
                             marginRight: "auto",
@@ -731,12 +911,12 @@ export default function Dashboard() {
                               height: "100%",
                               background:
                                 ai.score >= 80
-                                  ? GP.green
+                                  ? "#22c55e"
                                   : ai.score >= 60
-                                  ? GP.yellow
-                                  : GP.red,
+                                  ? "#facc15"
+                                  : "#fb7185",
                             }}
-                          ></div>
+                          />
                         </div>
                       </td>
 
@@ -750,11 +930,11 @@ export default function Dashboard() {
                         {elite && !elite.loading && !elite.error ? (
                           <EliteStatusPill status={elite.overall} />
                         ) : elite && elite.loading ? (
-                          <span style={{ fontSize: 11, color: "#6b7280" }}>
+                          <span style={{ fontSize: 11, color: GP.textMuted }}>
                             Evaluating…
                           </span>
                         ) : (
-                          <span style={{ fontSize: 11, color: "#9ca3af" }}>
+                          <span style={{ fontSize: 11, color: GP.textMuted }}>
                             —
                           </span>
                         )}
@@ -778,38 +958,53 @@ export default function Dashboard() {
                 })}
               </tbody>
             </table>
+          </div>
 
-            {drawerOpen && drawerVendor && (
-              <VendorDrawer
-                vendor={drawerVendor}
-                policies={drawerPolicies}
-                onClose={closeDrawer}
-              />
-            )}
-          </>
-        )}
-      </div>
+          {drawerOpen && drawerVendor && (
+            <VendorDrawer
+              vendor={drawerVendor}
+              policies={drawerPolicies}
+              onClose={closeDrawer}
+            />
+          )}
+        </>
+      )}
     </div>
   );
 }
-/* COMPONENTS */
-function RiskCard({ label, icon, color, count, delta }) {
+/* ===========================
+   CINEMATIC KPI CARD
+=========================== */
+function CinematicKpi({ label, icon, color, count, delta }) {
   let arrow = "➖";
-  let arrowColor = GP.textLight;
+  let arrowColor = GP.textSoft;
 
   if (delta > 0) {
     arrow = "⬆️";
-    arrowColor = GP.red;
+    arrowColor = "#fb7185"; // red
   } else if (delta < 0) {
     arrow = "⬇️";
-    arrowColor = GP.green;
+    arrowColor = "#22c55e"; // green
   }
 
   return (
-    <div style={{ textAlign: "center", flex: 1 }}>
-      <div style={{ fontSize: 22 }}>{icon}</div>
+    <div
+      style={{
+        borderRadius: GP.radiusMd,
+        padding: 16,
+        border: "1px solid rgba(51,65,85,0.9)",
+        background:
+          "radial-gradient(circle at top left,rgba(15,23,42,0.98),rgba(15,23,42,0.92))",
+        boxShadow: "0 12px 30px rgba(0,0,0,0.45)",
+        textAlign: "center",
+        color: "#e5e7eb",
+      }}
+    >
+      <div style={{ fontSize: 22, marginBottom: 6 }}>{icon}</div>
       <div style={{ fontSize: 26, fontWeight: 700, color }}>{count}</div>
-      <div style={{ fontSize: 13, marginTop: 2, color: GP.text }}>{label}</div>
+      <div style={{ fontSize: 12, marginTop: 4, color: GP.textSoft }}>
+        {label}
+      </div>
       <div
         style={{
           fontSize: 12,
@@ -824,37 +1019,52 @@ function RiskCard({ label, icon, color, count, delta }) {
   );
 }
 
-function ScoreCard({ avgScore, delta }) {
+/* ===========================
+   CINEMATIC SCORE CARD
+=========================== */
+function CinematicScoreCard({ avgScore, delta }) {
   const hasScore = avgScore !== null && avgScore !== undefined;
   const score = hasScore ? Number(avgScore) : 0;
 
   let arrow = "➖";
-  let arrowColor = GP.textLight;
+  let arrowColor = GP.textSoft;
 
   if (typeof delta === "number" && delta > 0) {
     arrow = "⬆️";
-    arrowColor = GP.green;
+    arrowColor = "#22c55e";
   } else if (typeof delta === "number" && delta < 0) {
     arrow = "⬇️";
-    arrowColor = GP.red;
+    arrowColor = "#fb7185";
   }
 
   const color =
-    score >= 80 ? GP.green : score >= 60 ? GP.yellow : GP.red;
+    score >= 80 ? "#22c55e" : score >= 60 ? "#facc15" : "#fb7185";
 
   return (
-    <div style={{ textAlign: "center", flex: 1 }}>
+    <div
+      style={{
+        borderRadius: GP.radiusMd,
+        padding: 16,
+        border: "1px solid rgba(51,65,85,0.9)",
+        background:
+          "radial-gradient(circle at top left,rgba(15,23,42,0.98),rgba(15,23,42,0.92))",
+        boxShadow: "0 12px 30px rgba(0,0,0,0.45)",
+        textAlign: "center",
+      }}
+    >
       <div style={{ fontSize: 22 }}>📊</div>
       <div
         style={{
           fontSize: 26,
           fontWeight: 700,
-          color: hasScore ? color : GP.textLight,
+          color: hasScore ? color : GP.textSoft,
         }}
       >
         {hasScore ? score.toFixed(0) : "—"}
       </div>
-      <div style={{ fontSize: 13, color: GP.text }}>Avg Score</div>
+      <div style={{ fontSize: 12, marginTop: 4, color: GP.textSoft }}>
+        Avg Score
+      </div>
       <div
         style={{
           fontSize: 12,
@@ -869,46 +1079,68 @@ function ScoreCard({ avgScore, delta }) {
   );
 }
 
-function EliteCard({ counts }) {
+/* ===========================
+   CINEMATIC ELITE CARD
+=========================== */
+function CinematicEliteCard({ counts }) {
   const total = counts.pass + counts.warn + counts.fail;
 
   return (
-    <div style={{ textAlign: "center", flex: 1 }}>
+    <div
+      style={{
+        borderRadius: GP.radiusMd,
+        padding: 16,
+        border: "1px solid rgba(51,65,85,0.9)",
+        background:
+          "radial-gradient(circle at top left,rgba(15,23,42,0.98),rgba(15,23,42,0.92))",
+        boxShadow: "0 12px 30px rgba(0,0,0,0.45)",
+        textAlign: "center",
+        color: "#e5e7eb",
+      }}
+    >
       <div style={{ fontSize: 22 }}>🧠</div>
-      <div
-        style={{ fontSize: 16, fontWeight: 700, color: GP.ink, marginTop: 2 }}
-      >
-        Elite Summary
+      <div style={{ fontSize: 13, marginTop: 4, color: "#a5b4fc" }}>
+        Elite Engine
       </div>
-      <div style={{ fontSize: 12, color: GP.textLight }}>
+      <div style={{ fontSize: 12, marginTop: 6 }}>
         Vendors Evaluated: <strong>{total}</strong>
       </div>
-      <div style={{ fontSize: 12, marginTop: 4, color: "#166534" }}>
-        PASS: <strong>{counts.pass}</strong>
+
+      <div
+        style={{ marginTop: 8, fontSize: 12, color: "#a3e635", fontWeight: 600 }}
+      >
+        PASS: {counts.pass}
       </div>
-      <div style={{ fontSize: 12, marginTop: 4, color: "#b68b00" }}>
-        WARN: <strong>{counts.warn}</strong>
+      <div
+        style={{ marginTop: 4, fontSize: 12, color: "#facc15", fontWeight: 600 }}
+      >
+        WARN: {counts.warn}
       </div>
-      <div style={{ fontSize: 12, marginTop: 4, color: "#b00020" }}>
-        FAIL: <strong>{counts.fail}</strong>
+      <div
+        style={{ marginTop: 4, fontSize: 12, color: "#fb7185", fontWeight: 600 }}
+      >
+        FAIL: {counts.fail}
       </div>
     </div>
   );
 }
 
-/* TABLE CELL STYLES */
+/* ===========================
+   TABLE CELL STYLES (Dark Mode)
+=========================== */
 const th = {
   padding: "10px 12px",
-  background: "#f5f7fb",
-  color: "#64748b",
-  fontWeight: "600",
+  background: "rgba(15,23,42,0.98)",
+  color: "#9ca3af",
+  fontWeight: 600,
   textAlign: "left",
-  fontSize: "12px",
+  fontSize: 12,
+  borderBottom: "1px solid rgba(51,65,85,0.8)",
 };
 
 const td = {
   padding: "10px 12px",
-  borderBottom: "1px solid #e5e7eb",
-  fontSize: "13px",
-  color: "#111827",
+  borderBottom: "1px solid rgba(51,65,85,0.5)",
+  fontSize: 12,
+  color: "#e5e7eb",
 };
