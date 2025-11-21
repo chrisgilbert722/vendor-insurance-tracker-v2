@@ -1,15 +1,11 @@
-// components/Sidebar.js — Tactical Neon Rail V4
-
+// components/Sidebar.js — Tactical Neon Rail V5
 import React from "react";
 
 export default function Sidebar({ pathname, isAdmin, isManager, isViewer }) {
-  // Neon accent for active links
-  const activeGlow = "0 0 12px rgba(56,189,248,0.65)";
-
   return (
     <div
       style={{
-        width: "82px", // 🔥 Slim tactical rail
+        width: 82, // slim rail
         minHeight: "100vh",
         display: "flex",
         flexDirection: "column",
@@ -18,37 +14,35 @@ export default function Sidebar({ pathname, isAdmin, isManager, isViewer }) {
         position: "relative",
         zIndex: 50,
 
-        // 🔥 Dark glass rail background
         background:
           "radial-gradient(circle at top, rgba(15,23,42,0.97), rgba(15,23,42,0.95))",
-        borderRight: "1px solid rgba(56,189,248,0.18)",
+        borderRight: "1px solid rgba(56,189,248,0.22)",
         boxShadow: `
-          inset -1px 0 8px rgba(56,189,248,0.2),
-          0 0 18px rgba(0,0,0,0.6)
+          inset -1px 0 10px rgba(56,189,248,0.28),
+          0 0 20px rgba(0,0,0,0.75)
         `,
       }}
     >
-      {/* TOP LOGO ICON */}
+      {/* TOP LOGO / GLYPH */}
       <div
         style={{
           marginBottom: 34,
           fontSize: 26,
           color: "#38bdf8",
           fontWeight: 700,
-          textShadow: "0 0 12px rgba(56,189,248,0.4)",
+          textShadow: "0 0 14px rgba(56,189,248,0.5)",
         }}
       >
         ⚡
       </div>
 
-      {/* MAIN NAV ITEMS */}
+      {/* MAIN NAV */}
       <RailLink
         href="/dashboard"
         label="Dashboard"
         icon="📊"
         active={pathname === "/dashboard"}
       />
-
       <RailLink
         href="/vendors"
         label="Vendors"
@@ -83,7 +77,7 @@ export default function Sidebar({ pathname, isAdmin, isManager, isViewer }) {
         />
       )}
 
-      {/* BOTTOM SECTION */}
+      {/* BOTTOM — LOGIN/LOGOUT */}
       <div style={{ marginTop: "auto" }}>
         <RailLink
           href="/auth/login"
@@ -97,7 +91,7 @@ export default function Sidebar({ pathname, isAdmin, isManager, isViewer }) {
 }
 
 /* ===========================================
-   V4 Rail Link Component
+   V5 Rail Link Component
 =========================================== */
 function RailLink({ href, label, icon, active }) {
   return (
@@ -113,14 +107,13 @@ function RailLink({ href, label, icon, active }) {
         cursor: "pointer",
         marginBottom: 8,
 
-        // Glow if active
         background: active
-          ? "rgba(56,189,248,0.12)"
+          ? "rgba(56,189,248,0.14)"
           : "transparent",
         borderLeft: active
           ? "4px solid #38bdf8"
           : "4px solid transparent",
-        boxShadow: active ? "0 0 12px rgba(56,189,248,0.4)" : "none",
+        boxShadow: active ? "0 0 14px rgba(56,189,248,0.55)" : "none",
 
         transition: "all 0.18s ease",
       }}
@@ -129,21 +122,20 @@ function RailLink({ href, label, icon, active }) {
         style={{
           fontSize: 20,
           marginBottom: 6,
-          color: active ? "#38bdf8" : "#94a3b8",
-          textShadow: active ? "0 0 10px rgba(56,189,248,0.7)" : "none",
+          color: active ? "#38bdf8" : "#94a3af",
+          textShadow: active ? "0 0 12px rgba(56,189,248,0.9)" : "none",
           transition: "0.2s",
         }}
       >
         {icon}
       </span>
-
-      {/* Label that fades in on hover */}
       <span
         style={{
           fontSize: 11,
           color: active ? "#e5e7eb" : "#64748b",
-          letterSpacing: "0.04em",
-          opacity: active ? 1 : 0.55,
+          letterSpacing: "0.08em",
+          textTransform: "uppercase",
+          opacity: active ? 1 : 0.6,
           transition: "0.2s",
         }}
       >
