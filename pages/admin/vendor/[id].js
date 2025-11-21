@@ -2,10 +2,41 @@
 import { useRouter } from "next/router";
 import { useMemo, useState, useEffect } from "react";
 
+/* ===========================
+   THEME TOKENS (unchanged)
+=========================== */
+const GP = {
+  primary: "#0057FF",
+  primaryDark: "#003BB3",
+  accent1: "#00E0FF",
+  accent2: "#8A2BFF",
+  red: "#FF3B3B",
+  orange: "#FF9800",
+  yellow: "#FFC107",
+  green: "#00C27A",
+  ink: "#0D1623",
+  inkSoft: "#64748B",
+  surface: "#020617",
+  border: "#1E293B",
+};
+
+/* ===========================
+   VendorProfile Component
+=========================== */
+export default function VendorProfilePage() {
+  const router = useRouter();
+  const { id } = router.query;
+
+  const [vendor, setVendor] = useState(null);
+  const [loading, setLoading] = useState(false);
+  const [loadError, setLoadError] = useState("");
+
+  // LIVE ALERTS FOR THIS VENDOR
+  const [vendorAlerts, setVendorAlerts] = useState([]);
+
   /* ============================================================
-     LOAD LIVE ALERTS FOR THIS VENDOR
-     Filters alerts by vendor.name or vendor.id
-     ============================================================ */
+     LOAD LIVE ALERTS FOR THIS VENDOR (filtered by vendor name/id)
+  ============================================================ */
   useEffect(() => {
     if (!vendor?.name) return;
 
@@ -15,7 +46,6 @@ import { useMemo, useState, useEffect } from "react";
         const data = await res.json();
 
         if (data.ok && Array.isArray(data.alerts)) {
-          // Filter alerts to match vendor
           const filtered = data.alerts.filter((a) => {
             const matchName =
               a.vendorName?.toLowerCase() === vendor.name.toLowerCase();
@@ -23,7 +53,7 @@ import { useMemo, useState, useEffect } from "react";
             return matchName || matchId;
           });
 
-          // Add severity mapping if missing
+          // severity mapping fallback
           const processed = filtered.map((a) => ({
             ...a,
             severity:
@@ -50,34 +80,7 @@ import { useMemo, useState, useEffect } from "react";
 
     loadVendorAlerts();
   }, [vendor]);
-          {/* ===========================
-              RULES FIRED (LIVE ALERTS)
-          ============================ */}
-          <div
-            style={{
-              borderRadius: 18,
-              padding: 10,
-              border: "1px solid rgba(51,65,85,0.98)",
-              background: "rgba(15,23,42,0.98)",
-            }}
-          >
-            <div
-              style={{
-                fontSize: 11,
-                textTransform: "uppercase",
-                letterSpacing: 1.2,
-                color: "#9ca3af",
-                marginBottom: 4,
-              }}
-            >
-              Rules firing for this vendor
-            </div>
-
-            <div
-              style={{
-                fontSize: 11,
-                color: "#9ca3af",
-                marginBottom: 6,
+  
               }}
             >
               Live output from Elite Rule Engine. These alerts match this vendor
