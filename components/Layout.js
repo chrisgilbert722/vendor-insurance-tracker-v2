@@ -46,7 +46,10 @@ export default function Layout({ children }) {
         }}
       />
 
-      {/* 🔥 LEFT SIDEBAR — ULTRA THIN TACTICAL RAIL */}
+      {/* 🔥 HOLOGRAPHIC PARTICLES FIELD */}
+      <div className="cockpit-particles" />
+
+      {/* 🔥 LEFT SIDEBAR — TACTICAL RAIL */}
       <Sidebar
         pathname={pathname}
         isAdmin={isAdmin}
