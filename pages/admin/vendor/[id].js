@@ -79,58 +79,60 @@ export default function VendorProfilePage() {
     }
 
     loadVendorAlerts();
-  }, [vendor]);
-  
-              }}
-            >
-              Live output from Elite Rule Engine. These alerts match this vendor
-              only.
-            </div>
+ }, [vendor]);
+{/* DESCRIPTION BLOCK */}
+<div
+  style={{
+    fontSize: 11,
+    color: "#9ca3af",
+    marginBottom: 6,
+  }}
+>
+  Live output from Elite Rule Engine. These alerts match this vendor only.
+</div>
 
-            {/* RULE LIST (LIVE ALERTS) */}
-            <div
-              style={{
-                display: "flex",
-                flexDirection: "column",
-                gap: 6,
-                maxHeight: 220,
-                overflowY: "auto",
-              }}
-            >
-              {vendorAlerts.filter((a) => a.type === "rule_failure").length >
-              0 ? (
-                vendorAlerts
-                  .filter((a) => a.type === "rule_failure")
-                  .map((alert) => (
-                    <RuleRow
-                      key={alert.id}
-                      rule={{
-                        id: alert.id,
-                        label: alert.ruleLabel || alert.title || "Rule triggered",
-                        description:
-                          alert.message ||
-                          "Rule fired from compliance engine.",
-                        severity: alert.severity || "Medium",
-                        timestamp: alert.createdAt,
-                        dsl: alert.dsl || "—",
-                      }}
-                    />
-                  ))
-              ) : (
-                <div
-                  style={{
-                    borderRadius: 12,
-                    padding: 8,
-                    border: "1px dashed rgba(75,85,99,0.98)",
-                    fontSize: 12,
-                    color: "#9ca3af",
-                  }}
-                >
-                  No rule-based alerts for this vendor yet.
-                </div>
-              )}
-            </div>
-          </div>
+{/* RULE LIST (LIVE ALERTS) */}
+<div
+  style={{
+    display: "flex",
+    flexDirection: "column",
+    gap: 6,
+    maxHeight: 220,
+    overflowY: "auto",
+  }}
+>
+  {vendorAlerts.filter((a) => a.type === "rule_failure").length > 0 ? (
+    vendorAlerts
+      .filter((a) => a.type === "rule_failure")
+      .map((alert) => (
+        <RuleRow
+          key={alert.id}
+          rule={{
+            id: alert.id,
+            label: alert.ruleLabel || alert.title || "Rule triggered",
+            description:
+              alert.message || "Rule fired from compliance engine.",
+            severity: alert.severity || "Medium",
+            timestamp: alert.createdAt,
+            dsl: alert.dsl || "—",
+          }}
+        />
+      ))
+  ) : (
+    <div
+      style={{
+        borderRadius: 12,
+        padding: 8,
+        border: "1px dashed rgba(75,85,99,0.98)",
+        fontSize: 12,
+        color: "#9ca3af",
+      }}
+    >
+      No rule-based alerts for this vendor yet.
+    </div>
+  )}
+</div>
+
           {/* ===========================
               LIVE COMPLIANCE TIMELINE
           ============================ */}
