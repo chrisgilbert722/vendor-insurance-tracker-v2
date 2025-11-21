@@ -1,1 +1,300 @@
+/* ===========================================================
+   COCKPIT V5 — GLOBAL ENVIRONMENT & HUD STYLING
+   This is the full-screen cinematic backdrop for the entire app.
+   Make competitors think you hired a Hollywood VFX team.
+   ----------------------------------------------------------- */
+
+/* Reset & Base */
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+  height: 100%;
+  width: 100%;
+  scroll-behavior: smooth;
+}
+
+body {
+  font-family: system-ui, -apple-system, BlinkMacSystemFont, "SF Pro Text",
+    "Segoe UI", sans-serif;
+  background: #020617;
+  color: #e5e7eb;
+  overflow-x: hidden;
+}
+
+/* Make Next.js root fill & sit above background overlays */
+#__next {
+  position: relative;
+  min-height: 100vh;
+  isolation: isolate;
+}
+
+/* ===========================================================
+   LAYER 1 — Deep Space Backdrop
+   Huge radial gradients that create that “inside a ship” feel.
+=========================================================== */
+body::before {
+  content: "";
+  position: fixed;
+  inset: -20%;
+  z-index: -3;
+  background:
+    radial-gradient(circle at 20% 0%, rgba(56, 189, 248, 0.30), transparent 55%),
+    radial-gradient(circle at 80% 0%, rgba(168, 85, 247, 0.25), transparent 55%),
+    radial-gradient(circle at 10% 80%, rgba(34, 197, 94, 0.20), transparent 65%),
+    linear-gradient(180deg, #020617 0%, #000000 70%, #020617 100%);
+  pointer-events: none;
+}
+
+/* ===========================================================
+   LAYER 2 — Parallax Ambient Glow (slow drift)
+   Gives the sense that the whole cockpit is alive & breathing.
+=========================================================== */
+body::after {
+  content: "";
+  position: fixed;
+  inset: -10%;
+  z-index: -2;
+  background:
+    radial-gradient(circle at 10% 10%, rgba(59,130,246,0.25), transparent 60%),
+    radial-gradient(circle at 90% 80%, rgba(236,72,153,0.25), transparent 60%);
+  mix-blend-mode: screen;
+  opacity: 0.55;
+  animation: cockpit-drift 26s ease-in-out infinite alternate;
+  pointer-events: none;
+}
+
+@keyframes cockpit-drift {
+  0% {
+    transform: translate3d(-10px, -10px, 0) scale(1);
+    opacity: 0.5;
+  }
+  50% {
+    transform: translate3d(10px, 5px, 0) scale(1.03);
+    opacity: 0.75;
+  }
+  100% {
+    transform: translate3d(-5px, 12px, 0) scale(1.02);
+    opacity: 0.6;
+  }
+}
+
+/* ===========================================================
+   LAYER 3 — HUD Scanlines
+   Ultra-subtle horizontal lines like a high-end monitor.
+=========================================================== */
+.cockpit-scanlines,
+body {
+  position: relative;
+}
+
+.cockpit-scanlines::before,
+body::before {
+  /* optional hook if you add .cockpit-scanlines class around content */
+}
+
+body::after,
+#__next::before {
+  /* reserved for other layers */
+}
+
+#__next::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  background-image: linear-gradient(
+    to bottom,
+    rgba(148, 163, 184, 0.08) 1px,
+    rgba(15, 23, 42, 0.0) 1px
+  );
+  background-size: 100% 3px;
+  opacity: 0.12;
+  mix-blend-mode: soft-light;
+  pointer-events: none;
+}
+
+/* ===========================================================
+   LAYER 4 — Holographic Particles (very subtle)
+=========================================================== */
+body::marker {
+  /* safelist no-op for some browsers */
+}
+
+.cockpit-particles {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+.cockpit-particles::before,
+.cockpit-particles::after {
+  content: "";
+  position: absolute;
+  inset: -20%;
+  background-image:
+    radial-gradient(circle, rgba(148,163,184,0.35) 0, transparent 50%),
+    radial-gradient(circle, rgba(56,189,248,0.45) 0, transparent 55%),
+    radial-gradient(circle, rgba(244,114,182,0.30) 0, transparent 55%);
+  opacity: 0.06;
+  mix-blend-mode: screen;
+  animation: cockpit-stars 42s linear infinite;
+}
+
+.cockpit-particles::after {
+  animation-duration: 68s;
+  animation-direction: reverse;
+  opacity: 0.08;
+}
+
+@keyframes cockpit-stars {
+  0% {
+    transform: translate3d(0, 0, 0);
+  }
+  50% {
+    transform: translate3d(-16px, -12px, 0);
+  }
+  100% {
+    transform: translate3d(12px, 18px, 0);
+  }
+}
+
+/* ===========================================================
+   GLOBAL TYPOGRAPHY & LINKS
+=========================================================== */
+a {
+  color: inherit;
+}
+
+a:hover {
+  text-decoration: none;
+}
+
+/* Scrollbar (for that sleek cockpit feel) */
+::-webkit-scrollbar {
+  width: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: rgba(15, 23, 42, 1);
+}
+
+::-webkit-scrollbar-thumb {
+  background: linear-gradient(180deg, #1f2937, #4b5563);
+  border-radius: 999px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: linear-gradient(180deg, #38bdf8, #0f172a);
+}
+
+/* Text smoothing */
+body {
+  -webkit-font-smoothing: antialiased;
+}
+
+/* ===========================================================
+   OPTIONAL: Add this class to any container you want to pulse
+   like an “AI heart beat” (e.g., Hero panel, global score ring).
+=========================================================== */
+.cockpit-pulse {
+  position: relative;
+  z-index: 1;
+}
+
+.cockpit-pulse::after {
+  content: "";
+  position: absolute;
+  inset: -2px;
+  border-radius: inherit;
+  border: 1px solid rgba(56, 189, 248, 0.6);
+  opacity: 0.0;
+  pointer-events: none;
+  box-shadow: 0 0 30px rgba(56, 189, 248, 0.6);
+  animation: cockpit-pulse 2.8s ease-out infinite;
+}
+
+@keyframes cockpit-pulse {
+  0% {
+    opacity: 0.0;
+    transform: scale(0.98);
+  }
+  25% {
+    opacity: 0.35;
+    transform: scale(1.02);
+  }
+  60% {
+    opacity: 0.0;
+    transform: scale(1.06);
+  }
+  100% {
+    opacity: 0;
+    transform: scale(1.08);
+  }
+}
+
+/* ===========================================================
+   OPTIONAL: Vertical Telemetry Lines (for future use)
+   Add .cockpit-telemetry to any container to get side rails.
+=========================================================== */
+.cockpit-telemetry {
+  position: relative;
+}
+
+.cockpit-telemetry::before,
+.cockpit-telemetry::after {
+  content: "";
+  position: absolute;
+  top: 6%;
+  bottom: 6%;
+  width: 1px;
+  background: linear-gradient(
+    to bottom,
+    transparent,
+    rgba(56, 189, 248, 0.5),
+    transparent
+  );
+  opacity: 0.4;
+}
+
+.cockpit-telemetry::before {
+  left: 0;
+}
+
+.cockpit-telemetry::after {
+  right: 0;
+}
+
+/* ===========================================================
+   Utility classes (for future use if you want them)
+=========================================================== */
+
+.cockpit-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  border: 1px solid rgba(148, 163, 184, 0.6);
+  background: rgba(15, 23, 42, 0.9);
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  color: #e5e7eb;
+}
+
+.cockpit-faint {
+  color: rgba(148, 163, 184, 0.8);
+}
+
+.cockpit-strong {
+  font-weight: 600;
+  color: #e5e7eb;
+}
 
