@@ -3,6 +3,13 @@ import { useState } from "react";
 import { useOrg } from "../context/OrgContext";
 import { useRole } from "../lib/useRole";
 import { useRouter } from "next/router"; // <-- NEW
+import { useState } from "react";
+import { useOrg } from "../context/OrgContext";
+import { useRole } from "../lib/useRole";
+
+function delay(ms) {
+  return new Promise(resolve => setTimeout(resolve, ms));
+}
 
 /* ===========================
    UPLOAD COI V3 — UI STATE
@@ -751,4 +758,7 @@ function SummaryTile({ label, value }) {
       </div>
     </div>
   );
+}
+function delay(ms) {
+  return new Promise(resolve => setTimeout(resolve, ms));
 }
