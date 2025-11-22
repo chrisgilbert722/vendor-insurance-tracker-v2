@@ -325,10 +325,9 @@ export default function AlertsPage() {
         setSearch={setSearch}
       />
 
-/* ===========================
-   METRICS + FILTERS PANEL
-=========================== */
-
+      {/* ===========================
+          METRICS + FILTERS PANEL
+      ============================ */}
 function MetricsAndFilters({
   metrics,
   severityFilter,
