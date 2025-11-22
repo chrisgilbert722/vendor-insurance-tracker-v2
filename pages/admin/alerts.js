@@ -4,17 +4,14 @@ import { useOrg } from "../../context/OrgContext";
 import { useRole } from "../../lib/useRole";
 
 /* ===========================
-   THEME TOKENS
+   CINEMATIC THEME TOKENS
 =========================== */
 const GP = {
-  primary: "#0057FF",
-  primaryDark: "#003BB3",
-  accent1: "#00E0FF",
-  accent2: "#8A2BFF",
   red: "#FF3B3B",
   orange: "#FF9800",
   yellow: "#FFC107",
   green: "#00C27A",
+  blueSoft: "#38bdf8",
   ink: "#0D1623",
   inkSoft: "#64748B",
   surface: "#020617",
@@ -22,8 +19,7 @@ const GP = {
 };
 
 /* ===========================
-   SEEDED MOCK ALERTS
-   (Replace later with real API data)
+   MOCK ALERTS (Replace later)
 =========================== */
 
 const initialAlerts = [
@@ -94,226 +90,190 @@ const initialAlerts = [
 ];
 
 /* ===========================
-   HELPER FUNCTIONS
+   HELPERS
 =========================== */
 
-const severityOrder = {
-  Critical: 3,
-  High: 2,
-  Medium: 1,
-  Low: 0,
-};
-
-function formatDateTime(iso) {
-  if (!iso) return "—";
+function formatRelative(iso) {
   const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return "—";
+  const diff = Date.now() - d.getTime();
+  const mins = diff / 60000;
+  if (mins < 1) return "just now";
+  if (mins < 60) return `${Math.round(mins)}m ago`;
+  const hrs = mins / 60;
+  if (hrs < 24) return `${Math.round(hrs)}h ago`;
+  return `${Math.round(hrs / 24)}d ago`;
+}
+
+function formatDate(iso) {
+  const d = new Date(iso);
   return d.toLocaleString(undefined, {
     month: "short",
     day: "numeric",
-    hour: "numeric",
+    hour: "2-digit",
     minute: "2-digit",
   });
 }
 
-function formatRelative(iso) {
-  if (!iso) return "";
-  const d = new Date(iso);
-  const diff = Date.now() - d.getTime();
-  if (Number.isNaN(diff)) return "";
-
-  const mins = Math.round(diff / 60000);
-  if (mins < 1) return "just now";
-  if (mins < 60) return `${mins} min ago`;
-  const hours = Math.round(mins / 60);
-  if (hours < 24) return `${hours} h ago`;
-  const days = Math.round(hours / 24);
-  return `${days} day${days === 1 ? "" : "s"} ago`;
-}
-
-function severityChipMeta(severity) {
-  switch (severity) {
-    case "Critical":
-      return {
-        bg: "rgba(248,113,113,0.12)",
-        border: "rgba(248,113,113,0.9)",
-        label: "Critical",
-        text: "#fecaca",
-        dot: "#f97316",
-      };
-    case "High":
-      return {
-        bg: "rgba(250,204,21,0.12)",
-        border: "rgba(250,204,21,0.9)",
-        label: "High",
-        text: "#fef9c3",
-        dot: "#facc15",
-      };
-    case "Medium":
-      return {
-        bg: "rgba(56,189,248,0.12)",
-        border: "rgba(56,189,248,0.9)",
-        label: "Medium",
-        text: "#e0f2fe",
-        dot: "#38bdf8",
-      };
-    case "Low":
-      return {
-        bg: "rgba(52,211,153,0.12)",
-        border: "rgba(52,211,153,0.9)",
-        label: "Low",
-        text: "#ccfbf1",
-        dot: "#34d399",
-      };
-    default:
-      return {
-        bg: "rgba(148,163,184,0.12)",
-        border: "rgba(148,163,184,0.8)",
-        label: severity || "Unknown",
-        text: "#e5e7eb",
-        dot: "#9ca3af",
-      };
-  }
-}
-
+const severityRank = {
+  Critical: 4,
+  High: 3,
+  Medium: 2,
+  Low: 1,
+};
 /* ===========================
-   MAIN PAGE
+   MAIN PAGE — CINEMATIC V2.1
 =========================== */
 
 export default function AlertsPage() {
   const { orgId } = useOrg();
   const { isAdmin, isManager } = useRole();
+  const canEdit = isAdmin || isManager;
 
   // Filters
   const [severityFilter, setSeverityFilter] = useState("All");
   const [typeFilter, setTypeFilter] = useState("All");
   const [statusFilter, setStatusFilter] = useState("Open");
-  const [searchTerm, setSearchTerm] = useState("");
+  const [search, setSearch] = useState("");
 
-  const canEdit = isAdmin || isManager;
-
+  // Metrics snapshot
   const metrics = useMemo(() => {
-    const total = initialAlerts.length;
-    const critical = initialAlerts.filter((a) => a.severity === "Critical")
-      .length;
-    const warning = initialAlerts.filter(
-      (a) => a.severity === "High" || a.severity === "Medium"
-    ).length;
-    const info = initialAlerts.filter((a) => a.severity === "Low").length;
-
     return {
-      total,
-      critical,
-      warning,
-      info,
+      total: initialAlerts.length,
+      critical: initialAlerts.filter((a) => a.severity === "Critical").length,
+      warning: initialAlerts.filter(
+        (a) => a.severity === "High" || a.severity === "Medium"
+      ).length,
+      info: initialAlerts.filter((a) => a.severity === "Low").length,
     };
   }, []);
 
-  const filteredAlerts = useMemo(() => {
+  // Filter + sort pipeline
+  const filtered = useMemo(() => {
     return initialAlerts
       .filter((a) => {
         if (severityFilter !== "All" && a.severity !== severityFilter)
           return false;
         if (typeFilter !== "All" && a.type !== typeFilter) return false;
         if (statusFilter !== "All" && a.status !== statusFilter) return false;
-        if (!searchTerm) return true;
-        const haystack = (
-          a.title +
-          " " +
-          a.message +
-          " " +
-          a.vendorName +
-          " " +
-          a.ruleLabel
-        ).toLowerCase();
-        return haystack.includes(searchTerm.toLowerCase());
+
+        if (search.length) {
+          const hay = (
+            a.title +
+            " " +
+            a.message +
+            " " +
+            a.vendorName +
+            " " +
+            a.ruleLabel
+          ).toLowerCase();
+          if (!hay.includes(search.toLowerCase())) return false;
+        }
+
+        return true;
       })
-      .sort((a, b) => {
-        const sevDiff =
-          severityOrder[b.severity] - severityOrder[a.severity] || 0;
-        if (sevDiff !== 0) return sevDiff;
-        return (
-          new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
-        );
-      });
-  }, [severityFilter, typeFilter, statusFilter, searchTerm]);
+      .sort(
+        (a, b) =>
+          severityRank[b.severity] - severityRank[a.severity] ||
+          new Date(b.createdAt) - new Date(a.createdAt)
+      );
+  }, [severityFilter, typeFilter, statusFilter, search]);
 
   return (
     <div
       style={{
         minHeight: "100vh",
+        position: "relative",
         background:
-          "radial-gradient(circle at top left,#020617 0,#020617 55%,#000 100%)",
+          "radial-gradient(circle at top left,#020617 0%, #020617 40%, #000 100%)",
         padding: "30px 40px 40px",
         color: "#e5e7eb",
-        fontFamily:
-          "-apple-system,BlinkMacSystemFont,'SF Pro Text','Segoe UI',system-ui,sans-serif",
+        overflowX: "hidden",
       }}
     >
-      {/* HEADER */}
+      {/* ===========================
+          CINEMATIC HEADER AURA
+      ============================ */}
       <div
         style={{
-          display: "flex",
-          alignItems: "flex-start",
-          justifyContent: "space-between",
-          gap: 18,
-          marginBottom: 20,
+          position: "absolute",
+          top: -200,
+          left: "50%",
+          transform: "translateX(-50%)",
+          width: 900,
+          height: 900,
+          background:
+            "radial-gradient(circle, rgba(255,120,0,0.22), transparent 60%)",
+          filter: "blur(90px)",
+          pointerEvents: "none",
+          zIndex: 0,
         }}
-      >
-        <div style={{ display: "flex", gap: 14, alignItems: "center" }}>
+      />
+
+      {/* ===========================
+          HEADER CONTENT
+      ============================ */}
+      <div style={{ position: "relative", zIndex: 2 }}>
+        <div
+          style={{
+            display: "flex",
+            gap: 14,
+            alignItems: "center",
+            marginBottom: 12,
+          }}
+        >
           <div
             style={{
-              padding: 10,
+              padding: 12,
               borderRadius: 999,
               background:
                 "radial-gradient(circle at 30% 0,#f97316,#ea580c,#7c2d12)",
               boxShadow: "0 0 40px rgba(248,113,113,0.5)",
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
             }}
           >
             <span style={{ fontSize: 22 }}>🚨</span>
           </div>
+
           <div>
+            {/* TAG STRIP */}
             <div
               style={{
                 display: "inline-flex",
-                alignItems: "center",
                 gap: 8,
                 padding: "4px 10px",
                 borderRadius: 999,
                 border: "1px solid rgba(148,163,184,0.4)",
-                marginBottom: 6,
                 background:
                   "linear-gradient(120deg,rgba(15,23,42,0.9),rgba(15,23,42,0))",
+                marginBottom: 6,
               }}
             >
               <span
                 style={{
                   fontSize: 10,
+                  color: "#9ca3af",
                   letterSpacing: 1.2,
                   textTransform: "uppercase",
-                  color: "#9ca3af",
                 }}
               >
-                Alerts Dashboard V2
+                Alerts Dashboard V2.1
               </span>
               <span
                 style={{
                   fontSize: 10,
+                  color: "#f97316",
                   letterSpacing: 1,
                   textTransform: "uppercase",
-                  color: "#f97316",
                 }}
               >
-                Real-time risk pulse
+                real-time risk pulse
               </span>
             </div>
+
+            {/* PAGE TITLE */}
             <h1
               style={{
                 margin: 0,
-                fontSize: 26,
+                fontSize: 28,
                 fontWeight: 600,
                 letterSpacing: 0.2,
               }}
@@ -331,6 +291,8 @@ export default function AlertsPage() {
               </span>{" "}
               before it reaches finance, ops, or your insurer.
             </h1>
+
+            {/* SUBTEXT */}
             <p
               style={{
                 marginTop: 6,
@@ -340,379 +302,165 @@ export default function AlertsPage() {
                 maxWidth: 640,
               }}
             >
-              This is the live feed of your rule engine and requirements engine
-              firing. Every card is a vendor, a policy, an endorsement, or a
-              document that needs attention.
+              Live feed of your rule engine + requirements engine firing. Every
+              card below is a vendor, a policy, an endorsement, or a document
+              that needs attention.
             </p>
           </div>
         </div>
-
-        <div style={{ textAlign: "right", minWidth: 180 }}>
-          <div
-            style={{
-              fontSize: 11,
-              color: "#9ca3af",
-              marginBottom: 4,
-            }}
-          >
-            Org context
-          </div>
-          <div
-            style={{
-              fontSize: 12,
-              color: "#e5e7eb",
-              marginBottom: 8,
-            }}
-          >
-            {orgId ? `Org: ${orgId}` : "Active organization loaded"}
-          </div>
-          {!canEdit && (
-            <div
-              style={{
-                fontSize: 11,
-                color: "#facc15",
-                padding: "6px 9px",
-                borderRadius: 10,
-                border: "1px solid rgba(251,191,36,0.6)",
-                background: "rgba(113,63,18,0.5)",
-              }}
-            >
-              Read-only view. Only admins/managers can resolve alerts.
-            </div>
-          )}
-        </div>
       </div>
 
-      {/* METRICS + FILTERS STRIP */}
+      {/* ===========================
+          METRICS + FILTERS SECTION
+      ============================ */}
+      <MetricsAndFilters
+        metrics={metrics}
+        severityFilter={severityFilter}
+        setSeverityFilter={setSeverityFilter}
+        typeFilter={typeFilter}
+        setTypeFilter={setTypeFilter}
+        statusFilter={statusFilter}
+        setStatusFilter={setStatusFilter}
+        search={search}
+        setSearch={setSearch}
+      />
+/* ===========================
+   METRICS + FILTERS PANEL
+=========================== */
+
+function MetricsAndFilters({
+  metrics,
+  severityFilter,
+  setSeverityFilter,
+  typeFilter,
+  setTypeFilter,
+  statusFilter,
+  setStatusFilter,
+  search,
+  setSearch,
+}) {
+  return (
+    <div
+      style={{
+        display: "grid",
+        gridTemplateColumns: "minmax(0,2.1fr) minmax(0,1.5fr)",
+        gap: 18,
+        marginTop: 24,
+        marginBottom: 24,
+      }}
+    >
+      <MetricPanel metrics={metrics} />
+
+      {/* Filters */}
       <div
         style={{
-          display: "grid",
-          gridTemplateColumns: "minmax(0,2.1fr) minmax(0,1.5fr)",
-          gap: 18,
-          marginBottom: 18,
-          alignItems: "stretch",
+          borderRadius: 22,
+          padding: 16,
+          background:
+            "linear-gradient(135deg,rgba(15,23,42,0.96),rgba(15,23,42,0.9))",
+          border: "1px solid rgba(148,163,184,0.4)",
+          boxShadow: "0 22px 50px rgba(15,23,42,0.98)",
+          display: "flex",
+          flexDirection: "column",
+          gap: 12,
         }}
       >
-        {/* Metrics */}
+        {/* Filters Title */}
         <div
           style={{
-            borderRadius: 22,
-            padding: 14,
-            background:
-              "radial-gradient(circle at top left,rgba(15,23,42,0.96),rgba(15,23,42,0.9))",
-            border: "1px solid rgba(148,163,184,0.55)",
-            boxShadow: "0 22px 55px rgba(15,23,42,0.98)",
-            display: "grid",
-            gridTemplateColumns: "repeat(4,minmax(0,1fr))",
-            gap: 10,
+            fontSize: 11,
+            letterSpacing: 1.2,
+            color: "#9ca3af",
+            textTransform: "uppercase",
           }}
         >
-          <MetricCard
-            label="Critical"
-            value={metrics.critical}
-            tone="critical"
-          />
-          <MetricCard
-            label="Warning"
-            value={metrics.warning}
-            tone="warning"
-          />
-          <MetricCard label="Info" value={metrics.info} tone="info" />
-          <MetricCard label="Total" value={metrics.total} tone="total" />
+          Filters
         </div>
 
-        {/* Filters */}
+        {/* Pills Row */}
         <div
           style={{
-            borderRadius: 22,
-            padding: 14,
-            background:
-              "linear-gradient(135deg,rgba(15,23,42,0.96),rgba(15,23,42,0.9))",
-            border: "1px solid rgba(148,163,184,0.4)",
-            boxShadow: "0 22px 50px rgba(15,23,42,0.98)",
             display: "flex",
-            flexDirection: "column",
-            gap: 10,
+            flexWrap: "wrap",
+            gap: 8,
+            alignItems: "center",
           }}
         >
-          <div
+          {/* Severity Pills */}
+          <FilterPillGroup
+            options={["All", "Critical", "High", "Medium", "Low"]}
+            active={severityFilter}
+            onSelect={setSeverityFilter}
+            palette="severity"
+          />
+
+          {/* Status Pills */}
+          <FilterPillGroup
+            options={["Open", "All"]}
+            active={statusFilter}
+            onSelect={setStatusFilter}
+            palette="status"
+          />
+        </div>
+
+        {/* Type + Search */}
+        <div
+          style={{
+            display: "flex",
+            gap: 10,
+            flexWrap: "wrap",
+          }}
+        >
+          <select
+            value={typeFilter}
+            onChange={(e) => setTypeFilter(e.target.value)}
             style={{
-              fontSize: 11,
-              letterSpacing: 1.2,
-              textTransform: "uppercase",
-              color: "#9ca3af",
-              marginBottom: 2,
+              borderRadius: 999,
+              padding: "6px 10px",
+              border: "1px solid rgba(51,65,85,0.9)",
+              background: "rgba(15,23,42,0.96)",
+              color: "#e5e7eb",
+              fontSize: 12,
+              outline: "none",
+              minWidth: 130,
             }}
           >
-            Filters
-          </div>
+            <option value="All">All types</option>
+            <option value="Coverage">Coverage</option>
+            <option value="Endorsement">Endorsement</option>
+            <option value="Document">Document</option>
+            <option value="Info">Info</option>
+          </select>
+
+          {/* Search Box */}
           <div
             style={{
+              flex: 1,
+              minWidth: 160,
+              background: "rgba(15,23,42,0.95)",
+              border: "1px solid rgba(51,65,85,0.9)",
+              borderRadius: 999,
               display: "flex",
-              flexWrap: "wrap",
-              gap: 8,
               alignItems: "center",
+              padding: "4px 9px",
+              gap: 6,
             }}
           >
-            {/* Severity pills */}
-            <div
-              style={{
-                display: "inline-flex",
-                alignItems: "center",
-                gap: 6,
-                padding: "3px 4px",
-                borderRadius: 999,
-                background: "rgba(15,23,42,0.9)",
-                border: "1px solid rgba(51,65,85,0.9)",
-              }}
-            >
-              {["All", "Critical", "High", "Medium", "Low"].map((sev) => {
-                const active = severityFilter === sev;
-                return (
-                  <button
-                    key={sev}
-                    onClick={() => setSeverityFilter(sev)}
-                    style={{
-                      borderRadius: 999,
-                      border: "none",
-                      padding: "4px 9px",
-                      fontSize: 11,
-                      cursor: "pointer",
-                      background: active
-                        ? "radial-gradient(circle at top,#f97316,#ea580c,#7c2d12)"
-                        : "transparent",
-                      color: active ? "#fffbeb" : "#cbd5f5",
-                    }}
-                  >
-                    {sev}
-                  </button>
-                );
-              })}
-            </div>
-
-            {/* Status filter */}
-            <div
-              style={{
-                display: "inline-flex",
-                alignItems: "center",
-                gap: 6,
-                padding: "3px 4px",
-                borderRadius: 999,
-                background: "rgba(15,23,42,0.9)",
-                border: "1px solid rgba(51,65,85,0.9)",
-              }}
-            >
-              {["Open", "All"].map((st) => {
-                const active = statusFilter === st;
-                return (
-                  <button
-                    key={st}
-                    onClick={() => setStatusFilter(st)}
-                    style={{
-                      borderRadius: 999,
-                      border: "none",
-                      padding: "4px 9px",
-                      fontSize: 11,
-                      cursor: "pointer",
-                      background: active
-                        ? "radial-gradient(circle at top,#22c55e,#16a34a,#14532d)"
-                        : "transparent",
-                      color: active ? "#ecfdf5" : "#cbd5f5",
-                    }}
-                  >
-                    {st}
-                  </button>
-                );
-              })}
-            </div>
-          </div>
-
-          <div
-            style={{
-              display: "flex",
-              gap: 8,
-              alignItems: "center",
-              flexWrap: "wrap",
-            }}
-          >
-            {/* Type filter */}
-            <select
-              value={typeFilter}
-              onChange={(e) => setTypeFilter(e.target.value)}
-              style={{
-                borderRadius: 999,
-                padding: "6px 10px",
-                border: "1px solid rgba(51,65,85,0.9)",
-                background: "rgba(15,23,42,0.96)",
-                color: "#e5e7eb",
-                fontSize: 12,
-                outline: "none",
-                minWidth: 130,
-              }}
-            >
-              <option value="All">All types</option>
-              <option value="Coverage">Coverage</option>
-              <option value="Endorsement">Endorsement</option>
-              <option value="Document">Document</option>
-              <option value="Info">Info</option>
-            </select>
-
-            {/* Search */}
-            <div
+            <span style={{ color: "#6b7280", fontSize: 12 }}>🔍</span>
+            <input
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="Search all alerts…"
               style={{
                 flex: 1,
-                minWidth: 140,
-                display: "flex",
-                alignItems: "center",
-                gap: 6,
-                padding: "4px 9px",
-                borderRadius: 999,
-                border: "1px solid rgba(51,65,85,0.9)",
-                background: "rgba(15,23,42,0.95)",
+                border: "none",
+                outline: "none",
+                background: "transparent",
+                color: "#e5e7eb",
+                fontSize: 12,
               }}
-            >
-              <span style={{ fontSize: 13, color: "#6b7280" }}>🔍</span>
-              <input
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-                placeholder="Search vendors, alerts, rules, requirements…"
-                style={{
-                  flex: 1,
-                  border: "none",
-                  outline: "none",
-                  background: "transparent",
-                  color: "#e5e7eb",
-                  fontSize: 12,
-                }}
-              />
-            </div>
+            />
           </div>
-
-          <div
-            style={{
-              fontSize: 10,
-              color: "#6b7280",
-            }}
-          >
-            Tip: Later we can add quick filters for{" "}
-            <span style={{ color: "#e5e7eb" }}>“Rule engine only”</span>,{" "}
-            <span style={{ color: "#e5e7eb" }}>“Requirements only”</span>, or{" "}
-            <span style={{ color: "#e5e7eb" }}>“AI low confidence issues”</span>
-            .
-          </div>
-        </div>
-      </div>
-
-      {/* MAIN GRID: TIMELINE + SNAPSHOTS */}
-      <div
-        style={{
-          display: "grid",
-          gridTemplateColumns: "minmax(0,2.1fr) minmax(0,1.4fr)",
-          gap: 18,
-          alignItems: "flex-start",
-        }}
-      >
-        {/* LEFT — TIMELINE */}
-        <div
-          style={{
-            borderRadius: 24,
-            padding: 14,
-            background:
-              "radial-gradient(circle at top left,rgba(15,23,42,0.97),rgba(15,23,42,0.92))",
-            border: "1px solid rgba(148,163,184,0.6)",
-            boxShadow: "0 24px 60px rgba(15,23,42,0.98)",
-          }}
-        >
-          <div
-            style={{
-              display: "flex",
-              alignItems: "baseline",
-              justifyContent: "space-between",
-              gap: 8,
-              marginBottom: 8,
-            }}
-          >
-            <div>
-              <div
-                style={{
-                  fontSize: 11,
-                  textTransform: "uppercase",
-                  letterSpacing: 1.2,
-                  color: "#9ca3af",
-                  marginBottom: 4,
-                }}
-              >
-                Alerts timeline
-              </div>
-              <div
-                style={{
-                  fontSize: 13,
-                  color: "#e5e7eb",
-                }}
-              >
-                Brighter, higher cards = more urgent issues to clear.
-              </div>
-            </div>
-            <div
-              style={{
-                fontSize: 11,
-                color: "#6b7280",
-              }}
-            >
-              Showing {filteredAlerts.length} of {initialAlerts.length}
-            </div>
-          </div>
-
-          <div
-            style={{
-              marginTop: 8,
-            }}
-          >
-            {filteredAlerts.length === 0 ? (
-              <div
-                style={{
-                  padding: "16px 14px",
-                  borderRadius: 18,
-                  border: "1px dashed rgba(75,85,99,0.9)",
-                  fontSize: 12,
-                  color: "#9ca3af",
-                }}
-              >
-                No alerts match your filters. Try widening your severity or
-                status selections.
-              </div>
-            ) : (
-              <div
-                style={{
-                  display: "flex",
-                  flexDirection: "column",
-                  gap: 10,
-                }}
-              >
-                {filteredAlerts.map((alert, index) => (
-                  <AlertTimelineCard
-                    key={alert.id}
-                    alert={alert}
-                    index={index}
-                    canEdit={canEdit}
-                  />
-                ))}
-              </div>
-            )}
-          </div>
-        </div>
-
-        {/* RIGHT — SNAPSHOTS / HEAT / SUMMARY */}
-        <div
-          style={{
-            display: "flex",
-            flexDirection: "column",
-            gap: 14,
-          }}
-        >
-          <RiskPulsePanel alerts={initialAlerts} />
-          <WhereAlertsFromPanel alerts={initialAlerts} />
-          <SelectedAlertHintPanel alerts={initialAlerts} />
         </div>
       </div>
     </div>
@@ -720,63 +468,94 @@ export default function AlertsPage() {
 }
 
 /* ===========================
-   SUBCOMPONENTS
+   METRIC PANEL (4 KPIs)
+=========================== */
+
+function MetricPanel({ metrics }) {
+  return (
+    <div
+      style={{
+        borderRadius: 22,
+        padding: 16,
+        background:
+          "radial-gradient(circle at top left,rgba(15,23,42,0.96),rgba(15,23,42,0.92))",
+        border: "1px solid rgba(148,163,184,0.55)",
+        boxShadow:
+          "0 25px 65px rgba(0,0,0,0.55), 0 0 25px rgba(248,113,113,0.25) inset",
+        display: "grid",
+        gridTemplateColumns: "repeat(4,minmax(0,1fr))",
+        gap: 12,
+      }}
+    >
+      <MetricCard label="Critical" value={metrics.critical} tone="critical" />
+      <MetricCard label="Warning" value={metrics.warning} tone="warning" />
+      <MetricCard label="Info" value={metrics.info} tone="info" />
+      <MetricCard label="Total" value={metrics.total} tone="total" />
+    </div>
+  );
+}
+
+/* ===========================
+   SINGLE METRIC CARD
 =========================== */
 
 function MetricCard({ label, value, tone }) {
-  let border, bg, text;
-  switch (tone) {
-    case "critical":
-      border = "rgba(248,113,113,0.85)";
-      bg = "rgba(127,29,29,0.9)";
-      text = "#fecaca";
-      break;
-    case "warning":
-      border = "rgba(234,179,8,0.85)";
-      bg = "rgba(113,63,18,0.9)";
-      text = "#fef9c3";
-      break;
-    case "info":
-      border = "rgba(56,189,248,0.85)";
-      bg = "rgba(15,23,42,0.9)";
-      text = "#e0f2fe";
-      break;
-    case "total":
-    default:
-      border = "rgba(148,163,184,0.85)";
-      bg = "rgba(15,23,42,0.9)";
-      text = "#e5e7eb";
-  }
+  const palette = {
+    critical: {
+      border: "rgba(248,113,113,0.85)",
+      bg: "rgba(127,29,29,0.85)",
+      text: "#fecaca",
+    },
+    warning: {
+      border: "rgba(250,204,21,0.85)",
+      bg: "rgba(113,63,18,0.85)",
+      text: "#fef9c3",
+    },
+    info: {
+      border: "rgba(56,189,248,0.85)",
+      bg: "rgba(15,23,42,0.85)",
+      text: "#e0f2fe",
+    },
+    total: {
+      border: "rgba(148,163,184,0.85)",
+      bg: "rgba(15,23,42,0.85)",
+      text: "#e5e7eb",
+    },
+  }[tone];
 
   return (
     <div
       style={{
         borderRadius: 18,
-        padding: "12px 10px",
-        border: `1px solid ${border}`,
-        background: bg,
-        boxShadow: "0 16px 40px rgba(15,23,42,0.95)",
+        padding: "14px 12px",
+        border: `1px solid ${palette.border}`,
+        background: palette.bg,
+        color: palette.text,
+        boxShadow:
+          "0 20px 55px rgba(15,23,42,0.85), 0 0 15px rgba(255,255,255,0.08) inset",
         display: "flex",
         flexDirection: "column",
+        justifyContent: "center",
         gap: 4,
-        minHeight: 72,
+        minHeight: 88,
       }}
     >
       <div
         style={{
           fontSize: 11,
-          color: "#cbd5f5",
           textTransform: "uppercase",
-          letterSpacing: 1,
+          letterSpacing: 1.1,
+          color: "#cbd5f5",
         }}
       >
         {label}
       </div>
+
       <div
         style={{
-          fontSize: 22,
+          fontSize: 26,
           fontWeight: 600,
-          color: text,
+          color: palette.text,
         }}
       >
         {value}
@@ -785,45 +564,205 @@ function MetricCard({ label, value, tone }) {
   );
 }
 
-function AlertTimelineCard({ alert, index, canEdit }) {
-  const meta = severityChipMeta(alert.severity);
-  const isCritical = alert.severity === "Critical";
-  const isHigh = alert.severity === "High";
+/* ===========================
+   FILTER PILL GROUP
+=========================== */
+
+function FilterPillGroup({ options, active, onSelect, palette }) {
+  const colors = {
+    severity: {
+      Critical: "#f97316",
+      High: "#facc15",
+      Medium: "#38bdf8",
+      Low: "#34d399",
+      All: "#cbd5f5",
+    },
+    status: {
+      Open: "#22c55e",
+      All: "#cbd5f5",
+    },
+  }[palette];
+
+  return (
+    <div
+      style={{
+        display: "inline-flex",
+        alignItems: "center",
+        gap: 6,
+        padding: "3px 4px",
+        borderRadius: 999,
+        background: "rgba(15,23,42,0.9)",
+        border: "1px solid rgba(51,65,85,0.9)",
+      }}
+    >
+      {options.map((opt) => {
+        const isActive = active === opt;
+
+        return (
+          <button
+            key={opt}
+            onClick={() => onSelect(opt)}
+            style={{
+              borderRadius: 999,
+              border: "none",
+              padding: "5px 10px",
+              fontSize: 11,
+              cursor: "pointer",
+              background: isActive
+                ? `radial-gradient(circle at top, ${colors[opt]}AA, ${colors[opt]}44, #0f172a)`
+                : "transparent",
+              color: isActive ? "#ffffff" : "#cbd5f5",
+              transition: "0.2s ease",
+            }}
+          >
+            {opt}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+/* ===========================
+   MAIN GRID WRAPPER
+=========================== */
+
+function MainGrid({ filtered, allAlerts, canEdit }) {
+  return (
+    <div
+      style={{
+        display: "grid",
+        gridTemplateColumns: "minmax(0,2.1fr) minmax(0,1.4fr)",
+        gap: 20,
+        alignItems: "flex-start",
+        marginBottom: 50,
+      }}
+    >
+      <TimelinePanel filtered={filtered} canEdit={canEdit} />
+
+      <div
+        style={{
+          display: "flex",
+          flexDirection: "column",
+          gap: 16,
+        }}
+      >
+        <RiskPulsePanel alerts={allAlerts} />
+        <WhereAlertsFromPanel alerts={allAlerts} />
+        <SelectedAlertHintPanel alerts={allAlerts} />
+      </div>
+    </div>
+  );
+}
+
+/* ===========================
+   TIMELINE PANEL
+=========================== */
+
+function TimelinePanel({ filtered, canEdit }) {
+  return (
+    <div
+      style={{
+        borderRadius: 24,
+        padding: 16,
+        background:
+          "radial-gradient(circle at top left,rgba(15,23,42,0.97),rgba(15,23,42,0.92))",
+        border: "1px solid rgba(148,163,184,0.6)",
+        boxShadow: "0 24px 60px rgba(15,23,42,0.98)",
+      }}
+    >
+      {/* HEADER */}
+      <div
+        style={{
+          display: "flex",
+          justifyContent: "space-between",
+          marginBottom: 12,
+        }}
+      >
+        <div>
+          <div
+            style={{
+              fontSize: 11,
+              textTransform: "uppercase",
+              color: "#9ca3af",
+              marginBottom: 4,
+            }}
+          >
+            Alerts Timeline
+          </div>
+          <div style={{ fontSize: 13, color: "#e5e7eb" }}>
+            Brighter, higher cards = more urgent issues.
+          </div>
+        </div>
+        <div style={{ fontSize: 11, color: "#6b7280" }}>
+          Showing {filtered.length}
+        </div>
+      </div>
+
+      {/* TIMELINE FEED */}
+      <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+        {filtered.map((a, idx) => (
+          <AlertCard key={a.id} alert={a} index={idx} canEdit={canEdit} />
+        ))}
+      </div>
+    </div>
+  );
+}
+
+/* ===========================
+   INDIVIDUAL ALERT CARD
+=========================== */
+
+function AlertCard({ alert, index, canEdit }) {
+  const meta = {
+    Critical: {
+      dot: "#f97316",
+      bg: "rgba(127,29,29,0.95)",
+      glow: "0 20px 50px rgba(248,113,113,0.4)",
+    },
+    High: {
+      dot: "#facc15",
+      bg: "rgba(113,63,18,0.95)",
+      glow: "0 18px 45px rgba(250,204,21,0.3)",
+    },
+    Medium: {
+      dot: "#38bdf8",
+      bg: "rgba(15,23,42,0.95)",
+      glow: "0 14px 35px rgba(56,189,248,0.3)",
+    },
+    Low: {
+      dot: "#34d399",
+      bg: "rgba(15,23,42,0.95)",
+      glow: "0 14px 35px rgba(52,211,153,0.25)",
+    },
+  }[alert.severity];
 
   return (
     <div
       style={{
         position: "relative",
-        padding: 11,
-        borderRadius: 18,
+        padding: 14,
+        borderRadius: 20,
         background:
-          "radial-gradient(circle at top left,rgba(15,23,42,0.98),rgba(15,23,42,0.92))",
-        border: `1px solid ${meta.border}`,
-        boxShadow: isCritical
-          ? "0 20px 50px rgba(248,113,113,0.4)"
-          : isHigh
-          ? "0 18px 45px rgba(250,204,21,0.3)"
-          : "0 14px 35px rgba(15,23,42,0.95)",
+          "radial-gradient(circle at top left,rgba(15,23,42,0.99),rgba(15,23,42,0.94))",
+        border: `1px solid ${meta.dot}55`,
+        boxShadow: meta.glow,
         display: "grid",
-        gridTemplateColumns: "18px minmax(0,1fr)",
-        gap: 10,
-        overflow: "hidden",
+        gridTemplateColumns: "22px minmax(0,1fr)",
+        gap: 12,
       }}
     >
-      {/* timeline spine */}
+      {/* TIMELINE SPINE */}
       <div
         style={{
-          position: "relative",
           display: "flex",
           flexDirection: "column",
           alignItems: "center",
-          paddingTop: index === 0 ? 4 : 0,
         }}
       >
         <div
           style={{
-            width: 6,
-            height: 6,
+            width: 8,
+            height: 8,
             borderRadius: 999,
             background: meta.dot,
             boxShadow: `0 0 10px ${meta.dot}`,
@@ -840,182 +779,77 @@ function AlertTimelineCard({ alert, index, canEdit }) {
         />
       </div>
 
-      {/* content */}
-      <div
-        style={{
-          position: "relative",
-          zIndex: 1,
-          display: "flex",
-          flexDirection: "column",
-          gap: 6,
-        }}
-      >
-        {/* top row */}
+      {/* CONTENT */}
+      <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+        {/* TITLE + TIMESTAMP */}
         <div
           style={{
             display: "flex",
             justifyContent: "space-between",
-            gap: 8,
           }}
         >
-          <div style={{ minWidth: 0 }}>
+          <div>
             <div
               style={{
-                display: "flex",
-                alignItems: "center",
-                gap: 8,
+                fontSize: 13,
+                fontWeight: 500,
+                color: "#e5e7eb",
                 marginBottom: 2,
               }}
             >
-              <div
-                style={{
-                  fontSize: 13,
-                  fontWeight: 500,
-                  color: "#e5e7eb",
-                  whiteSpace: "nowrap",
-                  textOverflow: "ellipsis",
-                  overflow: "hidden",
-                }}
-              >
-                {alert.title}
-              </div>
-              <span
-                style={{
-                  fontSize: 11,
-                  color: "#9ca3af",
-                  whiteSpace: "nowrap",
-                }}
-              >
-                {formatRelative(alert.createdAt)}
-              </span>
+              {alert.title}
             </div>
-            <div
-              style={{
-                fontSize: 11,
-                color: "#9ca3af",
-              }}
-            >
+            <div style={{ fontSize: 11, color: "#9ca3af" }}>
               {alert.message}
             </div>
           </div>
 
-          <div
-            style={{
-              display: "flex",
-              flexDirection: "column",
-              alignItems: "flex-end",
-              gap: 4,
-              flexShrink: 0,
-            }}
-          >
-            <SeverityPill severity={alert.severity} />
-            <div
-              style={{
-                fontSize: 10,
-                color: "#6b7280",
-              }}
-            >
-              {alert.status} · {alert.type}
-            </div>
+          {/* TOP RIGHT BADGE */}
+          <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+            <SeverityBadge severity={alert.severity} />
+            <span style={{ fontSize: 10, color: "#6b7280" }}>
+              {alert.status} · {formatRelative(alert.createdAt)}
+            </span>
           </div>
         </div>
 
-        {/* vendor + rule row */}
+        {/* VENDOR + RULE */}
         <div
           style={{
             display: "flex",
             justifyContent: "space-between",
-            gap: 8,
-            alignItems: "center",
-            flexWrap: "wrap",
+            fontSize: 11,
+            color: "#9ca3af",
           }}
         >
-          <div
-            style={{
-              display: "flex",
-              flexDirection: "column",
-              gap: 3,
-              fontSize: 11,
-            }}
-          >
-            <div
-              style={{
-                color: "#e5e7eb",
-              }}
-            >
-              {alert.vendorName}
-            </div>
-            <div
-              style={{
-                color: "#9ca3af",
-              }}
-            >
-              {alert.vendorTagline}
-            </div>
+          <div>
+            <div style={{ color: "#e5e7eb" }}>{alert.vendorName}</div>
+            <div>{alert.vendorTagline}</div>
           </div>
 
-          <div
-            style={{
-              fontSize: 10,
-              color: "#9ca3af",
-              textAlign: "right",
-            }}
-          >
+          <div style={{ textAlign: "right" }}>
             Rule:{" "}
-            <span
-              style={{
-                color: "#e5e7eb",
-              }}
-            >
-              {alert.ruleLabel}
-            </span>
+            <span style={{ color: "#e5e7eb" }}>{alert.ruleLabel}</span>
             <br />
             Field:{" "}
-            <span
-              style={{
-                color: "#e5e7eb",
-              }}
-            >
-              {alert.field}
-            </span>
+            <span style={{ color: "#e5e7eb" }}>{alert.field}</span>
           </div>
         </div>
 
-        {/* footer buttons */}
+        {/* FOOTER BUTTONS */}
         <div
           style={{
             display: "flex",
             justifyContent: "space-between",
-            alignItems: "center",
-            gap: 8,
             marginTop: 4,
           }}
         >
-          <div
-            style={{
-              fontSize: 10,
-              color: "#6b7280",
-            }}
-          >
-            Source:{" "}
-            <span
-              style={{
-                color: "#e5e7eb",
-              }}
-            >
-              {alert.source}
-            </span>
-            {" · "}
-            Created {formatDateTime(alert.createdAt)}
-          </div>
-          <div
-            style={{
-              display: "flex",
-              gap: 6,
-            }}
-          >
+          <span style={{ fontSize: 10, color: "#6b7280" }}>
+            Source: {alert.source} · {formatDate(alert.createdAt)}
+          </span>
+
+          <div style={{ display: "flex", gap: 6 }}>
             <button
-              disabled={!canEdit}
               style={{
                 borderRadius: 999,
                 padding: "3px 8px",
@@ -1023,23 +857,21 @@ function AlertTimelineCard({ alert, index, canEdit }) {
                 background: "rgba(15,23,42,0.96)",
                 color: "#e5e7eb",
                 fontSize: 10,
-                cursor: canEdit ? "pointer" : "not-allowed",
               }}
             >
               View vendor
             </button>
+
             <button
-              disabled={!canEdit}
               style={{
                 borderRadius: 999,
                 padding: "3px 8px",
-                border: "1px solid rgba(34,197,94,0.9)",
+                border: "1px solid rgba(22,163,74,0.9)",
                 background:
-                  "radial-gradient(circle at top left,#22c55e,#16a34a,#14532d)",
+                  "radial-gradient(circle at top,#22c55e,#16a34a,#14532d)",
                 color: "#ecfdf5",
                 fontSize: 10,
-                cursor: canEdit ? "pointer" : "not-allowed",
-                opacity: canEdit ? 1 : 0.6,
+                opacity: canEdit ? 1 : 0.5,
               }}
             >
               Resolve
@@ -1051,62 +883,69 @@ function AlertTimelineCard({ alert, index, canEdit }) {
   );
 }
 
-function SeverityPill({ severity }) {
-  const meta = severityChipMeta(severity);
+/* ===========================
+   SEVERITY BADGE (INLINE)
+=========================== */
+
+function SeverityBadge({ severity }) {
+  const palette = {
+    Critical: ["#f97316", "#fecaca"],
+    High: ["#facc15", "#fef9c3"],
+    Medium: ["#38bdf8", "#e0f2fe"],
+    Low: ["#34d399", "#ccfbf1"],
+  }[severity];
+
   return (
     <div
       style={{
+        padding: "3px 8px",
+        borderRadius: 999,
         display: "inline-flex",
         alignItems: "center",
         gap: 6,
-        padding: "2px 7px",
-        borderRadius: 999,
-        background: meta.bg,
-        border: `1px solid ${meta.border}`,
+        background: `${palette[0]}22`,
+        border: `1px solid ${palette[0]}`,
       }}
     >
-      <span
+      <div
         style={{
-          width: 7,
-          height: 7,
+          width: 6,
+          height: 6,
           borderRadius: 999,
-          background: meta.dot,
-          boxShadow: `0 0 12px ${meta.dot}`,
+          background: palette[0],
+          boxShadow: `0 0 12px ${palette[0]}`,
         }}
       />
+
       <span
         style={{
           fontSize: 10,
-          color: meta.text,
-          textTransform: "uppercase",
+          color: palette[1],
           letterSpacing: 0.8,
+          textTransform: "uppercase",
         }}
       >
-        {meta.label}
+        {severity}
       </span>
     </div>
   );
 }
-
 /* ===========================
-   RIGHT-SIDE PANELS
+   RIGHT PANEL — RISK PULSE
 =========================== */
 
 function RiskPulsePanel({ alerts }) {
-  const openCount = alerts.filter((a) => a.status === "Open").length;
-  const criticalCount = alerts.filter((a) => a.severity === "Critical").length;
-  const highCount = alerts.filter((a) => a.severity === "High").length;
+  const open = alerts.length;
+  const critical = alerts.filter((a) => a.severity === "Critical").length;
+  const high = alerts.filter((a) => a.severity === "High").length;
 
-  const riskScore = Math.min(
-    100,
-    criticalCount * 25 + highCount * 10 + openCount * 3 + 20
-  );
+  const riskScore = Math.min(100, critical * 30 + high * 10 + open * 3 + 20);
 
   return (
     <div
       style={{
         borderRadius: 22,
-        padding: 12,
+        padding: 16,
         background:
           "radial-gradient(circle at top right,rgba(15,23,42,0.96),rgba(15,23,42,1))",
         border: "1px solid rgba(148,163,184,0.55)",
@@ -1116,45 +955,27 @@ function RiskPulsePanel({ alerts }) {
       <div
         style={{
           fontSize: 11,
-          textTransform: "uppercase",
           letterSpacing: 1.2,
+          textTransform: "uppercase",
           color: "#9ca3af",
           marginBottom: 4,
         }}
       >
-        Live risk snapshot
-      </div>
-      <div
-        style={{
-          fontSize: 13,
-          color: "#e5e7eb",
-          marginBottom: 8,
-        }}
-      >
-        {openCount} open alerts · {criticalCount} critical · {highCount} high
+        Live Risk Snapshot
       </div>
 
-      <div
-        style={{
-          marginBottom: 4,
-          fontSize: 11,
-          color: "#9ca3af",
-          display: "flex",
-          justifyContent: "space-between",
-          gap: 8,
-        }}
-      >
-        <span>Risk pulse (last 7 days)</span>
-        <span>{riskScore}/100</span>
+      <div style={{ fontSize: 13, color: "#e5e7eb", marginBottom: 10 }}>
+        {open} open alerts · {critical} critical · {high} high
       </div>
 
+      {/* Animated Risk Pulse Bar */}
       <div
         style={{
+          height: 8,
           width: "100%",
-          height: 7,
           borderRadius: 999,
-          background: "rgba(15,23,42,1)",
           overflow: "hidden",
+          background: "#0f172a",
           border: "1px solid rgba(30,64,175,0.9)",
           marginBottom: 10,
         }}
@@ -1165,64 +986,56 @@ function RiskPulsePanel({ alerts }) {
             height: "100%",
             background:
               "linear-gradient(90deg,#22c55e,#eab308,#fb7185,#ef4444)",
-            boxShadow: "0 0 18px rgba(248,113,113,0.7)",
+            animation: "pulseShift 4s infinite linear",
           }}
         />
       </div>
 
-      {/* Simple "heatmap" blocks */}
+      <style>{`
+        @keyframes pulseShift {
+          0% { filter: brightness(1); }
+          50% { filter: brightness(1.25); }
+          100% { filter: brightness(1); }
+        }
+      `}</style>
+
+      {/* Heat bricks */}
       <div
         style={{
           display: "grid",
           gridTemplateColumns: "repeat(7, minmax(0,1fr))",
-          gap: 3,
-          marginBottom: 4,
+          gap: 4,
         }}
       >
         {new Array(14).fill(0).map((_, i) => {
           const level =
-            i < criticalCount
-              ? 3
-              : i < criticalCount + highCount
-              ? 2
-              : i < openCount
-              ? 1
-              : 0;
-          const bg =
-            level === 3
+            i < critical * 2
               ? "#fb7185"
-              : level === 2
+              : i < critical * 2 + high * 2
               ? "#facc15"
-              : level === 1
-              ? "#22c55e"
-              : "rgba(15,23,42,1)";
-          const op = level === 0 ? 0.35 : 0.9;
+              : "#22c55e";
+          const op =
+            i < critical * 2 + high * 2 ? 0.9 : 0.35;
           return (
             <div
               key={i}
               style={{
-                height: 12,
-                borderRadius: 3,
-                background: bg,
+                height: 14,
+                borderRadius: 4,
+                background: level,
                 opacity: op,
               }}
             />
           );
         })}
       </div>
-
-      <div
-        style={{
-          fontSize: 10,
-          color: "#6b7280",
-        }}
-      >
-        Brighter cells = more alerts fired in that window. It&apos;s your risk
-        heatmap at a glance.
-      </div>
     </div>
   );
 }
+
+/* ===========================
+   WHERE ALERTS COME FROM
+=========================== */
 
 function WhereAlertsFromPanel({ alerts }) {
   const coverage = alerts.filter((a) => a.type === "Coverage").length;
@@ -1234,9 +1047,9 @@ function WhereAlertsFromPanel({ alerts }) {
     <div
       style={{
         borderRadius: 22,
-        padding: 12,
+        padding: 16,
         background:
-          "radial-gradient(circle at top right,rgba(15,23,42,0.97),rgba(15,23,42,1))",
+          "radial-gradient(circle at top right,rgba(15,23,42,0.96),rgba(15,23,42,1))",
         border: "1px solid rgba(148,163,184,0.55)",
         boxShadow: "0 22px 55px rgba(15,23,42,0.98)",
       }}
@@ -1245,74 +1058,64 @@ function WhereAlertsFromPanel({ alerts }) {
         style={{
           fontSize: 11,
           textTransform: "uppercase",
-          letterSpacing: 1.2,
           color: "#9ca3af",
-          marginBottom: 6,
+          marginBottom: 8,
         }}
       >
-        Where alerts are coming from
+        Where Alerts Are Coming From
       </div>
+
       <div
         style={{
           display: "grid",
           gridTemplateColumns: "repeat(2,minmax(0,1fr))",
-          gap: 8,
-          fontSize: 11,
+          gap: 10,
         }}
       >
-        <AlertSourceRow label="Coverage" count={coverage} />
-        <AlertSourceRow label="Endorsements" count={endorsements} />
-        <AlertSourceRow label="Documents" count={documents} />
-        <AlertSourceRow label="Info / other" count={info} />
+        <SourceCard label="Coverage" value={coverage} />
+        <SourceCard label="Endorsements" value={endorsements} />
+        <SourceCard label="Documents" value={documents} />
+        <SourceCard label="Info / Other" value={info} />
       </div>
     </div>
   );
 }
 
-function AlertSourceRow({ label, count }) {
+function SourceCard({ label, value }) {
   return (
     <div
       style={{
-        borderRadius: 14,
-        padding: "7px 9px",
-        border: "1px solid rgba(51,65,85,0.9)",
-        background: "rgba(15,23,42,0.96)",
+        borderRadius: 16,
+        padding: "10px 12px",
+        border: "1px solid rgba(75,85,99,0.9)",
+        background: "rgba(15,23,42,0.95)",
         display: "flex",
         justifyContent: "space-between",
-        gap: 8,
-        alignItems: "center",
+        fontSize: 12,
+        color: "#e5e7eb",
       }}
     >
-      <span
-        style={{
-          color: "#e5e7eb",
-        }}
-      >
-        {label}
-      </span>
-      <span
-        style={{
-          color: "#9ca3af",
-        }}
-      >
-        {count} open
-      </span>
+      <span>{label}</span>
+      <span style={{ color: "#9ca3af" }}>{value} open</span>
     </div>
   );
 }
 
-function SelectedAlertHintPanel({ alerts }) {
-  const critical = alerts.find((a) => a.severity === "Critical") || alerts[0];
+/* ===========================
+   SELECTED ALERT EXAMPLE
+=========================== */
 
-  if (!critical) return null;
+function SelectedAlertHintPanel({ alerts }) {
+  const picked = alerts[0];
+  if (!picked) return null;
 
   return (
     <div
       style={{
         borderRadius: 22,
-        padding: 12,
+        padding: 16,
         background:
-          "radial-gradient(circle at top right,rgba(15,23,42,0.97),rgba(15,23,42,1))",
+          "radial-gradient(circle at top right,rgba(15,23,42,0.96),rgba(15,23,42,1))",
         border: "1px solid rgba(148,163,184,0.55)",
         boxShadow: "0 22px 55px rgba(15,23,42,0.98)",
       }}
@@ -1321,41 +1124,37 @@ function SelectedAlertHintPanel({ alerts }) {
         style={{
           fontSize: 11,
           textTransform: "uppercase",
-          letterSpacing: 1.2,
-          color: "#9ca3af",
-          marginBottom: 6,
-        }}
-      >
-        Example alert as seen by finance / risk
-      </div>
-      <div
-        style={{
-          fontSize: 12,
-          color: "#e5e7eb",
-          marginBottom: 4,
-        }}
-      >
-        {critical.title}
-      </div>
-      <div
-        style={{
-          fontSize: 11,
-          color: "#9ca3af",
           marginBottom: 8,
+          color: "#9ca3af",
         }}
       >
-        {critical.message}
+        Example Alert Seen by Finance / Risk
       </div>
-      <div
-        style={{
-          fontSize: 10,
-          color: "#6b7280",
-        }}
-      >
-        This is the narrative your finance or risk team will see when this alert
-        shows up in their queue or email summaries.
+
+      <div style={{ fontSize: 13, color: "#e5e7eb", marginBottom: 6 }}>
+        {picked.title}
+      </div>
+
+      <div style={{ fontSize: 11, color: "#9ca3af", marginBottom: 8 }}>
+        {picked.message}
+      </div>
+
+      <div style={{ fontSize: 10, color: "#6b7280" }}>
+        This is a preview of the narrative your finance or risk team will see
+        when this alert appears in summaries.
       </div>
     </div>
   );
 }
+/* ===========================
+   END OF FILE — SAFE CLOSE
+=========================== */
+
+// No additional exports needed.
+// AlertsPage is the default export at the top.
+// All subcomponents live inside this file.
+
+//
+// File ends here.
+//
 
