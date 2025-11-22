@@ -1,4 +1,4 @@
-// pages/api/vendor-upload.js
+// pages/api/upload-coi.js
 
 export const config = {
   api: {
@@ -11,6 +11,29 @@ import fs from "fs";
 import pdfParse from "pdf-parse";
 import { Client } from "pg";
 import OpenAI from "openai";
+import { createClient } from "@supabase/supabase-js";
+
+/* ===========================
+   SUPABASE SERVER CLIENT
+=========================== */
+
+const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+const supabaseServiceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+
+if (!supabaseUrl || !supabaseServiceRoleKey) {
+  console.warn(
+    "[upload-coi] Supabase env vars missing. File storage will be skipped."
+  );
+}
+
+const supabase =
+  supabaseUrl && supabaseServiceRoleKey
+    ? createClient(supabaseUrl, supabaseServiceRoleKey)
+    : null;
+
+/* ===========================
+   HELPERS
+=========================== */
 
 function parseExpiration(dateStr) {
   if (!dateStr) return null;
@@ -35,6 +58,10 @@ async function parseForm(req) {
   });
 }
 
+/* ===========================
+   MAIN HANDLER
+=========================== */
+
 export default async function handler(req, res) {
   if (req.method !== "POST") {
     return res.status(405).json({ ok: false, error: "Method not allowed" });
@@ -53,6 +80,7 @@ export default async function handler(req, res) {
       req.query.vendorId;
 
     const vendorId = parseInt(vendorIdParam, 10);
+
     if (!uploaded || Number.isNaN(vendorId)) {
       return res
         .status(400)
@@ -79,7 +107,7 @@ export default async function handler(req, res) {
 
     const vendor = vendorRes.rows[0];
 
-    // Read PDF
+    // Read PDF from temp path
     const buffer = fs.readFileSync(uploaded.filepath);
     const pdfData = await pdfParse(buffer);
 
@@ -89,7 +117,52 @@ export default async function handler(req, res) {
 
     const text = pdfData.text.slice(0, 20000);
 
-    // AI extraction
+    /* ===========================
+       SUPABASE STORAGE UPLOAD
+=========================== */
+
+    let fileUrl = null;
+
+    if (supabase) {
+      const originalName =
+        uploaded.originalFilename ||
+        uploaded.newFilename ||
+        uploaded.filepath.split("/").pop() ||
+        "coi.pdf";
+
+      const safeName = originalName.replace(/[^a-zA-Z0-9.\-_]/g, "_");
+
+      const storagePath = `orgs/${
+        vendor.org_id || "no-org"
+      }/vendors/${vendor.id}/${Date.now()}-${safeName}`;
+
+      const { error: uploadError } = await supabase.storage
+        .from("coi-files") // bucket name created in Supabase
+        .upload(storagePath, buffer, {
+          contentType: "application/pdf",
+          upsert: false,
+        });
+
+      if (uploadError) {
+        console.error("[upload-coi] Supabase upload error:", uploadError);
+        throw new Error("Supabase upload failed: " + uploadError.message);
+      }
+
+      const { data: publicUrlData } = supabase.storage
+        .from("coi-files")
+        .getPublicUrl(storagePath);
+
+      fileUrl = publicUrlData?.publicUrl || null;
+    } else {
+      console.warn(
+        "[upload-coi] Supabase client not configured — skipping file storage."
+      );
+    }
+
+    /* ===========================
+       AI EXTRACTION
+=========================== */
+
     const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
     const prompt = `
@@ -152,7 +225,11 @@ ${text}
       ? parseExpiration(parsed.expiration_date)
       : null;
 
-    // Insert policy
+    /* ===========================
+       INSERT POLICY RECORD
+       (No schema change yet; fileUrl returned in response)
+=========================== */
+
     const insertRes = await pgClient.query(
       `INSERT INTO public.policies
        (vendor_id, vendor_name, org_id, policy_number, carrier, effective_date, expiration_date, coverage_type, status)
@@ -179,6 +256,7 @@ ${text}
         id: vendor.id,
         name: vendor.name,
       },
+      fileUrl, // ← Supabase URL for Document Viewer V3
       extracted: {
         carrier,
         policy_number: policyNumber,
@@ -188,7 +266,7 @@ ${text}
       },
     });
   } catch (err) {
-    console.error("vendor-upload error:", err);
+    console.error("[upload-coi] error:", err);
     return res
       .status(500)
       .json({ ok: false, error: err.message || "Upload failed." });
