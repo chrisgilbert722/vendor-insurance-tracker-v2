@@ -351,7 +351,6 @@ function MetricsAndFilters({
     >
       <MetricPanel metrics={metrics} />
 
-      {/* Filters */}
       <div
         style={{
           borderRadius: 22,
@@ -365,7 +364,6 @@ function MetricsAndFilters({
           gap: 12,
         }}
       >
-        {/* Filters Title */}
         <div
           style={{
             fontSize: 11,
@@ -377,7 +375,6 @@ function MetricsAndFilters({
           Filters
         </div>
 
-        {/* Pills Row */}
         <div
           style={{
             display: "flex",
@@ -386,7 +383,6 @@ function MetricsAndFilters({
             alignItems: "center",
           }}
         >
-          {/* Severity Pills */}
           <FilterPillGroup
             options={["All", "Critical", "High", "Medium", "Low"]}
             active={severityFilter}
@@ -394,7 +390,6 @@ function MetricsAndFilters({
             palette="severity"
           />
 
-          {/* Status Pills */}
           <FilterPillGroup
             options={["Open", "All"]}
             active={statusFilter}
@@ -403,7 +398,6 @@ function MetricsAndFilters({
           />
         </div>
 
-        {/* Type + Search */}
         <div
           style={{
             display: "flex",
@@ -432,7 +426,6 @@ function MetricsAndFilters({
             <option value="Info">Info</option>
           </select>
 
-          {/* Search Box */}
           <div
             style={{
               flex: 1,
@@ -468,7 +461,7 @@ function MetricsAndFilters({
 }
 
 /* ===========================
-   METRIC PANEL (4 KPIs)
+   METRIC PANEL
 =========================== */
 
 function MetricPanel({ metrics }) {
@@ -609,7 +602,9 @@ function FilterPillGroup({ options, active, onSelect, palette }) {
               fontSize: 11,
               cursor: "pointer",
               background: isActive
-                ? `radial-gradient(circle at top, ${colors[opt]}AA, ${colors[opt]}44, #0f172a)`
+                ? `radial-gradient(circle at top, ${colors[opt]}AA, ${
+                    colors[opt]
+                  }44, #0f172a)`
                 : "transparent",
               color: isActive ? "#ffffff" : "#cbd5f5",
               transition: "0.2s ease",
@@ -622,6 +617,7 @@ function FilterPillGroup({ options, active, onSelect, palette }) {
     </div>
   );
 }
+
 /* ===========================
    MAIN GRID WRAPPER
 =========================== */
