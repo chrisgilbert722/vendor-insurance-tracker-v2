@@ -324,6 +324,7 @@ export default function AlertsPage() {
         search={search}
         setSearch={setSearch}
       />
+
 /* ===========================
    METRICS + FILTERS PANEL
 =========================== */
