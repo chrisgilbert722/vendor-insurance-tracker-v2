@@ -1,31 +1,22 @@
---- BEGIN FILE ---
-
 // pages/upload-coi.js
 import { useState } from "react";
 import { useOrg } from "../context/OrgContext";
 import { useRole } from "../lib/useRole";
-import { useRouter } from "next/router"; // needed for vendorId
+import { useRouter } from "next/router";
 
-// SINGLE delay() — FIXED
+// SINGLE delay() — required for animations
 function delay(ms) {
-  return new Promise(resolve => setTimeout(resolve, ms));
+  return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-/* ===========================
-   UPLOAD COI V3 — UI STATE
-=========================== */
-
+// UI step config
 const STEP_CONFIG = [
   { id: "upload", label: "Uploading file" },
   { id: "extract", label: "Extracting fields" },
   { id: "validate", label: "Validating coverage" },
   { id: "analyze", label: "Analyzing risk" },
-  { id: "done", label: "Complete" },
+  { id: "done", label: "Complete" }
 ];
-
-/* ===========================
-   MAIN PAGE COMPONENT
-=========================== */
 
 export default function UploadCOIPage() {
   const { orgId } = useOrg();
@@ -33,7 +24,7 @@ export default function UploadCOIPage() {
   const canUpload = isAdmin || isManager;
 
   const router = useRouter();
-  const vendorId = router.query.vendorId; // <-- get vendorId from URL (?vendorId=123)
+  const vendorId = router.query.vendorId;
 
   const [file, setFile] = useState(null);
   const [isDragging, setIsDragging] = useState(false);
@@ -42,52 +33,28 @@ export default function UploadCOIPage() {
   const [result, setResult] = useState(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
+  /* ---------------------
+        EVENT HANDLERS
+  ---------------------- */
+
   const handleFileChange = (e) => {
-    const f = e.target.files?.[0] || null;
-    setFile(f || null);
+    setFile(e.target.files?.[0] || null);
     setError("");
   };
 
   const handleDrop = (e) => {
     e.preventDefault();
-    e.stopPropagation();
     const f = e.dataTransfer.files?.[0];
-    if (f) {
-      setFile(f);
-      setError("");
-    }
-    setIsDragging(false);
-  };
-
-  const handleDragOver = (e) => {
-    e.preventDefault();
-    setIsDragging(true);
-  };
-
-  const handleDragLeave = (e) => {
-    e.preventDefault();
+    if (f) setFile(f);
     setIsDragging(false);
   };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
 
-    if (!file) {
-      setError("Attach a PDF COI file before uploading.");
-      return;
-    }
-
-    if (!canUpload) {
-      setError("You don’t have permission to upload COIs.");
-      return;
-    }
-
-    if (!vendorId) {
-      setError(
-        "Missing vendorId in URL. Open this page from a vendor profile or append ?vendorId=123."
-      );
-      return;
-    }
+    if (!file) return setError("Attach a PDF COI file.");
+    if (!canUpload) return setError("You do not have permission.");
+    if (!vendorId) return setError("Missing vendorId in the URL.");
 
     setIsSubmitting(true);
     setError("");
@@ -97,25 +64,24 @@ export default function UploadCOIPage() {
     try {
       const formData = new FormData();
       formData.append("file", file);
-      formData.append("vendorId", vendorId); // <-- send vendorId to API
+      formData.append("vendorId", vendorId);
 
       const res = await fetch("/api/upload-coi", {
         method: "POST",
-        body: formData,
+        body: formData
       });
 
       if (!res.ok) {
         const text = await res.text();
-        throw new Error(
-          `Upload failed (${res.status}) — ${text || "Check server logs."}`
-        );
+        throw new Error(text || "Upload failed");
       }
 
+      // UI pipeline simulation
       setActiveStep("extract");
-      await delay(800);
+      await delay(700);
 
       setActiveStep("validate");
-      await delay(800);
+      await delay(700);
 
       setActiveStep("analyze");
       const data = await res.json();
@@ -125,256 +91,110 @@ export default function UploadCOIPage() {
       setActiveStep("done");
     } catch (err) {
       console.error(err);
-      setError(
-        err?.message ||
-          "Something went wrong while uploading or analyzing this COI."
-      );
+      setError(err.message || "Upload error");
       setActiveStep(null);
     } finally {
       setIsSubmitting(false);
     }
   };
 
+  /* ---------------------
+        RENDER START
+  ---------------------- */
+
   return (
     <div
       style={{
         minHeight: "100vh",
-        position: "relative",
+        padding: "30px 40px 40px",
         background:
           "radial-gradient(circle at top left,#020617 0%, #020617 40%, #000 100%)",
-        padding: "30px 40px 40px",
         color: "#e5e7eb",
-        overflowX: "hidden",
+        position: "relative"
       }}
     >
-      {/* AURA */}
-      <div
-        style={{
-          position: "absolute",
-          top: -240,
-          left: "50%",
-          transform: "translateX(-50%)",
-          width: 1100,
-          height: 1100,
-          background:
-            "radial-gradient(circle, rgba(59,130,246,0.35), transparent 60%)",
-          filter: "blur(120px)",
-          pointerEvents: "none",
-          zIndex: 0,
-        }}
-      />
-
-      {/* HEADER */}
-      <div style={{ position: "relative", zIndex: 2 }}>
-        <div
-          style={{
-            display: "flex",
-            gap: 16,
-            alignItems: "center",
-            marginBottom: 18,
-          }}
-        >
-          <div
+      {/* PAGE HEADER */}
+      <div style={{ marginBottom: 24 }}>
+        <h1 style={{ fontSize: 28, marginBottom: 6 }}>
+          Upload COI{" "}
+          <span
             style={{
-              padding: 12,
-              borderRadius: 999,
-              background:
-                "radial-gradient(circle at 30% 0,#0ea5e9,#6366f1,#0f172a)",
-              boxShadow: "0 0 40px rgba(59,130,246,0.6)",
+              background: "linear-gradient(90deg,#38bdf8,#a5b4fc,#e5e7eb)",
+              WebkitBackgroundClip: "text",
+              color: "transparent"
             }}
           >
-            <span style={{ fontSize: 22 }}>📄</span>
-          </div>
+            (V3)
+          </span>
+        </h1>
 
-          <div>
-            <div
-              style={{
-                display: "inline-flex",
-                gap: 8,
-                padding: "4px 10px",
-                borderRadius: 999,
-                border: "1px solid rgba(148,163,184,0.4)",
-                background:
-                  "linear-gradient(120deg,rgba(15,23,42,0.9),rgba(15,23,42,0))",
-                marginBottom: 6,
-              }}
-            >
-              <span
-                style={{
-                  fontSize: 10,
-                  color: "#9ca3af",
-                  letterSpacing: 1.2,
-                  textTransform: "uppercase",
-                }}
-              >
-                Upload COI V3
-              </span>
-              <span
-                style={{
-                  fontSize: 10,
-                  color: "#38bdf8",
-                  letterSpacing: 1,
-                  textTransform: "uppercase",
-                }}
-              >
-                AI Processing Pipeline
-              </span>
-            </div>
-
-            <h1
-              style={{
-                margin: 0,
-                fontSize: 26,
-                fontWeight: 600,
-                letterSpacing: 0.2,
-              }}
-            >
-              Turn raw COIs into{" "}
-              <span
-                style={{
-                  background:
-                    "linear-gradient(90deg,#38bdf8,#a5b4fc,#e5e7eb)",
-                  WebkitBackgroundClip: "text",
-                  color: "transparent",
-                }}
-              >
-                structured risk data
-              </span>
-              .
-            </h1>
-
-            <p
-              style={{
-                marginTop: 6,
-                marginBottom: 0,
-                fontSize: 13,
-                color: "#cbd5f5",
-                maxWidth: 700,
-              }}
-            >
-              Drag & drop a certificate of insurance.  
-              We’ll ingest the PDF, extract coverage, limits, endorsements,  
-              and expirations — then flag what matters most.
-            </p>
-
-            <div
-              style={{
-                marginTop: 6,
-                fontSize: 11,
-                color: "#9ca3af",
-              }}
-            >
-              Vendor context:{" "}
-              <span style={{ color: "#e5e7eb" }}>
-                {vendorId ? `vendorId=${vendorId}` : "none (append ?vendorId=123)"}
-              </span>
-            </div>
-          </div>
+        <div style={{ fontSize: 12, color: "#9ca3af" }}>
+          Vendor context:{" "}
+          <span style={{ color: "#e5e7eb" }}>
+            {vendorId ? `vendorId=${vendorId}` : "none — append ?vendorId=123"}
+          </span>
         </div>
       </div>
 
       {/* MAIN GRID */}
       <div
         style={{
-          position: "relative",
-          zIndex: 2,
           display: "grid",
-          gridTemplateColumns: "minmax(0,2.1fr) minmax(0,1.4fr)",
-          gap: 20,
-          alignItems: "flex-start",
+          gridTemplateColumns: "minmax(0,2fr) minmax(0,1fr)",
+          gap: 24
         }}
       >
-
-        {/* LEFT PANEL — UPLOAD */}
+        {/* LEFT: Upload */}
         <div
           style={{
+            padding: 20,
             borderRadius: 24,
-            padding: 16,
-            background:
-              "radial-gradient(circle at top left,rgba(15,23,42,0.97),rgba(15,23,42,0.92))",
-            border: "1px solid rgba(148,163,184,0.6)",
-            boxShadow: "0 24px 60px rgba(15,23,42,0.98)",
-            display: "flex",
-            flexDirection: "column",
-            gap: 16,
+            background: "rgba(15,23,42,0.96)",
+            border: "1px solid rgba(148,163,184,0.5)"
           }}
         >
           <form onSubmit={handleSubmit}>
+            {/* DROPZONE */}
             <div
-              onDrop={handleDrop}
-              onDragOver={handleDragOver}
-              onDragLeave={handleDragLeave}
-              style={{
-                borderRadius: 18,
-                padding: 18,
-                border: `2px dashed ${isDragging ? "#38bdf8" : "rgba(75,85,99,0.9)"}`,
-                background: isDragging
-                  ? "rgba(56,189,248,0.08)"
-                  : "rgba(15,23,42,0.9)",
-                display: "flex",
-                flexDirection: "column",
-                alignItems: "center",
-                justifyContent: "center",
-                gap: 10,
-                cursor: "pointer",
-                transition: "border 0.2s ease, background 0.2s ease",
+              onDragOver={(e) => {
+                e.preventDefault();
+                setIsDragging(true);
               }}
+              onDragLeave={() => setIsDragging(false)}
+              onDrop={handleDrop}
               onClick={() => {
-                if (!canUpload) return;
-                const input = document.getElementById("coi-upload-input");
-                if (input) input.click();
+                if (canUpload) document.getElementById("coi-file").click();
+              }}
+              style={{
+                padding: 22,
+                borderRadius: 18,
+                border: `2px dashed ${
+                  isDragging ? "#38bdf8" : "rgba(75,85,99,0.9)"
+                }`,
+                background: isDragging
+                  ? "rgba(56,189,248,0.1)"
+                  : "rgba(15,23,42,0.9)",
+                textAlign: "center",
+                cursor: canUpload ? "pointer" : "not-allowed"
               }}
             >
-              <div
-                style={{
-                  width: 56,
-                  height: 56,
-                  borderRadius: "999px",
-                  background:
-                    "radial-gradient(circle at 30% 0,#38bdf8,#1d4ed8,#020617)",
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  boxShadow: "0 0 30px rgba(56,189,248,0.5)",
-                }}
-              >
-                <span style={{ fontSize: 26 }}>⬆️</span>
+              <div style={{ fontSize: 14, marginBottom: 6 }}>
+                {file ? file.name : "Drop COI PDF or click to browse"}
               </div>
-
-              <div
-                style={{
-                  fontSize: 14,
-                  fontWeight: 500,
-                  color: "#e5e7eb",
-                }}
-              >
-                {file ? file.name : "Drop COI PDF here or click to browse"}
-              </div>
-
-              <div
-                style={{
-                  fontSize: 12,
-                  color: "#9ca3af",
-                }}
-              >
-                PDF only · max 25MB  
-                <br />
-                Org:{" "}
-                <span style={{ color: "#e5e7eb" }}>
-                  {orgId || "(Org context active)"}
-                </span>
+              <div style={{ fontSize: 11, color: "#9ca3af" }}>
+                PDF • Max 25MB • Org {orgId || "(none)"}
               </div>
 
               <input
-                id="coi-upload-input"
+                id="coi-file"
                 type="file"
                 accept="application/pdf"
-                onChange={handleFileChange}
                 style={{ display: "none" }}
-                disabled={!canUpload}
+                onChange={handleFileChange}
               />
             </div>
 
+            {/* ERROR */}
             {error && (
               <div
                 style={{
@@ -384,156 +204,83 @@ export default function UploadCOIPage() {
                   border: "1px solid rgba(248,113,113,0.8)",
                   background: "rgba(127,29,29,0.9)",
                   color: "#fecaca",
-                  fontSize: 12,
+                  fontSize: 12
                 }}
               >
                 {error}
               </div>
             )}
 
-            <div
+            {/* BUTTON */}
+            <button
+              type="submit"
+              disabled={isSubmitting}
               style={{
-                marginTop: 14,
-                display: "flex",
-                justifyContent: "space-between",
-                alignItems: "center",
-                gap: 8,
+                marginTop: 16,
+                padding: "10px 18px",
+                borderRadius: 999,
+                border: "1px solid rgba(59,130,246,0.9)",
+                background:
+                  "radial-gradient(circle at top left,#3b82f6,#1d4ed8,#0f172a)",
+                color: "white",
+                cursor: isSubmitting ? "not-allowed" : "pointer",
+                opacity: isSubmitting ? 0.6 : 1
               }}
             >
-              <button
-                type="submit"
-                disabled={isSubmitting || !canUpload}
-                style={{
-                  borderRadius: 999,
-                  padding: "9px 16px",
-                  border: "1px solid rgba(59,130,246,0.9)",
-                  background:
-                    "radial-gradient(circle at top left,#3b82f6,#1d4ed8,#0f172a)",
-                  color: "#e5f2ff",
-                  fontSize: 13,
-                  fontWeight: 500,
-                  display: "inline-flex",
-                  alignItems: "center",
-                  gap: 8,
-                  cursor: isSubmitting || !canUpload ? "not-allowed" : "pointer",
-                  opacity: isSubmitting || !canUpload ? 0.6 : 1,
-                }}
-              >
-                {isSubmitting ? (
-                  <>
-                    <span
-                      style={{
-                        width: 14,
-                        height: 14,
-                        borderRadius: "999px",
-                        border: "2px solid rgba(191,219,254,0.7)",
-                        borderTopColor: "transparent",
-                        animation: "spin 0.8s linear infinite",
-                      }}
-                    />
-                    <span>Uploading &amp; analyzing…</span>
-                  </>
-                ) : (
-                  <>Upload &amp; analyze COI</>
-                )}
-              </button>
-
-              <div
-                style={{
-                  fontSize: 10,
-                  color: "#6b7280",
-                }}
-              >
-                POST → <code>/api/upload-coi</code>
-              </div>
-            </div>
+              {isSubmitting ? "Processing…" : "Upload & Analyze"}
+            </button>
           </form>
 
-          {/* Steps */}
-          <div>
+          {/* PIPELINE STEPS */}
+          <div style={{ marginTop: 20 }}>
             <div
               style={{
-                fontSize: 11,
-                textTransform: "uppercase",
-                letterSpacing: 1.2,
-                color: "#9ca3af",
+                fontSize: 12,
                 marginBottom: 8,
+                color: "#9ca3af",
+                textTransform: "uppercase"
               }}
             >
-              Processing pipeline
+              Processing Pipeline
             </div>
 
             <div
               style={{
                 display: "grid",
-                gridTemplateColumns: `repeat(${STEP_CONFIG.length}, minmax(0,1fr))`,
-                gap: 8,
+                gridTemplateColumns: `repeat(${STEP_CONFIG.length},1fr)`,
+                gap: 10
               }}
             >
-              {STEP_CONFIG.map((step, index) => {
-                const isActive = activeStep === step.id;
-                const isCompleted =
+              {STEP_CONFIG.map((s, i) => {
+                const isActive = activeStep === s.id;
+                const isDone =
                   activeStep &&
-                  STEP_CONFIG.findIndex((s) => s.id === activeStep) > index;
-
-                const bg = isCompleted
-                  ? "rgba(34,197,94,0.12)"
-                  : isActive
-                  ? "rgba(56,189,248,0.16)"
-                  : "rgba(15,23,42,0.9)";
-
-                const border = isCompleted
-                  ? "1px solid rgba(34,197,94,0.9)"
-                  : isActive
-                  ? "1px solid rgba(56,189,248,0.8)"
-                  : "1px solid rgba(51,65,85,0.9)";
+                  STEP_CONFIG.findIndex((x) => x.id === activeStep) > i;
 
                 return (
                   <div
-                    key={step.id}
+                    key={s.id}
                     style={{
-                      borderRadius: 14,
-                      padding: "8px 10px",
-                      background: bg,
-                      border,
-                      display: "flex",
-                      flexDirection: "column",
-                      gap: 4,
-                      minHeight: 60,
+                      padding: "10px 12px",
+                      borderRadius: 12,
+                      background: isDone
+                        ? "rgba(34,197,94,0.12)"
+                        : isActive
+                        ? "rgba(56,189,248,0.15)"
+                        : "rgba(15,23,42,0.85)",
+                      border: isDone
+                        ? "1px solid rgba(34,197,94,0.8)"
+                        : isActive
+                        ? "1px solid rgba(56,189,248,0.8)"
+                        : "1px solid rgba(75,85,99,0.8)",
+                      fontSize: 12
                     }}
                   >
-                    <div
-                      style={{
-                        display: "flex",
-                        alignItems: "center",
-                        justifyContent: "space-between",
-                      }}
-                    >
-                      <span
-                        style={{
-                          fontSize: 11,
-                          textTransform: "uppercase",
-                          color: "#e5e7eb",
-                        }}
-                      >
-                        Step {index + 1}
-                      </span>
-                      <span style={{ fontSize: 11, color: "#9ca3af" }}>
-                        {isCompleted
-                          ? "Done"
-                          : isActive
-                          ? "In progress"
-                          : "Pending"}
-                      </span>
-                    </div>
-                    <div
-                      style={{
-                        fontSize: 11,
-                        color: "#cbd5f5",
-                      }}
-                    >
-                      {step.label}
-                    </div>
+                    Step {i + 1}
+                    <br />
+                    <span style={{ fontSize: 11, color: "#cbd5f5" }}>
+                      {s.label}
+                    </span>
                   </div>
                 );
               })}
@@ -541,53 +288,38 @@ export default function UploadCOIPage() {
           </div>
         </div>
 
-        {/* RIGHT PANEL — RESULTS */}
+        {/* RIGHT: Output */}
         <div
           style={{
+            padding: 20,
             borderRadius: 24,
-            padding: 16,
-            background:
-              "radial-gradient(circle at top right,rgba(15,23,42,0.96),rgba(15,23,42,1))",
-            border: "1px solid rgba(148,163,184,0.55)",
-            boxShadow: "0 24px 60px rgba(15,23,42,0.98)",
-            display: "flex",
-            flexDirection: "column",
-            gap: 12,
-            minHeight: 260,
+            background: "rgba(15,23,42,0.96)",
+            border: "1px solid rgba(148,163,184,0.5)"
           }}
         >
-          <div
-            style={{
-              fontSize: 11,
-              textTransform: "uppercase",
-              letterSpacing: 1.2,
-              color: "#9ca3af",
-              marginBottom: 4,
-            }}
-          >
-            COI Summary
-          </div>
-
-          {!result && (
-            <div
-              style={{
-                fontSize: 12,
-                color: "#9ca3af",
-              }}
-            >
-              Upload a certificate to see extracted carrier,  
-              policy, coverage, endorsements, and risk data here.
+          {!result ? (
+            <div style={{ fontSize: 12, color: "#9ca3af" }}>
+              Once analyzed, extracted data will appear here.
             </div>
-          )}
-
-          {result && (
-            <div
+          ) : (
+            <pre
               style={{
-                display: "flex",
-                flexDirection: "column",
-                gap: 10,
+                marginTop: 10,
+                padding: 12,
+                borderRadius: 14,
+                background: "#020617",
+                border: "1px solid rgba(30,64,175,0.8)",
+                fontSize: 11,
+                maxHeight: 400,
+                overflow: "auto",
+                whiteSpace: "pre-wrap"
               }}
             >
-              <div
-                style={{
-                  display: "grid",
+              {JSON.stringify(result, null, 2)}
+            </pre>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
