@@ -1,45 +1,44 @@
-import { useEffect } from "react";
-import { useRouter } from "next/router";
-import { supabase } from "../../lib/supabaseClient";
+// pages/auth/callback.js — SSO Auth Landing (Cinematic)
+import { useEffect, useState } from "react";
 
-export default function Callback() {
-  const router = useRouter();
+export default function AuthCallback() {
+  const [status, setStatus] = useState("Authenticating…");
 
   useEffect(() => {
-    async function finalize() {
-      console.log("🔄 Running callback flow...");
-
-      const { data: { session } } = await supabase.auth.getSession();
-
-      if (!session) {
-        console.log("❌ No session — redirecting to login");
-        router.replace("/auth/login");
-        return;
-      }
-
-      console.log("✅ Session found in callback:", session);
-
-      // Sync user to Neon  
-      try {
-        await fetch("/api/auth/sync-user", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ user: session.user }),
-        });
-        console.log("✅ User synced from callback");
-      } catch (err) {
-        console.error("❌ sync-user failed in callback:", err);
-      }
-
-      router.replace("/dashboard");
-    }
-
-    finalize();
-  }, [router]);
+    setTimeout(() => {
+      // TODO: verify token + redirect
+      setStatus("Redirecting you to your cockpit…");
+    }, 800);
+  }, []);
 
   return (
-    <div style={{ padding: "40px" }}>
-      <p>Signing you in...</p>
+    <div
+      style={{
+        minHeight: "100vh",
+        background:
+          "radial-gradient(circle at top left,#020617 0%, #020617 40%, #000)",
+        display: "flex",
+        justifyContent: "center",
+        alignItems: "center",
+        color: "#e5e7eb",
+        fontSize: 18,
+      }}
+    >
+      <div
+        style={{
+          padding: 20,
+          borderRadius: 20,
+          background:
+            "radial-gradient(circle at top,rgba(15,23,42,0.98),rgba(15,23,42,0.96))",
+          border: "1px solid rgba(148,163,184,0.5)",
+          boxShadow:
+            "0 20px 45px rgba(15,23,42,0.96),0 0 26px rgba(56,189,248,0.25)",
+          textAlign: "center",
+        }}
+      >
+        <div style={{ fontSize: 26, marginBottom: 12 }}>🔄</div>
+        <div>{status}</div>
+      </div>
     </div>
   );
 }
