@@ -19,9 +19,8 @@ export default function LoginPage() {
 
     try {
       setLoading(true);
-      // TODO: wire to your real login API
+      // TODO: wire backend
       await new Promise((r) => setTimeout(r, 800));
-      // For now, do nothing. Later: redirect to /dashboard on success.
     } catch (err) {
       setError("Login failed. Check your credentials.");
     } finally {
@@ -44,7 +43,7 @@ export default function LoginPage() {
         overflow: "hidden",
       }}
     >
-      {/* Ambient Auras */}
+      {/* Ambient Aura */}
       <div
         style={{
           position: "absolute",
@@ -97,6 +96,7 @@ export default function LoginPage() {
           >
             <span style={{ fontSize: 20 }}>🔐</span>
           </div>
+
           <div>
             <div
               style={{
@@ -131,6 +131,7 @@ export default function LoginPage() {
                 Secure access
               </span>
             </div>
+
             <h1
               style={{
                 margin: 0,
@@ -167,6 +168,7 @@ export default function LoginPage() {
           >
             Email
           </label>
+
           <input
             type="email"
             value={email}
@@ -195,6 +197,7 @@ export default function LoginPage() {
           >
             Password
           </label>
+
           <input
             type="password"
             value={password}
@@ -271,7 +274,6 @@ export default function LoginPage() {
           </button>
         </form>
 
-        {/* Footer links */}
         <div
           style={{
             marginTop: 6,
@@ -287,9 +289,6 @@ export default function LoginPage() {
             <Link href="/auth/signup" style={{ color: "#93c5fd" }}>
               Sign up
             </Link>
-          </span>
-          <span style={{ whiteSpace: "nowrap" }}>
-            Org: {orgId || "not wired yet"}
           </span>
         </div>
       </div>
