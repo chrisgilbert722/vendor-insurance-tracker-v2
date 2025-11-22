@@ -2,8 +2,8 @@
 import { useMemo } from "react";
 import { useRouter } from "next/router";
 import Link from "next/link";
-import { useOrg } from "../../context/OrgContext";
-import { useRole } from "../../lib/useRole";
+import { useOrg } from "../../../context/OrgContext";
+import { useRole } from "../../../lib/useRole";
 
 /* ===========================
    MOCK DATA (REPLACE LATER)
