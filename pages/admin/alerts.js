@@ -21,7 +21,6 @@ const GP = {
 /* ===========================
    MOCK ALERTS (Replace later)
 =========================== */
-
 const initialAlerts = [
   {
     id: "alt-1",
@@ -92,7 +91,6 @@ const initialAlerts = [
 /* ===========================
    HELPERS
 =========================== */
-
 function formatRelative(iso) {
   const d = new Date(iso);
   const diff = Date.now() - d.getTime();
@@ -123,19 +121,16 @@ const severityRank = {
 /* ===========================
    MAIN PAGE — CINEMATIC V2.1
 =========================== */
-
 export default function AlertsPage() {
   const { orgId } = useOrg();
   const { isAdmin, isManager } = useRole();
   const canEdit = isAdmin || isManager;
 
-  // Filters
   const [severityFilter, setSeverityFilter] = useState("All");
   const [typeFilter, setTypeFilter] = useState("All");
   const [statusFilter, setStatusFilter] = useState("Open");
   const [search, setSearch] = useState("");
 
-  // Metrics snapshot
   const metrics = useMemo(() => {
     return {
       total: initialAlerts.length,
@@ -147,7 +142,6 @@ export default function AlertsPage() {
     };
   }, []);
 
-  // Filter + sort pipeline
   const filtered = useMemo(() => {
     return initialAlerts
       .filter((a) => {
@@ -168,7 +162,6 @@ export default function AlertsPage() {
           ).toLowerCase();
           if (!hay.includes(search.toLowerCase())) return false;
         }
-
         return true;
       })
       .sort(
@@ -190,9 +183,7 @@ export default function AlertsPage() {
         overflowX: "hidden",
       }}
     >
-      {/* ===========================
-          CINEMATIC HEADER AURA
-      ============================ */}
+      {/* CINEMATIC HEADER AURA */}
       <div
         style={{
           position: "absolute",
@@ -209,9 +200,7 @@ export default function AlertsPage() {
         }}
       />
 
-      {/* ===========================
-          HEADER CONTENT
-      ============================ */}
+      {/* HEADER */}
       <div style={{ position: "relative", zIndex: 2 }}>
         <div
           style={{
@@ -234,7 +223,6 @@ export default function AlertsPage() {
           </div>
 
           <div>
-            {/* TAG STRIP */}
             <div
               style={{
                 display: "inline-flex",
@@ -269,7 +257,6 @@ export default function AlertsPage() {
               </span>
             </div>
 
-            {/* PAGE TITLE */}
             <h1
               style={{
                 margin: 0,
@@ -292,7 +279,6 @@ export default function AlertsPage() {
               before it reaches finance, ops, or your insurer.
             </h1>
 
-            {/* SUBTEXT */}
             <p
               style={{
                 marginTop: 6,
@@ -302,17 +288,13 @@ export default function AlertsPage() {
                 maxWidth: 640,
               }}
             >
-              Live feed of your rule engine + requirements engine firing. Every
-              card below is a vendor, a policy, an endorsement, or a document
-              that needs attention.
+              Live feed of your rule engine + requirements engine firing.
             </p>
           </div>
         </div>
       </div>
 
-      {/* ===========================
-          METRICS + FILTERS SECTION
-      ============================ */}
+      {/* METRICS + FILTERS */}
       <MetricsAndFilters
         metrics={metrics}
         severityFilter={severityFilter}
@@ -324,10 +306,10 @@ export default function AlertsPage() {
         search={search}
         setSearch={setSearch}
       />
+/* ===========================
+   METRICS + FILTERS PANEL
+=========================== */
 
-      {/* ===========================
-          METRICS + FILTERS PANEL
-      ============================ */}
 function MetricsAndFilters({
   metrics,
   severityFilter,
@@ -349,8 +331,10 @@ function MetricsAndFilters({
         marginBottom: 24,
       }}
     >
+      {/* LEFT — 4 METRICS */}
       <MetricPanel metrics={metrics} />
 
+      {/* RIGHT — FILTERS */}
       <div
         style={{
           borderRadius: 22,
@@ -375,6 +359,7 @@ function MetricsAndFilters({
           Filters
         </div>
 
+        {/* Filter pills */}
         <div
           style={{
             display: "flex",
@@ -398,6 +383,7 @@ function MetricsAndFilters({
           />
         </div>
 
+        {/* Type + Search */}
         <div
           style={{
             display: "flex",
@@ -405,6 +391,7 @@ function MetricsAndFilters({
             flexWrap: "wrap",
           }}
         >
+          {/* Type selector */}
           <select
             value={typeFilter}
             onChange={(e) => setTypeFilter(e.target.value)}
@@ -426,6 +413,7 @@ function MetricsAndFilters({
             <option value="Info">Info</option>
           </select>
 
+          {/* Search bar */}
           <div
             style={{
               flex: 1,
@@ -459,9 +447,8 @@ function MetricsAndFilters({
     </div>
   );
 }
-
 /* ===========================
-   METRIC PANEL
+   METRIC PANEL (4 KPIs)
 =========================== */
 
 function MetricPanel({ metrics }) {
@@ -602,9 +589,7 @@ function FilterPillGroup({ options, active, onSelect, palette }) {
               fontSize: 11,
               cursor: "pointer",
               background: isActive
-                ? `radial-gradient(circle at top, ${colors[opt]}AA, ${
-                    colors[opt]
-                  }44, #0f172a)`
+                ? `radial-gradient(circle at top, ${colors[opt]}AA, ${colors[opt]}44, #0f172a)`
                 : "transparent",
               color: isActive ? "#ffffff" : "#cbd5f5",
               transition: "0.2s ease",
@@ -617,7 +602,6 @@ function FilterPillGroup({ options, active, onSelect, palette }) {
     </div>
   );
 }
-
 /* ===========================
    MAIN GRID WRAPPER
 =========================== */
@@ -689,6 +673,7 @@ function TimelinePanel({ filtered, canEdit }) {
             Brighter, higher cards = more urgent issues.
           </div>
         </div>
+
         <div style={{ fontSize: 11, color: "#6b7280" }}>
           Showing {filtered.length}
         </div>
@@ -696,8 +681,13 @@ function TimelinePanel({ filtered, canEdit }) {
 
       {/* TIMELINE FEED */}
       <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-        {filtered.map((a, idx) => (
-          <AlertCard key={a.id} alert={a} index={idx} canEdit={canEdit} />
+        {filtered.map((alert, idx) => (
+          <AlertCard
+            key={alert.id}
+            alert={alert}
+            index={idx}
+            canEdit={canEdit}
+          />
         ))}
       </div>
     </div>
@@ -731,7 +721,6 @@ function AlertCard({ alert, index, canEdit }) {
       glow: "0 14px 35px rgba(52,211,153,0.25)",
     },
   }[alert.severity];
-
   return (
     <div
       style={{
@@ -765,6 +754,7 @@ function AlertCard({ alert, index, canEdit }) {
             marginBottom: 4,
           }}
         />
+
         <div
           style={{
             flex: 1,
@@ -784,6 +774,7 @@ function AlertCard({ alert, index, canEdit }) {
             justifyContent: "space-between",
           }}
         >
+          {/* Title + Message */}
           <div>
             <div
               style={{
@@ -795,13 +786,20 @@ function AlertCard({ alert, index, canEdit }) {
             >
               {alert.title}
             </div>
+
             <div style={{ fontSize: 11, color: "#9ca3af" }}>
               {alert.message}
             </div>
           </div>
 
-          {/* TOP RIGHT BADGE */}
-          <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+          {/* Top-right severity badge */}
+          <div
+            style={{
+              display: "flex",
+              flexDirection: "column",
+              gap: 4,
+            }}
+          >
             <SeverityBadge severity={alert.severity} />
             <span style={{ fontSize: 10, color: "#6b7280" }}>
               {alert.status} · {formatRelative(alert.createdAt)}
@@ -809,7 +807,7 @@ function AlertCard({ alert, index, canEdit }) {
           </div>
         </div>
 
-        {/* VENDOR + RULE */}
+        {/* Vendor + Rule details */}
         <div
           style={{
             display: "flex",
@@ -880,7 +878,7 @@ function AlertCard({ alert, index, canEdit }) {
 }
 
 /* ===========================
-   SEVERITY BADGE (INLINE)
+   SEVERITY BADGE
 =========================== */
 
 function SeverityBadge({ severity }) {
@@ -912,7 +910,6 @@ function SeverityBadge({ severity }) {
           boxShadow: `0 0 12px ${palette[0]}`,
         }}
       />
-
       <span
         style={{
           fontSize: 10,
@@ -995,7 +992,7 @@ function RiskPulsePanel({ alerts }) {
         }
       `}</style>
 
-      {/* Heat bricks */}
+      {/* Heat map bricks */}
       <div
         style={{
           display: "grid",
@@ -1028,7 +1025,6 @@ function RiskPulsePanel({ alerts }) {
     </div>
   );
 }
-
 /* ===========================
    WHERE ALERTS COME FROM
 =========================== */
@@ -1136,8 +1132,7 @@ function SelectedAlertHintPanel({ alerts }) {
       </div>
 
       <div style={{ fontSize: 10, color: "#6b7280" }}>
-        This is a preview of the narrative your finance or risk team will see
-        when this alert appears in summaries.
+        This is what finance / risk sees as the issue description.
       </div>
     </div>
   );
@@ -1147,10 +1142,9 @@ function SelectedAlertHintPanel({ alerts }) {
 =========================== */
 
 // No additional exports needed.
-// AlertsPage is the default export at the top.
+// AlertsPage is already the default export.
 // All subcomponents live inside this file.
 
 //
 // File ends here.
 //
-
