@@ -1,4 +1,4 @@
-// components/Sidebar.js — Tactical Neon Rail V6 (Admin Route Fix)
+// components/Sidebar.js — Tactical Neon Rail V7 (Corrected Real Routes)
 import React from "react";
 
 export default function Sidebar({ pathname, isAdmin, isManager, isViewer }) {
@@ -38,25 +38,25 @@ export default function Sidebar({ pathname, isAdmin, isManager, isViewer }) {
 
       {/* MAIN NAV */}
       <RailLink
-        href="/admin/dashboard"
+        href="/dashboard"
         label="Dashboard"
         icon="📊"
-        active={pathname === "/admin/dashboard"}
+        active={pathname === "/dashboard"}
       />
 
       <RailLink
-        href="/admin/vendors"
+        href="/vendors"
         label="Vendors"
         icon="👥"
-        active={pathname === "/admin/vendors"}
+        active={pathname === "/vendors"}
       />
 
       {(isAdmin || isManager) && (
         <RailLink
-          href="/admin/upload-coi"
+          href="/upload-coi"
           label="Upload"
           icon="📄"
-          active={pathname === "/admin/upload-coi"}
+          active={pathname === "/upload-coi"}
         />
       )}
 
@@ -92,7 +92,7 @@ export default function Sidebar({ pathname, isAdmin, isManager, isViewer }) {
 }
 
 /* ===========================================
-   V6 Rail Link Component (unchanged visuals)
+   Rail Link Component
 =========================================== */
 function RailLink({ href, label, icon, active }) {
   return (
@@ -108,9 +108,7 @@ function RailLink({ href, label, icon, active }) {
         cursor: "pointer",
         marginBottom: 8,
 
-        background: active
-          ? "rgba(56,189,248,0.14)"
-          : "transparent",
+        background: active ? "rgba(56,189,248,0.14)" : "transparent",
         borderLeft: active
           ? "4px solid #38bdf8"
           : "4px solid transparent",
