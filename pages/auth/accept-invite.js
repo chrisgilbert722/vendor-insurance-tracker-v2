@@ -1,170 +1,318 @@
-// pages/auth/accept-invite.js
-import { useEffect, useState } from "react";
-import { useRouter } from "next/router";
-import { supabase } from "../../lib/supabaseClient";
+// pages/auth/accept-invite.js — Cockpit V10 Invite Acceptance
+import { useState } from "react";
 import Link from "next/link";
 
 export default function AcceptInvitePage() {
-  const router = useRouter();
-  const { token } = router.query;
-
-  const [invite, setInvite] = useState(null);
-  const [loading, setLoading] = useState(true);
-  const [accepting, setAccepting] = useState(false);
+  const [email, setEmail] = useState("");
+  const [invitedBy] = useState("Admin User"); // mock until wired
+  const [orgName] = useState("Your Organization"); // mock
+  const [role] = useState("Manager"); // mock role from token
+  const [password, setPassword] = useState("");
+  const [confirm, setConfirm] = useState("");
+  const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
-  const [session, setSession] = useState(null);
 
-  useEffect(() => {
-    async function init() {
-      const {
-        data: { session },
-      } = await supabase.auth.getSession();
-      setSession(session);
-    }
-    init();
-  }, []);
+  function handleSubmit(e) {
+    e.preventDefault();
+    setError("");
 
-  useEffect(() => {
-    if (!token) return;
-    async function load() {
-      setLoading(true);
-      setError("");
-      try {
-        const res = await fetch(`/api/org/validate-invite?token=${token}`);
-        const data = await res.json();
-        if (!res.ok || !data.ok) throw new Error(data.error);
-        setInvite(data.invite);
-      } catch (err) {
-        console.error("Validate invite error:", err);
-        setError(err.message || "Failed to validate invite.");
-      } finally {
-        setLoading(false);
-      }
-    }
-    load();
-  }, [token]);
-
-  async function handleAccept() {
-    if (!session) {
-      setError("You must be logged in to accept an invite.");
+    if (!email.trim()) {
+      setError("Email is required.");
       return;
     }
 
-    setAccepting(true);
-    setError("");
-
-    try {
-      const res = await fetch("/api/org/accept-invite", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          token,
-          userId: session.user.id,
-        }),
-      });
-
-      const data = await res.json();
-      if (!res.ok || !data.ok) throw new Error(data.error);
-
-      // Optionally set org cookie is handled by org/switch on dashboard load
-      router.push("/dashboard");
-    } catch (err) {
-      console.error("Accept invite error:", err);
-      setError(err.message || "Failed to accept invite.");
-    } finally {
-      setAccepting(false);
+    if (!password.trim() || !confirm.trim()) {
+      setError("Enter and confirm your password.");
+      return;
     }
+
+    if (password !== confirm) {
+      setError("Passwords do not match.");
+      return;
+    }
+
+    setLoading(true);
+    setTimeout(() => {
+      setLoading(false);
+      // TODO: redirect once wired
+    }, 800);
   }
 
   return (
     <div
       style={{
         minHeight: "100vh",
-        background: "#020617",
-        color: "#e5e7eb",
+        position: "relative",
+        background:
+          "radial-gradient(circle at top left,#020617 0%, #020617 40%, #000 100%)",
         display: "flex",
         alignItems: "center",
         justifyContent: "center",
-        padding: "24px",
+        padding: "30px 16px",
+        color: "#e5e7eb",
       }}
     >
+      {/* Ambient Glow */}
       <div
         style={{
-          maxWidth: "420px",
+          position: "absolute",
+          top: -240,
+          left: "50%",
+          transform: "translateX(-50%)",
+          width: 900,
+          height: 900,
+          background:
+            "radial-gradient(circle, rgba(56,189,248,0.35), transparent 60%)",
+          filter: "blur(120px)",
+          pointerEvents: "none",
+          zIndex: 0,
+        }}
+      />
+
+      <div
+        style={{
+          position: "relative",
+          zIndex: 2,
           width: "100%",
-          background: "#0f172a",
-          borderRadius: "12px",
-          border: "1px solid #1f2937",
-          padding: "20px 22px",
+          maxWidth: 480,
+          borderRadius: 24,
+          padding: 24,
+          background:
+            "radial-gradient(circle at top,rgba(15,23,42,0.98),rgba(15,23,42,0.96))",
+          border: "1px solid rgba(148,163,184,0.6)",
+          boxShadow:
+            "0 24px 60px rgba(15,23,42,0.98),0 0 40px rgba(56,189,248,0.25)",
         }}
       >
-        <h1
+        {/* Header */}
+        <div
           style={{
-            fontSize: "20px",
-            fontWeight: 700,
-            marginBottom: "10px",
+            display: "flex",
+            gap: 12,
+            alignItems: "center",
+            marginBottom: 18,
           }}
         >
-          Accept Invitation
-        </h1>
+          <div
+            style={{
+              padding: 12,
+              borderRadius: 999,
+              background:
+                "radial-gradient(circle at 30% 0,#38bdf8,#6366f1,#0f172a)",
+              boxShadow: "0 0 30px rgba(56,189,248,0.6)",
+            }}
+          >
+            <span style={{ fontSize: 22 }}>📨</span>
+          </div>
 
-        {loading ? (
-          <p style={{ fontSize: "13px" }}>Checking your invite…</p>
-        ) : error ? (
-          <p style={{ fontSize: "13px", color: "#fca5a5" }}>⚠ {error}</p>
-        ) : !invite ? (
-          <p style={{ fontSize: "13px", color: "#9ca3af" }}>
-            Invite not found or no longer valid.
-          </p>
-        ) : (
-          <>
-            <p style={{ fontSize: "13px", color: "#9ca3af", marginBottom: "8px" }}>
-              You’ve been invited to join{" "}
-              <span style={{ color: "#e5e7eb", fontWeight: 600 }}>
-                {invite.orgName}
-              </span>{" "}
-              as <strong>{invite.role}</strong>.
-            </p>
-            <p style={{ fontSize: "12px", color: "#9ca3af", marginBottom: "12px" }}>
-              Invite email:{" "}
-              <span style={{ color: "#e5e7eb" }}>{invite.email}</span>
-            </p>
-
-            {!session && (
-              <p style={{ fontSize: "12px", color: "#f97316" }}>
-                You are not logged in.{" "}
-                <Link href="/auth/login" style={{ color: "#38bdf8" }}>
-                  Log in
-                </Link>{" "}
-                first, then reopen this invite link.
-              </p>
-            )}
-
-            {session && (
-              <button
-                onClick={handleAccept}
-                disabled={accepting}
+          <div>
+            <div
+              style={{
+                display: "inline-flex",
+                gap: 6,
+                padding: "3px 10px",
+                borderRadius: 999,
+                border: "1px solid rgba(148,163,184,0.4)",
+                background:
+                  "linear-gradient(120deg,rgba(15,23,42,0.9),rgba(15,23,42,0))",
+                marginBottom: 4,
+              }}
+            >
+              <span
                 style={{
-                  marginTop: "8px",
-                  padding: "8px 14px",
-                  borderRadius: "999px",
-                  border: "none",
-                  background: accepting ? "#6b7280" : "#22c55e",
-                  color: "#020617",
-                  fontSize: "13px",
-                  fontWeight: 600,
-                  cursor: accepting ? "not-allowed" : "pointer",
+                  fontSize: 10,
+                  color: "#9ca3af",
+                  textTransform: "uppercase",
+                  letterSpacing: 1.1,
                 }}
               >
-                {accepting ? "Accepting…" : "Accept Invite"}
-              </button>
-            )}
-          </>
-        )}
+                Accept Invite
+              </span>
+              <span
+                style={{
+                  fontSize: 10,
+                  color: "#38bdf8",
+                  textTransform: "uppercase",
+                  letterSpacing: 1,
+                }}
+              >
+                Join your organization
+              </span>
+            </div>
 
-        <div style={{ marginTop: "18px", fontSize: "12px", color: "#64748b" }}>
-          <Link href="/dashboard" style={{ color: "#38bdf8" }}>
-            ← Back to dashboard
+            <h1
+              style={{
+                margin: 0,
+                fontSize: 24,
+                fontWeight: 600,
+                letterSpacing: 0.2,
+              }}
+            >
+              Join{" "}
+              <span
+                style={{
+                  background:
+                    "linear-gradient(90deg,#38bdf8,#a5b4fc,#e5e7eb)",
+                  WebkitBackgroundClip: "text",
+                  color: "transparent",
+                }}
+              >
+                {orgName}
+              </span>
+            </h1>
+
+            <p
+              style={{
+                fontSize: 13,
+                color: "#cbd5f5",
+                marginTop: 4,
+                marginBottom: 0,
+              }}
+            >
+              You were invited as a{" "}
+              <span style={{ color: "#e0f2fe" }}>{role}</span> by{" "}
+              <span style={{ color: "#e0f2fe" }}>{invitedBy}</span>.
+            </p>
+          </div>
+        </div>
+
+        {/* Form */}
+        <form onSubmit={handleSubmit}>
+          <label
+            style={{
+              fontSize: 11,
+              color: "#9ca3af",
+              marginBottom: 4,
+              display: "block",
+            }}
+          >
+            Email (must match invite)
+          </label>
+          <input
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            placeholder="you@example.com"
+            style={{
+              width: "100%",
+              borderRadius: 999,
+              padding: "8px 11px",
+              border: "1px solid rgba(51,65,85,0.9)",
+              background: "rgba(15,23,42,0.96)",
+              color: "#e5e7eb",
+              fontSize: 13,
+              outline: "none",
+              marginBottom: 12,
+            }}
+          />
+
+          <label
+            style={{
+              fontSize: 11,
+              color: "#9ca3af",
+              marginBottom: 4,
+              display: "block",
+            }}
+          >
+            Set Password
+          </label>
+          <input
+            type="password"
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            placeholder="••••••••"
+            style={{
+              width: "100%",
+              borderRadius: 999,
+              padding: "8px 11px",
+              border: "1px solid rgba(51,65,85,0.9)",
+              background: "rgba(15,23,42,0.96)",
+              color: "#e5e7eb",
+              fontSize: 13,
+              outline: "none",
+              marginBottom: 10,
+            }}
+          />
+
+          <label
+            style={{
+              fontSize: 11,
+              color: "#9ca3af",
+              marginBottom: 4,
+              display: "block",
+            }}
+          >
+            Confirm Password
+          </label>
+          <input
+            type="password"
+            value={confirm}
+            onChange={(e) => setConfirm(e.target.value)}
+            placeholder="••••••••"
+            style={{
+              width: "100%",
+              borderRadius: 999,
+              padding: "8px 11px",
+              border: "1px solid rgba(51,65,85,0.9)",
+              background: "rgba(15,23,42,0.96)",
+              color: "#e5e7eb",
+              fontSize: 13,
+              outline: "none",
+              marginBottom: 10,
+            }}
+          />
+
+          {error && (
+            <div
+              style={{
+                marginBottom: 10,
+                padding: "7px 9px",
+                borderRadius: 10,
+                background: "rgba(127,29,29,0.9)",
+                border: "1px solid rgba(248,113,113,0.8)",
+                color: "#fecaca",
+                fontSize: 12,
+              }}
+            >
+              {error}
+            </div>
+          )}
+
+          <button
+            type="submit"
+            disabled={loading}
+            style={{
+              width: "100%",
+              borderRadius: 999,
+              padding: "9px 14px",
+              border: "1px solid rgba(59,130,246,0.9)",
+              background:
+                "radial-gradient(circle at top left,#3b82f6,#1d4ed8,#0f172a)",
+              color: "#e0f2fe",
+              fontSize: 13,
+              fontWeight: 500,
+              cursor: loading ? "not-allowed" : "pointer",
+              opacity: loading ? 0.7 : 1,
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              gap: 8,
+              marginBottom: 10,
+            }}
+          >
+            {loading ? "Creating account…" : "Join Organization"}
+          </button>
+        </form>
+
+        <div
+          style={{
+            marginTop: 6,
+            fontSize: 11,
+            color: "#9ca3af",
+            textAlign: "center",
+          }}
+        >
+          <Link href="/auth/login" style={{ color: "#93c5fd" }}>
+            Back to Login
           </Link>
         </div>
       </div>
