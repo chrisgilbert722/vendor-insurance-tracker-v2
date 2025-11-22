@@ -1,9 +1,13 @@
 /* ===========================================================
-   COCKPIT V9 — FULL WEAPONIZED ENVIRONMENT
-   Electric neon, scanlines, parallax, HUD glows, glass core.
+   COCKPIT V10 — FULL WEAPONIZED ENVIRONMENT
+   Electric neon, HUD scanlines, underlit glass, unified depth.
+   This is the global cinematic skin for your entire app.
 =========================================================== */
 
-/* ----- Reset & base ----- */
+/* ----------------------
+   RESET & BASE
+----------------------- */
+
 *,
 *::before,
 *::after {
@@ -34,78 +38,86 @@ body {
   isolation: isolate;
 }
 
-/* ===========================================================
+/* ---------------------------------------------------------
    LAYER 1 — DEEP SPACE BACKDROP
-=========================================================== */
+   Overall app background: multi-layer cosmic gradient.
+--------------------------------------------------------- */
+
 body::before {
   content: "";
   position: fixed;
   inset: -20%;
-  z-index: -3;
-  background:
-    radial-gradient(circle at 15% 0%, rgba(56, 189, 248, 0.5), transparent 60%),
-    radial-gradient(circle at 85% 0%, rgba(168, 85, 247, 0.45), transparent 60%),
-    radial-gradient(circle at 15% 85%, rgba(34, 197, 94, 0.35), transparent 70%),
-    radial-gradient(circle at 85% 80%, rgba(248, 113, 113, 0.25), transparent 70%),
-    linear-gradient(180deg, #020617 0%, #020617 40%, #020617 80%, #000000 100%);
+  z-index: -4;
   pointer-events: none;
+  background:
+    radial-gradient(circle at 15% 0%, rgba(56, 189, 248, 0.55), transparent 60%),
+    radial-gradient(circle at 85% 0%, rgba(168, 85, 247, 0.5), transparent 65%),
+    radial-gradient(circle at 15% 85%, rgba(34, 197, 94, 0.3), transparent 70%),
+    radial-gradient(circle at 85% 80%, rgba(248, 113, 113, 0.28), transparent 70%),
+    radial-gradient(circle at 50% 50%, rgba(15, 23, 42, 0.7), #020617 60%, #000 100%);
 }
 
-/* ===========================================================
-   LAYER 2 — PARALLAX AMBIENT GLOWS
-=========================================================== */
+/* ---------------------------------------------------------
+   LAYER 2 — PARALLAX AMBIENT GLOW SHEET
+   Subtle drifting glow sheet for depth & motion.
+--------------------------------------------------------- */
+
 body::after {
   content: "";
   position: fixed;
-  inset: -10%;
-  z-index: -2;
+  inset: -12%;
+  z-index: -3;
   background:
-    radial-gradient(circle at 0% 20%, rgba(56, 189, 248, 0.4), transparent 65%),
-    radial-gradient(circle at 100% 80%, rgba(248, 250, 252, 0.08), transparent 65%);
+    radial-gradient(circle at 0% 15%, rgba(56, 189, 248, 0.35), transparent 65%),
+    radial-gradient(circle at 100% 85%, rgba(248, 250, 252, 0.18), transparent 65%);
   mix-blend-mode: screen;
-  opacity: 0.8;
-  animation: cockpit-drift 26s ease-in-out infinite alternate;
+  opacity: 0.85;
+  animation: cockpit-ambient-drift 28s ease-in-out infinite alternate;
   pointer-events: none;
 }
 
-@keyframes cockpit-drift {
+@keyframes cockpit-ambient-drift {
   0% {
-    transform: translate3d(-20px, -10px, 0) scale(1);
+    transform: translate3d(-18px, -16px, 0) scale(1);
     opacity: 0.7;
   }
   50% {
-    transform: translate3d(15px, 10px, 0) scale(1.04);
+    transform: translate3d(20px, 10px, 0) scale(1.04);
     opacity: 1;
   }
   100% {
-    transform: translate3d(-10px, 15px, 0) scale(1.02);
+    transform: translate3d(-10px, 18px, 0) scale(1.02);
     opacity: 0.75;
   }
 }
 
-/* ===========================================================
+/* ---------------------------------------------------------
    LAYER 3 — HUD SCANLINES
-=========================================================== */
+   Subtle scanline overlay for AR/HUD feel.
+--------------------------------------------------------- */
+
 #__next::before {
   content: "";
   position: fixed;
   inset: 0;
-  z-index: -1;
+  z-index: -2;
   background-image: linear-gradient(
     to bottom,
-    rgba(15, 23, 42, 0.0) 0,
-    rgba(148, 163, 184, 0.14) 1px,
-    rgba(15, 23, 42, 0.0) 2px
+    rgba(15, 23, 42, 0),
+    rgba(148, 163, 184, 0.13) 1px,
+    rgba(15, 23, 42, 0) 2px
   );
   background-size: 100% 3px;
-  opacity: 0.4;
+  opacity: 0.35;
   mix-blend-mode: soft-light;
   pointer-events: none;
 }
 
-/* ===========================================================
-   LAYER 4 — FLOATING PARTICLES (subtle)
-=========================================================== */
+/* ---------------------------------------------------------
+   LAYER 4 — FLOATING PARTICLES (SUBTLE)
+   Attach <div class="cockpit-particles" /> to _app or layout.
+--------------------------------------------------------- */
+
 .cockpit-particles {
   position: fixed;
   inset: 0;
@@ -117,20 +129,20 @@ body::after {
 .cockpit-particles::after {
   content: "";
   position: absolute;
-  inset: -20%;
+  inset: -25%;
   background-image:
-    radial-gradient(circle, rgba(148, 163, 184, 0.4) 0, transparent 55%),
-    radial-gradient(circle, rgba(56, 189, 248, 0.45) 0, transparent 60%),
-    radial-gradient(circle, rgba(244, 114, 182, 0.3) 0, transparent 60%);
-  opacity: 0.18;
+    radial-gradient(circle, rgba(148, 163, 184, 0.3) 0, transparent 55%),
+    radial-gradient(circle, rgba(56, 189, 248, 0.4) 0, transparent 60%),
+    radial-gradient(circle, rgba(244, 114, 182, 0.26) 0, transparent 60%);
+  opacity: 0.16;
   mix-blend-mode: screen;
-  animation: cockpit-stars 40s linear infinite;
+  animation: cockpit-stars 42s linear infinite;
 }
 
 .cockpit-particles::after {
   animation-duration: 70s;
   animation-direction: reverse;
-  opacity: 0.25;
+  opacity: 0.23;
 }
 
 @keyframes cockpit-stars {
@@ -138,16 +150,151 @@ body::after {
     transform: translate3d(0, 0, 0);
   }
   50% {
-    transform: translate3d(-25px, -15px, 0);
+    transform: translate3d(-26px, -16px, 0);
   }
   100% {
-    transform: translate3d(20px, 20px, 0);
+    transform: translate3d(20px, 22px, 0);
   }
 }
 
+/* ---------------------------------------------------------
+   GLOBAL UTILS — COLORS & TOKENS
+--------------------------------------------------------- */
+
+:root {
+  /* Core palette */
+  --c-bg: #020617;
+  --c-surface: #020617;
+  --c-surface-elevated: #020617;
+  --c-panel: #020617;
+  --c-panel-soft: #0b1120;
+  --c-panel-strong: #020617;
+
+  --c-text: #e5e7eb;
+  --c-muted: #9ca3af;
+  --c-subtle: #6b7280;
+
+  /* Brand & accent */
+  --c-blue: #3b82f6;
+  --c-blue-soft: #38bdf8;
+  --c-indigo: #6366f1;
+  --c-cyan: #06b6d4;
+  --c-teal: #14b8a6;
+  --c-green: #22c55e;
+  --c-amber: #fbbf24;
+  --c-red: #ef4444;
+  --c-pink: #f472b6;
+
+  /* Severity tokens */
+  --sev-critical: #fb7185;
+  --sev-high: #f97316;
+  --sev-medium: #38bdf8;
+  --sev-low: #22c55e;
+
+  /* Radius */
+  --r-xl: 24px;
+  --r-lg: 18px;
+  --r-md: 12px;
+  --r-pill: 999px;
+
+  /* Shadows (elevation tiers) */
+  --shadow-soft: 0 12px 30px rgba(15, 23, 42, 0.8);
+  --shadow-strong: 0 24px 60px rgba(15, 23, 42, 0.95);
+}
+
+/* ---------------------------------------------------------
+   BASE ELEMENTS
+----------------------------------------------------------- */
+
+a {
+  color: inherit;
+  text-decoration: none;
+}
+a:hover {
+  text-decoration: none;
+}
+
+/* Optional: unify headings for consistent look */
+h1,
+h2,
+h3,
+h4 {
+  margin: 0;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  color: var(--c-text);
+}
+
+p {
+  margin: 0;
+  color: var(--c-text);
+}
+
 /* ===========================================================
-   HERO COMMAND PANEL GLOW (requires .cockpit-hero class)
+   PANEL / CARD SHELLS
+   Use these classes in addition to inline styles if desired.
 =========================================================== */
+
+/* Primary elevated panel */
+.cockpit-panel {
+  position: relative;
+  border-radius: var(--r-xl);
+  padding: 16px;
+  background: radial-gradient(
+    circle at 0 0,
+    rgba(56, 189, 248, 0.08),
+    rgba(15, 23, 42, 0.98)
+  );
+  border: 1px solid rgba(148, 163, 184, 0.5);
+  box-shadow: var(--shadow-strong);
+}
+
+/* Soft background panel */
+.cockpit-panel-soft {
+  position: relative;
+  border-radius: var(--r-xl);
+  padding: 16px;
+  background: radial-gradient(
+      circle at 0 0,
+      rgba(30, 64, 175, 0.35),
+      rgba(15, 23, 42, 1)
+    ),
+    radial-gradient(circle at 100% 100%, rgba(15, 23, 42, 1), rgba(0, 0, 0, 1));
+  border: 1px solid rgba(15, 23, 42, 0.9);
+  box-shadow: var(--shadow-soft);
+}
+
+/* Inner rim highlight for panel shells */
+.cockpit-panel::before,
+.cockpit-panel-soft::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  border: 1px solid rgba(148, 163, 184, 0.35);
+  pointer-events: none;
+}
+
+/* Hover lift */
+.cockpit-panel,
+.cockpit-panel-soft {
+  transition:
+    transform 0.15s ease-out,
+    box-shadow 0.15s ease-out,
+    background 0.15s ease-out;
+}
+
+.cockpit-panel:hover,
+.cockpit-panel-soft:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 28px 70px rgba(15, 23, 42, 0.98);
+}
+
+/* ===========================================================
+   HERO / COMMAND PANEL GLOW
+   Add className="cockpit-hero" to any main hero container.
+=========================================================== */
+
 .cockpit-hero {
   position: relative;
   z-index: 1;
@@ -160,9 +307,9 @@ body::after {
   inset: -24px;
   border-radius: 32px;
   background:
-    radial-gradient(circle at 10% 0%, rgba(56, 189, 248, 0.4), transparent 65%),
-    radial-gradient(circle at 90% 0%, rgba(248, 250, 252, 0.2), transparent 70%),
-    radial-gradient(circle at 50% 100%, rgba(248, 113, 113, 0.18), transparent 70%);
+    radial-gradient(circle at 10% 0%, rgba(56, 189, 248, 0.45), transparent 60%),
+    radial-gradient(circle at 90% 0%, rgba(248, 250, 252, 0.22), transparent 70%),
+    radial-gradient(circle at 50% 100%, rgba(248, 113, 113, 0.2), transparent 75%);
   opacity: 0.9;
   filter: blur(10px);
   pointer-events: none;
@@ -175,10 +322,10 @@ body::after {
   position: absolute;
   inset: -6px;
   border-radius: 32px;
-  border: 1px solid rgba(56, 189, 248, 0.7);
+  border: 1px solid rgba(56, 189, 248, 0.8);
   box-shadow:
     0 0 26px rgba(56, 189, 248, 0.9),
-    0 0 36px rgba(248, 250, 252, 0.25),
+    0 0 36px rgba(248, 250, 252, 0.2),
     0 0 80px rgba(37, 99, 235, 0.5);
   opacity: 0.55;
   pointer-events: none;
@@ -187,27 +334,28 @@ body::after {
 
 @keyframes hero-pulse {
   0% {
-    opacity: 0.2;
+    opacity: 0.25;
     transform: scale(0.99);
   }
   40% {
-    opacity: 0.7;
+    opacity: 0.9;
     transform: scale(1.02);
   }
-  70% {
-    opacity: 0.4;
+  75% {
+    opacity: 0.5;
     transform: scale(1.01);
   }
   100% {
-    opacity: 0.25;
-    transform: scale(1.0);
+    opacity: 0.3;
+    transform: scale(1);
   }
 }
 
 /* ===========================================================
-   Telemetry rails for sections
-   Add className="cockpit-telemetry" to any panel container.
+   TELEMETRY RAILS
+   Add className="cockpit-telemetry" to a panel to get side rails.
 =========================================================== */
+
 .cockpit-telemetry {
   position: relative;
 }
@@ -238,9 +386,10 @@ body::after {
 }
 
 /* ===========================================================
-   AI Pulse Utility
-   Add className="cockpit-pulse" to anything you want to “breathe”.
+   AI PULSE UTILITY
+   Add className="cockpit-pulse" to make an element “breathe”.
 =========================================================== */
+
 .cockpit-pulse {
   position: relative;
   z-index: 1;
@@ -254,8 +403,8 @@ body::after {
   border: 1px solid rgba(56, 189, 248, 0.75);
   opacity: 0.0;
   box-shadow: 0 0 28px rgba(56, 189, 248, 0.6);
-  animation: cockpit-pulse 3s ease-out infinite;
   pointer-events: none;
+  animation: cockpit-pulse 3s ease-out infinite;
 }
 
 @keyframes cockpit-pulse {
@@ -264,7 +413,7 @@ body::after {
     transform: scale(0.98);
   }
   25% {
-    opacity: 0.65;
+    opacity: 0.7;
     transform: scale(1.02);
   }
   60% {
@@ -278,37 +427,38 @@ body::after {
 }
 
 /* ===========================================================
-   COCKPIT V9 — NEON UNDERLIT TABLE GLASS
-   Wrap your table container with className="cockpit-table-shell"
+   TABLE SHELL — UNDERLIT GLASS
+   Wrap table containers in .cockpit-table-shell
 =========================================================== */
+
 .cockpit-table-shell {
   position: relative;
-  border-radius: 24px;
+  border-radius: var(--r-xl);
   overflow: hidden;
   background: radial-gradient(
-    circle at 50% 0%,
-    rgba(15,23,42,0.96),
-    rgba(15,23,42,0.99)
+    circle at 0 0,
+    rgba(15, 23, 42, 0.96),
+    rgba(15, 23, 42, 0.99)
   );
   box-shadow:
-    0 24px 55px rgba(15,23,42,0.96),
-    0 0 30px rgba(15,23,42,0.9);
+    0 24px 55px rgba(15, 23, 42, 0.96),
+    0 0 30px rgba(15, 23, 42, 0.9);
 }
 
-/* Inner rim glow */
+/* Inner rim */
 .cockpit-table-shell::before {
   content: "";
   position: absolute;
   inset: 0;
   border-radius: inherit;
-  border: 1px solid rgba(148,163,184,0.35);
+  border: 1px solid rgba(148, 163, 184, 0.35);
   box-shadow:
-    0 0 18px rgba(15,23,42,0.9),
-    0 0 24px rgba(30,64,175,0.35);
+    0 0 18px rgba(15, 23, 42, 0.9),
+    0 0 24px rgba(30, 64, 175, 0.35);
   pointer-events: none;
 }
 
-/* Underlight at the bottom of the table */
+/* Underlight */
 .cockpit-table-shell::after {
   content: "";
   position: absolute;
@@ -318,14 +468,14 @@ body::after {
   height: 60px;
   background: radial-gradient(
     circle at 50% 0%,
-    rgba(56,189,248,0.4),
+    rgba(56, 189, 248, 0.4),
     transparent 70%
   );
   opacity: 0.8;
   pointer-events: none;
 }
 
-/* Row hover “pressure” effect */
+/* Row hover lift */
 .cockpit-table-shell tbody tr {
   transition:
     transform 0.12s ease-out,
@@ -335,13 +485,14 @@ body::after {
 
 .cockpit-table-shell tbody tr:hover {
   transform: translateY(-1px);
-  background-color: rgba(15,23,42,0.98);
-  box-shadow: 0 0 18px rgba(56,189,248,0.25);
+  background-color: rgba(15, 23, 42, 0.98);
+  box-shadow: 0 0 18px rgba(56, 189, 248, 0.25);
 }
 
 /* ===========================================================
-   Scrollbar — slim neon
+   SCROLLBARS — SLIM NEON
 =========================================================== */
+
 ::-webkit-scrollbar {
   width: 8px;
 }
@@ -356,14 +507,131 @@ body::after {
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: linear-gradient(180deg,#38bdf8,#0f172a);
+  background: linear-gradient(180deg, #38bdf8, #0f172a);
 }
 
-/* Links */
-a {
-  color: inherit;
-  text-decoration: none;
+/* ===========================================================
+   OPTIONAL: GLOBAL UTILITY CLASSES
+   Use as needed in JSX for quick styling.
+=========================================================== */
+
+/* Text gradient */
+.cockpit-text-gradient {
+  background-image: linear-gradient(90deg, #38bdf8, #e0f2fe, #a855f7);
+  -webkit-background-clip: text;
+  color: transparent;
 }
-a:hover {
-  text-decoration: none;
+
+/* Soft pill */
+.cockpit-pill {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 4px 10px;
+  border-radius: var(--r-pill);
+  font-size: 11px;
+  gap: 6px;
+  border: 1px solid rgba(148, 163, 184, 0.6);
+  background: rgba(15, 23, 42, 0.9);
+  color: var(--c-muted);
+}
+
+/* Badge severity colors */
+.cockpit-badge--critical {
+  border-color: rgba(248, 113, 113, 0.85);
+  color: #fecaca;
+  background: rgba(127, 29, 29, 0.9);
+}
+.cockpit-badge--high {
+  border-color: rgba(250, 204, 21, 0.85);
+  color: #fef9c3;
+  background: rgba(113, 63, 18, 0.9);
+}
+.cockpit-badge--medium {
+  border-color: rgba(56, 189, 248, 0.85);
+  color: #e0f2fe;
+  background: rgba(15, 23, 42, 0.9);
+}
+.cockpit-badge--low {
+  border-color: rgba(34, 197, 94, 0.85);
+  color: #bbf7d0;
+  background: rgba(22, 101, 52, 0.9);
+}
+
+/* Button base */
+.cockpit-btn {
+  border-radius: var(--r-pill);
+  padding: 6px 12px;
+  font-size: 11px;
+  font-weight: 500;
+  border: 1px solid rgba(148, 163, 184, 0.7);
+  background: rgba(15, 23, 42, 0.96);
+  color: var(--c-text);
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  cursor: pointer;
+  transition:
+    background 0.15s ease-out,
+    box-shadow 0.15s ease-out,
+    transform 0.12s ease-out,
+    border-color 0.15s ease-out;
+}
+
+.cockpit-btn:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 12px 30px rgba(15, 23, 42, 0.9);
+}
+
+/* Button variants */
+.cockpit-btn--primary {
+  background: radial-gradient(circle at top left, #3b82f6, #1d4ed8, #0f172a);
+  border-color: rgba(59, 130, 246, 0.9);
+  color: #e0f2fe;
+}
+.cockpit-btn--primary:hover {
+  box-shadow: 0 14px 36px rgba(37, 99, 235, 0.7);
+}
+
+.cockpit-btn--danger {
+  background: rgba(127, 29, 29, 0.95);
+  border-color: rgba(248, 113, 113, 0.85);
+  color: #fecaca;
+}
+.cockpit-btn--danger:hover {
+  box-shadow: 0 14px 36px rgba(248, 113, 113, 0.6);
+}
+
+.cockpit-btn--ghost {
+  background: rgba(15, 23, 42, 0.9);
+  border-color: rgba(148, 163, 184, 0.6);
+  color: #e5e7eb;
+}
+.cockpit-btn--ghost:hover {
+  background: rgba(31, 41, 55, 0.95);
+}
+
+/* Input / field shell */
+.cockpit-input {
+  width: 100%;
+  border-radius: var(--r-pill);
+  padding: 7px 10px;
+  border: 1px solid rgba(51, 65, 85, 0.9);
+  background: rgba(15, 23, 42, 0.96);
+  color: #e5e7eb;
+  font-size: 13px;
+  outline: none;
+  transition:
+    border-color 0.15s ease-out,
+    box-shadow 0.15s ease-out,
+    background 0.15s ease-out;
+}
+
+.cockpit-input::placeholder {
+  color: rgba(148, 163, 184, 0.9);
+}
+
+.cockpit-input:focus {
+  border-color: rgba(56, 189, 248, 0.9);
+  box-shadow: 0 0 0 1px rgba(56, 189, 248, 0.35);
 }
