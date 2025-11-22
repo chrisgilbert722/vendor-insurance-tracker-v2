@@ -1,9 +1,12 @@
+--- BEGIN FILE ---
+
 // pages/upload-coi.js
 import { useState } from "react";
 import { useOrg } from "../context/OrgContext";
 import { useRole } from "../lib/useRole";
 import { useRouter } from "next/router"; // needed for vendorId
 
+// SINGLE delay() — FIXED
 function delay(ms) {
   return new Promise(resolve => setTimeout(resolve, ms));
 }
@@ -249,12 +252,11 @@ export default function UploadCOIPage() {
                 maxWidth: 700,
               }}
             >
-              Drag & drop a certificate of insurance. We’ll ingest the PDF,
-              extract coverage, limits, endorsements, and expirations, then flag
-              what matters most — all in one cinematic pipeline.
+              Drag & drop a certificate of insurance.  
+              We’ll ingest the PDF, extract coverage, limits, endorsements,  
+              and expirations — then flag what matters most.
             </p>
 
-            {/* Small hint so we know vendor context is set */}
             <div
               style={{
                 marginTop: 6,
@@ -282,7 +284,8 @@ export default function UploadCOIPage() {
           alignItems: "flex-start",
         }}
       >
-        {/* LEFT — Upload & Steps */}
+
+        {/* LEFT PANEL — UPLOAD */}
         <div
           style={{
             borderRadius: 24,
@@ -296,7 +299,6 @@ export default function UploadCOIPage() {
             gap: 16,
           }}
         >
-          {/* Upload section */}
           <form onSubmit={handleSubmit}>
             <div
               onDrop={handleDrop}
@@ -305,9 +307,7 @@ export default function UploadCOIPage() {
               style={{
                 borderRadius: 18,
                 padding: 18,
-                border: `2px dashed ${
-                  isDragging ? GP.blueSoft : "rgba(75,85,99,0.9)"
-                }`,
+                border: `2px dashed ${isDragging ? "#38bdf8" : "rgba(75,85,99,0.9)"}`,
                 background: isDragging
                   ? "rgba(56,189,248,0.08)"
                   : "rgba(15,23,42,0.9)",
@@ -317,7 +317,7 @@ export default function UploadCOIPage() {
                 justifyContent: "center",
                 gap: 10,
                 cursor: "pointer",
-                transition: "border-color 0.2s ease, background 0.2s ease",
+                transition: "border 0.2s ease, background 0.2s ease",
               }}
               onClick={() => {
                 if (!canUpload) return;
@@ -340,6 +340,7 @@ export default function UploadCOIPage() {
               >
                 <span style={{ fontSize: 26 }}>⬆️</span>
               </div>
+
               <div
                 style={{
                   fontSize: 14,
@@ -349,17 +350,21 @@ export default function UploadCOIPage() {
               >
                 {file ? file.name : "Drop COI PDF here or click to browse"}
               </div>
+
               <div
                 style={{
                   fontSize: 12,
                   color: "#9ca3af",
                 }}
               >
-                PDF only · max 25MB · tied to org{" "}
+                PDF only · max 25MB  
+                <br />
+                Org:{" "}
                 <span style={{ color: "#e5e7eb" }}>
                   {orgId || "(Org context active)"}
                 </span>
               </div>
+
               <input
                 id="coi-upload-input"
                 type="file"
@@ -439,8 +444,7 @@ export default function UploadCOIPage() {
                   color: "#6b7280",
                 }}
               >
-                This posts to <code>/api/upload-coi</code> with vendorId and
-                streams AI analysis.
+                POST → <code>/api/upload-coi</code>
               </div>
             </div>
           </form>
@@ -537,7 +541,7 @@ export default function UploadCOIPage() {
           </div>
         </div>
 
-        {/* RIGHT — COI SUMMARY / RAW OUTPUT */}
+        {/* RIGHT PANEL — RESULTS */}
         <div
           style={{
             borderRadius: 24,
@@ -571,9 +575,8 @@ export default function UploadCOIPage() {
                 color: "#9ca3af",
               }}
             >
-              Upload a certificate to see extracted carrier, policy, coverage,
-              limits, endorsement, and risk data appear here. We’ll render the
-              raw JSON response plus a readable summary.
+              Upload a certificate to see extracted carrier,  
+              policy, coverage, endorsements, and risk data here.
             </div>
           )}
 
@@ -585,177 +588,6 @@ export default function UploadCOIPage() {
                 gap: 10,
               }}
             >
-              {/* Top summary tiles */}
               <div
                 style={{
                   display: "grid",
-                  gridTemplateColumns: "repeat(2,minmax(0,1fr))",
-                  gap: 10,
-                }}
-              >
-                <SummaryTile
-                  label="Named insured"
-                  value={result?.insuredName || result?.extracted?.insuredName || "—"}
-                />
-                <SummaryTile
-                  label="Carrier"
-                  value={result?.carrierName || result?.extracted?.carrier || "—"}
-                />
-                <SummaryTile
-                  label="Policy number"
-                  value={
-                    result?.policyNumber ||
-                    result?.extracted?.policy_number ||
-                    "—"
-                  }
-                />
-                <SummaryTile
-                  label="Expiration"
-                  value={
-                    result?.policyExpiration ||
-                    result?.extracted?.expiration_date ||
-                    "—"
-                  }
-                />
-              </div>
-
-              {/* Coverage summary */}
-              <div>
-                <div
-                  style={{
-                    fontSize: 11,
-                    textTransform: "uppercase",
-                    letterSpacing: 1.2,
-                    color: "#9ca3af",
-                    marginBottom: 6,
-                  }}
-                >
-                  Coverage & Limits (sample view)
-                </div>
-                <div
-                  style={{
-                    borderRadius: 14,
-                    padding: 10,
-                    background: "rgba(15,23,42,0.96)",
-                    border: "1px solid rgba(51,65,85,0.9)",
-                    fontSize: 11,
-                    color: "#e5e7eb",
-                  }}
-                >
-                  {result?.coverageSummary ? (
-                    <ul
-                      style={{
-                        paddingLeft: 16,
-                        margin: 0,
-                        display: "flex",
-                        flexDirection: "column",
-                        gap: 4,
-                      }}
-                    >
-                      {Array.isArray(result.coverageSummary)
-                        ? result.coverageSummary.map((line, idx) => (
-                            <li key={idx}>{line}</li>
-                          ))
-                        : Object.entries(result.coverageSummary).map(
-                            ([k, v]) => (
-                              <li key={k}>
-                                <strong>{k}:</strong> {String(v)}
-                              </li>
-                            )
-                          )}
-                    </ul>
-                  ) : (
-                    <span style={{ color: "#9ca3af" }}>
-                      When wired, this area will show per-line coverage: GL,
-                      Auto, Umbrella, Workers’ Comp, and endorsements.
-                    </span>
-                  )}
-                </div>
-              </div>
-
-              {/* Raw JSON output */}
-              <div>
-                <div
-                  style={{
-                    fontSize: 11,
-                    textTransform: "uppercase",
-                    letterSpacing: 1.2,
-                    color: "#9ca3af",
-                    marginBottom: 6,
-                  }}
-                >
-                  Raw JSON payload
-                </div>
-                <pre
-                  style={{
-                    margin: 0,
-                    borderRadius: 14,
-                    background: "#020617",
-                    border: "1px solid rgba(30,64,175,0.9)",
-                    padding: 10,
-                    fontSize: 11,
-                    maxHeight: 220,
-                    overflow: "auto",
-                    whiteSpace: "pre-wrap",
-                    wordBreak: "break-word",
-                  }}
-                >
-                  {JSON.stringify(result, null, 2)}
-                </pre>
-              </div>
-            </div>
-          )}
-        </div>
-      </div>
-
-      {/* Global spinner keyframes */}
-      <style>{`
-        @keyframes spin {
-          0% { transform: rotate(0deg); }
-          100% { transform: rotate(360deg); }
-        }
-      `}</style>
-    </div>
-  );
-}
-
-/* ===========================
-   SUMMARY TILE
-=========================== */
-
-function SummaryTile({ label, value }) {
-  return (
-    <div
-      style={{
-        borderRadius: 14,
-        padding: "8px 10px",
-        background: "rgba(15,23,42,0.96)",
-        border: "1px solid rgba(51,65,85,0.9)",
-        minHeight: 52,
-      }}
-    >
-      <div
-        style={{
-          fontSize: 11,
-          color: "#9ca3af",
-          marginBottom: 4,
-          textTransform: "uppercase",
-          letterSpacing: 0.8,
-        }}
-      >
-        {label}
-      </div>
-      <div
-        style={{
-          fontSize: 12,
-          color: "#e5e7eb",
-        }}
-      >
-        {value || "—"}
-      </div>
-    </div>
-  );
-}
-function delay(ms) {
-  return new Promise(resolve => setTimeout(resolve, ms));
-}
