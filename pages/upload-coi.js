@@ -2,10 +2,7 @@
 import { useState } from "react";
 import { useOrg } from "../context/OrgContext";
 import { useRole } from "../lib/useRole";
-import { useRouter } from "next/router"; // <-- NEW
-import { useState } from "react";
-import { useOrg } from "../context/OrgContext";
-import { useRole } from "../lib/useRole";
+import { useRouter } from "next/router"; // needed for vendorId
 
 function delay(ms) {
   return new Promise(resolve => setTimeout(resolve, ms));
