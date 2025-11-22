@@ -292,6 +292,7 @@ export default function AlertsPage() {
             </p>
           </div>
         </div>
+      </div>
 
       {/* METRICS + FILTERS */}
       <MetricsAndFilters
@@ -303,14 +304,23 @@ export default function AlertsPage() {
         statusFilter={statusFilter}
         setStatusFilter={setStatusFilter}
         search={search}
-setSearch={setSearch}
+        setSearch={setSearch}
       />
 
-      {/* ===========================
-          METRICS + FILTERS PANEL
-      ============================ */}
+      {/* MAIN GRID: TIMELINE + RIGHT PANELS */}
+      <MainGrid
+        filtered={filtered}
+        allAlerts={initialAlerts}
+        canEdit={canEdit}
+      />
+    </div>
+  );
+}
+/* ===========================
+   METRICS + FILTERS PANEL
+=========================== */
 function MetricsAndFilters({
-metrics,
+  metrics,
   severityFilter,
   setSeverityFilter,
   typeFilter,
@@ -330,7 +340,7 @@ metrics,
         marginBottom: 24,
       }}
     >
-      {/* LEFT — 4 METRICS */}
+      {/* LEFT — METRICS */}
       <MetricPanel metrics={metrics} />
 
       {/* RIGHT — FILTERS */}
@@ -390,7 +400,6 @@ metrics,
             flexWrap: "wrap",
           }}
         >
-          {/* Type selector */}
           <select
             value={typeFilter}
             onChange={(e) => setTypeFilter(e.target.value)}
@@ -412,7 +421,6 @@ metrics,
             <option value="Info">Info</option>
           </select>
 
-          {/* Search bar */}
           <div
             style={{
               flex: 1,
@@ -446,10 +454,10 @@ metrics,
     </div>
   );
 }
+
 /* ===========================
    METRIC PANEL (4 KPIs)
 =========================== */
-
 function MetricPanel({ metrics }) {
   return (
     <div
@@ -473,11 +481,9 @@ function MetricPanel({ metrics }) {
     </div>
   );
 }
-
 /* ===========================
    SINGLE METRIC CARD
 =========================== */
-
 function MetricCard({ label, value, tone }) {
   const palette = {
     critical: {
@@ -546,7 +552,6 @@ function MetricCard({ label, value, tone }) {
 /* ===========================
    FILTER PILL GROUP
 =========================== */
-
 function FilterPillGroup({ options, active, onSelect, palette }) {
   const colors = {
     severity: {
@@ -576,7 +581,6 @@ function FilterPillGroup({ options, active, onSelect, palette }) {
     >
       {options.map((opt) => {
         const isActive = active === opt;
-
         return (
           <button
             key={opt}
@@ -604,7 +608,6 @@ function FilterPillGroup({ options, active, onSelect, palette }) {
 /* ===========================
    MAIN GRID WRAPPER
 =========================== */
-
 function MainGrid({ filtered, allAlerts, canEdit }) {
   return (
     <div
@@ -636,7 +639,6 @@ function MainGrid({ filtered, allAlerts, canEdit }) {
 /* ===========================
    TIMELINE PANEL
 =========================== */
-
 function TimelinePanel({ filtered, canEdit }) {
   return (
     <div
@@ -692,11 +694,9 @@ function TimelinePanel({ filtered, canEdit }) {
     </div>
   );
 }
-
 /* ===========================
    INDIVIDUAL ALERT CARD
 =========================== */
-
 function AlertCard({ alert, index, canEdit }) {
   const meta = {
     Critical: {
@@ -720,6 +720,7 @@ function AlertCard({ alert, index, canEdit }) {
       glow: "0 14px 35px rgba(52,211,153,0.25)",
     },
   }[alert.severity];
+
   return (
     <div
       style={{
@@ -879,7 +880,6 @@ function AlertCard({ alert, index, canEdit }) {
 /* ===========================
    SEVERITY BADGE
 =========================== */
-
 function SeverityBadge({ severity }) {
   const palette = {
     Critical: ["#f97316", "#fecaca"],
@@ -925,7 +925,6 @@ function SeverityBadge({ severity }) {
 /* ===========================
    RIGHT PANEL — RISK PULSE
 =========================== */
-
 function RiskPulsePanel({ alerts }) {
   const open = alerts.length;
   const critical = alerts.filter((a) => a.severity === "Critical").length;
@@ -1024,10 +1023,10 @@ function RiskPulsePanel({ alerts }) {
     </div>
   );
 }
+
 /* ===========================
    WHERE ALERTS COME FROM
 =========================== */
-
 function WhereAlertsFromPanel({ alerts }) {
   const coverage = alerts.filter((a) => a.type === "Coverage").length;
   const endorsements = alerts.filter((a) => a.type === "Endorsement").length;
@@ -1091,11 +1090,9 @@ function SourceCard({ label, value }) {
     </div>
   );
 }
-
 /* ===========================
    SELECTED ALERT EXAMPLE
 =========================== */
-
 function SelectedAlertHintPanel({ alerts }) {
   const picked = alerts[0];
   if (!picked) return null;
@@ -1136,13 +1133,13 @@ function SelectedAlertHintPanel({ alerts }) {
     </div>
   );
 }
+
 /* ===========================
    END OF FILE — SAFE CLOSE
 =========================== */
 
-// No additional exports needed.
-// AlertsPage is already the default export.
-// All subcomponents live inside this file.
+// AlertsPage is the default export above.
+// All subcomponents live in this file.
 
 //
 // File ends here.
