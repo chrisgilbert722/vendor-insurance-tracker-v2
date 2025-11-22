@@ -303,12 +303,13 @@ export default function AlertsPage() {
         statusFilter={statusFilter}
         setStatusFilter={setStatusFilter}
         search={search}
-        setSearch={setSearch}
-         />
+                setSearch={setSearch}
+      />
 
       {/* ===========================
           METRICS + FILTERS PANEL
       ============================ */}
+
 function MetricsAndFilters({
 
   metrics,
