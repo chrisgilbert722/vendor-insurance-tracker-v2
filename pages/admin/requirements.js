@@ -1,8 +1,8 @@
 // pages/requirements.js
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { useOrg } from "../context/OrgContext";
-import { useRole } from "../lib/useRole";
+import { useOrg } from "../../context/OrgContext";
+import { useRole } from "../../lib/useRole";
 
 export default function RequirementsPage() {
   const { activeOrgId, loadingOrgs } = useOrg();
