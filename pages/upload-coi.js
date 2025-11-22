@@ -2,6 +2,7 @@
 import { useState } from "react";
 import { useOrg } from "../context/OrgContext";
 import { useRole } from "../lib/useRole";
+import { useRouter } from "next/router"; // <-- NEW
 
 /* ===========================
    UPLOAD COI V3 — UI STATE
@@ -23,6 +24,9 @@ export default function UploadCOIPage() {
   const { orgId } = useOrg();
   const { isAdmin, isManager } = useRole();
   const canUpload = isAdmin || isManager;
+
+  const router = useRouter();
+  const vendorId = router.query.vendorId; // <-- get vendorId from URL (?vendorId=123)
 
   const [file, setFile] = useState(null);
   const [isDragging, setIsDragging] = useState(false);
@@ -60,12 +64,21 @@ export default function UploadCOIPage() {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+
     if (!file) {
       setError("Attach a PDF COI file before uploading.");
       return;
     }
+
     if (!canUpload) {
       setError("You don’t have permission to upload COIs.");
+      return;
+    }
+
+    if (!vendorId) {
+      setError(
+        "Missing vendorId in URL. Open this page from a vendor profile or append ?vendorId=123."
+      );
       return;
     }
 
@@ -75,9 +88,9 @@ export default function UploadCOIPage() {
     setActiveStep("upload");
 
     try {
-      // Step 1: Uploading
       const formData = new FormData();
       formData.append("file", file);
+      formData.append("vendorId", vendorId); // <-- send vendorId to API
 
       const res = await fetch("/api/upload-coi", {
         method: "POST",
@@ -179,26 +192,26 @@ export default function UploadCOIPage() {
                 marginBottom: 6,
               }}
             >
-                <span
-                  style={{
-                    fontSize: 10,
-                    color: "#9ca3af",
-                    letterSpacing: 1.2,
-                    textTransform: "uppercase",
-                  }}
-                >
-                  Upload COI V3
-                </span>
-                <span
-                  style={{
-                    fontSize: 10,
-                    color: "#38bdf8",
-                    letterSpacing: 1,
-                    textTransform: "uppercase",
-                  }}
-                >
-                  AI Processing Pipeline
-                </span>
+              <span
+                style={{
+                  fontSize: 10,
+                  color: "#9ca3af",
+                  letterSpacing: 1.2,
+                  textTransform: "uppercase",
+                }}
+              >
+                Upload COI V3
+              </span>
+              <span
+                style={{
+                  fontSize: 10,
+                  color: "#38bdf8",
+                  letterSpacing: 1,
+                  textTransform: "uppercase",
+                }}
+              >
+                AI Processing Pipeline
+              </span>
             </div>
 
             <h1
@@ -236,6 +249,20 @@ export default function UploadCOIPage() {
               extract coverage, limits, endorsements, and expirations, then flag
               what matters most — all in one cinematic pipeline.
             </p>
+
+            {/* Small hint so we know vendor context is set */}
+            <div
+              style={{
+                marginTop: 6,
+                fontSize: 11,
+                color: "#9ca3af",
+              }}
+            >
+              Vendor context:{" "}
+              <span style={{ color: "#e5e7eb" }}>
+                {vendorId ? `vendorId=${vendorId}` : "none (append ?vendorId=123)"}
+              </span>
+            </div>
           </div>
         </div>
       </div>
@@ -408,8 +435,8 @@ export default function UploadCOIPage() {
                   color: "#6b7280",
                 }}
               >
-                When wired, this button will POST to <code>/api/upload-coi</code>{" "}
-                and stream step-by-step results.
+                This posts to <code>/api/upload-coi</code> with vendorId and
+                streams AI analysis.
               </div>
             </div>
           </form>
@@ -554,7 +581,7 @@ export default function UploadCOIPage() {
                 gap: 10,
               }}
             >
-              {/* Top summary tiles (best effort guesses based on typical API shape) */}
+              {/* Top summary tiles */}
               <div
                 style={{
                   display: "grid",
@@ -564,27 +591,31 @@ export default function UploadCOIPage() {
               >
                 <SummaryTile
                   label="Named insured"
-                  value={result?.insuredName || "—"}
+                  value={result?.insuredName || result?.extracted?.insuredName || "—"}
                 />
                 <SummaryTile
                   label="Carrier"
-                  value={result?.carrierName || "—"}
+                  value={result?.carrierName || result?.extracted?.carrier || "—"}
                 />
                 <SummaryTile
                   label="Policy number"
-                  value={result?.policyNumber || "—"}
+                  value={
+                    result?.policyNumber ||
+                    result?.extracted?.policy_number ||
+                    "—"
+                  }
                 />
                 <SummaryTile
                   label="Expiration"
                   value={
-                    result?.policyExpiration
-                      ? new Date(result.policyExpiration).toLocaleDateString()
-                      : "—"
+                    result?.policyExpiration ||
+                    result?.extracted?.expiration_date ||
+                    "—"
                   }
                 />
               </div>
 
-              {/* Requirements snapshot (if available) */}
+              {/* Coverage summary */}
               <div>
                 <div
                   style={{
@@ -631,9 +662,8 @@ export default function UploadCOIPage() {
                     </ul>
                   ) : (
                     <span style={{ color: "#9ca3af" }}>
-                      When wired, this area will show per-line coverage:
-                      Example — GL Each Occurrence, GL Aggregate, Auto, Umbrella,
-                      Workers’ Comp, etc.
+                      When wired, this area will show per-line coverage: GL,
+                      Auto, Umbrella, Workers’ Comp, and endorsements.
                     </span>
                   )}
                 </div>
