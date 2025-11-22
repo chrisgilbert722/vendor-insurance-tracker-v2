@@ -305,12 +305,13 @@ export default function AlertsPage() {
         setStatusFilter={setStatusFilter}
         search={search}
         setSearch={setSearch}
-      />
-/* ===========================
-   METRICS + FILTERS PANEL
-=========================== */
+         />
 
+      {/* ===========================
+          METRICS + FILTERS PANEL
+      ============================ */}
 function MetricsAndFilters({
+
   metrics,
   severityFilter,
   setSeverityFilter,
