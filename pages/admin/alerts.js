@@ -292,7 +292,6 @@ export default function AlertsPage() {
             </p>
           </div>
         </div>
-      </div>
 
       {/* METRICS + FILTERS */}
       <MetricsAndFilters
