@@ -4,7 +4,7 @@ import { useOrg } from "../../context/OrgContext";
 import { useRole } from "../../lib/useRole";
 
 /* ===========================
-   MOCK DATA (replace with real API later)
+   MOCK DATA (replace later)
 =========================== */
 
 const initialTeam = [
@@ -57,7 +57,7 @@ function formatRelative(iso) {
 }
 
 /* ===========================
-   MAIN PAGE — ORGANIZATION V2
+   MAIN PAGE — ORGANIZATION V3
 =========================== */
 
 export default function OrganizationPage() {
@@ -115,24 +115,24 @@ export default function OrganizationPage() {
         minHeight: "100vh",
         position: "relative",
         background:
-          "radial-gradient(circle at top left,#020617 0%, #020617 45%, #000 100%)",
+          "radial-gradient(circle at top left,#020617 0%,#020617 40%,#000 100%)",
         padding: "30px 40px 40px",
         color: "#e5e7eb",
         overflowX: "hidden",
       }}
     >
-      {/* CINEMATIC AURA */}
+      {/* AURA */}
       <div
         style={{
           position: "absolute",
-          top: -220,
+          top: -260,
           left: "50%",
           transform: "translateX(-50%)",
-          width: 900,
-          height: 900,
+          width: 1100,
+          height: 1100,
           background:
-            "radial-gradient(circle, rgba(56,189,248,0.25), transparent 60%)",
-          filter: "blur(110px)",
+            "radial-gradient(circle, rgba(56,189,248,0.35), transparent 60%)",
+          filter: "blur(120px)",
           pointerEvents: "none",
           zIndex: 0,
         }}
@@ -181,7 +181,7 @@ export default function OrganizationPage() {
                   textTransform: "uppercase",
                 }}
               >
-                Organization · Team Settings V2
+                Organization · Team Settings V3
               </span>
               <span
                 style={{
@@ -227,7 +227,8 @@ export default function OrganizationPage() {
               }}
             >
               Control who sees vendor risk, who can edit rules & requirements,
-              and who can resolve alerts — from one place.
+              and who can resolve alerts — with the same cinematic cockpit feel
+              as your Alerts dashboard.
             </p>
           </div>
         </div>
@@ -267,7 +268,7 @@ export default function OrganizationPage() {
           />
         </div>
 
-        {/* RIGHT — RISK SNAPSHOT / QUICK ACTIONS */}
+        {/* RIGHT — SNAPSHOT + ACTIONS + AI + AUDIT */}
         <div
           style={{
             display: "flex",
@@ -278,6 +279,7 @@ export default function OrganizationPage() {
           <OrgRiskSnapshot stats={stats} />
           <OrgQuickActions />
           <OrgAiAssistant />
+          <OrgAuditPanel />
         </div>
       </div>
     </div>
@@ -299,7 +301,8 @@ function OrgSummaryPanel({ orgId, stats }) {
         background:
           "radial-gradient(circle at top left,rgba(15,23,42,0.97),rgba(15,23,42,0.92))",
         border: "1px solid rgba(148,163,184,0.6)",
-        boxShadow: "0 24px 60px rgba(15,23,42,0.98)",
+        boxShadow:
+          "0 24px 60px rgba(15,23,42,0.98), 0 0 30px rgba(56,189,248,0.22)",
       }}
     >
       <div
@@ -351,7 +354,7 @@ function OrgSummaryPanel({ orgId, stats }) {
             display: "grid",
             gridTemplateColumns: "repeat(3,minmax(0,1fr))",
             gap: 8,
-            minWidth: 220,
+            minWidth: 230,
           }}
         >
           <MiniStat label="Total members" value={stats.total} tone="neutral" />
@@ -446,7 +449,8 @@ function TeamPanel({
         background:
           "radial-gradient(circle at top left,rgba(15,23,42,0.97),rgba(15,23,42,0.92))",
         border: "1px solid rgba(148,163,184,0.6)",
-        boxShadow: "0 24px 60px rgba(15,23,42,0.98)",
+        boxShadow:
+          "0 24px 60px rgba(15,23,42,0.98), 0 0 35px rgba(56,189,248,0.12)",
       }}
     >
       {/* HEADER */}
@@ -495,7 +499,8 @@ function TeamPanel({
           borderRadius: 18,
           padding: 12,
           border: "1px solid rgba(51,65,85,0.9)",
-          background: "rgba(15,23,42,0.96)",
+          background:
+            "radial-gradient(circle at top,rgba(15,23,42,0.98),rgba(15,23,42,1))",
           marginBottom: 12,
           display: "flex",
           flexDirection: "column",
@@ -615,7 +620,8 @@ function TeamPanel({
         style={{
           borderRadius: 18,
           border: "1px solid rgba(51,65,85,0.9)",
-          background: "rgba(15,23,42,0.98)",
+          background:
+            "radial-gradient(circle at top,rgba(15,23,42,0.98),rgba(15,23,42,1))",
           padding: 10,
           display: "flex",
           flexDirection: "column",
@@ -656,8 +662,9 @@ function TeamRow({ member, canEdit, onRoleChange, onRemove }) {
         borderRadius: 14,
         padding: "8px 10px",
         background:
-          "linear-gradient(90deg,rgba(15,23,42,0.96),rgba(15,23,42,0.98))",
+          "linear-gradient(135deg,rgba(15,23,42,0.96),rgba(15,23,42,0.98))",
         border: "1px solid rgba(55,65,81,0.95)",
+        boxShadow: "0 16px 40px rgba(15,23,42,0.95)",
         display: "grid",
         gridTemplateColumns: "minmax(0,1.6fr) minmax(0,1.1fr) auto",
         gap: 10,
@@ -1038,12 +1045,128 @@ function OrgAiAssistant() {
 }
 
 /* ===========================
+   ORG AUDIT PANEL (MOCK)
+=========================== */
+
+function OrgAuditPanel() {
+  const mockEvents = [
+    {
+      id: "e-1",
+      actor: "You (Owner)",
+      action: "Changed Ops Manager role from Viewer → Manager",
+      at: "2025-11-19T16:10:00Z",
+    },
+    {
+      id: "e-2",
+      actor: "You (Owner)",
+      action: "Invited ops@example.com as Manager",
+      at: "2025-11-18T09:45:00Z",
+    },
+  ];
+
+  return (
+    <div
+      style={{
+        borderRadius: 24,
+        padding: 16,
+        background:
+          "radial-gradient(circle at top right,rgba(15,23,42,0.96),rgba(15,23,42,1))",
+        border: "1px solid rgba(148,163,184,0.6)",
+        boxShadow: "0 24px 60px rgba(15,23,42,0.98)",
+      }}
+    >
+      <div
+        style={{
+          fontSize: 11,
+          textTransform: "uppercase",
+          letterSpacing: 1.2,
+          color: "#9ca3af",
+          marginBottom: 6,
+        }}
+      >
+        Recent org access changes
+      </div>
+
+      <div
+        style={{
+          display: "flex",
+          flexDirection: "column",
+          gap: 8,
+        }}
+      >
+        {mockEvents.map((ev, idx) => (
+          <div
+            key={ev.id}
+            style={{
+              borderRadius: 14,
+              padding: "7px 9px",
+              border: "1px solid rgba(55,65,81,0.9)",
+              background:
+                "linear-gradient(90deg,rgba(15,23,42,0.98),rgba(15,23,42,0.95))",
+              display: "grid",
+              gridTemplateColumns: "16px minmax(0,1fr)",
+              gap: 8,
+              fontSize: 11,
+              color: "#e5e7eb",
+            }}
+          >
+            <div
+              style={{
+                display: "flex",
+                flexDirection: "column",
+                alignItems: "center",
+                marginTop: 3,
+              }}
+            >
+              <div
+                style={{
+                  width: 8,
+                  height: 8,
+                  borderRadius: 999,
+                  background: idx === 0 ? "#38bdf8" : "#6b7280",
+                  boxShadow:
+                    idx === 0 ? "0 0 10px rgba(56,189,248,0.9)" : "none",
+                  marginBottom: 4,
+                }}
+              />
+            </div>
+
+            <div>
+              <div>{ev.action}</div>
+              <div
+                style={{
+                  fontSize: 10,
+                  color: "#9ca3af",
+                  marginTop: 2,
+                }}
+              >
+                {ev.actor} · {formatRelative(ev.at)}
+              </div>
+            </div>
+          </div>
+        ))}
+      </div>
+
+      <div
+        style={{
+          fontSize: 10,
+          color: "#6b7280",
+          marginTop: 6,
+        }}
+      >
+        When wired, this will pull from your real org audit log so you can see
+        who changed what, and when.
+      </div>
+    </div>
+  );
+}
+
+/* ===========================
    END OF FILE — SAFE CLOSE
 =========================== */
 
 // OrganizationPage is the default export.
 // All subcomponents are defined above.
-
 //
 // File ends here.
 //
