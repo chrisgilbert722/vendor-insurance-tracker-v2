@@ -1,11 +1,11 @@
-// components/Sidebar.js — Tactical Neon Rail V5
+// components/Sidebar.js — Tactical Neon Rail V6 (Admin Route Fix)
 import React from "react";
 
 export default function Sidebar({ pathname, isAdmin, isManager, isViewer }) {
   return (
     <div
       style={{
-        width: 82, // slim rail
+        width: 82,
         minHeight: "100vh",
         display: "flex",
         flexDirection: "column",
@@ -23,7 +23,7 @@ export default function Sidebar({ pathname, isAdmin, isManager, isViewer }) {
         `,
       }}
     >
-      {/* TOP LOGO / GLYPH */}
+      {/* TOP LOGO */}
       <div
         style={{
           marginBottom: 34,
@@ -38,46 +38,47 @@ export default function Sidebar({ pathname, isAdmin, isManager, isViewer }) {
 
       {/* MAIN NAV */}
       <RailLink
-        href="/dashboard"
+        href="/admin/dashboard"
         label="Dashboard"
         icon="📊"
-        active={pathname === "/dashboard"}
+        active={pathname === "/admin/dashboard"}
       />
+
       <RailLink
-        href="/vendors"
+        href="/admin/vendors"
         label="Vendors"
         icon="👥"
-        active={pathname === "/vendors"}
+        active={pathname === "/admin/vendors"}
       />
 
       {(isAdmin || isManager) && (
         <RailLink
-          href="/upload-coi"
+          href="/admin/upload-coi"
           label="Upload"
           icon="📄"
-          active={pathname === "/upload-coi"}
+          active={pathname === "/admin/upload-coi"}
         />
       )}
 
       {isAdmin && (
         <RailLink
-          href="/organization"
+          href="/admin/organization"
           label="Org"
           icon="🏢"
-          active={pathname === "/organization"}
+          active={pathname === "/admin/organization"}
         />
       )}
 
       {isAdmin && (
         <RailLink
-          href="/alerts"
+          href="/admin/alerts"
           label="Alerts"
           icon="🔔"
-          active={pathname === "/alerts"}
+          active={pathname === "/admin/alerts"}
         />
       )}
 
-      {/* BOTTOM — LOGIN/LOGOUT */}
+      {/* LOGOUT */}
       <div style={{ marginTop: "auto" }}>
         <RailLink
           href="/auth/login"
@@ -91,7 +92,7 @@ export default function Sidebar({ pathname, isAdmin, isManager, isViewer }) {
 }
 
 /* ===========================================
-   V5 Rail Link Component
+   V6 Rail Link Component (unchanged visuals)
 =========================================== */
 function RailLink({ href, label, icon, active }) {
   return (
