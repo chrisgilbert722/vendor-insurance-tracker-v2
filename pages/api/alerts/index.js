@@ -1,393 +1,123 @@
 // pages/api/alerts/index.js
-import OpenAI from "openai";
-import { supabase } from "../../../lib/supabaseClient";
+// Enterprise Alerts API — backed by Neon (`public.alerts` + `vendors`)
 
-const openai = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY,
-});
+import { sql } from "../../../lib/db";
 
-/** Basic date helpers */
-function parseExpiration(dateStr) {
-  if (!dateStr) return null;
-  const [mm, dd, yyyy] = dateStr.split("/");
-  if (!mm || !dd || !yyyy) return null;
-  return new Date(`${yyyy}-${mm}-${dd}T00:00:00`);
-}
+const DEFAULT_PAGE_SIZE = 50;
+const MAX_PAGE_SIZE = 200;
 
-function computeDaysLeft(dateStr) {
-  const d = parseExpiration(dateStr);
-  if (!d) return null;
-  return Math.floor((d - new Date()) / (1000 * 60 * 60 * 24));
-}
-
-/** Helper to safely lower-case compare coverage type */
-function normalizeCoverageType(str) {
-  return (str || "").toLowerCase().trim();
-}
 export default async function handler(req, res) {
   if (req.method !== "GET") {
-    return res.status(405).json({ ok: false, error: "Method not allowed" });
+    return res
+      .status(405)
+      .json({ ok: false, error: "Method not allowed" });
   }
 
   try {
-    const { orgId } = req.query;
+    const {
+      orgId,
+      vendorId,
+      severity,
+      status,
+      search,
+      cursor,   // ISO timestamp for pagination (load older than this)
+      limit,
+    } = req.query;
 
-    if (!orgId) {
-      return res
-        .status(400)
-        .json({ ok: false, error: "Missing orgId for alerts query." });
-    }
+    // Basic, safe limit handling
+    let pageSize = parseInt(Array.isArray(limit) ? limit[0] : limit, 10);
+    if (Number.isNaN(pageSize) || pageSize <= 0) pageSize = DEFAULT_PAGE_SIZE;
+    if (pageSize > MAX_PAGE_SIZE) pageSize = MAX_PAGE_SIZE;
 
-    // 1️⃣ Load org, requirements, vendors, policies in parallel
-    const [{ data: orgs, error: orgErr }, { data: reqs, error: reqErr }, { data: vendors, error: vendErr }, { data: policies, error: polErr }] =
-      await Promise.all([
-        supabase.from("orgs").select("*").eq("id", orgId),
-        supabase.from("requirements").select("*").eq("org_id", orgId),
-        supabase.from("vendors").select("*").eq("org_id", orgId),
-        supabase.from("policies").select("*").eq("org_id", orgId),
-      ]);
+    const orgIdInt =
+      orgId && !Array.isArray(orgId) ? parseInt(orgId, 10) : null;
+    const vendorIdInt =
+      vendorId && !Array.isArray(vendorId) ? parseInt(vendorId, 10) : null;
+    const severityFilter =
+      severity && !Array.isArray(severity) ? String(severity) : null;
+    const statusFilter =
+      status && !Array.isArray(status) ? String(status) : null;
+    const searchRaw =
+      search && !Array.isArray(search) ? String(search).toLowerCase() : null;
+    const cursorDate =
+      cursor && !Array.isArray(cursor) ? new Date(cursor) : null;
 
-    if (orgErr) {
-      console.error("Org fetch error", orgErr);
-      throw new Error(orgErr.message);
-    }
-    if (reqErr) {
-      console.error("Requirements fetch error", reqErr);
-      throw new Error(reqErr.message);
-    }
-    if (vendErr) {
-      console.error("Vendors fetch error", vendErr);
-      throw new Error(vendErr.message);
-    }
-    if (polErr) {
-      console.error("Policies fetch error", polErr);
-      throw new Error(polErr.message);
-    }
+    // Core query with flexible filters using "X IS NULL OR" pattern
+    const rows = await sql`
+      SELECT
+        a.id,
+        a.created_at,
+        a.is_read,
+        a.org_id,
+        a.vendor_id,
+        a.type,
+        a.message,
+        a.severity,
+        a.title,
+        a.rule_label,
+        a.file_url,
+        a.policy_id,
+        a.status,
+        a.extracted,
+        v.name AS vendor_name
+      FROM public.alerts AS a
+      LEFT JOIN public.vendors AS v
+        ON v.id = a.vendor_id
+      WHERE
+        (${orgIdInt} IS NULL OR a.org_id = ${orgIdInt})
+        AND (${vendorIdInt} IS NULL OR a.vendor_id = ${vendorIdInt})
+        AND (${severityFilter} IS NULL OR a.severity = ${severityFilter})
+        AND (${statusFilter} IS NULL OR a.status = ${statusFilter})
+        AND (
+          ${cursorDate}::timestamptz IS NULL
+          OR a.created_at < ${cursorDate}
+        )
+        AND (
+          ${searchRaw} IS NULL
+          OR LOWER(
+              COALESCE(a.title, '') || ' ' ||
+              COALESCE(a.message, '') || ' ' ||
+              COALESCE(a.rule_label, '') || ' ' ||
+              COALESCE(v.name, '')
+            ) LIKE ${searchRaw ? `%${searchRaw}%` : null}
+        )
+      ORDER BY a.created_at DESC
+      LIMIT ${pageSize};
+    `;
 
-    const org = orgs?.[0] || null;
-    const requirements = reqs || [];
-    const vendorList = vendors || [];
-    const policyList = policies || [];
+    const alerts = rows.map((row) => ({
+      id: row.id,
+      createdAt: row.created_at,
+      isRead: row.is_read,
+      orgId: row.org_id,
+      vendorId: row.vendor_id,
+      vendorName: row.vendor_name || "Unknown vendor",
+      type: row.type || "Info",
+      message: row.message,
+      severity: row.severity || "Medium",
+      title: row.title || "Alert",
+      ruleLabel: row.rule_label || "",
+      fileUrl: row.file_url || null,
+      policyId: row.policy_id,
+      status: row.status || "Open",
+      extracted: row.extracted || null,
+    }));
 
-    const alerts = [];
-
-    // Group policies by vendor
-    const policiesByVendor = {};
-    for (const p of policyList) {
-      if (!p.vendor_id) continue;
-      if (!policiesByVendor[p.vendor_id]) policiesByVendor[p.vendor_id] = [];
-      policiesByVendor[p.vendor_id].push(p);
-    }
-
-    // 2️⃣ Generate raw alerts per vendor
-    for (const vendor of vendorList) {
-      const vId = vendor.id;
-      const vName = vendor.name || vendor.vendor_name || "Unknown vendor";
-      const vPolicies = policiesByVendor[vId] || [];
-
-      // 2.1 Missing COIs entirely
-      if (vPolicies.length === 0) {
-        alerts.push({
-          type: "missing_coi",
-          severity: "warning",
-          vendor_id: vId,
-          vendor_name: vName,
-          message: `Vendor has no policies on file.`,
-          details: {},
-        });
-      }
-
-      // 2.2 Expiration / date-based alerts
-      for (const p of vPolicies) {
-        const daysLeft = computeDaysLeft(p.expiration_date);
-        if (daysLeft === null) {
-          alerts.push({
-            type: "missing_expiration",
-            severity: "info",
-            vendor_id: vId,
-            vendor_name: vName,
-            policy_id: p.id,
-            coverage_type: p.coverage_type,
-            message: `Policy is missing an expiration date.`,
-            details: {},
-          });
-          continue;
-        }
-
-        if (daysLeft < 0) {
-          alerts.push({
-            type: "expired_policy",
-            severity: "critical",
-            vendor_id: vId,
-            vendor_name: vName,
-            policy_id: p.id,
-            coverage_type: p.coverage_type,
-            message: `Policy is expired (${daysLeft} days past expiration).`,
-            details: { daysLeft },
-          });
-        } else if (daysLeft <= 30) {
-          alerts.push({
-            type: "expiring_30",
-            severity: "critical",
-            vendor_id: vId,
-            vendor_name: vName,
-            policy_id: p.id,
-            coverage_type: p.coverage_type,
-            message: `Policy expires within 30 days (${daysLeft} days left).`,
-            details: { daysLeft },
-          });
-        } else if (daysLeft <= 60) {
-          alerts.push({
-            type: "expiring_60",
-            severity: "warning",
-            vendor_id: vId,
-            vendor_name: vName,
-            policy_id: p.id,
-            coverage_type: p.coverage_type,
-            message: `Policy expires within 60 days (${daysLeft} days left).`,
-            details: { daysLeft },
-          });
-        } else if (daysLeft <= 90) {
-          alerts.push({
-            type: "expiring_90",
-            severity: "info",
-            vendor_id: vId,
-            vendor_name: vName,
-            policy_id: p.id,
-            coverage_type: p.coverage_type,
-            message: `Policy expires within 90 days (${daysLeft} days left).`,
-            details: { daysLeft },
-          });
-        }
-      }
-
-      // 2.3 Requirement-based alerts (coverage, limits, endorsements, risk score)
-      for (const rule of requirements) {
-        const coverageType = normalizeCoverageType(rule.coverage_type);
-        const match = vPolicies.find(
-          (p) =>
-            normalizeCoverageType(p.coverage_type) === coverageType
-        );
-
-        if (!match) {
-          alerts.push({
-            type: "missing_required_coverage",
-            severity: "critical",
-            vendor_id: vId,
-            vendor_name: vName,
-            coverage_type: rule.coverage_type,
-            message: `Missing required coverage: ${rule.coverage_type}.`,
-            details: { ruleId: rule.id },
-          });
-          continue;
-        }
-
-        // limits
-        if (
-          rule.min_limit_each_occurrence &&
-          (!match.limit_each_occurrence ||
-            match.limit_each_occurrence < rule.min_limit_each_occurrence)
-        ) {
-          alerts.push({
-            type: "limit_each_occurrence_too_low",
-            severity: "critical",
-            vendor_id: vId,
-            vendor_name: vName,
-            policy_id: match.id,
-            coverage_type: match.coverage_type,
-            message: `Each occurrence limit for ${match.coverage_type} is below requirement.`,
-            details: {
-              actual: match.limit_each_occurrence || null,
-              required: rule.min_limit_each_occurrence,
-            },
-          });
-        }
-
-        if (
-          rule.min_limit_aggregate &&
-          (!match.limit_aggregate ||
-            match.limit_aggregate < rule.min_limit_aggregate)
-        ) {
-          alerts.push({
-            type: "limit_aggregate_too_low",
-            severity: "warning",
-            vendor_id: vId,
-            vendor_name: vName,
-            policy_id: match.id,
-            coverage_type: match.coverage_type,
-            message: `Aggregate limit for ${match.coverage_type} is below requirement.`,
-            details: {
-              actual: match.limit_aggregate || null,
-              required: rule.min_limit_aggregate,
-            },
-          });
-        }
-
-        // endorsements
-        if (rule.require_additional_insured && !match.additional_insured) {
-          alerts.push({
-            type: "missing_additional_insured",
-            severity: "warning",
-            vendor_id: vId,
-            vendor_name: vName,
-            policy_id: match.id,
-            coverage_type: match.coverage_type,
-            message: `Missing Additional Insured endorsement for ${match.coverage_type}.`,
-            details: { ruleId: rule.id },
-          });
-        }
-
-        if (rule.require_waiver && !match.waiver_of_subrogation) {
-          alerts.push({
-            type: "missing_waiver",
-            severity: "warning",
-            vendor_id: vId,
-            vendor_name: vName,
-            policy_id: match.id,
-            coverage_type: match.coverage_type,
-            message: `Missing Waiver of Subrogation for ${match.coverage_type}.`,
-            details: { ruleId: rule.id },
-          });
-        }
-
-        // risk score
-        if (
-          rule.min_risk_score &&
-          match.risk_score !== null &&
-          match.risk_score !== undefined &&
-          match.risk_score < rule.min_risk_score
-        ) {
-          alerts.push({
-            type: "risk_score_below_min",
-            severity: "warning",
-            vendor_id: vId,
-            vendor_name: vName,
-            policy_id: match.id,
-            coverage_type: match.coverage_type,
-            message: `Risk score for ${match.coverage_type} is below required minimum.`,
-            details: {
-              actual: match.risk_score,
-              required: rule.min_risk_score,
-            },
-          });
-        }
-      }
-
-      // 2.4 Data quality / AI extraction anomalies
-      for (const p of vPolicies) {
-        const missingFields = [];
-        if (!p.carrier) missingFields.push("carrier");
-        if (!p.policy_number) missingFields.push("policy_number");
-        if (!p.coverage_type) missingFields.push("coverage_type");
-        if (!p.expiration_date) missingFields.push("expiration_date");
-
-        if (missingFields.length > 0) {
-          alerts.push({
-            type: "incomplete_policy_record",
-            severity: "info",
-            vendor_id: vId,
-            vendor_name: vName,
-            policy_id: p.id,
-            coverage_type: p.coverage_type,
-            message: `Policy record is missing fields: ${missingFields.join(
-              ", "
-            )}.`,
-            details: { missingFields },
-          });
-        }
-      }
-    }
-    // 3️⃣ Build AI summary (nuclear mode)
-    const topAlerts = alerts.slice(0, 80); // cap so prompt doesn't explode
-
-    const aiSummary = await buildAiAlertSummary({
-      org,
-      alerts: topAlerts,
-      vendors: vendorList,
-    });
+    // Build next-page cursor (for infinite scroll later)
+    const last = alerts[alerts.length - 1] || null;
+    const nextCursor = last ? last.createdAt : null;
 
     return res.status(200).json({
       ok: true,
       alerts,
-      aiSummary,
+      nextCursor,
+      pageSize,
     });
   } catch (err) {
-    console.error("ALERTS ENGINE ERROR:", err);
-    return res
-      .status(500)
-      .json({ ok: false, error: err.message || "Alerts engine failed" });
-  }
-}
-async function buildAiAlertSummary({ org, alerts, vendors }) {
-  if (!process.env.OPENAI_API_KEY) {
-    return {
-      summaryText:
-        "AI summary unavailable (OPENAI_API_KEY not configured).",
-      perVendor: [],
-    };
-  }
-
-  if (!alerts || alerts.length === 0) {
-    return {
-      summaryText: "No active alerts. All vendors appear compliant.",
-      perVendor: [],
-    };
-  }
-
-  // Shape data for AI
-  const condensed = alerts.map((a) => ({
-    type: a.type,
-    severity: a.severity,
-    vendor: a.vendor_name,
-    coverage_type: a.coverage_type || null,
-    message: a.message,
-  }));
-
-  const orgName = org?.name || "Your organization";
-
-  const prompt = `
-You are an AI compliance and risk assistant for a vendor COI monitoring platform.
-
-Organization: ${orgName}
-
-You are given a list of structured alerts about vendor insurance compliance.
-Each alert has:
-- type
-- severity (critical, warning, info)
-- vendor
-- coverage_type (optional)
-- message
-
-Your tasks:
-1. Give a concise overall summary (2–3 sentences) of the current risk posture.
-2. Highlight the top 3–5 most urgent issues (especially "critical" and missing coverage / expired policies).
-3. Group concerns by vendor, and for each vendor, briefly say what's wrong and what action is needed.
-4. Keep it non-legal, actionable, and easy to read (for operations/compliance staff).
-
-Here are the alerts:
-
-${JSON.stringify(condensed, null, 2)}
-`;
-
-  try {
-    const completion = await openai.chat.completions.create({
-      model: "gpt-4o-mini",
-      messages: [{ role: "user", content: prompt }],
-      temperature: 0.2,
+    console.error("[api/alerts] ERROR:", err);
+    return res.status(500).json({
+      ok: false,
+      error: err.message || "Server error",
     });
-
-    const text = completion.choices[0]?.message?.content || "";
-
-    return {
-      summaryText: text,
-      perVendor: [], // you can later parse sections if you want structured per-vendor insight
-    };
-  } catch (err) {
-    console.error("AI summary error:", err);
-    return {
-      summaryText:
-        "Failed to generate AI summary. Check OpenAI configuration.",
-      perVendor: [],
-    };
   }
 }
