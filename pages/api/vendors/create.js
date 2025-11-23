@@ -1,41 +1,52 @@
-import { Client } from "pg";
+// pages/api/vendors/create.js
+import { sql } from "../../../src/lib/db";
 import crypto from "crypto";
 
 export default async function handler(req, res) {
   if (req.method !== "POST") {
-    return res.status(405).json({ ok: false, error: "Method not allowed" });
+    return res
+      .status(405)
+      .json({ ok: false, error: "Method not allowed" });
   }
 
   const { name, email } = req.body || {};
 
   if (!name) {
-    return res.status(400).json({ ok: false, error: "Vendor name is required" });
+    return res
+      .status(400)
+      .json({ ok: false, error: "Vendor name is required" });
   }
 
-  let client;
-
   try {
+    // Generate upload token + expiration
     const uploadToken = crypto.randomBytes(24).toString("hex");
+
     const expiresAt = new Date();
     expiresAt.setDate(expiresAt.getDate() + 30); // 30-day link
 
-    client = new Client({ connectionString: process.env.DATABASE_URL });
-    await client.connect();
-
-    // For now, hardcode org_id = 1 (we’ll wire real orgs later)
+    // Hardcode org_id = 1 for now
     const orgId = 1;
 
-    const result = await client.query(
-      `INSERT INTO vendors
-        (org_id, name, email, upload_token, upload_token_expires_at)
-       VALUES ($1, $2, $3, $4, $5)
-       RETURNING id, name, email, upload_token`,
-      [orgId, name, email || null, uploadToken, expiresAt]
-    );
+    // Insert vendor using Neon SQL
+    const rows = await sql`
+      INSERT INTO vendors (
+        org_id,
+        name,
+        email,
+        upload_token,
+        upload_token_expires_at
+      )
+      VALUES (
+        ${orgId},
+        ${name},
+        ${email || null},
+        ${uploadToken},
+        ${expiresAt}
+      )
+      RETURNING id, name, email, upload_token;
+    `;
 
-    const vendor = result.rows[0];
-
-    await client.end();
+    const vendor = rows[0];
 
     const baseUrl =
       process.env.NEXT_PUBLIC_APP_URL ||
@@ -53,12 +64,9 @@ export default async function handler(req, res) {
       },
     });
   } catch (err) {
-    console.error("create vendor ERROR:", err);
-    if (client) {
-      try {
-        await client.end();
-      } catch (_) {}
-    }
-    return res.status(500).json({ ok: false, error: err.message });
+    console.error("[api/vendors/create] ERROR:", err);
+    return res
+      .status(500)
+      .json({ ok: false, error: err.message });
   }
 }
