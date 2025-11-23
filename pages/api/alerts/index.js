@@ -1,6 +1,4 @@
 // pages/api/alerts/index.js
-// Enterprise Alerts API — backed by Neon (`public.alerts` + `vendors`)
-
 import { sql } from "../../../lib/db";
 
 const DEFAULT_PAGE_SIZE = 50;
@@ -8,9 +6,7 @@ const MAX_PAGE_SIZE = 200;
 
 export default async function handler(req, res) {
   if (req.method !== "GET") {
-    return res
-      .status(405)
-      .json({ ok: false, error: "Method not allowed" });
+    return res.status(405).json({ ok: false, error: "Method not allowed" });
   }
 
   try {
@@ -20,29 +16,28 @@ export default async function handler(req, res) {
       severity,
       status,
       search,
-      cursor,   // ISO timestamp for pagination (load older than this)
+      cursor,
       limit,
     } = req.query;
 
-    // Basic, safe limit handling
-    let pageSize = parseInt(Array.isArray(limit) ? limit[0] : limit, 10);
+    // ---------- NORMALIZE ALL INPUTS ----------
+    const orgIdInt = orgId ? parseInt(orgId, 10) : null;
+    const vendorIdInt = vendorId ? parseInt(vendorId, 10) : null;
+
+    const severityFilter = severity || null;
+    const statusFilter = status || null;
+
+    const searchRaw =
+      search && typeof search === "string" ? search.toLowerCase() : null;
+
+    const cursorDate =
+      cursor && typeof cursor === "string" ? new Date(cursor) : null;
+
+    let pageSize = parseInt(limit, 10);
     if (Number.isNaN(pageSize) || pageSize <= 0) pageSize = DEFAULT_PAGE_SIZE;
     if (pageSize > MAX_PAGE_SIZE) pageSize = MAX_PAGE_SIZE;
 
-    const orgIdInt =
-      orgId && !Array.isArray(orgId) ? parseInt(orgId, 10) : null;
-    const vendorIdInt =
-      vendorId && !Array.isArray(vendorId) ? parseInt(vendorId, 10) : null;
-    const severityFilter =
-      severity && !Array.isArray(severity) ? String(severity) : null;
-    const statusFilter =
-      status && !Array.isArray(status) ? String(status) : null;
-    const searchRaw =
-      search && !Array.isArray(search) ? String(search).toLowerCase() : null;
-    const cursorDate =
-      cursor && !Array.isArray(cursor) ? new Date(cursor) : null;
-
-    // Core query with flexible filters using "X IS NULL OR" pattern
+    // ---------- MAIN QUERY ----------
     const rows = await sql`
       SELECT
         a.id,
@@ -64,60 +59,52 @@ export default async function handler(req, res) {
       LEFT JOIN public.vendors AS v
         ON v.id = a.vendor_id
       WHERE
-        (${orgIdInt} IS NULL OR a.org_id = ${orgIdInt})
-        AND (${vendorIdInt} IS NULL OR a.vendor_id = ${vendorIdInt})
-        AND (${severityFilter} IS NULL OR a.severity = ${severityFilter})
-        AND (${statusFilter} IS NULL OR a.status = ${statusFilter})
+        (${orgIdInt}::int IS NULL OR a.org_id = ${orgIdInt})
+        AND (${vendorIdInt}::int IS NULL OR a.vendor_id = ${vendorIdInt})
+        AND (${severityFilter}::text IS NULL OR a.severity = ${severityFilter})
+        AND (${statusFilter}::text IS NULL OR a.status = ${statusFilter})
+        AND (${cursorDate}::timestamptz IS NULL OR a.created_at < ${cursorDate})
         AND (
-          ${cursorDate}::timestamptz IS NULL
-          OR a.created_at < ${cursorDate}
-        )
-        AND (
-          ${searchRaw} IS NULL
+          ${searchRaw}::text IS NULL
           OR LOWER(
-              COALESCE(a.title, '') || ' ' ||
-              COALESCE(a.message, '') || ' ' ||
-              COALESCE(a.rule_label, '') || ' ' ||
-              COALESCE(v.name, '')
-            ) LIKE ${searchRaw ? `%${searchRaw}%` : null}
+            COALESCE(a.title, '') || ' ' ||
+            COALESCE(a.message, '') || ' ' ||
+            COALESCE(a.rule_label, '') || ' ' ||
+            COALESCE(v.name, '')
+          ) LIKE ${searchRaw ? `%${searchRaw}%` : null}
         )
       ORDER BY a.created_at DESC
       LIMIT ${pageSize};
     `;
 
-    const alerts = rows.map((row) => ({
-      id: row.id,
-      createdAt: row.created_at,
-      isRead: row.is_read,
-      orgId: row.org_id,
-      vendorId: row.vendor_id,
-      vendorName: row.vendor_name || "Unknown vendor",
-      type: row.type || "Info",
-      message: row.message,
-      severity: row.severity || "Medium",
-      title: row.title || "Alert",
-      ruleLabel: row.rule_label || "",
-      fileUrl: row.file_url || null,
-      policyId: row.policy_id,
-      status: row.status || "Open",
-      extracted: row.extracted || null,
+    const alerts = rows.map((r) => ({
+      id: r.id,
+      createdAt: r.created_at,
+      isRead: r.is_read,
+      orgId: r.org_id,
+      vendorId: r.vendor_id,
+      vendorName: r.vendor_name || "Unknown vendor",
+      type: r.type,
+      message: r.message,
+      severity: r.severity,
+      title: r.title,
+      ruleLabel: r.rule_label,
+      fileUrl: r.file_url,
+      policyId: r.policy_id,
+      status: r.status,
+      extracted: r.extracted,
     }));
 
-    // Build next-page cursor (for infinite scroll later)
     const last = alerts[alerts.length - 1] || null;
-    const nextCursor = last ? last.createdAt : null;
 
     return res.status(200).json({
       ok: true,
       alerts,
-      nextCursor,
+      nextCursor: last ? last.createdAt : null,
       pageSize,
     });
   } catch (err) {
     console.error("[api/alerts] ERROR:", err);
-    return res.status(500).json({
-      ok: false,
-      error: err.message || "Server error",
-    });
+    return res.status(500).json({ ok: false, error: err.message });
   }
 }
