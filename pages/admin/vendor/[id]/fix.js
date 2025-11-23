@@ -1,12 +1,11 @@
 // pages/admin/vendor/[id]/fix.js
 import { useRouter } from "next/router";
 import { useEffect, useState } from "react";
-import EliteComplianceBlock from "../../../components/elite/EliteComplianceBlock";
+import EliteComplianceBlock from "../../../../components/elite/EliteComplianceBlock";
 
 /* ===========================
    RISK HELPERS
 =========================== */
-
 function parseExpiration(dateStr) {
   if (!dateStr) return null;
   const parts = dateStr.split("/");
@@ -24,44 +23,15 @@ function computeDaysLeft(dateStr) {
 
 function computeExpirationRisk(policy) {
   if (!policy) {
-    return {
-      daysLeft: null,
-      severity: "unknown",
-      baseScore: 0,
-      flags: ["Missing policy"],
-    };
+    return { daysLeft: null, severity: "unknown", baseScore: 0 };
   }
-
   const daysLeft = computeDaysLeft(policy.expiration_date);
-  const flags = [];
+  if (daysLeft === null) return { daysLeft: null, severity: "unknown", baseScore: 0 };
 
-  if (daysLeft === null) {
-    return {
-      daysLeft: null,
-      severity: "unknown",
-      baseScore: 0,
-      flags: ["Missing expiration date"],
-    };
-  }
-
-  let severity = "ok";
-  let baseScore = 95;
-
-  if (daysLeft < 0) {
-    severity = "expired";
-    baseScore = 20;
-    flags.push("Policy expired");
-  } else if (daysLeft <= 30) {
-    severity = "critical";
-    baseScore = 40;
-    flags.push("Expires within 30 days");
-  } else if (daysLeft <= 90) {
-    severity = "warning";
-    baseScore = 70;
-    flags.push("Expires within 90 days");
-  }
-
-  return { daysLeft, severity, baseScore, flags };
+  if (daysLeft < 0) return { daysLeft, severity: "expired", baseScore: 20 };
+  if (daysLeft <= 30) return { daysLeft, severity: "critical", baseScore: 40 };
+  if (daysLeft <= 90) return { daysLeft, severity: "warning", baseScore: 70 };
+  return { daysLeft, severity: "ok", baseScore: 95 };
 }
 
 function computeVendorAiRisk({ primaryPolicy, elite, compliance }) {
@@ -69,21 +39,19 @@ function computeVendorAiRisk({ primaryPolicy, elite, compliance }) {
   let base = exp.baseScore;
 
   let eliteFactor = 1.0;
-  if (elite && !elite.loading && !elite.error) {
+  if (elite && !elite.error && !elite.loading) {
     if (elite.overall === "fail") eliteFactor = 0.4;
     else if (elite.overall === "warn") eliteFactor = 0.7;
-    else if (elite.overall === "pass") eliteFactor = 1.0;
   }
 
   let complianceFactor = 1.0;
   if (compliance) {
-    if (compliance.error) {
-      complianceFactor = 0.7;
-    } else {
-      const hasMissing = (compliance.missing || []).length > 0;
-      const hasFailing = (compliance.failing || []).length > 0;
-      if (hasFailing) complianceFactor = 0.5;
-      else if (hasMissing) complianceFactor = 0.7;
+    if (compliance.error) complianceFactor = 0.7;
+    else {
+      const missing = (compliance.missing || []).length > 0;
+      const failing = (compliance.failing || []).length > 0;
+      if (failing) complianceFactor = 0.5;
+      else if (missing) complianceFactor = 0.7;
     }
   }
 
@@ -101,7 +69,7 @@ function computeVendorAiRisk({ primaryPolicy, elite, compliance }) {
 }
 
 /* ===========================
-   MAIN PAGE — FIX / ELITE VIEW
+   MAIN PAGE — FIX / ELITE COCKPIT
 =========================== */
 
 export default function VendorFixPage() {
@@ -112,6 +80,7 @@ export default function VendorFixPage() {
   const [org, setOrg] = useState(null);
   const [policies, setPolicies] = useState([]);
   const [compliance, setCompliance] = useState(null);
+  const [eliteResult, setEliteResult] = useState(null);
 
   const [loadingVendor, setLoadingVendor] = useState(true);
   const [loadingCompliance, setLoadingCompliance] = useState(true);
@@ -128,15 +97,13 @@ export default function VendorFixPage() {
   const [sendError, setSendError] = useState("");
   const [sendSuccess, setSendSuccess] = useState("");
 
-  const [eliteResult, setEliteResult] = useState(null);
-
-  /* ----------------- LOAD VENDOR + COMPLIANCE + ELITE ----------------- */
   useEffect(() => {
     if (!id) return;
 
     async function loadAll() {
       try {
         setLoadingVendor(true);
+        setError("");
 
         const res = await fetch(`/api/vendors/${id}`);
         const data = await res.json();
@@ -144,14 +111,10 @@ export default function VendorFixPage() {
 
         setVendor(data.vendor);
         setOrg(data.organization);
-        setPolicies(data.policies);
+        setPolicies(data.policies || []);
 
         if (data.vendor?.org_id) {
-          await loadCompliance(
-            data.vendor.id,
-            data.vendor.org_id,
-            data.policies
-          );
+          await loadCompliance(data.vendor.id, data.vendor.org_id, data.policies || []);
         } else {
           setLoadingCompliance(false);
         }
@@ -190,7 +153,6 @@ export default function VendorFixPage() {
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ coidata }),
           });
-
           const eliteData = await eliteRes.json();
           if (eliteData.ok) {
             setEliteResult({
@@ -212,10 +174,8 @@ export default function VendorFixPage() {
     loadAll();
   }, [id]);
 
-  /* ----------------- FIX PLAN HELPERS ----------------- */
   async function loadFixPlan() {
     if (!vendor || !org) return;
-
     try {
       setFixLoading(true);
       setFixError("");
@@ -227,7 +187,6 @@ export default function VendorFixPage() {
       const res = await fetch(
         `/api/vendor/fix-plan?vendorId=${vendor.id}&orgId=${org.id}`
       );
-
       const data = await res.json();
       if (!data.ok) throw new Error(data.error);
 
@@ -244,7 +203,6 @@ export default function VendorFixPage() {
 
   async function sendFixEmail() {
     if (!vendor || !org || !fixSubject || !fixBody) return;
-
     try {
       setSendLoading(true);
       setSendError("");
@@ -260,7 +218,6 @@ export default function VendorFixPage() {
           body: fixBody,
         }),
       });
-
       const data = await res.json();
       if (!data.ok) throw new Error(data.error);
 
@@ -340,7 +297,6 @@ export default function VendorFixPage() {
     }
   }
 
-  /* ----------------- LOADING STATES ----------------- */
   if (loadingVendor) {
     return (
       <div
@@ -397,7 +353,6 @@ export default function VendorFixPage() {
     compliance,
   });
 
-  /* ----------------- MAIN UI (CINEMATIC) ----------------- */
   return (
     <div
       style={{
@@ -409,7 +364,7 @@ export default function VendorFixPage() {
         color: "#e5e7eb",
       }}
     >
-      {/* AURA */}
+      {/* Aura */}
       <div
         style={{
           position: "absolute",
@@ -426,7 +381,7 @@ export default function VendorFixPage() {
         }}
       />
 
-      {/* HEADER */}
+      {/* Header */}
       <div style={{ position: "relative", zIndex: 2, marginBottom: 18 }}>
         <div
           style={{
@@ -468,6 +423,7 @@ export default function VendorFixPage() {
             {vendor.name}
           </span>
         </h1>
+
         {org && (
           <p
             style={{
@@ -482,7 +438,7 @@ export default function VendorFixPage() {
         )}
       </div>
 
-      {/* TOP ROW — COMPLIANCE + AI RISK + ELITE ENGINE */}
+      {/* TOP ROW: COMPLIANCE + AI RISK + ELITE */}
       <div
         style={{
           position: "relative",
@@ -493,7 +449,7 @@ export default function VendorFixPage() {
           marginBottom: 18,
         }}
       >
-        {/* LEFT — Compliance + Elite */}
+        {/* Left: Compliance + Elite + AI Risk */}
         <div
           style={{
             borderRadius: 24,
@@ -548,7 +504,7 @@ export default function VendorFixPage() {
                   gap: 16,
                 }}
               >
-                {/* ELITE ENGINE */}
+                {/* Elite */}
                 <div
                   style={{
                     borderRadius: 16,
@@ -568,7 +524,6 @@ export default function VendorFixPage() {
                   >
                     Elite Rule Engine
                   </div>
-
                   <EliteComplianceBlock
                     coidata={{
                       expirationDate: primaryPolicy?.expiration_date,
@@ -581,7 +536,7 @@ export default function VendorFixPage() {
                   />
                 </div>
 
-                {/* AI RISK */}
+                {/* AI Risk */}
                 <div
                   style={{
                     borderRadius: 16,
@@ -680,82 +635,11 @@ export default function VendorFixPage() {
                   )}
                 </div>
               </div>
-
-              {/* Compliance lists */}
-              <div style={{ marginTop: 14 }}>
-                {compliance.missing?.length > 0 && (
-                  <>
-                    <div
-                      style={{ color: "#fb7185", fontSize: 12, marginTop: 8 }}
-                    >
-                      Missing Coverage
-                    </div>
-                    <ul
-                      style={{
-                        marginTop: 4,
-                        paddingLeft: 18,
-                        fontSize: 12,
-                        color: "#e5e7eb",
-                      }}
-                    >
-                      {compliance.missing.map((m, i) => (
-                        <li key={i}>{m.coverage_type}</li>
-                      ))}
-                    </ul>
-                  </>
-                )}
-
-                {compliance.failing?.length > 0 && (
-                  <>
-                    <div
-                      style={{ color: "#facc15", fontSize: 12, marginTop: 8 }}
-                    >
-                      Failing Requirements
-                    </div>
-                    <ul
-                      style={{
-                        marginTop: 4,
-                        paddingLeft: 18,
-                        fontSize: 12,
-                        color: "#e5e7eb",
-                      }}
-                    >
-                      {compliance.failing.map((f, i) => (
-                        <li key={i}>
-                          {f.coverage_type}: {f.reason}
-                        </li>
-                      ))}
-                    </ul>
-                  </>
-                )}
-
-                {compliance.passing?.length > 0 && (
-                  <>
-                    <div
-                      style={{ color: "#22c55e", fontSize: 12, marginTop: 8 }}
-                    >
-                      Passing
-                    </div>
-                    <ul
-                      style={{
-                        marginTop: 4,
-                        paddingLeft: 18,
-                        fontSize: 12,
-                        color: "#e5e7eb",
-                      }}
-                    >
-                      {compliance.passing.map((p, i) => (
-                        <li key={i}>{p.coverage_type}</li>
-                      ))}
-                    </ul>
-                  </>
-                )}
-              </div>
             </>
           )}
         </div>
 
-        {/* RIGHT — AI FIX PLAN CONTROLS */}
+        {/* Right: AI Fix Plan */}
         <div
           style={{
             borderRadius: 24,
@@ -770,9 +654,9 @@ export default function VendorFixPage() {
             style={{
               display: "flex",
               justifyContent: "space-between",
-              marginBottom: 10,
               gap: 10,
               alignItems: "center",
+              marginBottom: 8,
             }}
           >
             <div>
@@ -782,7 +666,6 @@ export default function VendorFixPage() {
                   textTransform: "uppercase",
                   letterSpacing: 1.2,
                   color: "#9ca3af",
-                  marginBottom: 4,
                 }}
               >
                 AI Fix Plan
@@ -816,7 +699,7 @@ export default function VendorFixPage() {
               style={{
                 fontSize: 12,
                 color: "#fecaca",
-                marginBottom: 10,
+                marginBottom: 8,
               }}
             >
               {fixError}
@@ -946,6 +829,7 @@ export default function VendorFixPage() {
                   {sendError}
                 </div>
               )}
+
               {sendSuccess && (
                 <div
                   style={{
@@ -1006,7 +890,7 @@ export default function VendorFixPage() {
                   textTransform: "uppercase",
                   letterSpacing: 1.1,
                   color: "#9ca3af",
-                  marginTop: 12,
+                  marginTop: 10,
                   marginBottom: 4,
                 }}
               >
