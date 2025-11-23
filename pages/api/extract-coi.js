@@ -1,4 +1,4 @@
-// A2.3 — AI Extraction Engine (DB-Compatible Version)
+// A2.3 — AI Extraction Engine (DB-Compatible Version, Neon Edition)
 
 export const config = {
   api: { bodyParser: false },
@@ -8,7 +8,7 @@ import OpenAI from "openai";
 import formidable from "formidable";
 import fs from "fs";
 import pdfParse from "pdf-parse";
-import { Client } from "pg";
+import { sql } from "../../lib/db";  // ← Neon client
 
 // Vercel runtime auto-detects Node
 export default async function handler(req, res) {
@@ -16,14 +16,15 @@ export default async function handler(req, res) {
     return res.status(405).json({ error: "Method not allowed" });
   }
 
-  let db = null;
-
   try {
+    // -------------------------------------------
     // 1) Parse uploaded file
+    // -------------------------------------------
     const form = formidable({});
     const [fields, files] = await form.parse(req);
 
-    const uploaded = files.file?.[0] || files.file;
+    const uploaded =
+      files.file?.[0] || files.file;
     if (!uploaded) throw new Error("No PDF uploaded");
 
     const buffer = fs.readFileSync(uploaded.filepath);
@@ -35,8 +36,12 @@ export default async function handler(req, res) {
 
     const text = pdfData.text.slice(0, 20000);
 
+    // -------------------------------------------
     // 2) AI extraction (advanced JSON)
-    const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+    // -------------------------------------------
+    const openai = new OpenAI({
+      apiKey: process.env.OPENAI_API_KEY,
+    });
 
     const systemPrompt = `
 You are an advanced COI extraction engine.
@@ -67,7 +72,7 @@ Rules:
 - Never add explanations
 - If unsure, use null
 - "limits" should summarize coverage limits in human-readable form
-- "riskScore" = 0–100 (higher = better)
+- "riskScore" = 0–100
 - "missingFields" lists required fields that appear missing
 - "flags" lists any coverage concerns
     `.trim();
@@ -83,7 +88,6 @@ Rules:
 
     let raw = completion.choices[0]?.message?.content || "";
 
-    // attempt to extract JSON
     const first = raw.indexOf("{");
     const last = raw.lastIndexOf("}");
     if (first === -1 || last === -1) {
@@ -92,9 +96,14 @@ Rules:
 
     const parsed = JSON.parse(raw.slice(first, last + 1));
 
-    // Normalize for DB insert
+    // -------------------------------------------
+    // 3) Normalize for DB insert
+    // -------------------------------------------
     const dbRecord = {
-      vendor_name: parsed.vendor_name ?? parsed.namedInsured ?? null,
+      vendor_name:
+        parsed.vendor_name ??
+        parsed.namedInsured ??
+        null,
       policy_number: parsed.policy_number ?? null,
       carrier: parsed.carrier ?? null,
       effective_date: parsed.effective_date ?? null,
@@ -102,41 +111,43 @@ Rules:
       coverage_type: parsed.coverage_type ?? null,
     };
 
-    // 3) Insert into DB ONLY the fields your table supports
-    db = new Client({ connectionString: process.env.DATABASE_URL });
-    await db.connect();
+    // -------------------------------------------
+    // 4) Insert into DB using Neon SQL
+    // -------------------------------------------
+    const rows = await sql`
+      INSERT INTO public.policies (
+        vendor_name,
+        policy_number,
+        carrier,
+        effective_date,
+        expiration_date,
+        coverage_type,
+        status
+      )
+      VALUES (
+        ${dbRecord.vendor_name},
+        ${dbRecord.policy_number},
+        ${dbRecord.carrier},
+        ${dbRecord.effective_date},
+        ${dbRecord.expiration_date},
+        ${dbRecord.coverage_type},
+        'active'
+      )
+      RETURNING id;
+    `;
 
-    const result = await db.query(
-      `INSERT INTO public.policies
-       (vendor_name, policy_number, carrier, effective_date, expiration_date, coverage_type, status)
-       VALUES ($1, $2, $3, $4, $5, $6, 'active')
-       RETURNING id`,
-      [
-        dbRecord.vendor_name,
-        dbRecord.policy_number,
-        dbRecord.carrier,
-        dbRecord.effective_date,
-        dbRecord.expiration_date,
-        dbRecord.coverage_type,
-      ]
-    );
+    const newId = rows[0]?.id;
 
-    await db.end();
-
-    // 4) Return ALL AI fields back to frontend
+    // -------------------------------------------
+    // 5) Return all AI fields to frontend
+    // -------------------------------------------
     return res.status(200).json({
-      id: result.rows[0].id,
-      ...parsed, // full AI extraction payload
+      id: newId,
+      ...parsed,
     });
+
   } catch (err) {
     console.error("A2.3 ERROR:", err);
-
-    if (db) {
-      try {
-        await db.end();
-      } catch (_) {}
-    }
-
     return res.status(500).json({ error: err.message });
   }
 }
