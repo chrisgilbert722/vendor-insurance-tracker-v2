@@ -1,5 +1,5 @@
 // pages/admin/alerts.js
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { useOrg } from "../../context/OrgContext";
 import { useRole } from "../../lib/useRole";
 import DocumentViewerV3 from "../../components/documents/DocumentViewerV3";
@@ -20,7 +20,7 @@ const GP = {
 };
 
 /* ===========================
-   MOCK ALERTS (Replace later)
+   MOCK ALERTS (FALLBACK ONLY)
 =========================== */
 const initialAlerts = [
   {
@@ -94,6 +94,7 @@ const initialAlerts = [
 =========================== */
 function formatRelative(iso) {
   const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "—";
   const diff = Date.now() - d.getTime();
   const mins = diff / 60000;
   if (mins < 1) return "just now";
@@ -105,6 +106,7 @@ function formatRelative(iso) {
 
 function formatDate(iso) {
   const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "—";
   return d.toLocaleString(undefined, {
     month: "short",
     day: "numeric",
@@ -128,6 +130,11 @@ export default function AlertsPage() {
   const { isAdmin, isManager } = useRole();
   const canEdit = isAdmin || isManager;
 
+  // LIVE ALERTS STATE
+  const [alerts, setAlerts] = useState(initialAlerts);
+  const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState("");
+
   const [severityFilter, setSeverityFilter] = useState("All");
   const [typeFilter, setTypeFilter] = useState("All");
   const [statusFilter, setStatusFilter] = useState("Open");
@@ -139,19 +146,61 @@ export default function AlertsPage() {
   const [viewerExtracted, setViewerExtracted] = useState(null);
   const [viewerTitle, setViewerTitle] = useState("COI Document");
 
-  const metrics = useMemo(() => {
-    return {
-      total: initialAlerts.length,
-      critical: initialAlerts.filter((a) => a.severity === "Critical").length,
-      warning: initialAlerts.filter(
-        (a) => a.severity === "High" || a.severity === "Medium"
-      ).length,
-      info: initialAlerts.filter((a) => a.severity === "Low").length,
+  /* ---------- Load live alerts from API on mount ---------- */
+  useEffect(() => {
+    let cancelled = false;
+
+    async function loadAlerts() {
+      try {
+        setLoading(true);
+        setLoadError("");
+
+        const res = await fetch("/api/alerts");
+        if (!res.ok) throw new Error(`Failed to load alerts (${res.status})`);
+
+        const data = await res.json();
+        if (!cancelled && data?.ok && Array.isArray(data.alerts)) {
+          // If there are no alerts yet, fall back to mocks so the UI stays pretty
+          if (data.alerts.length > 0) {
+            setAlerts(data.alerts);
+          } else {
+            setAlerts(initialAlerts);
+          }
+        }
+      } catch (err) {
+        console.error("[AlertsPage] loadAlerts error:", err);
+        if (!cancelled) {
+          setLoadError(err?.message || "Could not load alerts.");
+          setAlerts(initialAlerts);
+        }
+      } finally {
+        if (!cancelled) {
+          setLoading(false);
+        }
+      }
+    }
+
+    loadAlerts();
+    return () => {
+      cancelled = true;
     };
   }, []);
 
+  // Metrics computed off whatever alerts we’re showing (live or fallback)
+  const metrics = useMemo(() => {
+    return {
+      total: alerts.length,
+      critical: alerts.filter((a) => a.severity === "Critical").length,
+      warning: alerts.filter(
+        (a) => a.severity === "High" || a.severity === "Medium"
+      ).length,
+      info: alerts.filter((a) => a.severity === "Low").length,
+    };
+  }, [alerts]);
+
+  // Apply filters to alerts
   const filtered = useMemo(() => {
-    return initialAlerts
+    return alerts
       .filter((a) => {
         if (severityFilter !== "All" && a.severity !== severityFilter)
           return false;
@@ -160,13 +209,13 @@ export default function AlertsPage() {
 
         if (search.length) {
           const hay = (
-            a.title +
+            (a.title || "") +
             " " +
-            a.message +
+            (a.message || "") +
             " " +
-            a.vendorName +
+            (a.vendorName || "") +
             " " +
-            a.ruleLabel
+            (a.ruleLabel || "")
           ).toLowerCase();
           if (!hay.includes(search.toLowerCase())) return false;
         }
@@ -174,33 +223,31 @@ export default function AlertsPage() {
       })
       .sort(
         (a, b) =>
-          severityRank[b.severity] - severityRank[a.severity] ||
+          (severityRank[b.severity] || 0) - (severityRank[a.severity] || 0) ||
           new Date(b.createdAt) - new Date(a.createdAt)
       );
-  }, [severityFilter, typeFilter, statusFilter, search]);
+  }, [alerts, severityFilter, typeFilter, statusFilter, search]);
 
   // When user clicks "View COI" on an alert
   const handleViewCoi = (alert) => {
     if (!alert) return;
 
-    // Later we can attach real fileUrl + AI extract to alerts.
-    // For now, we still feed rich context into the viewer summary.
     const flags = [
-      `${alert.severity} · ${alert.type}`,
-      alert.title,
-      alert.message,
+      `${alert.severity || ""} · ${alert.type || ""}`,
+      alert.title || "",
+      alert.message || "",
     ];
 
     const extracted = {
-      carrier: null,
-      policy_number: null,
-      coverage_type: alert.type || null,
-      effective_date: null,
-      expiration_date: null,
-      flags,
+      carrier: alert.extracted?.carrier ?? null,
+      policy_number: alert.extracted?.policy_number ?? null,
+      coverage_type: alert.extracted?.coverage_type ?? alert.type ?? null,
+      effective_date: alert.extracted?.effective_date ?? null,
+      expiration_date: alert.extracted?.expiration_date ?? null,
+      flags: flags.filter(Boolean),
     };
 
-    setViewerFileUrl(alert.fileUrl || null); // currently undefined for mock alerts
+    setViewerFileUrl(alert.fileUrl || null);
     setViewerExtracted(extracted);
     setViewerTitle(alert.title || "COI Document");
     setViewerOpen(true);
@@ -325,6 +372,21 @@ export default function AlertsPage() {
             >
               Live feed of your rule engine + requirements engine firing.
             </p>
+
+            {/* Small status line */}
+            <div
+              style={{
+                marginTop: 6,
+                fontSize: 11,
+                color: "#6b7280",
+              }}
+            >
+              {loading
+                ? "Loading live alerts from engine…"
+                : loadError
+                ? `Using fallback demo alerts (error: ${loadError})`
+                : "Showing live alerts from engine."}
+            </div>
           </div>
         </div>
       </div>
@@ -345,7 +407,7 @@ export default function AlertsPage() {
       {/* MAIN GRID: TIMELINE + RIGHT PANELS */}
       <MainGrid
         filtered={filtered}
-        allAlerts={initialAlerts}
+        allAlerts={alerts}
         canEdit={canEdit}
         onViewCoi={handleViewCoi}
       />
@@ -667,7 +729,11 @@ function MainGrid({ filtered, allAlerts, canEdit, onViewCoi }) {
         marginBottom: 50,
       }}
     >
-      <TimelinePanel filtered={filtered} canEdit={canEdit} onViewCoi={onViewCoi} />
+      <TimelinePanel
+        filtered={filtered}
+        canEdit={canEdit}
+        onViewCoi={onViewCoi}
+      />
 
       <div
         style={{
@@ -732,7 +798,7 @@ function TimelinePanel({ filtered, canEdit, onViewCoi }) {
       <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
         {filtered.map((alert, idx) => (
           <AlertCard
-            key={alert.id}
+            key={alert.id || idx}
             alert={alert}
             index={idx}
             canEdit={canEdit}
@@ -769,7 +835,11 @@ function AlertCard({ alert, index, canEdit, onViewCoi }) {
       bg: "rgba(15,23,42,0.95)",
       glow: "0 14px 35px rgba(52,211,153,0.25)",
     },
-  }[alert.severity];
+  }[alert.severity] || {
+    dot: "#6b7280",
+    bg: "rgba(15,23,42,0.95)",
+    glow: "0 14px 35px rgba(148,163,184,0.25)",
+  };
 
   return (
     <div
@@ -794,25 +864,25 @@ function AlertCard({ alert, index, canEdit, onViewCoi }) {
           alignItems: "center",
         }}
       >
-        <div
-          style={{
-            width: 8,
-            height: 8,
-            borderRadius: 999,
-            background: meta.dot,
-            boxShadow: `0 0 10px ${meta.dot}`,
-            marginBottom: 4,
-          }}
-        />
+          <div
+            style={{
+              width: 8,
+              height: 8,
+              borderRadius: 999,
+              background: meta.dot,
+              boxShadow: `0 0 10px ${meta.dot}`,
+              marginBottom: 4,
+            }}
+          />
 
-        <div
-          style={{
-            flex: 1,
-            width: 2,
-            background:
-              "linear-gradient(to bottom,rgba(148,163,184,0.6),transparent)",
-          }}
-        />
+          <div
+            style={{
+              flex: 1,
+              width: 2,
+              background:
+                "linear-gradient(to bottom,rgba(148,163,184,0.6),transparent)",
+            }}
+          />
       </div>
 
       {/* CONTENT */}
@@ -850,9 +920,9 @@ function AlertCard({ alert, index, canEdit, onViewCoi }) {
               gap: 4,
             }}
           >
-            <SeverityBadge severity={alert.severity} />
+            <SeverityBadge severity={alert.severity || "Info"} />
             <span style={{ fontSize: 10, color: "#6b7280" }}>
-              {alert.status} · {formatRelative(alert.createdAt)}
+              {alert.status || "Open"} · {formatRelative(alert.createdAt)}
             </span>
           </div>
         </div>
@@ -867,16 +937,22 @@ function AlertCard({ alert, index, canEdit, onViewCoi }) {
           }}
         >
           <div>
-            <div style={{ color: "#e5e7eb" }}>{alert.vendorName}</div>
-            <div>{alert.vendorTagline}</div>
+            <div style={{ color: "#e5e7eb" }}>
+              {alert.vendorName || "Unknown vendor"}
+            </div>
+            <div>{alert.vendorTagline || ""}</div>
           </div>
 
           <div style={{ textAlign: "right" }}>
             Rule:{" "}
-            <span style={{ color: "#e5e7eb" }}>{alert.ruleLabel}</span>
+            <span style={{ color: "#e5e7eb" }}>
+              {alert.ruleLabel || "—"}
+            </span>
             <br />
             Field:{" "}
-            <span style={{ color: "#e5e7eb" }}>{alert.field}</span>
+            <span style={{ color: "#e5e7eb" }}>
+              {alert.field || "—"}
+            </span>
           </div>
         </div>
 
@@ -889,7 +965,8 @@ function AlertCard({ alert, index, canEdit, onViewCoi }) {
           }}
         >
           <span style={{ fontSize: 10, color: "#6b7280" }}>
-            Source: {alert.source} · {formatDate(alert.createdAt)}
+            Source: {alert.source || "Alerts Engine"} ·{" "}
+            {formatDate(alert.createdAt)}
           </span>
 
           <div style={{ display: "flex", gap: 6 }}>
@@ -951,7 +1028,8 @@ function SeverityBadge({ severity }) {
     High: ["#facc15", "#fef9c3"],
     Medium: ["#38bdf8", "#e0f2fe"],
     Low: ["#34d399", "#ccfbf1"],
-  }[severity];
+    Info: ["#6366f1", "#e0e7ff"],
+  }[severity] || ["#6b7280", "#e5e7eb"];
 
   return (
     <div
@@ -992,7 +1070,7 @@ function SeverityBadge({ severity }) {
    RIGHT PANEL — RISK PULSE
 =========================== */
 function RiskPulsePanel({ alerts }) {
-  const open = alerts.length;
+  const open = alerts.filter((a) => a.status !== "Resolved").length;
   const critical = alerts.filter((a) => a.severity === "Critical").length;
   const high = alerts.filter((a) => a.severity === "High").length;
 
@@ -1200,6 +1278,10 @@ function SelectedAlertHintPanel({ alerts }) {
     </div>
   );
 }
+
+/* ===========================
+   END OF FILE
+=========================== */
 
 /* ===========================
    END OF FILE
