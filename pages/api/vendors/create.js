@@ -1,5 +1,5 @@
 // pages/api/vendors/create.js
-import { sql } from "../../../src/lib/db";
+import { sql } from "../../../lib/db";
 import crypto from "crypto";
 
 export default async function handler(req, res) {
@@ -24,7 +24,7 @@ export default async function handler(req, res) {
     const expiresAt = new Date();
     expiresAt.setDate(expiresAt.getDate() + 30); // 30-day link
 
-    // Hardcode org_id = 1 for now
+    // Hardcode org_id = 1 (for now)
     const orgId = 1;
 
     // Insert vendor using Neon SQL
