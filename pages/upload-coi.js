@@ -3,6 +3,7 @@ import { useState } from "react";
 import { useOrg } from "../context/OrgContext";
 import { useRole } from "../lib/useRole";
 import { useRouter } from "next/router";
+import DocumentViewerV3 from "../components/documents/DocumentViewerV3";
 
 // simple helper for step animation
 function delay(ms) {
@@ -39,6 +40,11 @@ export default function UploadCOIPage() {
   const [error, setError] = useState("");
   const [result, setResult] = useState(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+
+  // Document Viewer V3 state
+  const [viewerOpen, setViewerOpen] = useState(false);
+  const [fileUrl, setFileUrl] = useState(null);
+  const [extracted, setExtracted] = useState(null);
 
   /* ------------ handlers ----------- */
 
@@ -93,6 +99,9 @@ export default function UploadCOIPage() {
     setError("");
     setResult(null);
     setActiveStep("upload");
+    setViewerOpen(false);
+    setFileUrl(null);
+    setExtracted(null);
 
     try {
       const formData = new FormData();
@@ -122,6 +131,13 @@ export default function UploadCOIPage() {
       await delay(600);
 
       setResult(data);
+
+      if (data?.fileUrl) {
+        setFileUrl(data.fileUrl);
+        setExtracted(data.extracted || null);
+        setViewerOpen(true);
+      }
+
       setActiveStep("done");
     } catch (err) {
       console.error(err);
@@ -542,14 +558,42 @@ export default function UploadCOIPage() {
         >
           <div
             style={{
-              fontSize: 11,
-              textTransform: "uppercase",
-              letterSpacing: 1.2,
-              color: "#9ca3af",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "space-between",
               marginBottom: 4,
             }}
           >
-            COI Summary
+            <div
+              style={{
+                fontSize: 11,
+                textTransform: "uppercase",
+                letterSpacing: 1.2,
+                color: "#9ca3af",
+              }}
+            >
+              COI Summary
+            </div>
+
+            {result?.fileUrl && (
+              <button
+                type="button"
+                onClick={() => setViewerOpen(true)}
+                style={{
+                  borderRadius: 999,
+                  padding: "6px 12px",
+                  border: "1px solid rgba(56,189,248,0.9)",
+                  background:
+                    "radial-gradient(circle at top left,#38bdf8,#0ea5e9,#0f172a)",
+                  color: "#e5f2ff",
+                  fontSize: 11,
+                  fontWeight: 500,
+                  cursor: "pointer",
+                }}
+              >
+                Open PDF Viewer
+              </button>
+            )}
           </div>
 
           {!result && (
@@ -585,6 +629,16 @@ export default function UploadCOIPage() {
           )}
         </div>
       </div>
+
+      {/* DOCUMENT VIEWER V3 */}
+      <DocumentViewerV3
+        open={viewerOpen}
+        onClose={() => setViewerOpen(false)}
+        fileUrl={fileUrl}
+        title="Uploaded COI"
+        extracted={extracted}
+      />
     </div>
   );
 }
+
