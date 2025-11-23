@@ -2,6 +2,7 @@
 import { useState, useMemo } from "react";
 import { useOrg } from "../../context/OrgContext";
 import { useRole } from "../../lib/useRole";
+import DocumentViewerV3 from "../../components/documents/DocumentViewerV3";
 
 /* ===========================
    CINEMATIC THEME TOKENS
@@ -118,6 +119,7 @@ const severityRank = {
   Medium: 2,
   Low: 1,
 };
+
 /* ===========================
    MAIN PAGE — CINEMATIC V2.1
 =========================== */
@@ -130,6 +132,12 @@ export default function AlertsPage() {
   const [typeFilter, setTypeFilter] = useState("All");
   const [statusFilter, setStatusFilter] = useState("Open");
   const [search, setSearch] = useState("");
+
+  // Document Viewer V3 state
+  const [viewerOpen, setViewerOpen] = useState(false);
+  const [viewerFileUrl, setViewerFileUrl] = useState(null);
+  const [viewerExtracted, setViewerExtracted] = useState(null);
+  const [viewerTitle, setViewerTitle] = useState("COI Document");
 
   const metrics = useMemo(() => {
     return {
@@ -170,6 +178,33 @@ export default function AlertsPage() {
           new Date(b.createdAt) - new Date(a.createdAt)
       );
   }, [severityFilter, typeFilter, statusFilter, search]);
+
+  // When user clicks "View COI" on an alert
+  const handleViewCoi = (alert) => {
+    if (!alert) return;
+
+    // Later we can attach real fileUrl + AI extract to alerts.
+    // For now, we still feed rich context into the viewer summary.
+    const flags = [
+      `${alert.severity} · ${alert.type}`,
+      alert.title,
+      alert.message,
+    ];
+
+    const extracted = {
+      carrier: null,
+      policy_number: null,
+      coverage_type: alert.type || null,
+      effective_date: null,
+      expiration_date: null,
+      flags,
+    };
+
+    setViewerFileUrl(alert.fileUrl || null); // currently undefined for mock alerts
+    setViewerExtracted(extracted);
+    setViewerTitle(alert.title || "COI Document");
+    setViewerOpen(true);
+  };
 
   return (
     <div
@@ -312,10 +347,21 @@ export default function AlertsPage() {
         filtered={filtered}
         allAlerts={initialAlerts}
         canEdit={canEdit}
+        onViewCoi={handleViewCoi}
+      />
+
+      {/* DOCUMENT VIEWER V3 MODAL */}
+      <DocumentViewerV3
+        open={viewerOpen}
+        onClose={() => setViewerOpen(false)}
+        fileUrl={viewerFileUrl}
+        title={viewerTitle}
+        extracted={viewerExtracted}
       />
     </div>
   );
 }
+
 /* ===========================
    METRICS + FILTERS PANEL
 =========================== */
@@ -481,6 +527,7 @@ function MetricPanel({ metrics }) {
     </div>
   );
 }
+
 /* ===========================
    SINGLE METRIC CARD
 =========================== */
@@ -605,10 +652,11 @@ function FilterPillGroup({ options, active, onSelect, palette }) {
     </div>
   );
 }
+
 /* ===========================
    MAIN GRID WRAPPER
 =========================== */
-function MainGrid({ filtered, allAlerts, canEdit }) {
+function MainGrid({ filtered, allAlerts, canEdit, onViewCoi }) {
   return (
     <div
       style={{
@@ -619,7 +667,7 @@ function MainGrid({ filtered, allAlerts, canEdit }) {
         marginBottom: 50,
       }}
     >
-      <TimelinePanel filtered={filtered} canEdit={canEdit} />
+      <TimelinePanel filtered={filtered} canEdit={canEdit} onViewCoi={onViewCoi} />
 
       <div
         style={{
@@ -639,7 +687,7 @@ function MainGrid({ filtered, allAlerts, canEdit }) {
 /* ===========================
    TIMELINE PANEL
 =========================== */
-function TimelinePanel({ filtered, canEdit }) {
+function TimelinePanel({ filtered, canEdit, onViewCoi }) {
   return (
     <div
       style={{
@@ -688,16 +736,18 @@ function TimelinePanel({ filtered, canEdit }) {
             alert={alert}
             index={idx}
             canEdit={canEdit}
+            onViewCoi={onViewCoi}
           />
         ))}
       </div>
     </div>
   );
 }
+
 /* ===========================
    INDIVIDUAL ALERT CARD
 =========================== */
-function AlertCard({ alert, index, canEdit }) {
+function AlertCard({ alert, index, canEdit, onViewCoi }) {
   const meta = {
     Critical: {
       dot: "#f97316",
@@ -860,6 +910,21 @@ function AlertCard({ alert, index, canEdit }) {
               style={{
                 borderRadius: 999,
                 padding: "3px 8px",
+                border: "1px solid rgba(56,189,248,0.9)",
+                background:
+                  "radial-gradient(circle at top,#38bdf8,#0ea5e9,#0f172a)",
+                color: "#e0f2fe",
+                fontSize: 10,
+              }}
+              onClick={() => onViewCoi && onViewCoi(alert)}
+            >
+              View COI
+            </button>
+
+            <button
+              style={{
+                borderRadius: 999,
+                padding: "3px 8px",
                 border: "1px solid rgba(22,163,74,0.9)",
                 background:
                   "radial-gradient(circle at top,#22c55e,#16a34a,#14532d)",
@@ -922,6 +987,7 @@ function SeverityBadge({ severity }) {
     </div>
   );
 }
+
 /* ===========================
    RIGHT PANEL — RISK PULSE
 =========================== */
@@ -1090,6 +1156,7 @@ function SourceCard({ label, value }) {
     </div>
   );
 }
+
 /* ===========================
    SELECTED ALERT EXAMPLE
 =========================== */
@@ -1135,12 +1202,5 @@ function SelectedAlertHintPanel({ alerts }) {
 }
 
 /* ===========================
-   END OF FILE — SAFE CLOSE
+   END OF FILE
 =========================== */
-
-// AlertsPage is the default export above.
-// All subcomponents live in this file.
-
-//
-// File ends here.
-//
