@@ -1,10 +1,9 @@
 // pages/admin/vendor/[id].js
 import { useMemo } from "react";
 import { useRouter } from "next/router";
-import { Client } from "pg";
 
 /* ===========================
-   UTILS (client-side formatting)
+   CLIENT-SIDE UTILS
 =========================== */
 
 function formatRelative(iso) {
@@ -23,15 +22,40 @@ function formatRelative(iso) {
 function severityColor(sev) {
   switch (sev) {
     case "Critical":
-      return { dot: "#fb7185", bg: "rgba(127,29,29,0.95)", text: "#fecaca" };
+      return {
+        dot: "#fb7185",
+        bg: "rgba(127,29,29,0.95)",
+        text: "#fecaca",
+        border: "rgba(248,113,113,0.9)",
+      };
     case "High":
-      return { dot: "#facc15", bg: "rgba(113,63,18,0.95)", text: "#fef9c3" };
+      return {
+        dot: "#facc15",
+        bg: "rgba(113,63,18,0.95)",
+        text: "#fef9c3",
+        border: "rgba(250,204,21,0.9)",
+      };
     case "Medium":
-      return { dot: "#38bdf8", bg: "rgba(15,23,42,0.95)", text: "#e0f2fe" };
+      return {
+        dot: "#38bdf8",
+        bg: "rgba(15,23,42,0.95)",
+        text: "#e0f2fe",
+        border: "rgba(56,189,248,0.9)",
+      };
     case "Low":
-      return { dot: "#22c55e", bg: "rgba(22,101,52,0.95)", text: "#bbf7d0" };
+      return {
+        dot: "#22c55e",
+        bg: "rgba(22,101,52,0.95)",
+        text: "#bbf7d0",
+        border: "rgba(34,197,94,0.9)",
+      };
     default:
-      return { dot: "#9ca3af", bg: "rgba(15,23,42,0.95)", text: "#e5e7eb" };
+      return {
+        dot: "#9ca3af",
+        bg: "rgba(15,23,42,0.95)",
+        text: "#e5e7eb",
+        border: "rgba(148,163,184,0.9)",
+      };
   }
 }
 
@@ -46,11 +70,14 @@ export default function VendorProfilePage({ vendor, policies, documents }) {
     if (!vendor) return null;
 
     const score = vendor.compliance_score ?? 72;
-    const status = vendor.status || (score >= 85 ? "Compliant" : score >= 75 ? "Needs Review" : "At Risk");
+    const status =
+      vendor.status ||
+      (score >= 85 ? "Compliant" : score >= 75 ? "Needs Review" : "At Risk");
 
-    // Basic requirements snapshot derived from policies
     const totalReq = policies.length || 10;
-    const failing = policies.filter((p) => p.status && p.status.toLowerCase() !== "active").length;
+    const failing = policies.filter(
+      (p) => p.status && p.status.toLowerCase() !== "active"
+    ).length;
     const passing = totalReq - failing;
 
     return {
@@ -319,7 +346,7 @@ export default function VendorProfilePage({ vendor, policies, documents }) {
           gap: 18,
         }}
       >
-        {/* LEFT: POLICIES */}
+        {/* LEFT: POLICIES WITH LINK TO POLICY VIEWER */}
         <div
           style={{
             borderRadius: 24,
@@ -328,6 +355,9 @@ export default function VendorProfilePage({ vendor, policies, documents }) {
               "radial-gradient(circle at top left,rgba(15,23,42,0.97),rgba(15,23,42,0.92))",
             border: "1px solid rgba(148,163,184,0.6)",
             boxShadow: "0 24px 60px rgba(15,23,42,0.98)",
+            display: "flex",
+            flexDirection: "column",
+            gap: 12,
           }}
         >
           <div
@@ -336,26 +366,79 @@ export default function VendorProfilePage({ vendor, policies, documents }) {
               textTransform: "uppercase",
               color: "#9ca3af",
               letterSpacing: 1.2,
-              marginBottom: 4,
             }}
           >
-            Policies for this vendor
-          </div>
-          <div style={{ fontSize: 13, color: "#e5e7eb", marginBottom: 8 }}>
-            Policies discovered / created from uploaded COIs.
+            Policies created from uploaded COIs
           </div>
 
-          {policies.length === 0 ? (
-            <div style={{ fontSize: 12, color: "#9ca3af" }}>
-              No policies recorded yet. Upload a COI to create a policy record.
-            </div>
-          ) : (
-            <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-              {policies.map((p) => (
-                <PolicyRow key={p.id} policy={p} />
-              ))}
+          {policies.length === 0 && (
+            <div style={{ fontSize: 13, color: "#6b7280" }}>
+              No policies found. Upload a COI to generate structured policy
+              data.
             </div>
           )}
+
+          {policies.map((p) => (
+            <a
+              key={p.id}
+              href={`/admin/policy/${p.id}`}
+              style={{ textDecoration: "none" }}
+            >
+              <div
+                style={{
+                  borderRadius: 18,
+                  padding: "12px 14px",
+                  background: "rgba(15,23,42,0.9)",
+                  border: "1px solid rgba(51,65,85,0.9)",
+                  boxShadow: "0 0 20px rgba(15,23,42,0.8)",
+                  display: "flex",
+                  flexDirection: "column",
+                  gap: 6,
+                  transition: "0.15s ease",
+                }}
+              >
+                <div
+                  style={{
+                    display: "flex",
+                    justifyContent: "space-between",
+                    alignItems: "center",
+                  }}
+                >
+                  <div
+                    style={{
+                      fontSize: 15,
+                      fontWeight: 500,
+                      color: "#e5e7eb",
+                    }}
+                  >
+                    {p.coverage_type || "Policy"} —{" "}
+                    {p.policy_number || "No Number"}
+                  </div>
+
+                  <span
+                    style={{
+                      fontSize: 11,
+                      padding: "3px 10px",
+                      borderRadius: 999,
+                      background: "rgba(56,189,248,0.15)",
+                      border: "1px solid rgba(56,189,248,0.35)",
+                      color: "#38bdf8",
+                      textTransform: "uppercase",
+                      letterSpacing: 1,
+                    }}
+                  >
+                    View Policy →
+                  </span>
+                </div>
+
+                <div style={{ fontSize: 12, color: "#9ca3af" }}>
+                  {p.carrier || "Unknown carrier"} · Eff:{" "}
+                  {p.effective_date || "—"} · Exp:{" "}
+                  {p.expiration_date || "—"}
+                </div>
+              </div>
+            </a>
+          ))}
         </div>
 
         {/* RIGHT: DOCUMENTS */}
@@ -515,64 +598,6 @@ function RequirementsSnapshot({ requirements }) {
   );
 }
 
-function PolicyRow({ policy }) {
-  const status = policy.status || "active";
-  const sev =
-    status.toLowerCase() === "active"
-      ? "Low"
-      : status.toLowerCase() === "expired"
-      ? "High"
-      : "Medium";
-  const pal = severityColor(sev);
-
-  return (
-    <div
-      style={{
-        borderRadius: 14,
-        padding: "8px 10px",
-        background: "rgba(15,23,42,0.96)",
-        border: `1px solid ${pal.dot}`,
-        display: "flex",
-        justifyContent: "space-between",
-        gap: 10,
-        fontSize: 12,
-      }}
-    >
-      <div>
-        <div style={{ color: "#e5e7eb", marginBottom: 2 }}>
-          {policy.coverage_type || "Policy"}
-        </div>
-        <div style={{ fontSize: 11, color: "#9ca3af" }}>
-          {policy.carrier || "Unknown carrier"} ·{" "}
-          {policy.policy_number || "No policy #"}
-        </div>
-        <div style={{ fontSize: 11, color: "#9ca3af", marginTop: 2 }}>
-          Eff: {policy.effective_date || "—"} · Exp:{" "}
-          {policy.expiration_date || "—"}
-        </div>
-      </div>
-      <div
-        style={{
-          textAlign: "right",
-          fontSize: 11,
-          color: pal.text,
-        }}
-      >
-        <span
-          style={{
-            padding: "2px 7px",
-            borderRadius: 999,
-            border: `1px solid ${pal.dot}`,
-            background: pal.bg,
-          }}
-        >
-          {status}
-        </span>
-      </div>
-    </div>
-  );
-}
-
 function DocumentRowDB({ doc }) {
   const name =
     doc.name || doc.file_name || doc.filename || `Document #${doc.id}`;
@@ -626,12 +651,12 @@ export async function getServerSideProps(context) {
 
   let client;
   try {
+    const { Client } = require("pg"); // server-only import
     client = new Client({
       connectionString: process.env.DATABASE_URL,
     });
     await client.connect();
 
-    // fetch vendor
     const vendorRes = await client.query(
       `SELECT * FROM public.vendors WHERE id = $1`,
       [vendorId]
@@ -643,7 +668,6 @@ export async function getServerSideProps(context) {
 
     const vendor = vendorRes.rows[0];
 
-    // fetch policies for this vendor
     let policies = [];
     try {
       const polRes = await client.query(
@@ -655,7 +679,6 @@ export async function getServerSideProps(context) {
       console.error("Error fetching policies:", e);
     }
 
-    // fetch documents for this vendor (very generic)
     let documents = [];
     try {
       const docRes = await client.query(
@@ -687,4 +710,3 @@ export async function getServerSideProps(context) {
     }
   }
 }
-
