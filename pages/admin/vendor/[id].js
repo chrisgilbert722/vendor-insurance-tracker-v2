@@ -1,6 +1,8 @@
 // pages/admin/vendor/[id].js
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import { useRouter } from "next/router";
+import DocumentViewerV3 from "../../../components/documents/DocumentViewerV3";
+import { sql } from "../../../lib/db";
 
 /* ===========================
    CLIENT-SIDE UTILS
@@ -65,6 +67,11 @@ function severityColor(sev) {
 
 export default function VendorProfilePage({ vendor, policies, documents }) {
   const router = useRouter();
+
+  // Document Viewer V3 state
+  const [viewerOpen, setViewerOpen] = useState(false);
+  const [viewerFileUrl, setViewerFileUrl] = useState(null);
+  const [viewerExtracted, setViewerExtracted] = useState(null);
 
   const derived = useMemo(() => {
     if (!vendor) return null;
@@ -346,7 +353,7 @@ export default function VendorProfilePage({ vendor, policies, documents }) {
           gap: 18,
         }}
       >
-        {/* LEFT: POLICIES WITH LINK TO POLICY VIEWER */}
+        {/* LEFT: POLICIES */}
         <div
           style={{
             borderRadius: 24,
@@ -379,69 +386,63 @@ export default function VendorProfilePage({ vendor, policies, documents }) {
           )}
 
           {policies.map((p) => (
-            <a
+            <div
               key={p.id}
-              href={`/admin/policy/${p.id}`}
-              style={{ textDecoration: "none" }}
+              style={{
+                borderRadius: 18,
+                padding: "12px 14px",
+                background: "rgba(15,23,42,0.9)",
+                border: "1px solid rgba(51,65,85,0.9)",
+                boxShadow: "0 0 20px rgba(15,23,42,0.8)",
+                display: "flex",
+                flexDirection: "column",
+                gap: 6,
+              }}
             >
               <div
                 style={{
-                  borderRadius: 18,
-                  padding: "12px 14px",
-                  background: "rgba(15,23,42,0.9)",
-                  border: "1px solid rgba(51,65,85,0.9)",
-                  boxShadow: "0 0 20px rgba(15,23,42,0.8)",
                   display: "flex",
-                  flexDirection: "column",
-                  gap: 6,
-                  transition: "0.15s ease",
+                  justifyContent: "space-between",
+                  alignItems: "center",
                 }}
               >
                 <div
                   style={{
-                    display: "flex",
-                    justifyContent: "space-between",
-                    alignItems: "center",
+                    fontSize: 15,
+                    fontWeight: 500,
+                    color: "#e5e7eb",
                   }}
                 >
-                  <div
-                    style={{
-                      fontSize: 15,
-                      fontWeight: 500,
-                      color: "#e5e7eb",
-                    }}
-                  >
-                    {p.coverage_type || "Policy"} —{" "}
-                    {p.policy_number || "No Number"}
-                  </div>
-
-                  <span
-                    style={{
-                      fontSize: 11,
-                      padding: "3px 10px",
-                      borderRadius: 999,
-                      background: "rgba(56,189,248,0.15)",
-                      border: "1px solid rgba(56,189,248,0.35)",
-                      color: "#38bdf8",
-                      textTransform: "uppercase",
-                      letterSpacing: 1,
-                    }}
-                  >
-                    View Policy →
-                  </span>
+                  {p.coverage_type || "Policy"} —{" "}
+                  {p.policy_number || "No Number"}
                 </div>
 
-                <div style={{ fontSize: 12, color: "#9ca3af" }}>
-                  {p.carrier || "Unknown carrier"} · Eff:{" "}
-                  {p.effective_date || "—"} · Exp:{" "}
-                  {p.expiration_date || "—"}
-                </div>
+                <span
+                  style={{
+                    fontSize: 11,
+                    padding: "3px 10px",
+                    borderRadius: 999,
+                    background: "rgba(56,189,248,0.15)",
+                    border: "1px solid rgba(56,189,248,0.35)",
+                    color: "#38bdf8",
+                    textTransform: "uppercase",
+                    letterSpacing: 1,
+                  }}
+                >
+                  Policy
+                </span>
               </div>
-            </a>
+
+              <div style={{ fontSize: 12, color: "#9ca3af" }}>
+                {p.carrier || "Unknown carrier"} · Eff:{" "}
+                {p.effective_date || "—"} · Exp:{" "}
+                {p.expiration_date || "—"}
+              </div>
+            </div>
           ))}
         </div>
 
-        {/* RIGHT: DOCUMENTS */}
+        {/* RIGHT: DOCUMENTS (WIRED TO DOCUMENT VIEWER V3) */}
         <div
           style={{
             borderRadius: 24,
@@ -471,12 +472,30 @@ export default function VendorProfilePage({ vendor, policies, documents }) {
           ) : (
             <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
               {documents.map((doc) => (
-                <DocumentRowDB key={doc.id} doc={doc} />
+                <DocumentRowDB
+                  key={doc.id}
+                  doc={doc}
+                  onOpen={() => {
+                    if (!doc.file_url) return;
+                    setViewerFileUrl(doc.file_url);
+                    setViewerExtracted(null); // optional: later we can hydrate from DB
+                    setViewerOpen(true);
+                  }}
+                />
               ))}
             </div>
           )}
         </div>
       </div>
+
+      {/* DOCUMENT VIEWER V3 MODAL */}
+      <DocumentViewerV3
+        open={viewerOpen}
+        onClose={() => setViewerOpen(false)}
+        fileUrl={viewerFileUrl}
+        title={vendor.name || "Vendor COI"}
+        extracted={viewerExtracted}
+      />
     </div>
   );
 }
@@ -540,7 +559,9 @@ function ScoreGauge({ score, status }) {
         >
           {score}
         </div>
-        <div style={{ fontSize: 11, color: "#9ca3af" }}>out of 100 · {status}</div>
+        <div style={{ fontSize: 11, color: "#9ca3af" }}>
+          out of 100 · {status}
+        </div>
       </div>
     </div>
   );
@@ -598,14 +619,16 @@ function RequirementsSnapshot({ requirements }) {
   );
 }
 
-function DocumentRowDB({ doc }) {
+function DocumentRowDB({ doc, onOpen }) {
   const name =
     doc.name || doc.file_name || doc.filename || `Document #${doc.id}`;
   const type = doc.type || doc.doc_type || "Document";
   const uploaded = doc.uploaded_at || doc.created_at || doc.inserted_at;
 
   return (
-    <div
+    <button
+      type="button"
+      onClick={onOpen}
       style={{
         borderRadius: 14,
         padding: "8px 10px",
@@ -615,6 +638,9 @@ function DocumentRowDB({ doc }) {
         justifyContent: "space-between",
         alignItems: "center",
         fontSize: 12,
+        width: "100%",
+        textAlign: "left",
+        cursor: doc.file_url ? "pointer" : "default",
       }}
     >
       <div>
@@ -624,21 +650,21 @@ function DocumentRowDB({ doc }) {
         </div>
       </div>
       {doc.file_url && (
-        <a
-          href={doc.file_url}
-          target="_blank"
-          rel="noreferrer"
-          style={{ fontSize: 11, color: "#93c5fd" }}
+        <span
+          style={{
+            fontSize: 11,
+            color: "#93c5fd",
+          }}
         >
-          Open
-        </a>
+          View COI →
+        </span>
       )}
-    </div>
+    </button>
   );
 }
 
 /* ===========================
-   SERVER-SIDE DATA FETCH
+   SERVER-SIDE DATA FETCH (NEON)
 =========================== */
 
 export async function getServerSideProps(context) {
@@ -649,45 +675,48 @@ export async function getServerSideProps(context) {
     return { notFound: true };
   }
 
-  let client;
   try {
-    const { Client } = require("pg"); // server-only import
-    client = new Client({
-      connectionString: process.env.DATABASE_URL,
-    });
-    await client.connect();
+    // Vendor
+    const vendorRows = await sql`
+      SELECT *
+      FROM public.vendors
+      WHERE id = ${vendorId};
+    `;
 
-    const vendorRes = await client.query(
-      `SELECT * FROM public.vendors WHERE id = $1`,
-      [vendorId]
-    );
-
-    if (vendorRes.rows.length === 0) {
+    if (vendorRows.length === 0) {
       return { notFound: true };
     }
 
-    const vendor = vendorRes.rows[0];
+    const vendor = vendorRows[0];
 
+    // Policies
     let policies = [];
     try {
-      const polRes = await client.query(
-        `SELECT * FROM public.policies WHERE vendor_id = $1 ORDER BY id DESC LIMIT 25`,
-        [vendorId]
-      );
-      policies = polRes.rows || [];
+      policies =
+        (await sql`
+        SELECT *
+        FROM public.policies
+        WHERE vendor_id = ${vendorId}
+        ORDER BY id DESC
+        LIMIT 25;
+      `) || [];
     } catch (e) {
-      console.error("Error fetching policies:", e);
+      console.error("Error fetching policies (Neon):", e);
     }
 
+    // Documents
     let documents = [];
     try {
-      const docRes = await client.query(
-        `SELECT * FROM public.documents WHERE vendor_id = $1 ORDER BY id DESC LIMIT 25`,
-        [vendorId]
-      );
-      documents = docRes.rows || [];
+      documents =
+        (await sql`
+        SELECT *
+        FROM public.documents
+        WHERE vendor_id = ${vendorId}
+        ORDER BY id DESC
+        LIMIT 25;
+      `) || [];
     } catch (e) {
-      console.error("Error fetching documents:", e);
+      console.error("Error fetching documents (Neon):", e);
     }
 
     return {
@@ -698,15 +727,7 @@ export async function getServerSideProps(context) {
       },
     };
   } catch (err) {
-    console.error("VendorProfile getServerSideProps error:", err);
+    console.error("VendorProfile getServerSideProps error (Neon):", err);
     return { notFound: true };
-  } finally {
-    if (client) {
-      try {
-        await client.end();
-      } catch (e) {
-        // ignore
-      }
-    }
   }
 }
