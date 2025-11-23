@@ -176,10 +176,7 @@ ${text}
       model: "gpt-4.1-mini",
       temperature: 0,
       messages: [
-        {
-          role: "system",
-          content: "You return valid strict JSON only."
-        },
+        { role: "system", content: "You return valid strict JSON only." },
         { role: "user", content: prompt }
       ]
     });
@@ -235,6 +232,37 @@ ${text}
     `;
 
     const policyId = result[0].id;
+
+    /* ===========================
+       NEW: INSERT DOCUMENT RECORD
+=========================== */
+
+    if (fileUrl) {
+      await sql`
+        INSERT INTO public.documents (
+          vendor_id,
+          org_id,
+          document_type,
+          file_url,
+          raw_text,
+          ai_json,
+          status
+        )
+        VALUES (
+          ${vendor.id},
+          ${vendor.org_id},
+          'COI',
+          ${fileUrl},
+          ${text},
+          ${parsed},
+          'processed'
+        );
+      `;
+    }
+
+    /* ===========================
+       RETURN CLEAN RESPONSE
+=========================== */
 
     return res.status(200).json({
       ok: true,
