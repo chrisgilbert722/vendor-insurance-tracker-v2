@@ -1,17 +1,15 @@
 // pages/api/upload-coi.js
 
 export const config = {
-  api: {
-    bodyParser: false,
-  },
+  api: { bodyParser: false }
 };
 
 import formidable from "formidable";
 import fs from "fs";
 import pdfParse from "pdf-parse";
-import { Client } from "pg";
 import OpenAI from "openai";
 import { createClient } from "@supabase/supabase-js";
+import { sql } from "../../lib/db";   // ★ Neon client
 
 /* ===========================
    SUPABASE SERVER CLIENT
@@ -37,13 +35,10 @@ const supabase =
 
 function parseExpiration(dateStr) {
   if (!dateStr) return null;
-  // Try MM/DD/YYYY first
   const parts = dateStr.split("/");
   if (parts.length === 3) {
     const [mm, dd, yyyy] = parts;
-    if (mm && dd && yyyy) {
-      return `${mm}/${dd}/${yyyy}`;
-    }
+    if (mm && dd && yyyy) return `${mm}/${dd}/${yyyy}`;
   }
   return dateStr;
 }
@@ -64,10 +59,10 @@ async function parseForm(req) {
 
 export default async function handler(req, res) {
   if (req.method !== "POST") {
-    return res.status(405).json({ ok: false, error: "Method not allowed" });
+    return res
+      .status(405)
+      .json({ ok: false, error: "Method not allowed" });
   }
-
-  let pgClient = null;
 
   try {
     const { fields, files } = await parseForm(req);
@@ -87,27 +82,29 @@ export default async function handler(req, res) {
         .json({ ok: false, error: "Missing file or vendor id." });
     }
 
-    // Connect to DB
-    pgClient = new Client({
-      connectionString: process.env.DATABASE_URL,
-    });
-    await pgClient.connect();
+    /* ===========================
+       GET VENDOR (Neon)
+=========================== */
 
-    // Get vendor row
-    const vendorRes = await pgClient.query(
-      `SELECT id, name, org_id FROM public.vendors WHERE id = $1`,
-      [vendorId]
-    );
+    const vendorRows = await sql`
+      SELECT id, name, org_id
+      FROM public.vendors
+      WHERE id = ${vendorId};
+    `;
 
-    if (vendorRes.rows.length === 0) {
-      return res
-        .status(404)
-        .json({ ok: false, error: "Vendor not found for this upload link." });
+    if (vendorRows.length === 0) {
+      return res.status(404).json({
+        ok: false,
+        error: "Vendor not found for this upload link."
+      });
     }
 
-    const vendor = vendorRes.rows[0];
+    const vendor = vendorRows[0];
 
-    // Read PDF from temp path
+    /* ===========================
+       READ PDF
+=========================== */
+
     const buffer = fs.readFileSync(uploaded.filepath);
     const pdfData = await pdfParse(buffer);
 
@@ -118,11 +115,10 @@ export default async function handler(req, res) {
     const text = pdfData.text.slice(0, 20000);
 
     /* ===========================
-       SUPABASE STORAGE UPLOAD
+       SUPABASE STORAGE
 =========================== */
 
     let fileUrl = null;
-
     if (supabase) {
       const originalName =
         uploaded.originalFilename ||
@@ -132,20 +128,18 @@ export default async function handler(req, res) {
 
       const safeName = originalName.replace(/[^a-zA-Z0-9.\-_]/g, "_");
 
-      const storagePath = `orgs/${
-        vendor.org_id || "no-org"
-      }/vendors/${vendor.id}/${Date.now()}-${safeName}`;
+      const storagePath = `orgs/${vendor.org_id}/vendors/${vendor.id}/${Date.now()}-${safeName}`;
 
       const { error: uploadError } = await supabase.storage
-        .from("coi-files") // bucket name created in Supabase
+        .from("coi-files")
         .upload(storagePath, buffer, {
           contentType: "application/pdf",
-          upsert: false,
+          upsert: false
         });
 
       if (uploadError) {
         console.error("[upload-coi] Supabase upload error:", uploadError);
-        throw new Error("Supabase upload failed: " + uploadError.message);
+        throw new Error("Supabase upload failed");
       }
 
       const { data: publicUrlData } = supabase.storage
@@ -153,35 +147,26 @@ export default async function handler(req, res) {
         .getPublicUrl(storagePath);
 
       fileUrl = publicUrlData?.publicUrl || null;
-    } else {
-      console.warn(
-        "[upload-coi] Supabase client not configured — skipping file storage."
-      );
     }
 
     /* ===========================
        AI EXTRACTION
 =========================== */
 
-    const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+    const openai = new OpenAI({
+      apiKey: process.env.OPENAI_API_KEY
+    });
 
     const prompt = `
-You are an insurance COI (Certificate of Insurance) extraction engine.
-
-Given the raw text of a COI, extract the following fields if possible:
+Extract the following JSON ONLY:
 
 {
-  "carrier": string | null,
-  "policy_number": string | null,
-  "coverage_type": string | null,
-  "effective_date": string | null,
-  "expiration_date": string | null
+  "carrier": string|null,
+  "policy_number": string|null,
+  "coverage_type": string|null,
+  "effective_date": string|null,
+  "expiration_date": string|null
 }
-
-Rules:
-- ONLY return valid JSON.
-- If you cannot find something, return null for that field.
-- "coverage_type" can be a short label e.g. "GL", "General Liability", "Auto", "Umbrella", etc.
 
 COI TEXT:
 ${text}
@@ -193,27 +178,21 @@ ${text}
       messages: [
         {
           role: "system",
-          content:
-            "You are a precise JSON-only COI parser. You only respond with JSON.",
+          content: "You return valid strict JSON only."
         },
-        { role: "user", content: prompt },
-      ],
+        { role: "user", content: prompt }
+      ]
     });
 
     let raw = completion.choices[0]?.message?.content || "";
     raw = raw.trim();
 
-    let parsed;
-    try {
-      const first = raw.indexOf("{");
-      const last = raw.lastIndexOf("}");
-      if (first === -1 || last === -1) {
-        throw new Error("AI did not return JSON.");
-      }
-      parsed = JSON.parse(raw.slice(first, last + 1));
-    } catch (err) {
-      throw new Error("Failed to parse AI JSON: " + err.message);
-    }
+    const first = raw.indexOf("{");
+    const last = raw.lastIndexOf("}");
+    if (first === -1 || last === -1)
+      throw new Error("AI did not return JSON.");
+
+    const parsed = JSON.parse(raw.slice(first, last + 1));
 
     const carrier = parsed.carrier ?? null;
     const policyNumber = parsed.policy_number ?? null;
@@ -226,57 +205,58 @@ ${text}
       : null;
 
     /* ===========================
-       INSERT POLICY RECORD
-       (No schema change yet; fileUrl returned in response)
+       INSERT POLICY (Neon)
 =========================== */
 
-    const insertRes = await pgClient.query(
-      `INSERT INTO public.policies
-       (vendor_id, vendor_name, org_id, policy_number, carrier, effective_date, expiration_date, coverage_type, status)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'active')
-       RETURNING id`,
-      [
-        vendor.id,
-        vendor.name,
-        vendor.org_id || null,
-        policyNumber,
+    const result = await sql`
+      INSERT INTO public.policies (
+        vendor_id,
+        vendor_name,
+        org_id,
+        policy_number,
         carrier,
-        effectiveDate,
-        expirationDate,
-        coverageType,
-      ]
-    );
+        effective_date,
+        expiration_date,
+        coverage_type,
+        status
+      )
+      VALUES (
+        ${vendor.id},
+        ${vendor.name},
+        ${vendor.org_id || null},
+        ${policyNumber},
+        ${carrier},
+        ${effectiveDate},
+        ${expirationDate},
+        ${coverageType},
+        'active'
+      )
+      RETURNING id;
+    `;
 
-    const policyId = insertRes.rows[0].id;
+    const policyId = result[0].id;
 
     return res.status(200).json({
       ok: true,
       policyId,
       vendor: {
         id: vendor.id,
-        name: vendor.name,
+        name: vendor.name
       },
-      fileUrl, // ← Supabase URL for Document Viewer V3
+      fileUrl,
       extracted: {
         carrier,
         policy_number: policyNumber,
         coverage_type: coverageType,
         effective_date: effectiveDate,
-        expiration_date: expirationDate,
-      },
+        expiration_date: expirationDate
+      }
     });
   } catch (err) {
-    console.error("[upload-coi] error:", err);
-    return res
-      .status(500)
-      .json({ ok: false, error: err.message || "Upload failed." });
-  } finally {
-    if (pgClient) {
-      try {
-        await pgClient.end();
-      } catch {
-        // ignore
-      }
-    }
+    console.error("[upload-coi ERROR]", err);
+    return res.status(500).json({
+      ok: false,
+      error: err.message
+    });
   }
 }
