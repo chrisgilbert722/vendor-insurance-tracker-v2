@@ -9,7 +9,7 @@ import fs from "fs";
 import pdfParse from "pdf-parse";
 import OpenAI from "openai";
 import { createClient } from "@supabase/supabase-js";
-import { sql } from "../../lib/db";   // ★ Neon client
+import { sql } from "../../lib/db"; // Neon client
 
 /* ===========================
    SUPABASE SERVER CLIENT
@@ -128,7 +128,9 @@ export default async function handler(req, res) {
 
       const safeName = originalName.replace(/[^a-zA-Z0-9.\-_]/g, "_");
 
-      const storagePath = `orgs/${vendor.org_id}/vendors/${vendor.id}/${Date.now()}-${safeName}`;
+      const storagePath = `orgs/${vendor.org_id || "no-org"}/vendors/${
+        vendor.id
+      }/${Date.now()}-${safeName}`;
 
       const { error: uploadError } = await supabase.storage
         .from("coi-files")
@@ -205,7 +207,7 @@ ${text}
        INSERT POLICY (Neon)
 =========================== */
 
-    const result = await sql`
+    const policyRows = await sql`
       INSERT INTO public.policies (
         vendor_id,
         vendor_name,
@@ -231,10 +233,10 @@ ${text}
       RETURNING id;
     `;
 
-    const policyId = result[0].id;
+    const policyId = policyRows[0].id;
 
     /* ===========================
-       NEW: INSERT DOCUMENT RECORD
+       INSERT DOCUMENT RECORD
 =========================== */
 
     if (fileUrl) {
@@ -250,12 +252,150 @@ ${text}
         )
         VALUES (
           ${vendor.id},
-          ${vendor.org_id},
+          ${vendor.org_id || null},
           'COI',
           ${fileUrl},
           ${text},
           ${parsed},
           'processed'
+        );
+      `;
+    }
+
+    /* ===========================
+       BUILD ENTERPRISE ALERTS
+=========================== */
+
+    const alertsToInsert = [];
+
+    // Helper: compute days to expire if expirationDate exists
+    let daysToExpire = null;
+    if (expirationDate) {
+      const [mm, dd, yyyy] = expirationDate.split("/");
+      const expDate = new Date(`${yyyy}-${mm}-${dd}T00:00:00`);
+      const now = new Date();
+      const diffMs = expDate.getTime() - now.getTime();
+      daysToExpire = Math.floor(diffMs / (1000 * 60 * 60 * 24));
+
+      if (daysToExpire < 0) {
+        alertsToInsert.push({
+          type: "Document",
+          severity: "Critical",
+          title: "Primary COI expired",
+          message: `Primary certificate for ${vendor.name} expired ${
+            Math.abs(daysToExpire) || 0
+          } days ago.`,
+          rule_label: "Expired / Missing Insurance",
+        });
+      } else if (daysToExpire <= 30) {
+        alertsToInsert.push({
+          type: "Document",
+          severity: "High",
+          title: "COI expiring within 30 days",
+          message: `COI for ${vendor.name} expires in ${daysToExpire} days.`,
+          rule_label: "COI Expiring Soon",
+        });
+      } else if (daysToExpire <= 90) {
+        alertsToInsert.push({
+          type: "Document",
+          severity: "Medium",
+          title: "COI expiring within 90 days",
+          message: `COI for ${vendor.name} expires in ${daysToExpire} days.`,
+          rule_label: "COI Expiring Within Quarter",
+        });
+      }
+    }
+
+    // Missing core policy details
+    if (!carrier || !policyNumber) {
+      alertsToInsert.push({
+        type: "Coverage",
+        severity: "High",
+        title: "Missing core policy details",
+        message: `Carrier or policy number is missing in the extracted COI for ${vendor.name}.`,
+        rule_label: "Missing Policy Metadata",
+      });
+    }
+
+    if (!coverageType) {
+      alertsToInsert.push({
+        type: "Coverage",
+        severity: "Medium",
+        title: "Coverage type not detected",
+        message: `Coverage type could not be clearly detected in the COI for ${vendor.name}.`,
+        rule_label: "Coverage Type Unknown",
+      });
+    }
+
+    if (!effectiveDate || !expirationDate) {
+      alertsToInsert.push({
+        type: "Document",
+        severity: "Medium",
+        title: "Missing policy dates",
+        message: `Effective or expiration date is missing for the COI tied to ${vendor.name}.`,
+        rule_label: "Missing Policy Dates",
+      });
+    }
+
+    // Example "enterprise" rule: if coverage_type is not GL-like, flag it
+    if (
+      coverageType &&
+      !/general liability|gl|commercial general liability/i.test(coverageType)
+    ) {
+      alertsToInsert.push({
+        type: "Coverage",
+        severity: "High",
+        title: "Coverage type may not meet GL requirement",
+        message: `Coverage type "${coverageType}" may not satisfy General Liability requirement for ${vendor.name}.`,
+        rule_label: "Coverage Type Mismatch",
+      });
+    }
+
+    // Shared extracted payload for the alerts viewer
+    const baseExtracted = {
+      vendor_id: vendor.id,
+      vendor_name: vendor.name,
+      policy_id: policyId,
+      policy_number: policyNumber,
+      carrier,
+      coverage_type: coverageType,
+      effective_date: effectiveDate,
+      expiration_date: expirationDate,
+      days_to_expire: daysToExpire,
+    };
+
+    // Insert all alerts into public.alerts
+    for (const alert of alertsToInsert) {
+      await sql`
+        INSERT INTO public.alerts (
+          created_at,
+          is_read,
+          org_id,
+          vendor_id,
+          type,
+          message,
+          severity,
+          title,
+          rule_label,
+          file_url,
+          policy_id,
+          status,
+          extracted
+        )
+        VALUES (
+          NOW(),
+          false,
+          ${vendor.org_id || null},
+          ${vendor.id},
+          ${alert.type},
+          ${alert.message},
+          ${alert.severity},
+          ${alert.title},
+          ${alert.rule_label},
+          ${fileUrl},
+          ${policyId},
+          'Open',
+          ${baseExtracted}
         );
       `;
     }
