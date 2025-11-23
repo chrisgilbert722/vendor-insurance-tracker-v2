@@ -1,4 +1,3 @@
-// pages/api/vendors/create.js
 import { sql } from "../../../lib/db";
 import crypto from "crypto";
 
@@ -18,16 +17,13 @@ export default async function handler(req, res) {
   }
 
   try {
-    // Generate upload token + expiration
     const uploadToken = crypto.randomBytes(24).toString("hex");
 
     const expiresAt = new Date();
-    expiresAt.setDate(expiresAt.getDate() + 30); // 30-day link
+    expiresAt.setDate(expiresAt.getDate() + 30);
 
-    // Hardcode org_id = 1 (for now)
     const orgId = 1;
 
-    // Insert vendor using Neon SQL
     const rows = await sql`
       INSERT INTO vendors (
         org_id,
