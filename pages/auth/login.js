@@ -1,12 +1,30 @@
 // pages/auth/login.js
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import Link from "next/link";
+import { useRouter } from "next/router";
+import { supabase } from "../../lib/supabaseClient";
+import { useUser } from "../../context/UserContext";
 
 export default function LoginPage() {
+  const router = useRouter();
+  const { isLoggedIn, initializing } = useUser();
+
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
+
+  const redirect =
+    typeof router.query.redirect === "string"
+      ? router.query.redirect
+      : "/dashboard";
+
+  // If already logged in, bounce away from login
+  useEffect(() => {
+    if (!initializing && isLoggedIn) {
+      router.replace(redirect || "/dashboard");
+    }
+  }, [initializing, isLoggedIn, redirect, router]);
 
   async function handleSubmit(e) {
     e.preventDefault();
@@ -19,10 +37,23 @@ export default function LoginPage() {
 
     try {
       setLoading(true);
-      // TODO: wire backend
-      await new Promise((r) => setTimeout(r, 800));
+      const { data, error: signInError } =
+        await supabase.auth.signInWithPassword({
+          email: email.trim(),
+          password: password.trim(),
+        });
+
+      if (signInError) {
+        console.error("[login] signIn error:", signInError);
+        setError(signInError.message || "Login failed. Check your credentials.");
+        return;
+      }
+
+      // On success, redirect to original page or dashboard
+      router.replace(redirect || "/dashboard");
     } catch (err) {
-      setError("Login failed. Check your credentials.");
+      console.error("[login] unexpected error:", err);
+      setError("Login failed. Please try again.");
     } finally {
       setLoading(false);
     }
