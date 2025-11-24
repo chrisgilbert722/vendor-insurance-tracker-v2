@@ -10,7 +10,7 @@ export default function LoginPage() {
   const { isLoggedIn, initializing } = useUser();
 
   const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
+  const [sent, setSent] = useState(false);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
 
@@ -22,38 +22,45 @@ export default function LoginPage() {
   // If already logged in, bounce away from login
   useEffect(() => {
     if (!initializing && isLoggedIn) {
-      router.replace(redirect || "/dashboard");
+      router.replace(redirect);
     }
   }, [initializing, isLoggedIn, redirect, router]);
 
-  async function handleSubmit(e) {
+  async function handleSendCode(e) {
     e.preventDefault();
     setError("");
 
-    if (!email.trim() || !password.trim()) {
-      setError("Enter both email and password.");
+    if (!email.trim()) {
+      setError("Enter your email first.");
       return;
     }
 
     try {
       setLoading(true);
-      const { data, error: signInError } =
-        await supabase.auth.signInWithPassword({
-          email: email.trim(),
-          password: password.trim(),
-        });
+
+      const { error: signInError } = await supabase.auth.signInWithOtp({
+        email: email.trim(),
+        options: {
+          shouldCreateUser: true, // auto-create user if not exists
+        },
+      });
 
       if (signInError) {
-        console.error("[login] signIn error:", signInError);
-        setError(signInError.message || "Login failed. Check your credentials.");
+        console.error("[login] signInWithOtp error:", signInError);
+        setError(signInError.message || "Could not send code.");
         return;
       }
 
-      // On success, redirect to original page or dashboard
-      router.replace(redirect || "/dashboard");
+      setSent(true);
+      // Jump to verify page with email + redirect
+      router.push(
+        `/auth/verify?email=${encodeURIComponent(
+          email.trim()
+        )}&redirect=${encodeURIComponent(redirect)}`
+      );
     } catch (err) {
       console.error("[login] unexpected error:", err);
-      setError("Login failed. Please try again.");
+      setError("Could not send code. Please try again.");
     } finally {
       setLoading(false);
     }
@@ -159,7 +166,7 @@ export default function LoginPage() {
                   textTransform: "uppercase",
                 }}
               >
-                Secure access
+                Email Code
               </span>
             </div>
 
@@ -171,7 +178,7 @@ export default function LoginPage() {
                 letterSpacing: 0.2,
               }}
             >
-              Welcome back to{" "}
+              Enter your email to receive a{" "}
               <span
                 style={{
                   background:
@@ -180,7 +187,7 @@ export default function LoginPage() {
                   color: "transparent",
                 }}
               >
-                your cockpit
+                6-digit login code
               </span>
               .
             </h1>
@@ -188,7 +195,7 @@ export default function LoginPage() {
         </div>
 
         {/* Form */}
-        <form onSubmit={handleSubmit} style={{ marginTop: 10 }}>
+        <form onSubmit={handleSendCode} style={{ marginTop: 10 }}>
           <label
             style={{
               fontSize: 11,
@@ -216,52 +223,8 @@ export default function LoginPage() {
               outline: "none",
               marginBottom: 10,
             }}
+            disabled={loading}
           />
-
-          <label
-            style={{
-              fontSize: 11,
-              color: "#9ca3af",
-              marginBottom: 4,
-              display: "block",
-            }}
-          >
-            Password
-          </label>
-
-          <input
-            type="password"
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            placeholder="••••••••"
-            style={{
-              width: "100%",
-              borderRadius: 999,
-              padding: "8px 11px",
-              border: "1px solid rgba(51,65,85,0.9)",
-              background: "rgba(15,23,42,0.96)",
-              color: "#e5e7eb",
-              fontSize: 13,
-              outline: "none",
-              marginBottom: 6,
-            }}
-          />
-
-          <div
-            style={{
-              fontSize: 11,
-              marginBottom: 10,
-              display: "flex",
-              justifyContent: "space-between",
-              gap: 8,
-              color: "#6b7280",
-            }}
-          >
-            <div />
-            <Link href="/auth/forgot" style={{ color: "#93c5fd" }}>
-              Forgot password?
-            </Link>
-          </div>
 
           {error && (
             <div
@@ -281,7 +244,7 @@ export default function LoginPage() {
 
           <button
             type="submit"
-            disabled={loading}
+            disabled={loading || !email.trim()}
             style={{
               width: "100%",
               borderRadius: 999,
@@ -289,19 +252,20 @@ export default function LoginPage() {
               border: "1px solid rgba(59,130,246,0.9)",
               background:
                 "radial-gradient(circle at top left,#3b82f6,#1d4ed8,#0f172a)",
-              color: "#e0f2fe",
+              color: "#e5f2ff",
               fontSize: 13,
               fontWeight: 500,
-              cursor: loading ? "not-allowed" : "pointer",
-              opacity: loading ? 0.7 : 1,
-              display: "flex",
+              display: "inline-flex",
               alignItems: "center",
               justifyContent: "center",
               gap: 8,
+              cursor:
+                loading || !email.trim() ? "not-allowed" : "pointer",
+              opacity: loading || !email.trim() ? 0.6 : 1,
               marginBottom: 10,
             }}
           >
-            {loading ? "Logging in…" : "Log in"}
+            {loading ? "Sending code…" : "Send login code"}
           </button>
         </form>
 
@@ -316,10 +280,10 @@ export default function LoginPage() {
           }}
         >
           <span>
-            Don&apos;t have an account?{" "}
-            <Link href="/auth/signup" style={{ color: "#93c5fd" }}>
-              Sign up
-            </Link>
+            Need an account?{" "}
+            <span style={{ color: "#93c5fd" }}>
+              (Signup will be connected to billing at launch)
+            </span>
           </span>
         </div>
       </div>
