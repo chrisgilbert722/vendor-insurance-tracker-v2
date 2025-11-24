@@ -19,14 +19,14 @@ export default function LoginPage() {
       ? router.query.redirect
       : "/dashboard";
 
-  // If already logged in, bounce away from login
+  // If already logged in → redirect
   useEffect(() => {
     if (!initializing && isLoggedIn) {
       router.replace(redirect);
     }
-  }, [initializing, isLoggedIn, redirect, router]);
+  }, [initializing, isLoggedIn, redirect]);
 
-  async function handleSendCode(e) {
+  async function sendMagicLink(e) {
     e.preventDefault();
     setError("");
 
@@ -38,29 +38,26 @@ export default function LoginPage() {
     try {
       setLoading(true);
 
-      const { error: signInError } = await supabase.auth.signInWithOtp({
+      const { error: linkError } = await supabase.auth.signInWithOtp({
         email: email.trim(),
         options: {
-          shouldCreateUser: true, // auto-create user if not exists
+          emailRedirectTo: `${window.location.origin}/auth/callback?redirect=${encodeURIComponent(
+            redirect
+          )}`,
+          shouldCreateUser: true,
         },
       });
 
-      if (signInError) {
-        console.error("[login] signInWithOtp error:", signInError);
-        setError(signInError.message || "Could not send code.");
+      if (linkError) {
+        console.error("[login] magic-link error:", linkError);
+        setError(linkError.message || "Could not send magic link.");
         return;
       }
 
       setSent(true);
-      // Jump to verify page with email + redirect
-      router.push(
-        `/auth/verify?email=${encodeURIComponent(
-          email.trim()
-        )}&redirect=${encodeURIComponent(redirect)}`
-      );
     } catch (err) {
-      console.error("[login] unexpected error:", err);
-      setError("Could not send code. Please try again.");
+      console.error("[login] unexpected:", err);
+      setError("Could not send magic link.");
     } finally {
       setLoading(false);
     }
@@ -78,10 +75,9 @@ export default function LoginPage() {
         justifyContent: "center",
         padding: "30px 16px",
         color: "#e5e7eb",
-        overflow: "hidden",
       }}
     >
-      {/* Ambient Aura */}
+      {/* AURA */}
       <div
         style={{
           position: "absolute",
@@ -94,15 +90,13 @@ export default function LoginPage() {
             "radial-gradient(circle, rgba(56,189,248,0.4), transparent 60%)",
           filter: "blur(120px)",
           pointerEvents: "none",
-          zIndex: 0,
         }}
       />
 
-      {/* Card */}
+      {/* CARD */}
       <div
         style={{
           position: "relative",
-          zIndex: 2,
           width: "100%",
           maxWidth: 420,
           borderRadius: 24,
@@ -111,18 +105,11 @@ export default function LoginPage() {
             "radial-gradient(circle at top,rgba(15,23,42,0.98),rgba(15,23,42,0.96))",
           border: "1px solid rgba(148,163,184,0.6)",
           boxShadow:
-            "0 24px 60px rgba(15,23,42,0.98),0 0 40px rgba(56,189,248,0.25)",
+            "0 24px 60px rgba(15,23,42,0.98), 0 0 40px rgba(56,189,248,0.25)",
         }}
       >
-        {/* Header */}
-        <div
-          style={{
-            display: "flex",
-            gap: 10,
-            alignItems: "center",
-            marginBottom: 14,
-          }}
-        >
+        {/* HEADER */}
+        <div style={{ display: "flex", gap: 10, alignItems: "center", marginBottom: 14 }}>
           <div
             style={{
               padding: 10,
@@ -148,25 +135,11 @@ export default function LoginPage() {
                 marginBottom: 4,
               }}
             >
-              <span
-                style={{
-                  fontSize: 10,
-                  color: "#9ca3af",
-                  letterSpacing: 1.1,
-                  textTransform: "uppercase",
-                }}
-              >
+              <span style={{ fontSize: 10, color: "#9ca3af", letterSpacing: 1.1 }}>
                 Login
               </span>
-              <span
-                style={{
-                  fontSize: 10,
-                  color: "#38bdf8",
-                  letterSpacing: 1,
-                  textTransform: "uppercase",
-                }}
-              >
-                Email Code
+              <span style={{ fontSize: 10, color: "#38bdf8", letterSpacing: 1 }}>
+                Magic Link
               </span>
             </div>
 
@@ -181,93 +154,99 @@ export default function LoginPage() {
               Enter your email to receive a{" "}
               <span
                 style={{
-                  background:
-                    "linear-gradient(90deg,#38bdf8,#a5b4fc,#e5e7eb)",
+                  background: "linear-gradient(90deg,#38bdf8,#a5b4fc,#e5e7eb)",
                   WebkitBackgroundClip: "text",
                   color: "transparent",
                 }}
               >
-                6-digit login code
+                secure magic link
               </span>
               .
             </h1>
           </div>
         </div>
 
-        {/* Form */}
-        <form onSubmit={handleSendCode} style={{ marginTop: 10 }}>
-          <label
-            style={{
-              fontSize: 11,
-              color: "#9ca3af",
-              marginBottom: 4,
-              display: "block",
-            }}
-          >
-            Email
-          </label>
-
-          <input
-            type="email"
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-            placeholder="you@example.com"
-            style={{
-              width: "100%",
-              borderRadius: 999,
-              padding: "8px 11px",
-              border: "1px solid rgba(51,65,85,0.9)",
-              background: "rgba(15,23,42,0.96)",
-              color: "#e5e7eb",
-              fontSize: 13,
-              outline: "none",
-              marginBottom: 10,
-            }}
-            disabled={loading}
-          />
-
-          {error && (
-            <div
+        {/* IF SENT: SHOW CONFIRMATION */}
+        {sent ? (
+          <div style={{ marginTop: 20, fontSize: 14, textAlign: "center" }}>
+            <p style={{ color: "#93c5fd" }}>
+              ✔ Magic link sent! Check your inbox.
+            </p>
+            <p style={{ color: "#9ca3af", fontSize: 12 }}>
+              (It may take 5–10 seconds to arrive.)
+            </p>
+          </div>
+        ) : (
+          // FORM
+          <form onSubmit={sendMagicLink} style={{ marginTop: 10 }}>
+            <label
               style={{
-                marginBottom: 10,
-                padding: "7px 9px",
-                borderRadius: 10,
-                background: "rgba(127,29,29,0.9)",
-                border: "1px solid rgba(248,113,113,0.8)",
-                color: "#fecaca",
-                fontSize: 12,
+                fontSize: 11,
+                color: "#9ca3af",
+                marginBottom: 4,
+                display: "block",
               }}
             >
-              {error}
-            </div>
-          )}
+              Email
+            </label>
 
-          <button
-            type="submit"
-            disabled={loading || !email.trim()}
-            style={{
-              width: "100%",
-              borderRadius: 999,
-              padding: "9px 14px",
-              border: "1px solid rgba(59,130,246,0.9)",
-              background:
-                "radial-gradient(circle at top left,#3b82f6,#1d4ed8,#0f172a)",
-              color: "#e5f2ff",
-              fontSize: 13,
-              fontWeight: 500,
-              display: "inline-flex",
-              alignItems: "center",
-              justifyContent: "center",
-              gap: 8,
-              cursor:
-                loading || !email.trim() ? "not-allowed" : "pointer",
-              opacity: loading || !email.trim() ? 0.6 : 1,
-              marginBottom: 10,
-            }}
-          >
-            {loading ? "Sending code…" : "Send login code"}
-          </button>
-        </form>
+            <input
+              type="email"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              placeholder="you@example.com"
+              style={{
+                width: "100%",
+                borderRadius: 999,
+                padding: "8px 11px",
+                border: "1px solid rgba(51,65,85,0.9)",
+                background: "rgba(15,23,42,0.96)",
+                color: "#e5e7eb",
+                fontSize: 13,
+                outline: "none",
+                marginBottom: 10,
+              }}
+              disabled={loading}
+            />
+
+            {error && (
+              <div
+                style={{
+                  marginBottom: 10,
+                  padding: "7px 9px",
+                  borderRadius: 10,
+                  background: "rgba(127,29,29,0.9)",
+                  border: "1px solid rgba(248,113,113,0.8)",
+                  color: "#fecaca",
+                  fontSize: 12,
+                }}
+              >
+                {error}
+              </div>
+            )}
+
+            <button
+              type="submit"
+              disabled={loading || !email.trim()}
+              style={{
+                width: "100%",
+                borderRadius: 999,
+                padding: "9px 14px",
+                border: "1px solid rgba(59,130,246,0.9)",
+                background:
+                  "radial-gradient(circle at top left,#3b82f6,#1d4ed8,#0f172a)",
+                color: "#e5f2ff",
+                fontSize: 13,
+                fontWeight: 500,
+                marginBottom: 10,
+                opacity: loading || !email.trim() ? 0.6 : 1,
+                cursor: loading || !email.trim() ? "not-allowed" : "pointer",
+              }}
+            >
+              {loading ? "Sending link…" : "Send magic link"}
+            </button>
+          </form>
+        )}
 
         <div
           style={{
@@ -282,7 +261,7 @@ export default function LoginPage() {
           <span>
             Need an account?{" "}
             <span style={{ color: "#93c5fd" }}>
-              (Signup will be connected to billing at launch)
+              Signup will be connected to billing at launch.
             </span>
           </span>
         </div>
