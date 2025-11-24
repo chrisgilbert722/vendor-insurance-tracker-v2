@@ -6,7 +6,7 @@ import { OrgProvider } from "../context/OrgContext";
 import Layout from "../components/Layout";
 import { UserProvider, useUser } from "../context/UserContext";
 
-const PUBLIC_ROUTES = ["/auth/login", "/auth/signup", "/auth/forgot"];
+const PUBLIC_ROUTES = ["/auth/login", "/auth/verify"];
 
 function AppShell({ Component, pageProps }) {
   const router = useRouter();
@@ -23,7 +23,7 @@ function AppShell({ Component, pageProps }) {
     }
   }, [router, isLoggedIn, initializing]);
 
-  // While checking session / redirecting, don't flash protected pages
+  // While checking session / redirecting: avoid flashing protected pages
   if (!isLoggedIn && !PUBLIC_ROUTES.includes(router.pathname) && !initializing) {
     return null;
   }
