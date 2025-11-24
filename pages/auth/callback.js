@@ -1,15 +1,48 @@
-// pages/auth/callback.js — SSO Auth Landing (Cinematic)
+// pages/auth/callback.js
 import { useEffect, useState } from "react";
+import { useRouter } from "next/router";
+import { supabase } from "../../lib/supabaseClient";
 
 export default function AuthCallback() {
-  const [status, setStatus] = useState("Authenticating…");
+  const router = useRouter();
+  const [message, setMessage] = useState("Authenticating…");
 
   useEffect(() => {
-    setTimeout(() => {
-      // TODO: verify token + redirect
-      setStatus("Redirecting you to your cockpit…");
-    }, 800);
-  }, []);
+    async function finishLogin() {
+      try {
+        // Let Supabase finish the magic-link session
+        const { data, error } = await supabase.auth.getSession();
+
+        if (error) {
+          console.error("[callback] session error:", error);
+          setMessage("Login link expired or invalid.");
+          return;
+        }
+
+        if (!data.session) {
+          setMessage("Verifying login link…");
+        } else {
+          setMessage("Login complete. Redirecting…");
+        }
+
+        // Pull redirect target (default → /dashboard)
+        const redirectTo =
+          typeof router.query.redirect === "string"
+            ? router.query.redirect
+            : "/dashboard";
+
+        // short delay for cinematic feel + session propagation
+        setTimeout(() => {
+          router.replace(redirectTo);
+        }, 700);
+      } catch (err) {
+        console.error("[callback] unexpected:", err);
+        setMessage("Something went wrong.");
+      }
+    }
+
+    finishLogin();
+  }, [router]);
 
   return (
     <div
@@ -26,18 +59,20 @@ export default function AuthCallback() {
     >
       <div
         style={{
-          padding: 20,
-          borderRadius: 20,
+          padding: 24,
+          borderRadius: 22,
           background:
             "radial-gradient(circle at top,rgba(15,23,42,0.98),rgba(15,23,42,0.96))",
           border: "1px solid rgba(148,163,184,0.5)",
           boxShadow:
             "0 20px 45px rgba(15,23,42,0.96),0 0 26px rgba(56,189,248,0.25)",
           textAlign: "center",
+          width: "90%",
+          maxWidth: 420,
         }}
       >
-        <div style={{ fontSize: 26, marginBottom: 12 }}>🔄</div>
-        <div>{status}</div>
+        <div style={{ fontSize: 32, marginBottom: 12 }}>🔄</div>
+        <div>{message}</div>
       </div>
     </div>
   );
