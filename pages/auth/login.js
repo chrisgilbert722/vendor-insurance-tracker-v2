@@ -1,6 +1,5 @@
 // pages/auth/login.js
 import { useState, useEffect } from "react";
-import Link from "next/link";
 import { useRouter } from "next/router";
 import { supabase } from "../../lib/supabaseClient";
 import { useUser } from "../../context/UserContext";
@@ -14,18 +13,20 @@ export default function LoginPage() {
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
 
+  // Where to redirect after login
   const redirect =
     typeof router.query.redirect === "string"
       ? router.query.redirect
       : "/dashboard";
 
-  // If already logged in → redirect
+  // If user already logged in → redirect automatically
   useEffect(() => {
     if (!initializing && isLoggedIn) {
       router.replace(redirect);
     }
-  }, [initializing, isLoggedIn, redirect]);
+  }, [initializing, isLoggedIn, redirect, router]);
 
+  // Send Magic Link
   async function sendMagicLink(e) {
     e.preventDefault();
     setError("");
@@ -41,15 +42,14 @@ export default function LoginPage() {
       const { error: linkError } = await supabase.auth.signInWithOtp({
         email: email.trim(),
         options: {
-          emailRedirectTo: `${window.location.origin}/auth/callback?redirect=${encodeURIComponent(
-            redirect
-          )}`,
+          // Supabase v2 magic link must redirect to /auth/callback (NO token_hash!)
+          emailRedirectTo: `${window.location.origin}/auth/callback`,
           shouldCreateUser: true,
         },
       });
 
       if (linkError) {
-        console.error("[login] magic-link error:", linkError);
+        console.error("[login] magic link error:", linkError);
         setError(linkError.message || "Could not send magic link.");
         return;
       }
@@ -135,12 +135,8 @@ export default function LoginPage() {
                 marginBottom: 4,
               }}
             >
-              <span style={{ fontSize: 10, color: "#9ca3af", letterSpacing: 1.1 }}>
-                Login
-              </span>
-              <span style={{ fontSize: 10, color: "#38bdf8", letterSpacing: 1 }}>
-                Magic Link
-              </span>
+              <span style={{ fontSize: 10, color: "#9ca3af" }}>Login</span>
+              <span style={{ fontSize: 10, color: "#38bdf8" }}>Magic Link</span>
             </div>
 
             <h1
@@ -169,9 +165,7 @@ export default function LoginPage() {
         {/* IF SENT: SHOW CONFIRMATION */}
         {sent ? (
           <div style={{ marginTop: 20, fontSize: 14, textAlign: "center" }}>
-            <p style={{ color: "#93c5fd" }}>
-              ✔ Magic link sent! Check your inbox.
-            </p>
+            <p style={{ color: "#93c5fd" }}>✔ Magic link sent! Check your inbox.</p>
             <p style={{ color: "#9ca3af", fontSize: 12 }}>
               (It may take 5–10 seconds to arrive.)
             </p>
@@ -247,24 +241,6 @@ export default function LoginPage() {
             </button>
           </form>
         )}
-
-        <div
-          style={{
-            marginTop: 6,
-            fontSize: 11,
-            color: "#9ca3af",
-            display: "flex",
-            justifyContent: "space-between",
-            gap: 8,
-          }}
-        >
-          <span>
-            Need an account?{" "}
-            <span style={{ color: "#93c5fd" }}>
-              Signup will be connected to billing at launch.
-            </span>
-          </span>
-        </div>
       </div>
     </div>
   );
