@@ -8,7 +8,7 @@ export default function AuthCallback() {
 
   useEffect(() => {
     async function run() {
-      // 1️⃣ Extract URL fragment (#access_token=....)
+      // 1️⃣ Required for Supabase Magic Link
       const { data, error } = await supabase.auth.exchangeCodeForSession(window.location.href);
 
       if (error) {
@@ -17,7 +17,7 @@ export default function AuthCallback() {
         return;
       }
 
-      // 2️⃣ If session exists → redirect
+      // 2️⃣ Session exists → redirect
       if (data?.session) {
         router.replace("/dashboard");
         return;
