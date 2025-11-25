@@ -7,38 +7,52 @@ export default function AuthCallback() {
   const router = useRouter();
 
   useEffect(() => {
-    async function run() {
-      const url = window.location.href;
+    async function handleCallback() {
+      const hash = router.asPath.split("#")[1]; // everything after #
+      const params = new URLSearchParams(hash);
+      const token = params.get("access_token");
+      const refresh = params.get("refresh_token");
 
-      // Exchange the code from the URL for a session
-      const { data, error } = await supabase.auth.exchangeCodeForSession(url);
-
-      if (error) {
-        console.error("Callback exchange error:", error);
+      if (!token) {
+        console.error("No access token in URL");
         router.replace("/auth/login");
         return;
       }
 
-      // Success — user is logged in
+      const { data, error } = await supabase.auth.setSession({
+        access_token: token,
+        refresh_token: refresh,
+      });
+
+      if (error) {
+        console.error("Auth error:", error);
+        router.replace("/auth/login");
+        return;
+      }
+
+      // Redirect to dashboard
       router.replace("/dashboard");
     }
 
-    run();
+    // Run once router has hash
+    if (router.asPath.includes("#")) {
+      handleCallback();
+    }
   }, [router]);
 
   return (
     <div
       style={{
         minHeight: "100vh",
-        background: "radial-gradient(circle at top left,#020617 0%, #000)",
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "center",
         color: "#e5e7eb",
-        fontSize: 20,
+        display: "flex",
+        justifyContent: "center",
+        alignItems: "center",
+        background:
+          "radial-gradient(circle at top left,#020617 0%, #020617 40%, #000)"
       }}
     >
-      Authenticating…
+      <div style={{ fontSize: 22 }}>Authenticating…</div>
     </div>
   );
 }
