@@ -8,27 +8,40 @@ export default function AuthCallback() {
 
   useEffect(() => {
     async function handleCallback() {
-      // This reads the tokens from the URL fragment (#access_token=...)
-      const { data: { session }, error } = await supabase.auth.getSession();
+      try {
+        // Exchange the code in the URL for a real session
+        const { data, error } = await supabase.auth.exchangeCodeForSession(
+          window.location.href
+        );
 
-      if (error) {
-        console.error("Error getting session:", error);
-        router.replace("/auth/login");
-        return;
-      }
-
-      if (session) {
-        // Logged in successfully → redirect to dashboard
-        router.replace("/dashboard");
-        return;
-      }
-
-      // If no session yet, wait for Supabase to process it
-      supabase.auth.onAuthStateChange((_event, newSession) => {
-        if (newSession) {
-          router.replace("/dashboard");
+        if (error) {
+          console.error("[auth/callback] exchange error:", error);
+          router.replace("/auth/login");
+          return;
         }
-      });
+
+        // Optional: read redirect target from query (?redirect=/something)
+        const redirect =
+          typeof router.query.redirect === "string"
+            ? router.query.redirect
+            : "/dashboard";
+
+        // If we have a valid session now, go to redirect target
+        if (data?.session) {
+          router.replace(redirect);
+          return;
+        }
+
+        // Fallback: if session not immediately available, listen once more
+        supabase.auth.onAuthStateChange((_event, newSession) => {
+          if (newSession) {
+            router.replace(redirect);
+          }
+        });
+      } catch (err) {
+        console.error("[auth/callback] unexpected error:", err);
+        router.replace("/auth/login");
+      }
     }
 
     handleCallback();
@@ -43,7 +56,7 @@ export default function AuthCallback() {
         justifyContent: "center",
         alignItems: "center",
         background:
-          "radial-gradient(circle at top left,#020617 0%, #020617 40%, #000)"
+          "radial-gradient(circle at top left,#020617 0%, #020617 40%, #000)",
       }}
     >
       <div style={{ fontSize: 22 }}>Authenticating…</div>
