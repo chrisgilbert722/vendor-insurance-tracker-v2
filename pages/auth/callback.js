@@ -8,29 +8,25 @@ export default function AuthCallback() {
 
   useEffect(() => {
     async function run() {
-      try {
-        // Exchange token in URL for a session
-        const { data, error } = await supabase.auth.exchangeCodeForSession(
-          window.location.href
-        );
+      // 1️⃣ Extract URL fragment (#access_token=....)
+      const { data, error } = await supabase.auth.exchangeCodeForSession(window.location.href);
 
-        if (error) {
-          console.error("[callback] exchange error:", error.message);
-          router.replace("/auth/login");
-          return;
-        }
-
-        // Redirect after successful login
-        const redirect =
-          typeof router.query.redirect === "string"
-            ? router.query.redirect
-            : "/dashboard";
-
-        router.replace(redirect);
-      } catch (err) {
-        console.error("[callback] unexpected:", err);
+      if (error) {
+        console.error("⚠️ exchangeCodeForSession error:", error);
         router.replace("/auth/login");
+        return;
       }
+
+      // 2️⃣ If session exists → redirect
+      if (data?.session) {
+        router.replace("/dashboard");
+        return;
+      }
+
+      // 3️⃣ Fallback listener
+      supabase.auth.onAuthStateChange((_event, session) => {
+        if (session) router.replace("/dashboard");
+      });
     }
 
     run();
@@ -45,7 +41,7 @@ export default function AuthCallback() {
         justifyContent: "center",
         alignItems: "center",
         background:
-          "radial-gradient(circle at top left,#020617 0%, #020617 40%, #000)",
+          "radial-gradient(circle at top left,#020617 0%, #020617 40%, #000)"
       }}
     >
       <div style={{ fontSize: 22 }}>Authenticating…</div>
