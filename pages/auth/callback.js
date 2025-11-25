@@ -8,25 +8,19 @@ export default function AuthCallback() {
 
   useEffect(() => {
     async function run() {
-      // 1️⃣ Required for Supabase Magic Link
-      const { data, error } = await supabase.auth.exchangeCodeForSession(window.location.href);
+      const url = window.location.href;
+
+      // Exchange the code from the URL for a session
+      const { data, error } = await supabase.auth.exchangeCodeForSession(url);
 
       if (error) {
-        console.error("⚠️ exchangeCodeForSession error:", error);
+        console.error("Callback exchange error:", error);
         router.replace("/auth/login");
         return;
       }
 
-      // 2️⃣ Session exists → redirect
-      if (data?.session) {
-        router.replace("/dashboard");
-        return;
-      }
-
-      // 3️⃣ Fallback listener
-      supabase.auth.onAuthStateChange((_event, session) => {
-        if (session) router.replace("/dashboard");
-      });
+      // Success — user is logged in
+      router.replace("/dashboard");
     }
 
     run();
@@ -36,15 +30,15 @@ export default function AuthCallback() {
     <div
       style={{
         minHeight: "100vh",
-        color: "#e5e7eb",
+        background: "radial-gradient(circle at top left,#020617 0%, #000)",
         display: "flex",
-        justifyContent: "center",
         alignItems: "center",
-        background:
-          "radial-gradient(circle at top left,#020617 0%, #020617 40%, #000)"
+        justifyContent: "center",
+        color: "#e5e7eb",
+        fontSize: 20,
       }}
     >
-      <div style={{ fontSize: 22 }}>Authenticating…</div>
+      Authenticating…
     </div>
   );
 }
