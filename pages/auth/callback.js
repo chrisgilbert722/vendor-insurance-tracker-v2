@@ -7,44 +7,33 @@ export default function AuthCallback() {
   const router = useRouter();
 
   useEffect(() => {
-    async function handleCallback() {
+    async function run() {
       try {
-        // Exchange the code in the URL for a real session
+        // Exchange token in URL for a session
         const { data, error } = await supabase.auth.exchangeCodeForSession(
           window.location.href
         );
 
         if (error) {
-          console.error("[auth/callback] exchange error:", error);
+          console.error("[callback] exchange error:", error.message);
           router.replace("/auth/login");
           return;
         }
 
-        // Optional: read redirect target from query (?redirect=/something)
+        // Redirect after successful login
         const redirect =
           typeof router.query.redirect === "string"
             ? router.query.redirect
             : "/dashboard";
 
-        // If we have a valid session now, go to redirect target
-        if (data?.session) {
-          router.replace(redirect);
-          return;
-        }
-
-        // Fallback: if session not immediately available, listen once more
-        supabase.auth.onAuthStateChange((_event, newSession) => {
-          if (newSession) {
-            router.replace(redirect);
-          }
-        });
+        router.replace(redirect);
       } catch (err) {
-        console.error("[auth/callback] unexpected error:", err);
+        console.error("[callback] unexpected:", err);
         router.replace("/auth/login");
       }
     }
 
-    handleCallback();
+    run();
   }, [router]);
 
   return (
