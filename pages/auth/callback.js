@@ -7,37 +7,40 @@ export default function AuthCallback() {
   const router = useRouter();
 
   useEffect(() => {
-    async function handleCallback() {
-      const hash = router.asPath.split("#")[1]; // everything after #
-      const params = new URLSearchParams(hash);
-      const token = params.get("access_token");
-      const refresh = params.get("refresh_token");
+    async function run() {
+      // Wait for router to hydrate
+      if (!router.isReady) return;
 
-      if (!token) {
-        console.error("No access token in URL");
+      // Extract hash fragment
+      const hash = window.location.hash.substring(1);
+      const params = new URLSearchParams(hash);
+
+      const access_token = params.get("access_token");
+      const refresh_token = params.get("refresh_token");
+
+      if (!access_token) {
+        console.error("NO ACCESS TOKEN FOUND");
         router.replace("/auth/login");
         return;
       }
 
-      const { data, error } = await supabase.auth.setSession({
-        access_token: token,
-        refresh_token: refresh,
+      // Set the session
+      const { error } = await supabase.auth.setSession({
+        access_token,
+        refresh_token
       });
 
       if (error) {
-        console.error("Auth error:", error);
+        console.error("Auth setSession error:", error);
         router.replace("/auth/login");
         return;
       }
 
-      // Redirect to dashboard
+      // DONE — go to dashboard
       router.replace("/dashboard");
     }
 
-    // Run once router has hash
-    if (router.asPath.includes("#")) {
-      handleCallback();
-    }
+    run();
   }, [router]);
 
   return (
