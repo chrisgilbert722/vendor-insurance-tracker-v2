@@ -1,1288 +1,962 @@
 // pages/admin/alerts.js
-import { useState, useMemo, useEffect } from "react";
-import { useOrg } from "../../context/OrgContext";
+import { useEffect, useMemo, useState } from "react";
 import { useRole } from "../../lib/useRole";
-import DocumentViewerV3 from "../../components/documents/DocumentViewerV3";
+import { useOrg } from "../../context/OrgContext";
+import ToastV2 from "../../components/ToastV2";
 
-/* ===========================
-   CINEMATIC THEME TOKENS
-=========================== */
-const GP = {
-  red: "#FF3B3B",
-  orange: "#FF9800",
-  yellow: "#FFC107",
-  green: "#00C27A",
-  blueSoft: "#38bdf8",
-  ink: "#0D1623",
-  inkSoft: "#64748B",
-  surface: "#020617",
-  border: "#1E293B",
+/* ==========================================================
+   ALERTS COCKPIT V3 — ELITE HUD MODE
+   - Cinematic alerts view
+   - Severity radar + filters
+   - Live rule failure preview
+   ========================================================== */
+
+const SEVERITY_META = {
+  critical: {
+    label: "Critical",
+    color: "#ff4d6d",
+    bg: "rgba(127,29,29,0.45)",
+    border: "rgba(239,68,68,0.9)",
+  },
+  high: {
+    label: "High",
+    color: "#ffa600",
+    bg: "rgba(120,53,15,0.5)",
+    border: "rgba(245,158,11,0.9)",
+  },
+  medium: {
+    label: "Medium",
+    color: "#facc15",
+    bg: "rgba(133,77,14,0.45)",
+    border: "rgba(250,204,21,0.9)",
+  },
+  low: {
+    label: "Low",
+    color: "#22c55e",
+    bg: "rgba(22,101,52,0.45)",
+    border: "rgba(34,197,94,0.9)",
+  },
 };
 
-/* ===========================
-   MOCK ALERTS (FALLBACK ONLY)
-=========================== */
-const initialAlerts = [
-  {
-    id: "alt-1",
-    vendorName: "Summit Roofing & Coatings",
-    vendorTagline: "Roofing / Exterior Work",
-    severity: "Critical",
-    type: "Coverage",
-    title: "GL limit below required",
-    message:
-      "General Liability each occurrence is $500,000. Blueprint requires $1,000,000.",
-    field: "Certificate.glEachOccurrence",
-    status: "Open",
-    createdAt: "2025-11-20T09:15:00Z",
-    lastSeen: "2025-11-21T14:12:00Z",
-    source: "Elite Rule Engine",
-    ruleLabel: "General Liability Below Required",
-  },
-  {
-    id: "alt-2",
-    vendorName: "Northline Mechanical Services",
-    vendorTagline: "HVAC / Mechanical",
-    severity: "High",
-    type: "Endorsement",
-    title: "Missing Additional Insured endorsement",
-    message:
-      "Required AI wording not found in any uploaded endorsement documents.",
-    field: "Endorsement.document",
-    status: "Open",
-    createdAt: "2025-11-20T13:40:00Z",
-    lastSeen: "2025-11-21T10:00:00Z",
-    source: "Requirements Engine",
-    ruleLabel: "Additional Insured Not Found",
-  },
-  {
-    id: "alt-3",
-    vendorName: "Brightline Janitorial Group",
-    vendorTagline: "Janitorial / Cleaning",
-    severity: "Medium",
-    type: "Document",
-    title: "Primary COI expired 7 days ago",
-    message:
-      "Primary certificate expiration date passed 7 days ago. No replacement document uploaded.",
-    field: "Certificate.expirationDate",
-    status: "Open",
-    createdAt: "2025-11-14T08:05:00Z",
-    lastSeen: "2025-11-21T08:12:00Z",
-    source: "Expiration Monitor",
-    ruleLabel: "Expired / Missing Insurance",
-  },
-  {
-    id: "alt-4",
-    vendorName: "Precision Fire & Life Safety",
-    vendorTagline: "Life Safety / Fire",
-    severity: "Low",
-    type: "Info",
-    title: "Umbrella policy expiring in 45 days",
-    message:
-      "Umbrella / Excess policy will expire in 45 days. Confirm renewal plans with broker.",
-    field: "Certificate.umbrellaExpiration",
-    status: "Open",
-    createdAt: "2025-11-19T09:00:00Z",
-    lastSeen: "2025-11-21T12:55:00Z",
-    source: "Expiration Monitor",
-    ruleLabel: "Umbrella Expiring Soon",
-  },
-];
-
-/* ===========================
-   HELPERS
-=========================== */
-function formatRelative(iso) {
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return "—";
-  const diff = Date.now() - d.getTime();
-  const mins = diff / 60000;
-  if (mins < 1) return "just now";
-  if (mins < 60) return `${Math.round(mins)}m ago`;
-  const hrs = mins / 60;
-  if (hrs < 24) return `${Math.round(hrs)}h ago`;
-  return `${Math.round(hrs / 24)}d ago`;
-}
-
-function formatDate(iso) {
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return "—";
-  return d.toLocaleString(undefined, {
-    month: "short",
-    day: "numeric",
-    hour: "2-digit",
-    minute: "2-digit",
-  });
-}
-
-const severityRank = {
-  Critical: 4,
-  High: 3,
-  Medium: 2,
-  Low: 1,
+const STATUS_META = {
+  open: { label: "Open", color: "#f97316" },
+  in_review: { label: "In Review", color: "#38bdf8" },
+  resolved: { label: "Resolved", color: "#22c55e" },
 };
 
-/* ===========================
-   MAIN PAGE — CINEMATIC V2.1
-=========================== */
-export default function AlertsPage() {
-  const { orgId } = useOrg();
+/**
+ * Shape we expect for each alert:
+ * {
+ *   id,
+ *   vendor_name,
+ *   vendor_id,
+ *   severity: "critical"|"high"|"medium"|"low",
+ *   status: "open"|"in_review"|"resolved",
+ *   rule_name,
+ *   group_name,
+ *   field_key,
+ *   expected_value,
+ *   actual_value,
+ *   requirement_text,
+ *   created_at,
+ *   last_seen_at
+ * }
+ */
+
+export default function AlertsCockpitV3() {
   const { isAdmin, isManager } = useRole();
+  const { activeOrgId: orgId, loadingOrgs } = useOrg();
+
   const canEdit = isAdmin || isManager;
 
-  // LIVE ALERTS STATE
-  const [alerts, setAlerts] = useState(initialAlerts);
   const [loading, setLoading] = useState(true);
-  const [loadError, setLoadError] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
 
-  const [severityFilter, setSeverityFilter] = useState("All");
-  const [typeFilter, setTypeFilter] = useState("All");
-  const [statusFilter, setStatusFilter] = useState("Open");
-  const [search, setSearch] = useState("");
+  const [alerts, setAlerts] = useState([]);
+  const [selectedAlertId, setSelectedAlertId] = useState(null);
+  const [severityFilter, setSeverityFilter] = useState("all");
+  const [statusFilter, setStatusFilter] = useState("open");
 
-  // Document Viewer V3 state
-  const [viewerOpen, setViewerOpen] = useState(false);
-  const [viewerFileUrl, setViewerFileUrl] = useState(null);
-  const [viewerExtracted, setViewerExtracted] = useState(null);
-  const [viewerTitle, setViewerTitle] = useState("COI Document");
+  // For future AI explain + bulk actions
+  const [aiExplainingId, setAiExplainingId] = useState(null);
 
-  /* ---------- Load live alerts from API on mount ---------- */
-  useEffect(() => {
-    let cancelled = false;
+  const [toast, setToast] = useState({
+    open: false,
+    message: "",
+    type: "success",
+  });
 
-    async function loadAlerts() {
-      try {
-        setLoading(true);
-        setLoadError("");
+  /* ===========================
+       DERIVED DATA
+     =========================== */
+  const filteredAlerts = useMemo(() => {
+    return alerts.filter((a) => {
+      if (severityFilter !== "all" && a.severity !== severityFilter) return false;
+      if (statusFilter !== "all" && a.status !== statusFilter) return false;
+      return true;
+    });
+  }, [alerts, severityFilter, statusFilter]);
 
-        const res = await fetch("/api/alerts");
-        if (!res.ok) throw new Error(`Failed to load alerts (${res.status})`);
+  const selectedAlert = useMemo(
+    () => filteredAlerts.find((a) => a.id === selectedAlertId) || filteredAlerts[0] || null,
+    [filteredAlerts, selectedAlertId]
+  );
 
-        const data = await res.json();
-        if (!cancelled && data?.ok && Array.isArray(data.alerts)) {
-          // If there are no alerts yet, fall back to mocks so the UI stays pretty
-          if (data.alerts.length > 0) {
-            setAlerts(data.alerts);
-          } else {
-            setAlerts(initialAlerts);
-          }
-        }
-      } catch (err) {
-        console.error("[AlertsPage] loadAlerts error:", err);
-        if (!cancelled) {
-          setLoadError(err?.message || "Could not load alerts.");
-          setAlerts(initialAlerts);
-        }
-      } finally {
-        if (!cancelled) {
-          setLoading(false);
-        }
+  const severityCounts = useMemo(() => {
+    const base = { critical: 0, high: 0, medium: 0, low: 0 };
+    for (const a of alerts) {
+      if (a.severity && base[a.severity] !== undefined) {
+        base[a.severity] += 1;
       }
     }
-
-    loadAlerts();
-    return () => {
-      cancelled = true;
-    };
-  }, []);
-
-  // Metrics computed off whatever alerts we’re showing (live or fallback)
-  const metrics = useMemo(() => {
-    return {
-      total: alerts.length,
-      critical: alerts.filter((a) => a.severity === "Critical").length,
-      warning: alerts.filter(
-        (a) => a.severity === "High" || a.severity === "Medium"
-      ).length,
-      info: alerts.filter((a) => a.severity === "Low").length,
-    };
+    return base;
   }, [alerts]);
 
-  // Apply filters to alerts
-  const filtered = useMemo(() => {
-    return alerts
-      .filter((a) => {
-        if (severityFilter !== "All" && a.severity !== severityFilter)
-          return false;
-        if (typeFilter !== "All" && a.type !== typeFilter) return false;
-        if (statusFilter !== "All" && a.status !== statusFilter) return false;
+  /* ===========================
+       DATA LOADING
+     =========================== */
+  useEffect(() => {
+    if (loadingOrgs) return;
+    if (!orgId) {
+      setLoading(false);
+      return;
+    }
+    loadAlerts();
+  }, [orgId, loadingOrgs]);
 
-        if (search.length) {
-          const hay = (
-            (a.title || "") +
-            " " +
-            (a.message || "") +
-            " " +
-            (a.vendorName || "") +
-            " " +
-            (a.ruleLabel || "")
-          ).toLowerCase();
-          if (!hay.includes(search.toLowerCase())) return false;
-        }
-        return true;
-      })
-      .sort(
-        (a, b) =>
-          (severityRank[b.severity] || 0) - (severityRank[a.severity] || 0) ||
-          new Date(b.createdAt) - new Date(a.createdAt)
-      );
-  }, [alerts, severityFilter, typeFilter, statusFilter, search]);
+  async function loadAlerts() {
+    setLoading(true);
+    setError("");
+    try {
+      const res = await fetch(`/api/alerts?orgId=${encodeURIComponent(orgId)}`);
+      const json = await res.json();
 
-  // When user clicks "View COI" on an alert
-  const handleViewCoi = (alert) => {
+      if (!json.ok) {
+        throw new Error(json.error || "Failed to load alerts");
+      }
+
+      const list = json.alerts || [];
+      setAlerts(list);
+      if (list.length) {
+        setSelectedAlertId(list[0].id);
+      } else {
+        setSelectedAlertId(null);
+      }
+    } catch (err) {
+      console.error("loadAlerts error:", err);
+      setError(err.message || "Failed to load alerts.");
+      setToast({
+        open: true,
+        type: "error",
+        message: err.message || "Failed to load alerts.",
+      });
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  /* ===========================
+       STATUS / ACTIONS
+     =========================== */
+  async function handleUpdateStatus(alertId, nextStatus) {
+    if (!canEdit || !alertId) return;
+    // optimistic
+    setAlerts((prev) =>
+      prev.map((a) => (a.id === alertId ? { ...a, status: nextStatus } : a))
+    );
+
+    try {
+      setSaving(true);
+      const res = await fetch("/api/alerts/status", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id: alertId, status: nextStatus }),
+      });
+      const json = await res.json();
+      if (!json.ok) throw new Error(json.error || "Failed to update status");
+
+      setToast({
+        open: true,
+        type: "success",
+        message: "Alert status updated.",
+      });
+    } catch (err) {
+      console.error("status update error:", err);
+      setToast({
+        open: true,
+        type: "error",
+        message: err.message || "Failed to update status.",
+      });
+      // revert on failure
+      await loadAlerts();
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function handleAiExplain(alert) {
     if (!alert) return;
+    try {
+      setAiExplainingId(alert.id);
+      const res = await fetch("/api/alerts/ai-explain", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ alertId: alert.id }),
+      });
+      const json = await res.json();
+      if (!json.ok) throw new Error(json.error || "Failed to explain alert");
 
-    const flags = [
-      `${alert.severity || ""} · ${alert.type || ""}`,
-      alert.title || "",
-      alert.message || "",
-    ];
-
-    const extracted = {
-      carrier: alert.extracted?.carrier ?? null,
-      policy_number: alert.extracted?.policy_number ?? null,
-      coverage_type: alert.extracted?.coverage_type ?? alert.type ?? null,
-      effective_date: alert.extracted?.effective_date ?? null,
-      expiration_date: alert.extracted?.expiration_date ?? null,
-      flags: flags.filter(Boolean),
-    };
-
-    setViewerFileUrl(alert.fileUrl || null);
-    setViewerExtracted(extracted);
-    setViewerTitle(alert.title || "COI Document");
-    setViewerOpen(true);
-  };
-
+      setAlerts((prev) =>
+        prev.map((a) =>
+          a.id === alert.id ? { ...a, ai_explanation: json.explanation } : a
+        )
+      );
+      setToast({
+        open: true,
+        type: "success",
+        message: "AI explanation updated.",
+      });
+    } catch (err) {
+      console.error("ai explain error:", err);
+      setToast({
+        open: true,
+        type: "error",
+        message: err.message || "Failed to explain alert.",
+      });
+    } finally {
+      setAiExplainingId(null);
+    }
+  }
   return (
     <div
       style={{
         minHeight: "100vh",
         position: "relative",
+        padding: "40px 40px 60px",
         background:
-          "radial-gradient(circle at top left,#020617 0%, #020617 40%, #000 100%)",
-        padding: "30px 40px 40px",
+          "radial-gradient(circle at 20% 10%, #020617 0%, #020617 40%, #000 100%)",
         color: "#e5e7eb",
-        overflowX: "hidden",
+        overflow: "hidden",
       }}
     >
-      {/* CINEMATIC HEADER AURA */}
+      {/* GLOBAL SCANLINES */}
       <div
         style={{
           position: "absolute",
-          top: -200,
-          left: "50%",
-          transform: "translateX(-50%)",
-          width: 900,
-          height: 900,
+          inset: 0,
           background:
-            "radial-gradient(circle, rgba(255,120,0,0.22), transparent 60%)",
-          filter: "blur(90px)",
+            "linear-gradient(rgba(255,255,255,0.03) 1px, transparent 1px)",
+          backgroundSize: "100% 3px",
+          opacity: 0.3,
           pointerEvents: "none",
-          zIndex: 0,
+          zIndex: 1,
         }}
       />
 
       {/* HEADER */}
-      <div style={{ position: "relative", zIndex: 2 }}>
+      <div style={{ position: "relative", zIndex: 2, marginBottom: 25 }}>
         <div
           style={{
-            display: "flex",
-            gap: 14,
-            alignItems: "center",
-            marginBottom: 12,
-          }}
-        >
-          <div
-            style={{
-              padding: 12,
-              borderRadius: 999,
-              background:
-                "radial-gradient(circle at 30% 0,#f97316,#ea580c,#7c2d12)",
-              boxShadow: "0 0 40px rgba(248,113,113,0.5)",
-            }}
-          >
-            <span style={{ fontSize: 22 }}>🚨</span>
-          </div>
-
-          <div>
-            <div
-              style={{
-                display: "inline-flex",
-                gap: 8,
-                padding: "4px 10px",
-                borderRadius: 999,
-                border: "1px solid rgba(148,163,184,0.4)",
-                background:
-                  "linear-gradient(120deg,rgba(15,23,42,0.9),rgba(15,23,42,0))",
-                marginBottom: 6,
-              }}
-            >
-              <span
-                style={{
-                  fontSize: 10,
-                  color: "#9ca3af",
-                  letterSpacing: 1.2,
-                  textTransform: "uppercase",
-                }}
-              >
-                Alerts Dashboard V2.1
-              </span>
-              <span
-                style={{
-                  fontSize: 10,
-                  color: "#f97316",
-                  letterSpacing: 1,
-                  textTransform: "uppercase",
-                }}
-              >
-                real-time risk pulse
-              </span>
-            </div>
-
-            <h1
-              style={{
-                margin: 0,
-                fontSize: 28,
-                fontWeight: 600,
-                letterSpacing: 0.2,
-              }}
-            >
-              See{" "}
-              <span
-                style={{
-                  background:
-                    "linear-gradient(90deg,#f97316,#facc15,#fb7185)",
-                  WebkitBackgroundClip: "text",
-                  color: "transparent",
-                }}
-              >
-                every compliance issue
-              </span>{" "}
-              before it reaches finance, ops, or your insurer.
-            </h1>
-
-            <p
-              style={{
-                marginTop: 6,
-                marginBottom: 0,
-                fontSize: 13,
-                color: "#cbd5f5",
-                maxWidth: 640,
-              }}
-            >
-              Live feed of your rule engine + requirements engine firing.
-            </p>
-
-            {/* Small status line */}
-            <div
-              style={{
-                marginTop: 6,
-                fontSize: 11,
-                color: "#6b7280",
-              }}
-            >
-              {loading
-                ? "Loading live alerts from engine…"
-                : loadError
-                ? `Using fallback demo alerts (error: ${loadError})`
-                : "Showing live alerts from engine."}
-            </div>
-          </div>
-        </div>
-      </div>
-
-      {/* METRICS + FILTERS */}
-      <MetricsAndFilters
-        metrics={metrics}
-        severityFilter={severityFilter}
-        setSeverityFilter={setSeverityFilter}
-        typeFilter={typeFilter}
-        setTypeFilter={setTypeFilter}
-        statusFilter={statusFilter}
-        setStatusFilter={setStatusFilter}
-        search={search}
-        setSearch={setSearch}
-      />
-
-      {/* MAIN GRID: TIMELINE + RIGHT PANELS */}
-      <MainGrid
-        filtered={filtered}
-        allAlerts={alerts}
-        canEdit={canEdit}
-        onViewCoi={handleViewCoi}
-      />
-
-      {/* DOCUMENT VIEWER V3 MODAL */}
-      <DocumentViewerV3
-        open={viewerOpen}
-        onClose={() => setViewerOpen(false)}
-        fileUrl={viewerFileUrl}
-        title={viewerTitle}
-        extracted={viewerExtracted}
-      />
-    </div>
-  );
-}
-
-/* ===========================
-   METRICS + FILTERS PANEL
-=========================== */
-function MetricsAndFilters({
-  metrics,
-  severityFilter,
-  setSeverityFilter,
-  typeFilter,
-  setTypeFilter,
-  statusFilter,
-  setStatusFilter,
-  search,
-  setSearch,
-}) {
-  return (
-    <div
-      style={{
-        display: "grid",
-        gridTemplateColumns: "minmax(0,2.1fr) minmax(0,1.5fr)",
-        gap: 18,
-        marginTop: 24,
-        marginBottom: 24,
-      }}
-    >
-      {/* LEFT — METRICS */}
-      <MetricPanel metrics={metrics} />
-
-      {/* RIGHT — FILTERS */}
-      <div
-        style={{
-          borderRadius: 22,
-          padding: 16,
-          background:
-            "linear-gradient(135deg,rgba(15,23,42,0.96),rgba(15,23,42,0.9))",
-          border: "1px solid rgba(148,163,184,0.4)",
-          boxShadow: "0 22px 50px rgba(15,23,42,0.98)",
-          display: "flex",
-          flexDirection: "column",
-          gap: 12,
-        }}
-      >
-        <div
-          style={{
-            fontSize: 11,
-            letterSpacing: 1.2,
-            color: "#9ca3af",
-            textTransform: "uppercase",
-          }}
-        >
-          Filters
-        </div>
-
-        {/* Filter pills */}
-        <div
-          style={{
-            display: "flex",
-            flexWrap: "wrap",
+            display: "inline-flex",
             gap: 8,
-            alignItems: "center",
+            padding: "4px 12px",
+            borderRadius: 999,
+            border: "1px solid rgba(148,163,184,0.4)",
+            background:
+              "linear-gradient(120deg,rgba(15,23,42,0.9),rgba(15,23,42,0.65))",
+            marginBottom: 6,
           }}
         >
-          <FilterPillGroup
-            options={["All", "Critical", "High", "Medium", "Low"]}
-            active={severityFilter}
-            onSelect={setSeverityFilter}
-            palette="severity"
-          />
-
-          <FilterPillGroup
-            options={["Open", "All"]}
-            active={statusFilter}
-            onSelect={setStatusFilter}
-            palette="status"
-          />
+          <span
+            style={{
+              fontSize: 10,
+              color: "#9ca3af",
+              textTransform: "uppercase",
+              letterSpacing: "0.12em",
+            }}
+          >
+            Alerts Cockpit V3
+          </span>
+          <span
+            style={{
+              fontSize: 10,
+              color: "#38bdf8",
+              textTransform: "uppercase",
+              letterSpacing: "0.08em",
+            }}
+          >
+            Threat • Risk • Compliance
+          </span>
         </div>
 
-        {/* Type + Search */}
+        <h1
+          style={{
+            fontSize: 28,
+            fontWeight: 600,
+            margin: 0,
+            letterSpacing: 0.5,
+          }}
+        >
+          Live{" "}
+          <span
+            style={{
+              background:
+                "linear-gradient(90deg,#38bdf8,#818cf8,#e5e7eb)",
+              WebkitBackgroundClip: "text",
+              color: "transparent",
+            }}
+          >
+            threat detection
+          </span>{" "}
+          and compliance alerts.
+        </h1>
+
+        <p
+          style={{
+            marginTop: 8,
+            maxWidth: 620,
+            fontSize: 13,
+            color: "#cbd5f5",
+          }}
+        >
+          This cockpit monitors vendor documents, insurance policies, rule
+          violations, and risk thresholds in real time. Powered by the Elite Rule
+          Engine V3.
+        </p>
+      </div>
+
+      {/* ERRORS */}
+      {error && (
         <div
           style={{
-            display: "flex",
-            gap: 10,
-            flexWrap: "wrap",
+            position: "relative",
+            zIndex: 2,
+            marginBottom: 12,
+            padding: "8px 12px",
+            borderRadius: 10,
+            background: "rgba(127,29,29,0.9)",
+            border: "1px solid rgba(248,113,113,0.9)",
+            color: "#fecaca",
+            fontSize: 13,
           }}
         >
-          <select
-            value={typeFilter}
-            onChange={(e) => setTypeFilter(e.target.value)}
-            style={{
-              borderRadius: 999,
-              padding: "6px 10px",
-              border: "1px solid rgba(51,65,85,0.9)",
-              background: "rgba(15,23,42,0.96)",
-              color: "#e5e7eb",
-              fontSize: 12,
-              outline: "none",
-              minWidth: 130,
-            }}
-          >
-            <option value="All">All types</option>
-            <option value="Coverage">Coverage</option>
-            <option value="Endorsement">Endorsement</option>
-            <option value="Document">Document</option>
-            <option value="Info">Info</option>
-          </select>
+          {error}
+        </div>
+      )}
 
+      {/* MAIN GRID */}
+      <div
+        style={{
+          position: "relative",
+          zIndex: 2,
+          marginTop: 20,
+          display: "grid",
+          gridTemplateColumns: "240px 1.4fr 1.2fr",
+          gap: 22,
+        }}
+      >
+        {/* =============================
+            LEFT PANEL — FILTERS / RADAR
+           ============================= */}
+        <div
+          style={{
+            position: "relative",
+            borderRadius: 20,
+            padding: 18,
+            background:
+              "linear-gradient(145deg, rgba(11,20,40,0.97), rgba(7,12,26,0.9))",
+            border: "1px solid rgba(80,120,255,0.32)",
+            boxShadow:
+              "0 0 28px rgba(54,88,255,0.22), inset 0 0 22px rgba(10,20,40,0.55)",
+            backdropFilter: "blur(8px)",
+            overflow: "hidden",
+          }}
+        >
+          {/* TOP GLOW */}
           <div
             style={{
-              flex: 1,
-              minWidth: 160,
-              background: "rgba(15,23,42,0.95)",
-              border: "1px solid rgba(51,65,85,0.9)",
-              borderRadius: 999,
-              display: "flex",
-              alignItems: "center",
-              padding: "4px 9px",
-              gap: 6,
+              position: "absolute",
+              top: -2,
+              left: -2,
+              right: -2,
+              height: 2,
+              background:
+                "linear-gradient(90deg, transparent, #3b82f6, #8b5cf6, transparent)",
+              opacity: 0.6,
+              filter: "blur(1.2px)",
+            }}
+          />
+
+          {/* FILTER HEADER */}
+          <div
+            style={{
+              fontSize: 12,
+              textTransform: "uppercase",
+              letterSpacing: 1.5,
+              marginBottom: 12,
+              color: "#9ca3af",
             }}
           >
-            <span style={{ color: "#6b7280", fontSize: 12 }}>🔍</span>
-            <input
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              placeholder="Search all alerts…"
+            Filters
+          </div>
+
+          {/* STATUS FILTER */}
+          <div style={{ marginBottom: 14 }}>
+            <div style={{ fontSize: 11, marginBottom: 4, color: "#cbd5f5" }}>
+              Status
+            </div>
+
+            <select
+              value={statusFilter}
+              onChange={(e) => setStatusFilter(e.target.value)}
               style={{
-                flex: 1,
-                border: "none",
-                outline: "none",
-                background: "transparent",
+                width: "100%",
+                padding: "8px 10px",
+                borderRadius: 12,
+                border: "1px solid rgba(51,65,85,0.8)",
+                background:
+                  "linear-gradient(120deg, rgba(17,25,45,0.95), rgba(15,23,42,0.88))",
                 color: "#e5e7eb",
-                fontSize: 12,
+                fontSize: 13,
               }}
-            />
+            >
+              <option value="open">Open</option>
+              <option value="in_review">In Review</option>
+              <option value="resolved">Resolved</option>
+              <option value="all">All</option>
+            </select>
+          </div>
+
+          {/* SEVERITY FILTER */}
+          <div style={{ marginBottom: 18 }}>
+            <div style={{ fontSize: 11, marginBottom: 4, color: "#cbd5f5" }}>
+              Severity
+            </div>
+
+            <select
+              value={severityFilter}
+              onChange={(e) => setSeverityFilter(e.target.value)}
+              style={{
+                width: "100%",
+                padding: "8px 10px",
+                borderRadius: 12,
+                border: "1px solid rgba(51,65,85,0.8)",
+                background:
+                  "linear-gradient(120deg, rgba(17,25,45,0.95), rgba(15,23,42,0.88))",
+                color: "#e5e7eb",
+                fontSize: 13,
+              }}
+            >
+              <option value="all">All Severities</option>
+              <option value="critical">Critical Only</option>
+              <option value="high">High Only</option>
+              <option value="medium">Medium Only</option>
+              <option value="low">Low Only</option>
+            </select>
+          </div>
+
+          {/* SEVERITY RADAR */}
+          <div style={{ marginTop: 20, marginBottom: 12 }}>
+            <div
+              style={{
+                fontSize: 12,
+                textTransform: "uppercase",
+                marginBottom: 6,
+                color: "#9ca3af",
+              }}
+            >
+              Severity Radar
+            </div>
+
+            <div
+              style={{
+                display: "grid",
+                gridTemplateColumns: "1fr 1fr",
+                gap: 10,
+              }}
+            >
+              {["critical", "high", "medium", "low"].map((sev) => (
+                <div
+                  key={sev}
+                  style={{
+                    borderRadius: 12,
+                    padding: "10px 10px",
+                    border: `1px solid ${SEVERITY_META[sev].border}`,
+                    background: SEVERITY_META[sev].bg,
+                    color: SEVERITY_META[sev].color,
+                    fontSize: 12,
+                    fontWeight: 500,
+                    textAlign: "center",
+                    boxShadow: `0 0 10px ${SEVERITY_META[sev].border}`,
+                  }}
+                >
+                  {SEVERITY_META[sev].label} — {severityCounts[sev] || 0}
+                </div>
+              ))}
+            </div>
           </div>
         </div>
-      </div>
-    </div>
-  );
-}
 
-/* ===========================
-   METRIC PANEL (4 KPIs)
-=========================== */
-function MetricPanel({ metrics }) {
-  return (
-    <div
-      style={{
-        borderRadius: 22,
-        padding: 16,
-        background:
-          "radial-gradient(circle at top left,rgba(15,23,42,0.96),rgba(15,23,42,0.92))",
-        border: "1px solid rgba(148,163,184,0.55)",
-        boxShadow:
-          "0 25px 65px rgba(0,0,0,0.55), 0 0 25px rgba(248,113,113,0.25) inset",
-        display: "grid",
-        gridTemplateColumns: "repeat(4,minmax(0,1fr))",
-        gap: 12,
-      }}
-    >
-      <MetricCard label="Critical" value={metrics.critical} tone="critical" />
-      <MetricCard label="Warning" value={metrics.warning} tone="warning" />
-      <MetricCard label="Info" value={metrics.info} tone="info" />
-      <MetricCard label="Total" value={metrics.total} tone="total" />
-    </div>
-  );
-}
-
-/* ===========================
-   SINGLE METRIC CARD
-=========================== */
-function MetricCard({ label, value, tone }) {
-  const palette = {
-    critical: {
-      border: "rgba(248,113,113,0.85)",
-      bg: "rgba(127,29,29,0.85)",
-      text: "#fecaca",
-    },
-    warning: {
-      border: "rgba(250,204,21,0.85)",
-      bg: "rgba(113,63,18,0.85)",
-      text: "#fef9c3",
-    },
-    info: {
-      border: "rgba(56,189,248,0.85)",
-      bg: "rgba(15,23,42,0.85)",
-      text: "#e0f2fe",
-    },
-    total: {
-      border: "rgba(148,163,184,0.85)",
-      bg: "rgba(15,23,42,0.85)",
-      text: "#e5e7eb",
-    },
-  }[tone];
-
-  return (
-    <div
-      style={{
-        borderRadius: 18,
-        padding: "14px 12px",
-        border: `1px solid ${palette.border}`,
-        background: palette.bg,
-        color: palette.text,
-        boxShadow:
-          "0 20px 55px rgba(15,23,42,0.85), 0 0 15px rgba(255,255,255,0.08) inset",
-        display: "flex",
-        flexDirection: "column",
-        justifyContent: "center",
-        gap: 4,
-        minHeight: 88,
-      }}
-    >
-      <div
-        style={{
-          fontSize: 11,
-          textTransform: "uppercase",
-          letterSpacing: 1.1,
-          color: "#cbd5f5",
-        }}
-      >
-        {label}
-      </div>
-
-      <div
-        style={{
-          fontSize: 26,
-          fontWeight: 600,
-          color: palette.text,
-        }}
-      >
-        {value}
-      </div>
-    </div>
-  );
-}
-
-/* ===========================
-   FILTER PILL GROUP
-=========================== */
-function FilterPillGroup({ options, active, onSelect, palette }) {
-  const colors = {
-    severity: {
-      Critical: "#f97316",
-      High: "#facc15",
-      Medium: "#38bdf8",
-      Low: "#34d399",
-      All: "#cbd5f5",
-    },
-    status: {
-      Open: "#22c55e",
-      All: "#cbd5f5",
-    },
-  }[palette];
-
-  return (
-    <div
-      style={{
-        display: "inline-flex",
-        alignItems: "center",
-        gap: 6,
-        padding: "3px 4px",
-        borderRadius: 999,
-        background: "rgba(15,23,42,0.9)",
-        border: "1px solid rgba(51,65,85,0.9)",
-      }}
-    >
-      {options.map((opt) => {
-        const isActive = active === opt;
-        return (
-          <button
-            key={opt}
-            onClick={() => onSelect(opt)}
-            style={{
-              borderRadius: 999,
-              border: "none",
-              padding: "5px 10px",
-              fontSize: 11,
-              cursor: "pointer",
-              background: isActive
-                ? `radial-gradient(circle at top, ${colors[opt]}AA, ${colors[opt]}44, #0f172a)`
-                : "transparent",
-              color: isActive ? "#ffffff" : "#cbd5f5",
-              transition: "0.2s ease",
-            }}
-          >
-            {opt}
-          </button>
-        );
-      })}
-    </div>
-  );
-}
-
-/* ===========================
-   MAIN GRID WRAPPER
-=========================== */
-function MainGrid({ filtered, allAlerts, canEdit, onViewCoi }) {
-  return (
-    <div
-      style={{
-        display: "grid",
-        gridTemplateColumns: "minmax(0,2.1fr) minmax(0,1.4fr)",
-        gap: 20,
-        alignItems: "flex-start",
-        marginBottom: 50,
-      }}
-    >
-      <TimelinePanel
-        filtered={filtered}
-        canEdit={canEdit}
-        onViewCoi={onViewCoi}
-      />
-
-      <div
-        style={{
-          display: "flex",
-          flexDirection: "column",
-          gap: 16,
-        }}
-      >
-        <RiskPulsePanel alerts={allAlerts} />
-        <WhereAlertsFromPanel alerts={allAlerts} />
-        <SelectedAlertHintPanel alerts={allAlerts} />
-      </div>
-    </div>
-  );
-}
-
-/* ===========================
-   TIMELINE PANEL
-=========================== */
-function TimelinePanel({ filtered, canEdit, onViewCoi }) {
-  return (
-    <div
-      style={{
-        borderRadius: 24,
-        padding: 16,
-        background:
-          "radial-gradient(circle at top left,rgba(15,23,42,0.97),rgba(15,23,42,0.92))",
-        border: "1px solid rgba(148,163,184,0.6)",
-        boxShadow: "0 24px 60px rgba(15,23,42,0.98)",
-      }}
-    >
-      {/* HEADER */}
-      <div
-        style={{
-          display: "flex",
-          justifyContent: "space-between",
-          marginBottom: 12,
-        }}
-      >
-        <div>
+        {/* =============================
+            MIDDLE PANEL — ALERT LIST
+           ============================= */}
+        <div
+          style={{
+            borderRadius: 20,
+            padding: 18,
+            background:
+              "linear-gradient(150deg, rgba(12,22,42,0.97), rgba(5,10,25,0.94))",
+            border: "1px solid rgba(80,120,255,0.28)",
+            boxShadow:
+              "0 0 25px rgba(64,106,255,0.25), inset 0 0 25px rgba(10,20,45,0.6)",
+            backdropFilter: "blur(10px)",
+            overflow: "hidden",
+          }}
+        >
           <div
             style={{
-              fontSize: 11,
+              fontSize: 12,
               textTransform: "uppercase",
               color: "#9ca3af",
-              marginBottom: 4,
+              marginBottom: 10,
+              letterSpacing: 1.5,
             }}
           >
-            Alerts Timeline
-          </div>
-          <div style={{ fontSize: 13, color: "#e5e7eb" }}>
-            Brighter, higher cards = more urgent issues.
-          </div>
-        </div>
-
-        <div style={{ fontSize: 11, color: "#6b7280" }}>
-          Showing {filtered.length}
-        </div>
-      </div>
-
-      {/* TIMELINE FEED */}
-      <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-        {filtered.map((alert, idx) => (
-          <AlertCard
-            key={alert.id || idx}
-            alert={alert}
-            index={idx}
-            canEdit={canEdit}
-            onViewCoi={onViewCoi}
-          />
-        ))}
-      </div>
-    </div>
-  );
-}
-
-/* ===========================
-   INDIVIDUAL ALERT CARD
-=========================== */
-function AlertCard({ alert, index, canEdit, onViewCoi }) {
-  const meta = {
-    Critical: {
-      dot: "#f97316",
-      bg: "rgba(127,29,29,0.95)",
-      glow: "0 20px 50px rgba(248,113,113,0.4)",
-    },
-    High: {
-      dot: "#facc15",
-      bg: "rgba(113,63,18,0.95)",
-      glow: "0 18px 45px rgba(250,204,21,0.3)",
-    },
-    Medium: {
-      dot: "#38bdf8",
-      bg: "rgba(15,23,42,0.95)",
-      glow: "0 14px 35px rgba(56,189,248,0.3)",
-    },
-    Low: {
-      dot: "#34d399",
-      bg: "rgba(15,23,42,0.95)",
-      glow: "0 14px 35px rgba(52,211,153,0.25)",
-    },
-  }[alert.severity] || {
-    dot: "#6b7280",
-    bg: "rgba(15,23,42,0.95)",
-    glow: "0 14px 35px rgba(148,163,184,0.25)",
-  };
-
-  return (
-    <div
-      style={{
-        position: "relative",
-        padding: 14,
-        borderRadius: 20,
-        background:
-          "radial-gradient(circle at top left,rgba(15,23,42,0.99),rgba(15,23,42,0.94))",
-        border: `1px solid ${meta.dot}55`,
-        boxShadow: meta.glow,
-        display: "grid",
-        gridTemplateColumns: "22px minmax(0,1fr)",
-        gap: 12,
-      }}
-    >
-      {/* TIMELINE SPINE */}
-      <div
-        style={{
-          display: "flex",
-          flexDirection: "column",
-          alignItems: "center",
-        }}
-      >
-          <div
-            style={{
-              width: 8,
-              height: 8,
-              borderRadius: 999,
-              background: meta.dot,
-              boxShadow: `0 0 10px ${meta.dot}`,
-              marginBottom: 4,
-            }}
-          />
-
-          <div
-            style={{
-              flex: 1,
-              width: 2,
-              background:
-                "linear-gradient(to bottom,rgba(148,163,184,0.6),transparent)",
-            }}
-          />
-      </div>
-
-      {/* CONTENT */}
-      <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-        {/* TITLE + TIMESTAMP */}
-        <div
-          style={{
-            display: "flex",
-            justifyContent: "space-between",
-          }}
-        >
-          {/* Title + Message */}
-          <div>
-            <div
-              style={{
-                fontSize: 13,
-                fontWeight: 500,
-                color: "#e5e7eb",
-                marginBottom: 2,
-              }}
-            >
-              {alert.title}
-            </div>
-
-            <div style={{ fontSize: 11, color: "#9ca3af" }}>
-              {alert.message}
-            </div>
+            Alerts ({filteredAlerts.length})
           </div>
 
-          {/* Top-right severity badge */}
           <div
             style={{
               display: "flex",
               flexDirection: "column",
-              gap: 4,
+              gap: 10,
+              maxHeight: "620px",
+              overflowY: "auto",
+              paddingRight: 6,
             }}
           >
-            <SeverityBadge severity={alert.severity || "Info"} />
-            <span style={{ fontSize: 10, color: "#6b7280" }}>
-              {alert.status || "Open"} · {formatRelative(alert.createdAt)}
-            </span>
+            {filteredAlerts.length === 0 ? (
+              <div
+                style={{
+                  padding: 12,
+                  borderRadius: 12,
+                  border: "1px dashed rgba(148,163,184,0.5)",
+                  color: "#9ca3af",
+                  fontSize: 12,
+                }}
+              >
+                No alerts match your filters.
+              </div>
+            ) : (
+              filteredAlerts.map((alert) => (
+                <AlertCard
+                  key={alert.id}
+                  alert={alert}
+                  active={selectedAlertId === alert.id}
+                  onSelect={() => setSelectedAlertId(alert.id)}
+                />
+              ))
+            )}
           </div>
         </div>
 
-        {/* Vendor + Rule details */}
+        {/* =============================
+            RIGHT PANEL — ALERT DETAILS
+           ============================= */}
         <div
           style={{
-            display: "flex",
-            justifyContent: "space-between",
-            fontSize: 11,
-            color: "#9ca3af",
+            borderRadius: 20,
+            padding: 18,
+            background:
+              "linear-gradient(150deg, rgba(9,15,30,0.97), rgba(4,9,20,0.94))",
+            border: "1px solid rgba(80,120,255,0.28)",
+            boxShadow:
+              "0 0 25px rgba(64,106,255,0.25), inset 0 0 25px rgba(10,20,45,0.6)",
+            backdropFilter: "blur(10px)",
+            overflow: "hidden",
           }}
         >
-          <div>
-            <div style={{ color: "#e5e7eb" }}>
-              {alert.vendorName || "Unknown vendor"}
+          {!selectedAlert ? (
+            <div style={{ color: "#9ca3af", fontSize: 13 }}>
+              Select an alert to see details.
             </div>
-            <div>{alert.vendorTagline || ""}</div>
-          </div>
+          ) : (
+            <>
+              <div
+                style={{
+                  fontSize: 12,
+                  textTransform: "uppercase",
+                  marginBottom: 12,
+                  letterSpacing: 1.5,
+                  color: "#cbd5f5",
+                }}
+              >
+                Alert Details
+              </div>
 
-          <div style={{ textAlign: "right" }}>
-            Rule:{" "}
-            <span style={{ color: "#e5e7eb" }}>
-              {alert.ruleLabel || "—"}
-            </span>
-            <br />
-            Field:{" "}
-            <span style={{ color: "#e5e7eb" }}>
-              {alert.field || "—"}
-            </span>
-          </div>
-        </div>
+              {/* VENDOR NAME */}
+              <div
+                style={{
+                  fontSize: 16,
+                  fontWeight: 600,
+                  marginBottom: 4,
+                }}
+              >
+                {selectedAlert.vendor_name}
+              </div>
 
-        {/* FOOTER BUTTONS */}
-        <div
-          style={{
-            display: "flex",
-            justifyContent: "space-between",
-            marginTop: 4,
-          }}
-        >
-          <span style={{ fontSize: 10, color: "#6b7280" }}>
-            Source: {alert.source || "Alerts Engine"} ·{" "}
-            {formatDate(alert.createdAt)}
-          </span>
+              <div
+                style={{
+                  fontSize: 12,
+                  color: "#9ca3af",
+                  marginBottom: 10,
+                }}
+              >
+                Rule: {selectedAlert.rule_name} • Group:{" "}
+                {selectedAlert.group_name}
+              </div>
 
-          <div style={{ display: "flex", gap: 6 }}>
-            <button
-              style={{
-                borderRadius: 999,
-                padding: "3px 8px",
-                border: "1px solid rgba(148,163,184,0.8)",
-                background: "rgba(15,23,42,0.96)",
-                color: "#e5e7eb",
-                fontSize: 10,
-              }}
-            >
-              View vendor
-            </button>
+              {/* SEVERITY CHIP */}
+              <div
+                style={{
+                  display: "inline-block",
+                  borderRadius: 12,
+                  padding: "6px 10px",
+                  border: `1px solid ${SEVERITY_META[selectedAlert.severity].border}`,
+                  background: SEVERITY_META[selectedAlert.severity].bg,
+                  color: SEVERITY_META[selectedAlert.severity].color,
+                  fontSize: 12,
+                  fontWeight: 600,
+                  marginBottom: 16,
+                  boxShadow: `0 0 10px ${SEVERITY_META[selectedAlert.severity].border}`,
+                }}
+              >
+                {SEVERITY_META[selectedAlert.severity].label}
+              </div>
 
-            <button
-              style={{
-                borderRadius: 999,
-                padding: "3px 8px",
-                border: "1px solid rgba(56,189,248,0.9)",
-                background:
-                  "radial-gradient(circle at top,#38bdf8,#0ea5e9,#0f172a)",
-                color: "#e0f2fe",
-                fontSize: 10,
-              }}
-              onClick={() => onViewCoi && onViewCoi(alert)}
-            >
-              View COI
-            </button>
+              {/* EXPECTED VS ACTUAL */}
+              <div
+                style={{
+                  fontSize: 13,
+                  marginBottom: 10,
+                  color: "#e5e7eb",
+                }}
+              >
+                <strong>Expected:</strong>{" "}
+                <code style={{ color: "#a5b4fc" }}>
+                  {selectedAlert.expected_value}
+                </code>
+                <br />
+                <strong>Actual:</strong>{" "}
+                <code style={{ color: "#93c5fd" }}>
+                  {selectedAlert.actual_value ?? "N/A"}
+                </code>
+              </div>
 
-            <button
-              style={{
-                borderRadius: 999,
-                padding: "3px 8px",
-                border: "1px solid rgba(22,163,74,0.9)",
-                background:
-                  "radial-gradient(circle at top,#22c55e,#16a34a,#14532d)",
-                color: "#ecfdf5",
-                fontSize: 10,
-                opacity: canEdit ? 1 : 0.5,
-              }}
-            >
-              Resolve
-            </button>
-          </div>
+              {/* HUMAN TEXT */}
+              {selectedAlert.requirement_text && (
+                <div
+                  style={{
+                    fontSize: 12,
+                    color: "#cbd5f5",
+                    marginBottom: 16,
+                  }}
+                >
+                  {selectedAlert.requirement_text}
+                </div>
+              )}
+
+              {/* AI EXPLANATION */}
+              <div style={{ marginBottom: 18 }}>
+                {selectedAlert.ai_explanation ? (
+                  <div
+                    style={{
+                      padding: 10,
+                      borderRadius: 12,
+                      border: "1px solid rgba(129,140,248,0.4)",
+                      background:
+                        "linear-gradient(150deg,rgba(30,41,59,0.65),rgba(30,41,59,0.45))",
+                      color: "#e0e7ff",
+                      fontSize: 12,
+                      lineHeight: 1.4,
+                    }}
+                  >
+                    {selectedAlert.ai_explanation}
+                  </div>
+                ) : (
+                  <button
+                    onClick={() => handleAiExplain(selectedAlert)}
+                    disabled={aiExplainingId === selectedAlert.id}
+                    style={{
+                      borderRadius: 12,
+                      padding: "8px 14px",
+                      border: "1px solid rgba(129,140,248,0.6)",
+                      background:
+                        "linear-gradient(120deg,rgba(129,140,248,0.4),rgba(88,28,135,0.35))",
+                      color: "#e0e7ff",
+                      fontSize: 12,
+                      boxShadow: "0 0 12px rgba(129,140,248,0.4)",
+                      cursor:
+                        aiExplainingId === selectedAlert.id
+                          ? "not-allowed"
+                          : "pointer",
+                    }}
+                  >
+                    {aiExplainingId === selectedAlert.id
+                      ? "Explaining…"
+                      : "Explain with AI"}
+                  </button>
+                )}
+              </div>
+
+              {/* STATUS UPDATE */}
+              <div>
+                <label
+                  style={{
+                    fontSize: 12,
+                    color: "#9ca3af",
+                    marginBottom: 4,
+                    display: "block",
+                  }}
+                >
+                  Status
+                </label>
+
+                <select
+                  value={selectedAlert.status}
+                  onChange={(e) =>
+                    handleUpdateStatus(selectedAlert.id, e.target.value)
+                  }
+                  style={{
+                    width: "100%",
+                    padding: "8px 10px",
+                    borderRadius: 12,
+                    border: "1px solid rgba(51,65,85,0.8)",
+                    background:
+                      "linear-gradient(120deg, rgba(17,25,45,0.95), rgba(15,23,42,0.88))",
+                    color: "#e5e7eb",
+                    fontSize: 13,
+                  }}
+                >
+                  <option value="open">Open</option>
+                  <option value="in_review">In Review</option>
+                  <option value="resolved">Resolved</option>
+                </select>
+              </div>
+            </>
+          )}
         </div>
       </div>
+
+      {/* TOAST + SAVING */}
+      {saving && (
+        <div
+          style={{
+            position: "fixed",
+            right: 20,
+            bottom: 20,
+            padding: "6px 12px",
+            borderRadius: 999,
+            background: "rgba(15,23,42,0.9)",
+            border: "1px solid rgba(148,163,184,0.6)",
+            color: "#e5e7eb",
+            fontSize: 12,
+            boxShadow: "0 0 10px rgba(59,130,246,0.4)",
+          }}
+        >
+          Updating…
+        </div>
+      )}
+
+      <ToastV2
+        open={toast.open}
+        message={toast.message}
+        type={toast.type}
+        onClose={() => setToast((p) => ({ ...p, open: false }))}
+      />
     </div>
   );
 }
+/* =======================================================
+   ALERTCARD — ELITE TACTICAL HOLOGRAM EDITION
+   ======================================================= */
 
-/* ===========================
-   SEVERITY BADGE
-=========================== */
-function SeverityBadge({ severity }) {
-  const palette = {
-    Critical: ["#f97316", "#fecaca"],
-    High: ["#facc15", "#fef9c3"],
-    Medium: ["#38bdf8", "#e0f2fe"],
-    Low: ["#34d399", "#ccfbf1"],
-    Info: ["#6366f1", "#e0e7ff"],
-  }[severity] || ["#6b7280", "#e5e7eb"];
+function AlertCard({ alert, active, onSelect }) {
+  const sev = alert.severity;
+  const meta = SEVERITY_META[sev] || SEVERITY_META.medium;
 
   return (
     <div
+      onClick={onSelect}
+      className="alertcard"
       style={{
-        padding: "3px 8px",
-        borderRadius: 999,
-        display: "inline-flex",
-        alignItems: "center",
-        gap: 6,
-        background: `${palette[0]}22`,
-        border: `1px solid ${palette[0]}`,
+        position: "relative",
+        borderRadius: 16,
+        padding: "14px 16px",
+        cursor: "pointer",
+        background:
+          active
+            ? "linear-gradient(145deg, rgba(15,23,42,0.95), rgba(8,14,30,0.92))"
+            : "linear-gradient(145deg, rgba(12,22,45,0.85), rgba(6,12,28,0.82))",
+        border: active
+          ? `1px solid ${meta.border}`
+          : "1px solid rgba(51,65,85,0.7)",
+        boxShadow: active
+          ? `0 0 18px ${meta.border}`
+          : "0 0 12px rgba(0,0,0,0.35)",
+        transition: "all 0.25s ease",
+        transform: active ? "translateY(-2px)" : "translateY(0px)",
+        overflow: "hidden",
       }}
     >
+      {/* Hover Hologram Wash */}
       <div
+        className="alertcard-hover"
         style={{
-          width: 6,
-          height: 6,
-          borderRadius: 999,
-          background: palette[0],
-          boxShadow: `0 0 12px ${palette[0]}`,
+          position: "absolute",
+          inset: 0,
+          borderRadius: 16,
+          background:
+            "linear-gradient(120deg, rgba(80,120,255,0.15), rgba(120,60,255,0.15))",
+          opacity: 0,
+          transition: "opacity 0.25s ease",
+          pointerEvents: "none",
         }}
       />
-      <span
-        style={{
-          fontSize: 10,
-          color: palette[1],
-          letterSpacing: 0.8,
-          textTransform: "uppercase",
-        }}
-      >
-        {severity}
-      </span>
-    </div>
-  );
-}
-
-/* ===========================
-   RIGHT PANEL — RISK PULSE
-=========================== */
-function RiskPulsePanel({ alerts }) {
-  const open = alerts.filter((a) => a.status !== "Resolved").length;
-  const critical = alerts.filter((a) => a.severity === "Critical").length;
-  const high = alerts.filter((a) => a.severity === "High").length;
-
-  const riskScore = Math.min(100, critical * 30 + high * 10 + open * 3 + 20);
-
-  return (
-    <div
-      style={{
-        borderRadius: 22,
-        padding: 16,
-        background:
-          "radial-gradient(circle at top right,rgba(15,23,42,0.96),rgba(15,23,42,1))",
-        border: "1px solid rgba(148,163,184,0.55)",
-        boxShadow: "0 22px 55px rgba(15,23,42,0.98)",
-      }}
-    >
-      <div
-        style={{
-          fontSize: 11,
-          letterSpacing: 1.2,
-          textTransform: "uppercase",
-          color: "#9ca3af",
-          marginBottom: 4,
-        }}
-      >
-        Live Risk Snapshot
-      </div>
-
-      <div style={{ fontSize: 13, color: "#e5e7eb", marginBottom: 10 }}>
-        {open} open alerts · {critical} critical · {high} high
-      </div>
-
-      {/* Animated Risk Pulse Bar */}
-      <div
-        style={{
-          height: 8,
-          width: "100%",
-          borderRadius: 999,
-          overflow: "hidden",
-          background: "#0f172a",
-          border: "1px solid rgba(30,64,175,0.9)",
-          marginBottom: 10,
-        }}
-      >
-        <div
-          style={{
-            width: `${riskScore}%`,
-            height: "100%",
-            background:
-              "linear-gradient(90deg,#22c55e,#eab308,#fb7185,#ef4444)",
-            animation: "pulseShift 4s infinite linear",
-          }}
-        />
-      </div>
-
       <style>{`
-        @keyframes pulseShift {
-          0% { filter: brightness(1); }
-          50% { filter: brightness(1.25); }
-          100% { filter: brightness(1); }
+        .alertcard:hover .alertcard-hover {
+          opacity: 1 !important;
         }
       `}</style>
 
-      {/* Heat map bricks */}
+      {/* SEVERITY BADGE */}
       <div
         style={{
-          display: "grid",
-          gridTemplateColumns: "repeat(7, minmax(0,1fr))",
-          gap: 4,
+          position: "absolute",
+          top: -10,
+          right: -10,
+          width: 45,
+          height: 45,
+          borderRadius: "50%",
+          background: meta.bg,
+          border: `2px solid ${meta.border}`,
+          boxShadow: `0 0 12px ${meta.border}`,
+          opacity: 0.35,
+          filter: "blur(2px)",
+        }}
+      />
+
+      {/* VENDOR NAME */}
+      <div
+        style={{
+          fontSize: 15,
+          fontWeight: 600,
+          marginBottom: 4,
+          color: "#e5e7eb",
+          letterSpacing: 0.2,
         }}
       >
-        {new Array(14).fill(0).map((_, i) => {
-          const level =
-            i < critical * 2
-              ? "#fb7185"
-              : i < critical * 2 + high * 2
-              ? "#facc15"
-              : "#22c55e";
-          const op =
-            i < critical * 2 + high * 2 ? 0.9 : 0.35;
-          return (
-            <div
-              key={i}
-              style={{
-                height: 14,
-                borderRadius: 4,
-                background: level,
-                opacity: op,
-              }}
-            />
-          );
-        })}
+        {alert.vendor_name}
       </div>
-    </div>
-  );
-}
 
-/* ===========================
-   WHERE ALERTS COME FROM
-=========================== */
-function WhereAlertsFromPanel({ alerts }) {
-  const coverage = alerts.filter((a) => a.type === "Coverage").length;
-  const endorsements = alerts.filter((a) => a.type === "Endorsement").length;
-  const documents = alerts.filter((a) => a.type === "Document").length;
-  const info = alerts.filter((a) => a.type === "Info").length;
+      {/* RULE SUMMARY */}
+      <div
+        style={{
+          fontSize: 12,
+          color: "#9ca3af",
+          marginBottom: 8,
+          lineHeight: 1.3,
+        }}
+      >
+        {alert.rule_name}
+        <br />
+        <span style={{ color: "#64748b" }}>
+          Group: {alert.group_name}
+        </span>
+      </div>
 
-  return (
-    <div
-      style={{
-        borderRadius: 22,
-        padding: 16,
-        background:
-          "radial-gradient(circle at top right,rgba(15,23,42,0.96),rgba(15,23,42,1))",
-        border: "1px solid rgba(148,163,184,0.55)",
-        boxShadow: "0 22px 55px rgba(15,23,42,0.98)",
-      }}
-    >
+      {/* SEVERITY TAG */}
+      <div
+        style={{
+          display: "inline-block",
+          marginBottom: 6,
+          borderRadius: 10,
+          padding: "3px 8px",
+          fontSize: 11,
+          color: meta.color,
+          border: `1px solid ${meta.border}`,
+          background: meta.bg,
+          boxShadow: `0 0 8px ${meta.border}`,
+          textTransform: "uppercase",
+          letterSpacing: "0.09em",
+          fontWeight: 600,
+        }}
+      >
+        {meta.label}
+      </div>
+
+      {/* AGE / LAST SEEN */}
       <div
         style={{
           fontSize: 11,
-          textTransform: "uppercase",
-          color: "#9ca3af",
-          marginBottom: 8,
+          color: "#74809a",
+          marginTop: 4,
         }}
       >
-        Where Alerts Are Coming From
-      </div>
-
-      <div
-        style={{
-          display: "grid",
-          gridTemplateColumns: "repeat(2,minmax(0,1fr))",
-          gap: 10,
-        }}
-      >
-        <SourceCard label="Coverage" value={coverage} />
-        <SourceCard label="Endorsements" value={endorsements} />
-        <SourceCard label="Documents" value={documents} />
-        <SourceCard label="Info / Other" value={info} />
+        Last seen:{" "}
+        {new Date(alert.last_seen_at).toLocaleDateString()}{" "}
+        {new Date(alert.last_seen_at).toLocaleTimeString()}
       </div>
     </div>
   );
 }
+/* =======================================================
+   HELPER — FORMAT DATE
+   ======================================================= */
+function formatDate(dt) {
+  if (!dt) return "Unknown";
+  try {
+    const d = new Date(dt);
+    return (
+      d.toLocaleDateString() +
+      " • " +
+      d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
+    );
+  } catch {
+    return dt;
+  }
+}
 
-function SourceCard({ label, value }) {
+/* =======================================================
+   HELPER — TRUNCATE TEXT
+   ======================================================= */
+function truncate(str, max = 80) {
+  if (!str) return "";
+  return str.length > max ? str.slice(0, max) + "…" : str;
+}
+
+/* =======================================================
+   HELPER — COLORIZED STATUS LABEL
+   ======================================================= */
+function statusLabel(status) {
+  const meta = STATUS_META[status] || { label: status, color: "#9ca3af" };
   return (
-    <div
+    <span
       style={{
-        borderRadius: 16,
-        padding: "10px 12px",
-        border: "1px solid rgba(75,85,99,0.9)",
-        background: "rgba(15,23,42,0.95)",
-        display: "flex",
-        justifyContent: "space-between",
-        fontSize: 12,
-        color: "#e5e7eb",
+        padding: "3px 8px",
+        borderRadius: 8,
+        background: "rgba(255,255,255,0.08)",
+        color: meta.color,
+        fontSize: 11,
+        letterSpacing: "0.05em",
       }}
     >
-      <span>{label}</span>
-      <span style={{ color: "#9ca3af" }}>{value} open</span>
-    </div>
+      {meta.label}
+    </span>
   );
 }
 
-/* ===========================
-   SELECTED ALERT EXAMPLE
-=========================== */
-function SelectedAlertHintPanel({ alerts }) {
-  const picked = alerts[0];
-  if (!picked) return null;
-
-  return (
-    <div
-      style={{
-        borderRadius: 22,
-        padding: 16,
-        background:
-          "radial-gradient(circle at top right,rgba(15,23,42,0.96),rgba(15,23,42,1))",
-        border: "1px solid rgba(148,163,184,0.55)",
-        boxShadow: "0 22px 55px rgba(15,23,42,0.98)",
-      }}
-    >
-      <div
-        style={{
-          fontSize: 11,
-          textTransform: "uppercase",
-          marginBottom: 8,
-          color: "#9ca3af",
-        }}
-      >
-        Example Alert Seen by Finance / Risk
-      </div>
-
-      <div style={{ fontSize: 13, color: "#e5e7eb", marginBottom: 6 }}>
-        {picked.title}
-      </div>
-
-      <div style={{ fontSize: 11, color: "#9ca3af", marginBottom: 8 }}>
-        {picked.message}
-      </div>
-
-      <div style={{ fontSize: 10, color: "#6b7280" }}>
-        This is what finance / risk sees as the issue description.
-      </div>
-    </div>
-  );
-}
-
-/* ===========================
-   END OF FILE
-=========================== */
-
-/* ===========================
-   END OF FILE
-=========================== */
+/* =======================================================
+   END OF FILE — AlertsCockpitV3
+   ======================================================= */
