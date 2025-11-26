@@ -5,7 +5,7 @@ import { useOrg } from "../../context/OrgContext";
 import ToastV2 from "../../components/ToastV2";
 
 /**
- * REQUIREMENTS ENGINE V3 — DB-backed UI + local sample evaluation + engine runner
+ * REQUIREMENTS ENGINE V3 — Elite Cockpit UI + DB rules + local evaluation
  */
 
 const FIELD_OPTIONS = [
@@ -50,7 +50,6 @@ export default function RequirementsV3Page() {
     message: "",
     type: "success",
   });
-
   const [samplePolicyText, setSamplePolicyText] = useState(
     `{
   "policy.coverage_type": "General Liability",
@@ -79,8 +78,8 @@ export default function RequirementsV3Page() {
       return;
     }
     loadGroups();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [orgId, loadingOrgs]);
-
   async function loadGroups() {
     setLoading(true);
     setError("");
@@ -249,7 +248,6 @@ export default function RequirementsV3Page() {
       setSaving(false);
     }
   }
-
   async function handleCreateRule() {
     if (!canEdit || !activeGroup) return;
 
@@ -365,7 +363,6 @@ export default function RequirementsV3Page() {
       setSaving(false);
     }
   }
-
   async function handleRunEngine() {
     try {
       setSaving(true);
@@ -444,13 +441,28 @@ export default function RequirementsV3Page() {
         minHeight: "100vh",
         position: "relative",
         background:
-          "radial-gradient(circle at top left,#020617 0%, #020617 40%, #000 100%)",
-        padding: "30px 40px 40px",
+          "radial-gradient(circle at 20% 10%, #020617 0%, #020617 40%, #000 100%)",
+        padding: "40px 40px 50px",
         color: "#e5e7eb",
+        overflow: "hidden",
       }}
     >
+      {/* SCANLINES OVERLAY */}
+      <div
+        style={{
+          position: "absolute",
+          inset: 0,
+          background:
+            "linear-gradient(rgba(255,255,255,0.04) 1px, transparent 1px)",
+          backgroundSize: "100% 3px",
+          mixBlendMode: "soft-light",
+          opacity: 0.3,
+          pointerEvents: "none",
+        }}
+      />
+
       {/* HEADER */}
-      <div style={{ marginBottom: 18 }}>
+      <div style={{ marginBottom: 18, position: "relative", zIndex: 2 }}>
         <div
           style={{
             display: "inline-flex",
@@ -515,13 +527,14 @@ export default function RequirementsV3Page() {
           }}
         >
           Each rule here is stored in your requirements engine and evaluated
-          against vendor policies to fire alerts.
+          against vendor policies to fire alerts in the cockpit.
         </p>
       </div>
-
       {error && (
         <div
           style={{
+            position: "relative",
+            zIndex: 2,
             marginBottom: 12,
             padding: "8px 10px",
             borderRadius: 10,
@@ -538,6 +551,8 @@ export default function RequirementsV3Page() {
       {!canEdit && (
         <div
           style={{
+            position: "relative",
+            zIndex: 2,
             marginBottom: 14,
             padding: "8px 10px",
             borderRadius: 10,
@@ -555,6 +570,8 @@ export default function RequirementsV3Page() {
       {/* GRID */}
       <div
         style={{
+          position: "relative",
+          zIndex: 2,
           display: "grid",
           gridTemplateColumns: "260px minmax(0,1.7fr) minmax(0,1.3fr)",
           gap: 18,
@@ -563,34 +580,59 @@ export default function RequirementsV3Page() {
         {/* LEFT — GROUPS */}
         <div
           style={{
-            borderRadius: 20,
-            padding: 14,
+            position: "relative",
+            borderRadius: 22,
+            padding: 18,
             background:
-              "linear-gradient(135deg,rgba(15,23,42,0.98),rgba(15,23,42,0.9))",
-            border: "1px solid rgba(148,163,184,0.5)",
+              "linear-gradient(145deg, rgba(11,20,40,0.96), rgba(7,12,26,0.92))",
+            border: "1px solid rgba(80,120,255,0.32)",
+            boxShadow:
+              "0 0 25px rgba(54,88,255,0.25), inset 0 0 20px rgba(20,40,90,0.45)",
+            backdropFilter: "blur(8px)",
+            overflow: "hidden",
           }}
         >
+          <div
+            style={{
+              position: "absolute",
+              top: -2,
+              left: -2,
+              right: -2,
+              height: 2,
+              background:
+                "linear-gradient(90deg, transparent, #3b82f6, #8b5cf6, transparent)",
+              opacity: 0.6,
+              filter: "blur(1px)",
+            }}
+          />
+
           <div
             style={{
               display: "flex",
               justifyContent: "space-between",
               alignItems: "center",
-              marginBottom: 6,
+              marginBottom: 12,
             }}
           >
             <div>
               <div
                 style={{
-                  fontSize: 11,
+                  fontSize: 12,
                   textTransform: "uppercase",
                   color: "#9ca3af",
-                  letterSpacing: 1.3,
+                  letterSpacing: 1.5,
                 }}
               >
                 Groups
               </div>
-              <div style={{ fontSize: 12, color: "#e5e7eb" }}>
-                Buckets for related rules.
+              <div
+                style={{
+                  fontSize: 12,
+                  color: "#e5e7eb",
+                  opacity: 0.75,
+                }}
+              >
+                Related rule categories.
               </div>
             </div>
 
@@ -598,29 +640,31 @@ export default function RequirementsV3Page() {
               disabled={!canEdit || !orgId}
               onClick={handleCreateGroup}
               style={{
-                borderRadius: 999,
-                padding: "6px 10px",
-                border: "1px solid rgba(59,130,246,0.9)",
+                borderRadius: 12,
+                padding: "8px 14px",
+                border: "1px solid rgba(56,189,248,0.8)",
                 background:
-                  "radial-gradient(circle at top left,#3b82f6,#1d4ed8,#0f172a)",
+                  "linear-gradient(120deg, rgba(0,212,255,0.25), rgba(0,119,182,0.25))",
                 color: "#e0f2fe",
-                fontSize: 11,
+                fontSize: 12,
+                fontWeight: 500,
+                boxShadow: "0 0 12px rgba(56,189,248,0.4)",
                 cursor: !canEdit || !orgId ? "not-allowed" : "pointer",
-                opacity: !canEdit || !orgId ? 0.5 : 1,
+                opacity: !canEdit || !orgId ? 0.6 : 1,
+                transition: "0.2s",
               }}
             >
-              + New group
+              + New
             </button>
           </div>
-
           <div
             style={{
-              marginTop: 4,
               display: "flex",
               flexDirection: "column",
-              gap: 8,
+              gap: 10,
               maxHeight: 520,
               overflowY: "auto",
+              paddingRight: 4,
             }}
           >
             {loading ? (
@@ -630,22 +674,14 @@ export default function RequirementsV3Page() {
             ) : groups.length === 0 ? (
               <div
                 style={{
-                  padding: "10px 8px",
+                  padding: 10,
                   borderRadius: 12,
                   border: "1px dashed rgba(148,163,184,0.6)",
                   fontSize: 12,
                   color: "#9ca3af",
                 }}
               >
-                No requirement groups yet. Create your first lane, like{" "}
-                <span style={{ color: "#e5e7eb" }}>
-                  “General Liability Minimums”
-                </span>{" "}
-                or{" "}
-                <span style={{ color: "#e5e7eb" }}>
-                  “Expired / Missing Insurance”
-                </span>
-                .
+                No requirement groups yet.
               </div>
             ) : (
               groups.map((g) => (
@@ -657,30 +693,36 @@ export default function RequirementsV3Page() {
                   }}
                   style={{
                     textAlign: "left",
-                    borderRadius: 14,
-                    padding: "8px 9px",
+                    borderRadius: 16,
+                    padding: "10px 12px",
                     border:
                       activeGroupId === g.id
                         ? "1px solid rgba(59,130,246,0.9)"
-                        : "1px solid rgba(51,65,85,0.9)",
+                        : "1px solid rgba(51,65,85,0.6)",
                     background:
                       activeGroupId === g.id
-                        ? "rgba(15,23,42,0.98)"
-                        : "rgba(15,23,42,0.94)",
+                        ? "rgba(17,24,39,0.95)"
+                        : "rgba(15,23,42,0.92)",
                     color: "#e5e7eb",
+                    boxShadow:
+                      activeGroupId === g.id
+                        ? "0 0 12px rgba(59,130,246,0.6)"
+                        : "none",
                     cursor: "pointer",
+                    transition: "0.25s",
                   }}
                 >
                   <div
                     style={{
-                      fontSize: 13,
+                      fontSize: 14,
                       fontWeight: 500,
                       marginBottom: 2,
+                      letterSpacing: 0.25,
                     }}
                   >
                     {g.name}
                   </div>
-                  <div style={{ fontSize: 11, color: "#9ca3af" }}>
+                  <div style={{ fontSize: 11, color: "#94a3b8" }}>
                     {g.description || "No description"} · {g.rule_count} rules
                   </div>
                 </button>
@@ -692,25 +734,36 @@ export default function RequirementsV3Page() {
         {/* MIDDLE — RULES */}
         <div
           style={{
-            borderRadius: 20,
-            padding: 14,
+            borderRadius: 22,
+            padding: 18,
             background:
-              "radial-gradient(circle at top left,rgba(15,23,42,0.98),rgba(15,23,42,0.9))",
-            border: "1px solid rgba(148,163,184,0.55)",
+              "linear-gradient(135deg, rgba(12,22,45,0.97), rgba(6,12,28,0.95))",
+            border: "1px solid rgba(90,120,255,0.32)",
+            boxShadow:
+              "0 0 30px rgba(64,106,255,0.22), inset 0 0 25px rgba(20,30,60,0.55)",
+            backdropFilter: "blur(10px)",
+            position: "relative",
+            overflow: "hidden",
           }}
         >
+          <div
+            style={{
+              position: "absolute",
+              top: 0,
+              left: 0,
+              right: 0,
+              height: 3,
+              background:
+                "linear-gradient(90deg, transparent, #60a5fa, #a78bfa, transparent)",
+              opacity: 0.6,
+              filter: "blur(1px)",
+            }}
+          />
+
           {activeGroup ? (
             <>
-              <div
-                style={{
-                  display: "flex",
-                  justifyContent: "space-between",
-                  alignItems: "flex-start",
-                  marginBottom: 10,
-                  gap: 10,
-                }}
-              >
-                <div>
+              <div style={{ display: "flex", gap: 14, marginBottom: 14 }}>
+                <div style={{ flex: 1 }}>
                   <input
                     value={activeGroup.name || ""}
                     onChange={(e) =>
@@ -718,13 +771,15 @@ export default function RequirementsV3Page() {
                     }
                     disabled={!canEdit}
                     style={{
-                      borderRadius: 999,
-                      padding: "6px 10px",
+                      width: "100%",
+                      borderRadius: 14,
+                      padding: "10px 14px",
+                      background:
+                        "linear-gradient(120deg, rgba(15,23,42,0.92), rgba(15,23,42,0.7))",
                       border: "1px solid rgba(51,65,85,0.9)",
-                      background: "rgba(15,23,42,0.96)",
                       color: "#e5e7eb",
-                      fontSize: 13,
-                      width: 260,
+                      fontSize: 14,
+                      letterSpacing: 0.5,
                     }}
                   />
                   <textarea
@@ -733,31 +788,38 @@ export default function RequirementsV3Page() {
                       handleUpdateGroup({ description: e.target.value })
                     }
                     disabled={!canEdit}
-                    placeholder="Describe what this lane enforces."
-                    rows={2}
+                    rows={3}
+                    placeholder="Describe what this lane enforces..."
                     style={{
-                      marginTop: 4,
-                      borderRadius: 12,
-                      padding: "6px 9px",
-                      border: "1px solid rgba(51,65,85,0.9)",
-                      background: "rgba(15,23,42,0.96)",
-                      color: "#e5e7eb",
-                      fontSize: 12,
-                      resize: "vertical",
+                      marginTop: 10,
                       width: "100%",
+                      borderRadius: 14,
+                      padding: "10px 14px",
+                      background:
+                        "linear-gradient(120deg, rgba(15,23,42,0.88), rgba(15,23,42,0.7))",
+                      border: "1px solid rgba(51,65,85,0.9)",
+                      color: "#e5e7eb",
+                      fontSize: 13,
+                      resize: "vertical",
                     }}
                   />
                 </div>
+
                 <div
-                  style={{ display: "flex", flexDirection: "column", gap: 6 }}
+                  style={{
+                    display: "flex",
+                    flexDirection: "column",
+                    gap: 10,
+                    width: 120,
+                  }}
                 >
                   <label
                     style={{
-                      fontSize: 11,
-                      color: "#9ca3af",
                       display: "flex",
+                      gap: 6,
                       alignItems: "center",
-                      gap: 5,
+                      fontSize: 12,
+                      color: "#9ca3af",
                     }}
                   >
                     <input
@@ -768,22 +830,26 @@ export default function RequirementsV3Page() {
                       }
                       disabled={!canEdit}
                     />
-                    Group active
+                    Active
                   </label>
+
                   <button
                     disabled={!canEdit}
                     onClick={() => handleDeleteGroup(activeGroup.id)}
                     style={{
-                      borderRadius: 999,
-                      padding: "6px 10px",
+                      borderRadius: 12,
+                      padding: "8px 10px",
                       border: "1px solid rgba(248,113,113,0.7)",
-                      background: "rgba(127,29,29,0.9)",
+                      background:
+                        "linear-gradient(120deg, rgba(255,76,76,0.4), rgba(91,6,6,0.35))",
                       color: "#fecaca",
-                      fontSize: 11,
+                      fontSize: 12,
+                      letterSpacing: 0.4,
                       cursor: !canEdit ? "not-allowed" : "pointer",
+                      boxShadow: "0 0 12px rgba(255,40,40,0.3)",
                     }}
                   >
-                    Delete group
+                    Delete
                   </button>
                 </div>
               </div>
@@ -793,24 +859,26 @@ export default function RequirementsV3Page() {
                   display: "flex",
                   justifyContent: "space-between",
                   alignItems: "center",
-                  marginBottom: 8,
+                  marginBottom: 10,
                 }}
               >
-                <div style={{ fontSize: 12, color: "#9ca3af" }}>
+                <div style={{ fontSize: 13, color: "#94a3b8" }}>
                   {rules.length} rules in this lane.
                 </div>
+
                 <button
                   disabled={!canEdit}
                   onClick={handleCreateRule}
                   style={{
                     borderRadius: 999,
-                    padding: "6px 11px",
+                    padding: "7px 14px",
                     border: "1px solid rgba(56,189,248,0.8)",
                     background:
-                      "linear-gradient(120deg,rgba(8,47,73,1),rgba(15,23,42,1))",
+                      "linear-gradient(120deg, rgba(8,47,73,0.9), rgba(15,23,42,1))",
                     color: "#e0f2fe",
-                    fontSize: 11,
+                    fontSize: 12,
                     cursor: !canEdit ? "not-allowed" : "pointer",
+                    boxShadow: "0 0 12px rgba(56,189,248,0.5)",
                   }}
                 >
                   + New rule
@@ -859,14 +927,18 @@ export default function RequirementsV3Page() {
           )}
         </div>
 
-        {/* RIGHT — PREVIEW + SAMPLE EVALUATION */}
+        {/* RIGHT — PREVIEW / EVAL */}
         <div
           style={{
-            borderRadius: 20,
-            padding: 14,
+            borderRadius: 22,
+            padding: 18,
             background:
-              "radial-gradient(circle at top right,rgba(15,23,42,0.98),rgba(15,23,42,0.94))",
-            border: "1px solid rgba(148,163,184,0.5)",
+              "linear-gradient(135deg, rgba(9,15,30,0.97), rgba(4,9,20,0.95))",
+            border: "1px solid rgba(80,120,255,0.32)",
+            boxShadow:
+              "0 0 30px rgba(64,106,255,0.27), inset 0 0 25px rgba(10,20,45,0.5)",
+            backdropFilter: "blur(10px)",
+            overflow: "hidden",
           }}
         >
           <div
@@ -874,8 +946,8 @@ export default function RequirementsV3Page() {
               fontSize: 11,
               textTransform: "uppercase",
               color: "#9ca3af",
-              letterSpacing: 1.4,
-              marginBottom: 6,
+              letterSpacing: 1.6,
+              marginBottom: 8,
             }}
           >
             Live rule preview
@@ -891,30 +963,32 @@ export default function RequirementsV3Page() {
             }}
           >
             <div style={{ fontSize: 11, color: "#6b7280" }}>
-              Preview how this lane evaluates policies and trigger a full engine
-              run when you’re ready.
+              Preview behavior and run engine.
             </div>
+
             <button
               onClick={handleRunEngine}
               disabled={!canEdit || !orgId || saving}
               style={{
-                borderRadius: 999,
-                padding: "6px 11px",
-                border: "1px solid rgba(56,189,248,0.9)",
+                borderRadius: 14,
+                padding: "8px 14px",
+                border: "1px solid rgba(0,212,255,0.6)",
                 background:
-                  "linear-gradient(120deg,rgba(8,47,73,1),rgba(15,23,42,1))",
+                  "linear-gradient(120deg, rgba(0,212,255,0.3), rgba(5,90,120,0.3))",
                 color: "#e0f2fe",
-                fontSize: 11,
+                fontSize: 12,
                 fontWeight: 500,
+                boxShadow: "0 0 16px rgba(0,212,255,0.4)",
                 cursor:
-                  !canEdit || !orgId || saving ? "not-allowed" : "pointer",
+                  !canEdit || !orgId || saving
+                    ? "not-allowed"
+                    : "pointer",
                 opacity: !canEdit || !orgId || saving ? 0.6 : 1,
               }}
             >
               Run engine now
             </button>
           </div>
-
           {activeGroup && rules.length ? (
             <div style={{ fontSize: 13, color: "#cbd5f5" }}>
               {rules.map((r, i) => {
@@ -943,38 +1017,15 @@ export default function RequirementsV3Page() {
                         {String(r.severity || "medium").toUpperCase()} ALERT
                       </span>
                     </div>
-                    {r.requirement_text && (
-                      <div
-                        style={{
-                          fontSize: 12,
-                          color: "#9ca3af",
-                          marginTop: 2,
-                        }}
-                      >
-                        {r.requirement_text}
-                      </div>
-                    )}
                   </div>
                 );
               })}
             </div>
           ) : (
             <div style={{ fontSize: 13, color: "#9ca3af" }}>
-              As you add rules, this panel will show how the engine evaluates
-              policies.
+              Add rules to see a live preview.
             </div>
           )}
-
-          <div
-            style={{
-              marginTop: 12,
-              fontSize: 11,
-              color: "#6b7280",
-            }}
-          >
-            These rules are evaluated when policies are uploaded or refreshed by
-            the engine, and any failures become alerts in the Alerts cockpit.
-          </div>
 
           <div
             style={{
@@ -1183,6 +1234,7 @@ export default function RequirementsV3Page() {
             border: "1px solid rgba(148,163,184,0.7)",
             fontSize: 12,
             color: "#e5e7eb",
+            zIndex: 50,
           }}
         >
           Saving…
