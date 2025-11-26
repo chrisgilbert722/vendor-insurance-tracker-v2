@@ -6,12 +6,12 @@ import { OrgProvider } from "../context/OrgContext";
 import Layout from "../components/Layout";
 import { UserProvider, useUser } from "../context/UserContext";
 
-// Public routes that require NO authentication
+// Routes that never require authentication
 const PUBLIC_ROUTES = [
   "/auth/login",
-  "/auth/callback",     // ← CRITICAL FOR MAGIC LINK
+  "/auth/callback",
+  "/auth/confirm",
   "/auth/verify",
-  "/auth/signup",
   "/billing/start",
   "/billing/success",
   "/billing/upgrade",
@@ -19,63 +19,57 @@ const PUBLIC_ROUTES = [
 
 function AppShell({ Component, pageProps }) {
   const router = useRouter();
-  const { user, isLoggedIn, initializing } = useUser();
+  const { isLoggedIn, initializing, user } = useUser();
+
+  const path = router.pathname;
+  const isPublic = PUBLIC_ROUTES.includes(path);
 
   useEffect(() => {
-    if (initializing) return; // Wait for Supabase to hydrate session
+    // 🚫 DO NOTHING until Supabase initializes
+    if (initializing) return;
 
-    const path = router.pathname;
-    const isPublic = PUBLIC_ROUTES.includes(path);
+    // 🟦 Public routes are always allowed
+    if (isPublic) return;
 
-    // ===========================================================
-    // 🔐 (1) Not logged in? → Redirect to login
-    // ===========================================================
-    if (!isPublic && !isLoggedIn) {
-      const redirectTo = encodeURIComponent(router.asPath || "/dashboard");
-      router.replace(`/auth/login?redirect=${redirectTo}`);
+    // 🔥 If no session yet → go to login
+    if (!isLoggedIn) {
+      router.replace(`/auth/login?redirect=${encodeURIComponent(router.asPath)}`);
       return;
     }
 
-    // ===========================================================
-    // 💳 (2) Logged in but NOT paid? → Redirect to paywall
-    // ===========================================================
-    if (isLoggedIn && !isPublic) {
-      const meta = user?.user_metadata || {};
+    // 🔥 Billing logic (later)
+    // const meta = user?.user_metadata || {};
+    // if (!meta.subscription_active) {
+    //   router.replace("/billing/upgrade");
+    //   return;
+    // }
 
-      const subscription = meta.subscription_status || "none";
-      const trialActive = meta.trial_active === true;
+  }, [initializing, isLoggedIn, isPublic, user, router]);
 
-      const trialEndsAt = meta.trial_ends_at
-        ? new Date(meta.trial_ends_at)
-        : null;
+  // 🚫 While initializing, show NOTHING (prevents loops)
+  if (initializing) {
+    return (
+      <div
+        style={{
+          minHeight: "100vh",
+          color: "#e5e7eb",
+          display: "flex",
+          justifyContent: "center",
+          alignItems: "center",
+          background:
+            "radial-gradient(circle at top left,#020617 0%, #020617 40%, #000)",
+        }}
+      >
+        <div style={{ fontSize: 22 }}>Loading…</div>
+      </div>
+    );
+  }
 
-      const now = new Date();
-      const trialExpired = trialEndsAt ? now > trialEndsAt : true;
-
-      const isPaid =
-        subscription === "active" ||
-        subscription === "paid" ||
-        (subscription === "trial" && trialActive && !trialExpired);
-
-      if (!isPaid) {
-        router.replace("/billing/upgrade");
-        return;
-      }
-    }
-  }, [router, isLoggedIn, initializing, user]);
-
-  // ===========================================================
-  // 🚫 Prevent flashing protected pages before auth resolves
-  // ===========================================================
-  const isPublic = PUBLIC_ROUTES.includes(router.pathname);
-
-  if (!initializing && !isPublic && !isLoggedIn) {
+  // 🚫 If not logged in & not public route → avoid flashing protected content
+  if (!isLoggedIn && !isPublic) {
     return null;
   }
 
-  // ===========================================================
-  // 🎨 Render App Shell
-  // ===========================================================
   return (
     <OrgProvider>
       <Layout>
