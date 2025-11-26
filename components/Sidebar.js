@@ -13,7 +13,6 @@ export default function Sidebar({ pathname, isAdmin, isManager, isViewer }) {
         padding: "24px 0",
         position: "relative",
         zIndex: 50,
-
         background:
           "radial-gradient(circle at top, rgba(15,23,42,0.97), rgba(15,23,42,0.95))",
         borderRight: "1px solid rgba(56,189,248,0.22)",
@@ -75,6 +74,16 @@ export default function Sidebar({ pathname, isAdmin, isManager, isViewer }) {
           label="Alerts"
           icon="🔔"
           active={pathname === "/admin/alerts"}
+        />
+      )}
+
+      {/* ⭐ NEW RULE ENGINE V3 LINK (ADMIN ONLY) ⭐ */}
+      {isAdmin && (
+        <RailLink
+          href="/admin/requirements-v3"
+          label="Rules"
+          icon="🧠"
+          active={pathname === "/admin/requirements-v3"}
         />
       )}
 
