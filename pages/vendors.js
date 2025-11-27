@@ -1,54 +1,9 @@
 // pages/vendors.js
-import { useState, useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useOrg } from "../context/OrgContext";
 import { useRole } from "../lib/useRole";
-
-/* ===========================
-   MOCK VENDORS (replace later)
-=========================== */
-
-const initialVendors = [
-  {
-    id: "summit-roofing",
-    name: "Summit Roofing & Coatings",
-    location: "Denver, CO",
-    category: "Roofing / Exterior",
-    tags: ["Onsite contractor", "High risk"],
-    status: "At Risk",
-    complianceScore: 72,
-    lastEvaluated: "2025-11-20T09:15:00Z",
-    alertsOpen: 2,
-    requirementsPassing: 7,
-    requirementsTotal: 10,
-  },
-  {
-    id: "northline-mech",
-    name: "Northline Mechanical Services",
-    location: "Seattle, WA",
-    category: "HVAC / Mechanical",
-    tags: ["Interior contractor"],
-    status: "Needs Review",
-    complianceScore: 83,
-    lastEvaluated: "2025-11-19T14:40:00Z",
-    alertsOpen: 1,
-    requirementsPassing: 9,
-    requirementsTotal: 11,
-  },
-  {
-    id: "brightline-janitorial",
-    name: "Brightline Janitorial Group",
-    location: "Austin, TX",
-    category: "Janitorial / Cleaning",
-    tags: ["Service vendor"],
-    status: "Compliant",
-    complianceScore: 91,
-    lastEvaluated: "2025-11-18T11:05:00Z",
-    alertsOpen: 0,
-    requirementsPassing: 8,
-    requirementsTotal: 8,
-  },
-];
+import { supabase } from "../lib/supabaseClient";
 
 /* ===========================
    HELPERS
@@ -57,6 +12,7 @@ const initialVendors = [
 function formatRelative(iso) {
   if (!iso) return "—";
   const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "—";
   const diffMs = Date.now() - d.getTime();
   const mins = diffMs / 60000;
   if (mins < 1) return "just now";
@@ -101,7 +57,7 @@ function statusPalette(status) {
 }
 
 /* ===========================
-   MAIN PAGE — VENDORS V2
+   MAIN PAGE — VENDORS V3.5
 =========================== */
 
 export default function VendorsPage() {
@@ -109,12 +65,173 @@ export default function VendorsPage() {
   const { isAdmin, isManager } = useRole();
   const canCreate = isAdmin || isManager;
 
-  const [vendors] = useState(initialVendors);
+  const [rawVendors, setRawVendors] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState("");
+
   const [statusFilter, setStatusFilter] = useState("All");
   const [search, setSearch] = useState("");
-  const [categoryFilter, setCategoryFilter] = useState("All");
+  const [categoryFilter, setCategoryFilter] = useState("All"); // placeholder for future categories
 
+  // --- Fetch vendors + compliance info from Supabase ---
+  useEffect(() => {
+    let cancelled = false;
+
+    async function load() {
+      try {
+        setLoading(true);
+        setLoadError("");
+
+        // 1) Vendors
+        let query = supabase.from("vendors").select("*");
+        if (orgId) {
+          query = query.eq("org_id", orgId);
+        }
+        const { data: vendors, error: vErr } = await query;
+        if (vErr) throw vErr;
+
+        // 2) Compliance cache
+        let cacheQuery = supabase.from("vendor_compliance_cache").select("*");
+        if (orgId) {
+          cacheQuery = cacheQuery.eq("org_id", orgId);
+        }
+        const { data: cache, error: cErr } = await cacheQuery;
+        if (cErr) throw cErr;
+
+        // 3) Risk history (latest per vendor)
+        let riskQuery = supabase
+          .from("risk_history")
+          .select("*")
+          .order("created_at", { ascending: false });
+        if (orgId) {
+          riskQuery = riskQuery.eq("org_id", orgId);
+        }
+        const { data: riskRows, error: rErr } = await riskQuery;
+        if (rErr) throw rErr;
+
+        if (cancelled) return;
+
+        // index cache by vendor_id
+        const cacheByVendor = {};
+        (cache || []).forEach((row) => {
+          cacheByVendor[row.vendor_id] = row;
+        });
+
+        // pick latest risk record per vendor
+        const riskByVendor = {};
+        (riskRows || []).forEach((row) => {
+          if (!riskByVendor[row.vendor_id]) {
+            riskByVendor[row.vendor_id] = row;
+          }
+        });
+
+        // build UI vendors
+        const uiVendors = (vendors || []).map((v) => {
+          const cacheRow = cacheByVendor[v.id] || {};
+          const riskRow = riskByVendor[v.id] || {};
+
+          const failing = cacheRow.failing || [];
+          const missing = cacheRow.missing || [];
+          const passing = cacheRow.passing || [];
+
+          const totalReq =
+            (failing?.length || 0) +
+            (missing?.length || 0) +
+            (passing?.length || 0);
+          const requirementsPassing = passing?.length || 0;
+
+          const riskScore =
+            typeof riskRow.risk_score === "number"
+              ? riskRow.risk_score
+              : 0;
+
+          // map cache.status -> human label
+          let status = "Needs Review";
+          if (cacheRow.status === "pass") status = "Compliant";
+          if (cacheRow.status === "fail") status = "At Risk";
+
+          return {
+            id: v.id,
+            org_id: v.org_id,
+            name: v.name || "Unnamed Vendor",
+            location: v.address || "Location not set",
+            category: "Vendor", // upgrade later with real categories
+            tags: [],
+            status,
+            complianceScore: riskScore,
+            lastEvaluated: cacheRow.last_checked_at || riskRow.created_at,
+            alertsOpen: failing?.length || 0,
+            requirementsPassing,
+            requirementsTotal: totalReq || null,
+          };
+        });
+
+        setRawVendors(uiVendors);
+      } catch (err) {
+        console.error("VendorsPage load error:", err);
+        if (!cancelled) {
+          setLoadError(err.message || "Failed to load vendors.");
+        }
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    }
+
+    load();
+    return () => {
+      cancelled = true;
+    };
+  }, [orgId]);
+
+  // QUICK ADD vendor (Option C)
+  async function handleQuickAddVendor() {
+    if (!canCreate) return;
+
+    const name =
+      window.prompt("Vendor name?", "New Vendor") || "New Vendor";
+    const email = window.prompt("Vendor contact email? (optional)", "") || null;
+
+    try {
+      const connectionOrgId = orgId || null;
+      const { data, error } = await supabase
+        .from("vendors")
+        .insert({
+          org_id: connectionOrgId,
+          name,
+          email,
+        })
+        .select("*")
+        .single();
+
+      if (error) throw error;
+
+      // add to local state
+      setRawVendors((prev) => [
+        ...prev,
+        {
+          id: data.id,
+          org_id: data.org_id,
+          name: data.name,
+          location: data.address || "Location not set",
+          category: "Vendor",
+          tags: [],
+          status: "Needs Review",
+          complianceScore: 0,
+          lastEvaluated: null,
+          alertsOpen: 0,
+          requirementsPassing: 0,
+          requirementsTotal: null,
+        },
+      ]);
+    } catch (err) {
+      console.error("Quick add vendor error:", err);
+      window.alert("Failed to add vendor: " + (err.message || "Unknown error"));
+    }
+  }
+
+  // METRICS
   const metrics = useMemo(() => {
+    const vendors = rawVendors;
     const total = vendors.length;
     const compliant = vendors.filter((v) => v.status === "Compliant").length;
     const atRisk = vendors.filter((v) => v.status === "At Risk").length;
@@ -128,10 +245,11 @@ export default function VendorsPage() {
           );
 
     return { total, compliant, atRisk, needsReview, avgScore };
-  }, [vendors]);
+  }, [rawVendors]);
 
+  // Filters & search
   const filtered = useMemo(() => {
-    return vendors.filter((v) => {
+    return rawVendors.filter((v) => {
       if (statusFilter !== "All" && v.status !== statusFilter) return false;
       if (categoryFilter !== "All" && v.category !== categoryFilter)
         return false;
@@ -147,11 +265,11 @@ export default function VendorsPage() {
       ).toLowerCase();
       return hay.includes(search.toLowerCase());
     });
-  }, [vendors, statusFilter, categoryFilter, search]);
+  }, [rawVendors, statusFilter, categoryFilter, search]);
 
   const categories = useMemo(
-    () => Array.from(new Set(vendors.map((v) => v.category))).sort(),
-    [vendors]
+    () => Array.from(new Set(rawVendors.map((v) => v.category))).sort(),
+    [rawVendors]
   );
 
   return (
@@ -226,7 +344,7 @@ export default function VendorsPage() {
                   textTransform: "uppercase",
                 }}
               >
-                Vendors V2 · Compliance Portfolio
+                Vendors V3.5 · Compliance Portfolio
               </span>
               <span
                 style={{
@@ -271,7 +389,7 @@ export default function VendorsPage() {
                 maxWidth: 640,
               }}
             >
-              Filter by status, category, or search. Drill into vendor profiles
+              Filter by status, search, or category. Drill into vendor profiles
               to see coverage, expirations, rules firing, and open alerts.
             </p>
           </div>
@@ -314,7 +432,7 @@ export default function VendorsPage() {
           />
         </div>
 
-        {/* ACTIONS + ORG SNAPSHOT */}
+        {/* ACTIONS */}
         <div
           style={{
             borderRadius: 24,
@@ -347,26 +465,9 @@ export default function VendorsPage() {
               alignItems: "center",
             }}
           >
-            <Link href="/upload-coi">
-              <button
-                style={{
-                  borderRadius: 999,
-                  padding: "8px 14px",
-                  border: "1px solid rgba(59,130,246,0.9)",
-                  background:
-                    "radial-gradient(circle at top left,#3b82f6,#1d4ed8,#020617)",
-                  color: "#e5f2ff",
-                  fontSize: 12,
-                  fontWeight: 500,
-                  cursor: "pointer",
-                }}
-              >
-                + Upload new COI
-              </button>
-            </Link>
-
             <button
               disabled={!canCreate}
+              onClick={handleQuickAddVendor}
               style={{
                 borderRadius: 999,
                 padding: "8px 14px",
@@ -380,7 +481,7 @@ export default function VendorsPage() {
                 opacity: canCreate ? 1 : 0.5,
               }}
             >
-              + Add vendor (mock)
+              + Quick add vendor
             </button>
 
             <div
@@ -388,11 +489,11 @@ export default function VendorsPage() {
                 fontSize: 10,
                 color: "#6b7280",
                 flex: 1,
-                minWidth: 120,
+                minWidth: 160,
               }}
             >
-              When wired, these buttons will create vendors + COI jobs tied to
-              your org {orgId ? `(${orgId})` : ""}.
+              Quickly creates a real vendor record in your database. Later we’ll
+              add full onboarding + auto-invite for contractors.
             </div>
           </div>
         </div>
@@ -498,7 +599,9 @@ export default function VendorsPage() {
               textAlign: "right",
             }}
           >
-            Showing {filtered.length} of {vendors.length}
+            {loading
+              ? "Loading vendors…"
+              : `Showing ${filtered.length} of ${rawVendors.length}`}
           </div>
         </div>
 
@@ -510,11 +613,22 @@ export default function VendorsPage() {
             gap: 10,
           }}
         >
-          {filtered.map((v) => (
-            <VendorRow key={v.id} vendor={v} />
-          ))}
+          {loadError && (
+            <div
+              style={{
+                borderRadius: 12,
+                border: "1px solid rgba(248,113,113,0.9)",
+                padding: 10,
+                fontSize: 12,
+                color: "#fecaca",
+                background: "rgba(127,29,29,0.9)",
+              }}
+            >
+              {loadError}
+            </div>
+          )}
 
-          {filtered.length === 0 && (
+          {!loading && filtered.length === 0 && !loadError && (
             <div
               style={{
                 borderRadius: 18,
@@ -524,10 +638,14 @@ export default function VendorsPage() {
                 color: "#9ca3af",
               }}
             >
-              No vendors match your filters. Try adjusting status, category, or
-              search.
+              No vendors found. Use “Quick add vendor” to create your first
+              vendor.
             </div>
           )}
+
+          {filtered.map((v) => (
+            <VendorRow key={v.id} vendor={v} />
+          ))}
         </div>
       </div>
     </div>
@@ -770,7 +888,7 @@ function VendorRow({ vendor }) {
         >
           {passPercent != null
             ? `${vendor.requirementsPassing}/${vendor.requirementsTotal} requirements passing (${passPercent}%)`
-            : "Requirements summary not available yet."}
+            : "Requirements summary will appear after rules evaluate for this vendor."}
         </div>
 
         <div
@@ -809,6 +927,25 @@ function VendorRow({ vendor }) {
           </button>
         </Link>
 
+        {/* Upload COI for this vendor */}
+        <Link href={`/upload-coi?vendorId=${encodeURIComponent(vendor.id)}`}>
+          <button
+            style={{
+              borderRadius: 999,
+              padding: "5px 10px",
+              border: "1px solid rgba(59,130,246,0.8)",
+              background:
+                "radial-gradient(circle at top,#3b82f6,#1d4ed8,#020617)",
+              color: "#e0f2fe",
+              fontSize: 10,
+              cursor: "pointer",
+            }}
+          >
+            Upload COI
+          </button>
+        </Link>
+
+        {/* Alerts link */}
         <Link href={`/admin/alerts?vendor=${encodeURIComponent(vendor.id)}`}>
           <button
             style={{
@@ -865,13 +1002,3 @@ function StatusBadge({ status }) {
     </div>
   );
 }
-
-/* ===========================
-   END OF FILE — SAFE CLOSE
-=========================== */
-
-// VendorsPage is the default export above.
-// All subcomponents live in this file.
-//
-// File ends here.
-//
