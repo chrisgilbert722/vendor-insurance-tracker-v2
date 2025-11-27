@@ -1,30 +1,102 @@
 // pages/api/engine/run-v3.js
 import { supabase } from "../../../lib/supabaseClient";
+import { evaluateRule } from "../rules/evaluate";
 
+export const config = {
+  api: { bodyParser: true },
+};
+
+/* -----------------------------------------------------------
+   HELPER: Build flattened policy object from JSON
+------------------------------------------------------------*/
+function buildPolicyObj(policies = []) {
+  const obj = {};
+  for (const p of policies) {
+    let extracted = p.extracted || {};
+    if (typeof extracted === "string") {
+      try {
+        extracted = JSON.parse(extracted);
+      } catch {
+        extracted = {};
+      }
+    }
+    Object.assign(obj, extracted);
+  }
+  return obj;
+}
+
+/* -----------------------------------------------------------
+   HELPER: Evaluate rule w/ missing detection
+------------------------------------------------------------*/
+function evaluateRuleFull(rule, policyObj) {
+  const conditions = Array.isArray(rule.conditions) && rule.conditions.length
+    ? rule.conditions
+    : [
+        {
+          field_key: rule.field_key,
+          operator: rule.operator,
+          expected_value: rule.expected_value,
+        },
+      ];
+
+  const missing = [];
+
+  for (const c of conditions) {
+    const val = policyObj[c.field_key];
+    if (val === undefined || val === null || val === "") {
+      missing.push(c.field_key);
+    }
+  }
+
+  if (missing.length > 0) {
+    return { passed: false, missing, fail: false };
+  }
+
+  const { passed } = evaluateRule(rule, policyObj);
+  return { passed, missing: [], fail: !passed };
+}
+
+/* -----------------------------------------------------------
+   HELPER: Risk score
+------------------------------------------------------------*/
+function computeRisk(failingCount, missingCount) {
+  let score = 100;
+  score -= failingCount * 20;
+  score -= missingCount * 10;
+  if (score < 0) score = 0;
+  return score;
+}
+
+/* -----------------------------------------------------------
+   ENGINE RUNNER (V3.5)
+------------------------------------------------------------*/
 export default async function handler(req, res) {
   if (req.method !== "POST") {
     return res.status(405).json({ ok: false, error: "POST only" });
   }
 
   try {
+    const now = new Date().toISOString();
+
     /* -----------------------------------------------------------
-       1. LOAD ALL VENDORS
+       1. Load ALL vendors
     ----------------------------------------------------------- */
     const { data: vendors, error: vErr } = await supabase
       .from("vendors")
-      .select("id, org_id, name, category, is_active");
+      .select("id, org_id, name");
 
     if (vErr) throw vErr;
 
-
     /* -----------------------------------------------------------
-       2. LOAD ALL RULES (JOIN GROUPS SO WE CAN FILTER BY ORG)
+       2. Load all rules (with group join)
     ----------------------------------------------------------- */
-    const { data: allRules, error: rErr } = await supabase
+    const { data: rawRules, error: rErr } = await supabase
       .from("requirements_rules_v2")
       .select(`
         id,
         group_id,
+        logic,
+        conditions,
         field_key,
         operator,
         expected_value,
@@ -32,95 +104,139 @@ export default async function handler(req, res) {
         requirement_text,
         internal_note,
         is_active,
-        group:requirements_groups_v2(id, name, org_id)
+        group:requirements_groups_v2(id, name, org_id, is_active)
       `);
 
     if (rErr) throw rErr;
 
+    const rules =
+      rawRules?.map((r) => {
+        let conditions = [];
+        try {
+          conditions = Array.isArray(r.conditions) ? r.conditions : [];
+        } catch {
+          conditions = [];
+        }
 
-    let alertsToInsert = [];
-    let cacheUpdates = [];
+        if (!conditions.length) {
+          conditions = [
+            {
+              field_key: r.field_key,
+              operator: r.operator,
+              expected_value: r.expected_value,
+            },
+          ];
+        }
 
+        return {
+          id: r.id,
+          group_id: r.group_id,
+          logic: r.logic || "all",
+          conditions,
+          field_key: r.field_key,
+          operator: r.operator,
+          expected_value: r.expected_value,
+          severity: r.severity || "medium",
+          requirement_text: r.requirement_text || "",
+          internal_note: r.internal_note || "",
+          is_active: r.is_active !== false,
+          group: r.group,
+        };
+      }) || [];
 
     /* -----------------------------------------------------------
-       3. LOOP THROUGH VENDORS
+       Prepare accumulators
     ----------------------------------------------------------- */
-    for (const vendor of vendors) {
-      const vendorId = vendor.id;
-      const vendorOrg = vendor.org_id;
+    const alertsToInsert = [];
+    const cacheRows = [];
+    const riskRows = [];
 
-      // RULES FOR THIS ORG ONLY
-      const rules = allRules.filter(
-        (r) => r.group && r.group.org_id === vendorOrg
-      );
+    let totalRulesEvaluated = 0;
 
-      /* -----------------------------------------------------------
-         LOAD CERTIFICATE EXTRACTED DATA
-      ----------------------------------------------------------- */
-      const { data: certificates } = await supabase
-        .from("certificate_extracted")
-        .select("*")
+    /* -----------------------------------------------------------
+       3. PER-VENDOR EVALUATION
+    ----------------------------------------------------------- */
+    for (const v of vendors) {
+      const vendorId = v.id;
+      const vendorOrgId = v.org_id;
+
+      // Load policies for this vendor
+      const { data: policies, error: pErr } = await supabase
+        .from("policies")
+        .select("id, extracted")
         .eq("vendor_id", vendorId);
 
-      let missing = [];
-      let failing = [];
-      let passing = [];
+      if (pErr) {
+        console.error("Error loading policies:", pErr);
+        continue;
+      }
 
-      const hasCert = certificates && certificates.length > 0;
+      const hasPolicies = policies && policies.length > 0;
+      const policyObj = hasPolicies ? buildPolicyObj(policies) : {};
 
+      // Filter rules by org + active state
+      const vendorRules = rules.filter(
+        (r) =>
+          r.is_active &&
+          r.group &&
+          r.group.org_id === vendorOrgId &&
+          (r.group.is_active === null || r.group.is_active === true)
+      );
 
-      /* -----------------------------------------------------------
-         4. EVALUATE EACH RULE FOR THIS VENDOR
-      ----------------------------------------------------------- */
-      for (const rule of rules) {
-        if (!rule.is_active) continue;
+      const missing = [];
+      const failing = [];
+      const passing = [];
 
-        // If vendor has no certificate → everything becomes missing
-        if (!hasCert) {
+      // Evaluate each rule
+      for (const rule of vendorRules) {
+        totalRulesEvaluated++;
+
+        if (!hasPolicies) {
           missing.push({
             rule_id: rule.id,
             rule: rule.requirement_text || rule.field_key,
-            detail: "No certificate on file",
+            detail: "No policy uploaded",
           });
           continue;
         }
 
-        const value = extractValue(certificates, rule.field_key);
+        const evaluation = evaluateRuleFull(rule, policyObj);
 
-        // Missing field case
-        if (value === null || value === undefined) {
+        if (evaluation.missing.length > 0) {
           missing.push({
             rule_id: rule.id,
             rule: rule.requirement_text || rule.field_key,
-            detail: "Missing field",
+            detail: `Missing fields: ${evaluation.missing.join(", ")}`,
           });
           continue;
         }
 
-        // Evaluate rule
-        const passed = evaluateRule(rule, value);
-
-        if (!passed) {
+        if (!evaluation.passed) {
+          // failing
           failing.push({
             rule_id: rule.id,
             rule: rule.requirement_text || rule.field_key,
-            expected: rule.expected_value,
-            found: value,
+            expected: rule.conditions[0]?.expected_value,
+            found:
+              policyObj[rule.conditions[0]?.field_key] ?? null,
             severity: rule.severity,
           });
 
-          // CREATE ALERT
           alertsToInsert.push({
             vendor_id: vendorId,
-            org_id: vendorOrg,
+            org_id: vendorOrgId,
             rule_id: rule.id,
             group_id: rule.group_id,
+            rule_name: rule.requirement_text || rule.field_key,
+            vendor_name: v.name,
+            severity: rule.severity || "medium",
             type: "rule_fail",
-            severity: rule.severity || "Medium",
-            title: `Rule Failed: ${rule.requirement_text || rule.field_key}`,
-            message: `Expected ${rule.expected_value}, but found ${value}.`,
-            rule_label: rule.requirement_text || rule.field_key,
             status: "open",
+            message: `Expected "${rule.conditions[0]?.expected_value}", found "${policyObj[rule.conditions[0]?.field_key] ?? "N/A"}".`,
+            requirement_text: rule.requirement_text || null,
+            field_key: rule.conditions[0]?.field_key,
+            created_at: now,
+            last_seen_at: now,
           });
         } else {
           passing.push({
@@ -130,97 +246,84 @@ export default async function handler(req, res) {
         }
       }
 
+      // Summary + status
+      const summary =
+        failing.length > 0
+          ? `${failing.length} failing / ${missing.length} missing`
+          : missing.length > 0
+          ? `${missing.length} missing`
+          : "PASS";
 
-      /* -----------------------------------------------------------
-         5. UPDATE COMPLIANCE SNAPSHOT CACHE
-      ----------------------------------------------------------- */
-      cacheUpdates.push({
+      const status = failing.length > 0 ? "fail" : "pass";
+      const riskScore = computeRisk(failing.length, missing.length);
+
+      cacheRows.push({
         vendor_id: vendorId,
-        org_id: vendorOrg,
+        org_id: vendorOrgId,
         missing,
         failing,
         passing,
-        summary:
-          failing.length
-            ? `${failing.length} failing / ${missing.length} missing`
-            : missing.length
-            ? `${missing.length} missing`
-            : "PASS",
-        status: failing.length ? "fail" : "pass",
-        last_checked_at: new Date().toISOString(),
+        summary,
+        status,
+        last_checked_at: now,
+        updated_at: now,
+      });
+
+      riskRows.push({
+        vendor_id: vendorId,
+        org_id: vendorOrgId,
+        risk_score: riskScore,
+        days_left: 0,
+        elite_status:
+          riskScore >= 90
+            ? "Elite"
+            : riskScore >= 70
+            ? "Preferred"
+            : "Watch",
+        created_at: now,
       });
     }
 
-
     /* -----------------------------------------------------------
-       6. INSERT ALERTS (NEW ALERTS ONLY)
+       4. INSERT ALERTS
     ----------------------------------------------------------- */
-    for (const alert of alertsToInsert) {
-      await supabase.from("alerts").insert(alert);
+    if (alertsToInsert.length > 0) {
+      const { error: aErr } = await supabase
+        .from("alerts")
+        .insert(alertsToInsert);
+      if (aErr) console.error("Alert insert error", aErr);
     }
 
-
     /* -----------------------------------------------------------
-       7. UPDATE vendor_compliance_cache TABLE
+       5. UPSERT vendor_compliance_cache
     ----------------------------------------------------------- */
-    for (const c of cacheUpdates) {
-      await supabase
+    for (const c of cacheRows) {
+      const { error: cErr } = await supabase
         .from("vendor_compliance_cache")
         .upsert(c, { onConflict: "vendor_id" });
+      if (cErr) console.error("Cache upsert error:", cErr);
     }
 
+    /* -----------------------------------------------------------
+       6. INSERT RISK HISTORY RECORDS
+    ----------------------------------------------------------- */
+    if (riskRows.length > 0) {
+      const { error: rErr2 } = await supabase
+        .from("risk_history")
+        .insert(riskRows);
+      if (rErr2) console.error("Risk history insert error:", rErr2);
+    }
 
     return res.status(200).json({
       ok: true,
       vendors_evaluated: vendors.length,
-      rules_evaluated: allRules.length,
+      rules_evaluated: totalRulesEvaluated,
       alerts_created: alertsToInsert.length,
     });
   } catch (err) {
-    console.error("ENGINE ERROR:", err);
-    return res.status(500).json({ ok: false, error: err.message });
-  }
-}
-
-
-/* -----------------------------------------------------------
-   VALUE EXTRACTOR
------------------------------------------------------------ */
-function extractValue(certificates, key) {
-  try {
-    const extracted = certificates?.[0]?.extracted || {};
-    return extracted[key] ?? null;
-  } catch (e) {
-    return null;
-  }
-}
-
-
-/* -----------------------------------------------------------
-   RULE EVALUATOR
------------------------------------------------------------ */
-function evaluateRule(rule, value) {
-  const op = rule.operator;
-  const expected = rule.expected_value;
-
-  if (value === null) return false;
-
-  switch (op) {
-    case "=":
-      return `${value}` == `${expected}`;
-    case "!=":
-      return `${value}` != `${expected}`;
-    case ">":
-      return Number(value) > Number(expected);
-    case "<":
-      return Number(value) < Number(expected);
-    case ">=":
-      return Number(value) >= Number(expected);
-    case "<=":
-      return Number(value) <= Number(expected);
-    case "contains":
-      return `${value}`.toLowerCase().includes(`${expected}`.toLowerCase());
-    default:
-      return false;
+    console.error("ENGINE V3.5 RUN ERROR:", err);
+    return res
+      .status(500)
+      .json({ ok: false, error: err.message || "Engine failed" });
   }
 }
