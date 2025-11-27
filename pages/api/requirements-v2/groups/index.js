@@ -16,12 +16,14 @@ export default async function handler(req, res) {
   try {
     await client.connect();
 
-    /* ============================================
-       GET — Load all groups for org
-    ============================================ */
+    /* ======================================
+       GET — list groups for org
+    ======================================= */
     if (method === "GET") {
       if (!orgId) {
-        return res.status(400).json({ ok: false, error: "Missing orgId" });
+        return res
+          .status(400)
+          .json({ ok: false, error: "Missing orgId" });
       }
 
       const result = await client.query(
@@ -32,18 +34,17 @@ export default async function handler(req, res) {
           g.name,
           g.description,
           g.is_active,
-          g.order_index,
           g.created_at,
           g.updated_at,
           (
             SELECT COUNT(*) 
-            FROM requirements_rules_v2 r 
+            FROM requirements_rules_v2 r
             WHERE r.group_id = g.id
           ) AS rule_count
         FROM requirements_groups_v2 g
         WHERE g.org_id = $1
-        ORDER BY g.order_index ASC, g.created_at ASC;
-      `,
+        ORDER BY g.created_at ASC;
+        `,
         [orgId]
       );
 
@@ -53,79 +54,101 @@ export default async function handler(req, res) {
       });
     }
 
-    /* ============================================
-       POST — Create a new group
-    ============================================ */
+    /* ======================================
+       POST — create
+    ======================================= */
     if (method === "POST") {
       const { name, description } = req.body;
 
       if (!name || !orgId) {
         return res.status(400).json({
           ok: false,
-          error: "Missing name or orgId",
+          error: "Missing group name or orgId",
         });
       }
 
-      const insert = await client.query(
+      const insertRes = await client.query(
         `
         INSERT INTO requirements_groups_v2
-          (id, org_id, name, description, is_active, order_index, created_at, updated_at)
-        VALUES (gen_random_uuid(), $1, $2, $3, TRUE, 0, NOW(), NOW())
+          (org_id, name, description, is_active, created_at)
+        VALUES ($1, $2, $3, TRUE, NOW())
         RETURNING *;
-      `,
+        `,
         [orgId, name, description || null]
       );
 
-      return res.status(200).json({ ok: true, group: insert.rows[0] });
+      return res.status(200).json({
+        ok: true,
+        group: insertRes.rows[0],
+      });
     }
 
-    /* ============================================
-       PUT — Update group
-    ============================================ */
+    /* ======================================
+       PUT — update
+    ======================================= */
     if (method === "PUT") {
-      const { name, description, is_active, order_index } = req.body;
+      const { name, description, is_active } = req.body;
 
       if (!id) {
-        return res.status(400).json({ ok: false, error: "Missing group id" });
+        return res.status(400).json({
+          ok: false,
+          error: "Missing group id",
+        });
       }
 
-      const update = await client.query(
+      const updateRes = await client.query(
         `
         UPDATE requirements_groups_v2
         SET
-          name = COALESCE($1, name),
+          name        = COALESCE($1, name),
           description = COALESCE($2, description),
-          is_active = COALESCE($3, is_active),
-          order_index = COALESCE($4, order_index),
-          updated_at = NOW()
-        WHERE id = $5
+          is_active   = COALESCE($3, is_active),
+          updated_at  = NOW()
+        WHERE id = $4
         RETURNING *;
-      `,
-        [name, description, is_active, order_index, id]
+        `,
+        [name, description, is_active, id]
       );
 
-      return res.status(200).json({ ok: true, group: update.rows[0] });
+      return res.status(200).json({
+        ok: true,
+        group: updateRes.rows[0],
+      });
     }
 
-    /* ============================================
-       DELETE — Remove group
-    ============================================ */
+    /* ======================================
+       DELETE — remove
+    ======================================= */
     if (method === "DELETE") {
       if (!id) {
-        return res.status(400).json({ ok: false, error: "Missing group id" });
+        return res.status(400).json({
+          ok: false,
+          error: "Missing group id",
+        });
       }
 
-      await client.query(`DELETE FROM requirements_groups_v2 WHERE id = $1`, [
-        id,
-      ]);
+      await client.query(
+        `DELETE FROM requirements_groups_v2 WHERE id = $1`,
+        [id]
+      );
 
-      return res.status(200).json({ ok: true, deleted: true });
+      return res.status(200).json({
+        ok: true,
+        deleted: true,
+      });
     }
 
-    return res.status(405).json({ ok: false, error: "Method not allowed" });
+    /* Fallback */
+    return res
+      .status(405)
+      .json({ ok: false, error: "Method not allowed" });
+
   } catch (err) {
-    console.error("GROUP API ERROR:", err);
-    return res.status(500).json({ ok: false, error: err.message });
+    console.error("REQ-V2 GROUPS ERROR:", err);
+    return res.status(500).json({
+      ok: false,
+      error: err.message,
+    });
   } finally {
     try {
       await client.end();
