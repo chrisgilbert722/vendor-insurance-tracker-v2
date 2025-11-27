@@ -379,6 +379,398 @@ export default function AlertsCockpitV3() {
   );
 }
 /* =======================================================
+   FILTER PANEL — left column (filters + severity radar)
+   ======================================================= */
+
+function FiltersPanel({
+  severityFilter,
+  setSeverityFilter,
+  statusFilter,
+  setStatusFilter,
+  severityCounts,
+}) {
+  return (
+    <div
+      style={{
+        position: "relative",
+        borderRadius: 20,
+        padding: 18,
+        background:
+          "linear-gradient(145deg, rgba(11,20,40,0.97), rgba(7,12,26,0.9))",
+        border: "1px solid rgba(80,120,255,0.32)",
+        boxShadow:
+          "0 0 28px rgba(54,88,255,0.22), inset 0 0 22px rgba(10,20,40,0.55)",
+        backdropFilter: "blur(8px)",
+        overflow: "hidden",
+      }}
+    >
+      <div
+        style={{
+          fontSize: 12,
+          textTransform: "uppercase",
+          letterSpacing: 1.5,
+          marginBottom: 14,
+          color: "#9ca3af",
+        }}
+      >
+        Filters
+      </div>
+
+      {/* STATUS */}
+      <div style={{ marginBottom: 14 }}>
+        <div style={{ fontSize: 11, marginBottom: 4, color: "#cbd5f5" }}>
+          Status
+        </div>
+
+        <select
+          value={statusFilter}
+          onChange={(e) => setStatusFilter(e.target.value)}
+          style={{
+            width: "100%",
+            padding: "8px 10px",
+            borderRadius: 12,
+            border: "1px solid rgba(51,65,85,0.8)",
+            background:
+              "linear-gradient(120deg, rgba(17,25,45,0.95), rgba(15,23,42,0.88))",
+            color: "#e5e7eb",
+            fontSize: 13,
+          }}
+        >
+          <option value="open">Open</option>
+          <option value="in_review">In Review</option>
+          <option value="resolved">Resolved</option>
+          <option value="all">All</option>
+        </select>
+      </div>
+
+      {/* SEVERITY */}
+      <div style={{ marginBottom: 20 }}>
+        <div style={{ fontSize: 11, marginBottom: 6, color: "#cbd5f5" }}>
+          Severity
+        </div>
+
+        <select
+          value={severityFilter}
+          onChange={(e) => setSeverityFilter(e.target.value)}
+          style={{
+            width: "100%",
+            padding: "8px 10px",
+            borderRadius: 12,
+            border: "1px solid rgba(51,65,85,0.8)",
+            background:
+              "linear-gradient(120deg, rgba(17,25,45,0.95), rgba(15,23,42,0.88))",
+            color: "#e5e7eb",
+            fontSize: 13,
+          }}
+        >
+          <option value="all">All Severities</option>
+          <option value="critical">Critical</option>
+          <option value="high">High</option>
+          <option value="medium">Medium</option>
+          <option value="low">Low</option>
+        </select>
+      </div>
+
+      {/* SEVERITY RADAR */}
+      <div>
+        <div
+          style={{
+            fontSize: 12,
+            textTransform: "uppercase",
+            color: "#9ca3af",
+            letterSpacing: 1.3,
+            marginBottom: 8,
+          }}
+        >
+          Severity Radar
+        </div>
+
+        <div
+          style={{
+            display: "grid",
+            gridTemplateColumns: "1fr 1fr",
+            gap: 10,
+          }}
+        >
+          {["critical", "high", "medium", "low"].map((sev) => (
+            <div
+              key={sev}
+              style={{
+                borderRadius: 12,
+                padding: "10px",
+                border: `1px solid ${SEVERITY_META[sev].border}`,
+                background: SEVERITY_META[sev].bg,
+                color: SEVERITY_META[sev].color,
+                textAlign: "center",
+                boxShadow: `0 0 12px ${SEVERITY_META[sev].border}`,
+                fontSize: 12,
+              }}
+            >
+              {SEVERITY_META[sev].label} — {severityCounts[sev]}
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+/* =======================================================
+   ALERT LIST PANEL — middle column
+   ======================================================= */
+
+function AlertListPanel({ filteredAlerts, selectedId, onSelect }) {
+  return (
+    <div
+      style={{
+        borderRadius: 20,
+        padding: 18,
+        background:
+          "linear-gradient(150deg, rgba(12,22,42,0.97), rgba(5,10,25,0.94))",
+        border: "1px solid rgba(80,120,255,0.28)",
+        boxShadow:
+          "0 0 25px rgba(64,106,255,0.25), inset 0 0 25px rgba(10,20,45,0.6)",
+        backdropFilter: "blur(10px)",
+        overflow: "hidden",
+      }}
+    >
+      <div
+        style={{
+          fontSize: 12,
+          textTransform: "uppercase",
+          color: "#9ca3af",
+          marginBottom: 10,
+          letterSpacing: 1.3,
+        }}
+      >
+        Alerts ({filteredAlerts.length})
+      </div>
+
+      <div
+        style={{
+          display: "flex",
+          flexDirection: "column",
+          gap: 12,
+          maxHeight: 600,
+          overflowY: "auto",
+          paddingRight: 6,
+        }}
+      >
+        {filteredAlerts.length === 0 ? (
+          <div
+            style={{
+              padding: 12,
+              borderRadius: 12,
+              border: "1px dashed rgba(148,163,184,0.4)",
+              color: "#9ca3af",
+              fontSize: 12,
+            }}
+          >
+            No alerts found.
+          </div>
+        ) : (
+          filteredAlerts.map((alert) => (
+            <AlertCard
+              key={alert.id}
+              alert={alert}
+              active={selectedId === alert.id}
+              onSelect={() => onSelect(alert.id)}
+            />
+          ))
+        )}
+      </div>
+    </div>
+  );
+}
+/* =======================================================
+   RIGHT PANEL — ALERT DETAILS
+   ======================================================= */
+
+function AlertDetailsPanel({
+  alert,
+  canEdit,
+  handleUpdateStatus,
+  handleAiExplain,
+  aiExplainingId,
+}) {
+  if (!alert)
+    return (
+      <div
+        style={{
+          borderRadius: 20,
+          padding: 18,
+          background:
+            "linear-gradient(150deg, rgba(9,15,30,0.97), rgba(4,9,20,0.94))",
+          border: "1px solid rgba(80,120,255,0.28)",
+          boxShadow:
+            "0 0 25px rgba(64,106,255,0.25), inset 0 0 25px rgba(10,20,45,0.6)",
+          color: "#9ca3af",
+        }}
+      >
+        Select an alert to view details.
+      </div>
+    );
+
+  const meta = SEVERITY_META[alert.severity] || SEVERITY_META.medium;
+
+  return (
+    <div
+      style={{
+        borderRadius: 20,
+        padding: 18,
+        background:
+          "linear-gradient(150deg, rgba(9,15,30,0.97), rgba(4,9,20,0.94))",
+        border: "1px solid rgba(80,120,255,0.28)",
+        boxShadow:
+          "0 0 25px rgba(64,106,255,0.25), inset 0 0 25px rgba(10,20,45,0.6)",
+        backdropFilter: "blur(10px)",
+        overflow: "hidden",
+      }}
+    >
+      {/* HEADER */}
+      <div
+        style={{
+          fontSize: 12,
+          textTransform: "uppercase",
+          marginBottom: 12,
+          letterSpacing: 1.4,
+          color: "#cbd5f5",
+        }}
+      >
+        Alert Details
+      </div>
+
+      {/* VENDOR */}
+      <div
+        style={{
+          fontSize: 16,
+          fontWeight: 600,
+          marginBottom: 4,
+        }}
+      >
+        {alert.vendor_name}
+      </div>
+
+      <div
+        style={{
+          fontSize: 12,
+          color: "#9ca3af",
+          marginBottom: 12,
+        }}
+      >
+        Rule: {alert.rule_name} • Group: {alert.group_name}
+      </div>
+
+      {/* SEVERITY */}
+      <div
+        style={{
+          borderRadius: 12,
+          padding: "6px 10px",
+          border: `1px solid ${meta.border}`,
+          background: meta.bg,
+          color: meta.color,
+          display: "inline-block",
+          fontSize: 12,
+          fontWeight: 600,
+          marginBottom: 14,
+          boxShadow: `0 0 12px ${meta.border}`,
+        }}
+      >
+        {meta.label}
+      </div>
+
+      {/* EXPECTED VS ACTUAL */}
+      <div style={{ fontSize: 13, marginBottom: 14 }}>
+        <strong>Expected:</strong>{" "}
+        <code style={{ color: "#a5b4fc" }}>{alert.expected_value}</code>
+        <br />
+        <strong>Actual:</strong>{" "}
+        <code style={{ color: "#93c5fd" }}>
+          {alert.actual_value ?? "N/A"}
+        </code>
+      </div>
+
+      {/* REQUIREMENT TEXT */}
+      {alert.requirement_text && (
+        <div
+          style={{
+            fontSize: 12,
+            color: "#cbd5f5",
+            marginBottom: 20,
+          }}
+        >
+          {alert.requirement_text}
+        </div>
+      )}
+
+      {/* AI EXPLANATION */}
+      <div style={{ marginBottom: 18 }}>
+        {alert.ai_explanation ? (
+          <div
+            style={{
+              padding: 10,
+              borderRadius: 12,
+              border: "1px solid rgba(129,140,248,0.4)",
+              background:
+                "linear-gradient(150deg,rgba(30,41,59,0.65),rgba(30,41,59,0.45))",
+              color: "#e0e7ff",
+              fontSize: 12,
+              lineHeight: 1.4,
+            }}
+          >
+            {alert.ai_explanation}
+          </div>
+        ) : (
+          <button
+            disabled={aiExplainingId === alert.id}
+            onClick={() => handleAiExplain(alert)}
+            style={{
+              borderRadius: 12,
+              padding: "8px 14px",
+              border: "1px solid rgba(129,140,248,0.6)",
+              background:
+                "linear-gradient(120deg,rgba(129,140,248,0.4),rgba(88,28,135,0.35))",
+              color: "#e0e7ff",
+              fontSize: 12,
+              boxShadow: "0 0 12px rgba(129,140,248,0.4)",
+              cursor: aiExplainingId === alert.id ? "not-allowed" : "pointer",
+            }}
+          >
+            {aiExplainingId === alert.id ? "Explaining…" : "Explain with AI"}
+          </button>
+        )}
+      </div>
+
+      {/* STATUS UPDATE */}
+      <div>
+        <div style={{ fontSize: 12, marginBottom: 6, color: "#9ca3af" }}>
+          Update Status
+        </div>
+
+        <select
+          value={alert.status}
+          onChange={(e) =>
+            handleUpdateStatus(alert.id, e.target.value)
+          }
+          style={{
+            width: "100%",
+            padding: "8px 10px",
+            borderRadius: 12,
+            border: "1px solid rgba(51,65,85,0.8)",
+            background:
+              "linear-gradient(120deg, rgba(17,25,45,0.95), rgba(15,23,42,0.88))",
+            color: "#e5e7eb",
+            fontSize: 13,
+          }}
+        >
+          <option value="open">Open</option>
+          <option value="in_review">In Review</option>
+          <option value="resolved">Resolved</option>
+        </select>
+      </div>
+    </div>
+  );
+}
+/* =======================================================
    ALERTCARD — ELITE TACTICAL HOLOGRAM EDITION
    ======================================================= */
 
@@ -534,3 +926,4 @@ function statusColor(status) {
 /* =======================================================
    END OF FILE — AlertsCockpitV3
    ======================================================= */
+
