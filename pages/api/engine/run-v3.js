@@ -1,6 +1,5 @@
 // pages/api/engine/run-v3.js
 import { supabase } from "../../../lib/supabaseClient";
-import { evaluateRule } from "../rules/evaluate";
 
 export const config = {
   api: { bodyParser: true },
@@ -26,7 +25,42 @@ function buildPolicyObj(policies = []) {
 }
 
 /* -----------------------------------------------------------
-   HELPER: Evaluate rule w/ missing detection
+   HELPER: Basic operator evaluation
+------------------------------------------------------------*/
+function simpleCompare(operator, actual, expected) {
+  switch (operator) {
+    case "=":
+    case "equals":
+      return String(actual) == String(expected);
+
+    case "!=":
+    case "not_equals":
+      return String(actual) != String(expected);
+
+    case ">":
+      return Number(actual) > Number(expected);
+
+    case "<":
+      return Number(actual) < Number(expected);
+
+    case ">=":
+    case "gte":
+      return Number(actual) >= Number(expected);
+
+    case "<=":
+    case "lte":
+      return Number(actual) <= Number(expected);
+
+    case "contains":
+      return String(actual).toLowerCase().includes(String(expected).toLowerCase());
+
+    default:
+      return false;
+  }
+}
+
+/* -----------------------------------------------------------
+   HELPER: Evaluate rule + missing detection
 ------------------------------------------------------------*/
 function evaluateRuleFull(rule, policyObj) {
   const conditions = Array.isArray(rule.conditions) && rule.conditions.length
@@ -41,6 +75,7 @@ function evaluateRuleFull(rule, policyObj) {
 
   const missing = [];
 
+  // Detect missing fields
   for (const c of conditions) {
     const val = policyObj[c.field_key];
     if (val === undefined || val === null || val === "") {
@@ -52,12 +87,21 @@ function evaluateRuleFull(rule, policyObj) {
     return { passed: false, missing, fail: false };
   }
 
-  const { passed } = evaluateRule(rule, policyObj);
-  return { passed, missing: [], fail: !passed };
+  // Evaluate each condition
+  let allPassed = true;
+  for (const c of conditions) {
+    const actual = policyObj[c.field_key];
+    if (!simpleCompare(c.operator, actual, c.expected_value)) {
+      allPassed = false;
+      break;
+    }
+  }
+
+  return { passed: allPassed, missing: [], fail: !allPassed };
 }
 
 /* -----------------------------------------------------------
-   HELPER: Risk score
+   HELPER: Risk score calculator
 ------------------------------------------------------------*/
 function computeRisk(failingCount, missingCount) {
   let score = 100;
@@ -88,7 +132,7 @@ export default async function handler(req, res) {
     if (vErr) throw vErr;
 
     /* -----------------------------------------------------------
-       2. Load all rules (with group join)
+       2. Load all rules w/ group join
     ----------------------------------------------------------- */
     const { data: rawRules, error: rErr } = await supabase
       .from("requirements_rules_v2")
@@ -154,13 +198,13 @@ export default async function handler(req, res) {
     let totalRulesEvaluated = 0;
 
     /* -----------------------------------------------------------
-       3. PER-VENDOR EVALUATION
+       3. Evaluate vendor by vendor
     ----------------------------------------------------------- */
     for (const v of vendors) {
       const vendorId = v.id;
       const vendorOrgId = v.org_id;
 
-      // Load policies for this vendor
+      // Load policies
       const { data: policies, error: pErr } = await supabase
         .from("policies")
         .select("id, extracted")
@@ -174,7 +218,7 @@ export default async function handler(req, res) {
       const hasPolicies = policies && policies.length > 0;
       const policyObj = hasPolicies ? buildPolicyObj(policies) : {};
 
-      // Filter rules by org + active state
+      // Filter rules for org + active state
       const vendorRules = rules.filter(
         (r) =>
           r.is_active &&
@@ -212,13 +256,11 @@ export default async function handler(req, res) {
         }
 
         if (!evaluation.passed) {
-          // failing
           failing.push({
             rule_id: rule.id,
             rule: rule.requirement_text || rule.field_key,
             expected: rule.conditions[0]?.expected_value,
-            found:
-              policyObj[rule.conditions[0]?.field_key] ?? null,
+            found: policyObj[rule.conditions[0]?.field_key] ?? null,
             severity: rule.severity,
           });
 
@@ -275,11 +317,7 @@ export default async function handler(req, res) {
         risk_score: riskScore,
         days_left: 0,
         elite_status:
-          riskScore >= 90
-            ? "Elite"
-            : riskScore >= 70
-            ? "Preferred"
-            : "Watch",
+          riskScore >= 90 ? "Elite" : riskScore >= 70 ? "Preferred" : "Watch",
         created_at: now,
       });
     }
@@ -295,7 +333,7 @@ export default async function handler(req, res) {
     }
 
     /* -----------------------------------------------------------
-       5. UPSERT vendor_compliance_cache
+       5. UPSERT VENDOR COMPLIANCE CACHE
     ----------------------------------------------------------- */
     for (const c of cacheRows) {
       const { error: cErr } = await supabase
@@ -311,7 +349,7 @@ export default async function handler(req, res) {
       const { error: rErr2 } = await supabase
         .from("risk_history")
         .insert(riskRows);
-      if (rErr2) console.error("Risk history insert error:", rErr2);
+      if (rErr2) console.error("Risk history insert error", rErr2);
     }
 
     return res.status(200).json({
@@ -322,8 +360,6 @@ export default async function handler(req, res) {
     });
   } catch (err) {
     console.error("ENGINE V3.5 RUN ERROR:", err);
-    return res
-      .status(500)
-      .json({ ok: false, error: err.message || "Engine failed" });
+    return res.status(500).json({ ok: false, error: err.message || "Engine failed" });
   }
 }
