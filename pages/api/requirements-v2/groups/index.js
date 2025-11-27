@@ -28,10 +28,16 @@ export default async function handler(req, res) {
 
       const result = await client.query(
         `
-        SELECT *
-        FROM requirements_groups_v2
-        WHERE org_id = $1
-        ORDER BY order_index ASC, created_at ASC
+        SELECT 
+          g.*,
+          (
+            SELECT COUNT(*) 
+            FROM requirements_rules_v2 r 
+            WHERE r.group_id = g.id
+          ) AS rule_count
+        FROM requirements_groups_v2 g
+        WHERE g.org_id = $1
+        ORDER BY g.order_index ASC, g.created_at ASC
         `,
         [orgId]
       );
@@ -43,7 +49,7 @@ export default async function handler(req, res) {
     }
 
     /* ===========================
-       POST — create new group
+       POST — create
     =========================== */
     if (method === "POST") {
       const { name, description } = req.body;
@@ -72,7 +78,7 @@ export default async function handler(req, res) {
     }
 
     /* ===========================
-       PUT — update group
+       PUT — update
     =========================== */
     if (method === "PUT") {
       const { name, description, is_active, order_index } = req.body;
@@ -105,7 +111,7 @@ export default async function handler(req, res) {
     }
 
     /* ===========================
-       DELETE — delete group
+       DELETE — remove
     =========================== */
     if (method === "DELETE") {
       if (!id) {
@@ -115,10 +121,7 @@ export default async function handler(req, res) {
       }
 
       await client.query(
-        `
-        DELETE FROM requirements_groups_v2
-        WHERE id = $1
-        `,
+        `DELETE FROM requirements_groups_v2 WHERE id = $1`,
         [id]
       );
 
@@ -128,7 +131,6 @@ export default async function handler(req, res) {
       });
     }
 
-    /* Catch-all */
     return res
       .status(405)
       .json({ ok: false, error: "Method not allowed" });
