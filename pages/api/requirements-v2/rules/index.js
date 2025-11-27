@@ -16,73 +16,31 @@ export default async function handler(req, res) {
   try {
     await client.connect();
 
-    /* ==========================================================
-       GET — list rules for a group (V3.5)
-    =========================================================== */
+    /* ===========================
+       GET — rules for a group
+    =========================== */
     if (method === "GET") {
       if (!groupId) {
-        return res.status(400).json({
-          ok: false,
-          error: "Missing groupId",
-        });
+        return res.status(400).json({ ok: false, error: "Missing groupId" });
       }
 
       const result = await client.query(
         `
-        SELECT *
-        FROM requirements_rules_v2
-        WHERE group_id = $1
-        ORDER BY updated_at DESC, id ASC
+        SELECT 
+          r.*
+        FROM requirements_rules_v2 r
+        WHERE r.group_id = $1
+        ORDER BY r.updated_at DESC, r.id ASC
         `,
         [groupId]
       );
 
-      // Hydrate rule objects for V3.5 UI
-      const hydrated = result.rows.map((r) => {
-        let conditions = [];
-
-        // If valid conditions JSON exists, parse it
-        try {
-          conditions = Array.isArray(r.conditions)
-            ? r.conditions
-            : JSON.parse(r.conditions || "[]");
-        } catch (e) {
-          conditions = [];
-        }
-
-        // If empty, fallback to legacy single-condition
-        if (!conditions.length) {
-          conditions = [
-            {
-              field_key: r.field_key,
-              operator: r.operator,
-              expected_value: r.expected_value,
-            },
-          ];
-        }
-
-        return {
-          id: r.id,
-          group_id: r.group_id,
-          logic: r.logic || "all",
-          conditions,
-          field_key: r.field_key,
-          operator: r.operator,
-          expected_value: r.expected_value,
-          severity: r.severity || "medium",
-          requirement_text: r.requirement_text || "",
-          internal_note: r.internal_note || "",
-          is_active: r.is_active !== false,
-          updated_at: r.updated_at,
-        };
-      });
-
-      return res.status(200).json({ ok: true, rules: hydrated });
+      return res.status(200).json({ ok: true, rules: result.rows });
     }
 
-    /* ==========================================================
-       POST — create rule (V3.5)
-    =========================================================== */
+    /* ===========================
+       POST — create rule
+    =========================== */
     if (method === "POST") {
       const {
         groupId,
@@ -97,31 +55,21 @@ export default async function handler(req, res) {
       } = req.body;
 
       if (!groupId) {
-        return res.status(400).json({
-          ok: false,
-          error: "Missing groupId",
-        });
+        return res.status(400).json({ ok: false, error: "Missing groupId" });
       }
 
-      // Normalize V3.5 rule conditions
       const normalized =
         Array.isArray(conditions) && conditions.length
           ? conditions
-          : [
-              {
-                field_key,
-                operator,
-                expected_value,
-              },
-            ];
+          : [{ field_key, operator, expected_value }];
 
       const inserted = await client.query(
         `
         INSERT INTO requirements_rules_v2
           (group_id, logic, conditions, field_key, operator, expected_value, severity, requirement_text, internal_note, is_active, updated_at)
         VALUES
-          ($1,      $2,    $3::jsonb, $4,       $5,       $6,             $7,       $8,               $9,          TRUE,     NOW())
-        RETURNING *;
+          ($1, $2, $3::jsonb, $4, $5, $6, $7, $8, $9, TRUE, NOW())
+        RETURNING *
         `,
         [
           groupId,
@@ -136,15 +84,12 @@ export default async function handler(req, res) {
         ]
       );
 
-      return res.status(200).json({
-        ok: true,
-        rule: inserted.rows[0],
-      });
+      return res.status(200).json({ ok: true, rule: inserted.rows[0] });
     }
 
-    /* ==========================================================
-       PUT — update rule (V3.5)
-    =========================================================== */
+    /* ===========================
+       PUT — update rule
+    =========================== */
     if (method === "PUT") {
       const {
         id,
@@ -160,40 +105,30 @@ export default async function handler(req, res) {
       } = req.body;
 
       if (!id) {
-        return res.status(400).json({
-          ok: false,
-          error: "Missing rule id",
-        });
+        return res.status(400).json({ ok: false, error: "Missing rule id" });
       }
 
-      // Normalize conditions
       const normalized =
         Array.isArray(conditions) && conditions.length
           ? conditions
-          : [
-              {
-                field_key,
-                operator,
-                expected_value,
-              },
-            ];
+          : [{ field_key, operator, expected_value }];
 
       const updated = await client.query(
         `
         UPDATE requirements_rules_v2
-        SET
-          logic            = $1,
-          conditions       = $2::jsonb,
-          field_key        = $3,
-          operator         = $4,
-          expected_value   = $5,
-          severity         = $6,
+        SET 
+          logic = $1,
+          conditions = $2::jsonb,
+          field_key = $3,
+          operator = $4,
+          expected_value = $5,
+          severity = $6,
           requirement_text = $7,
-          internal_note    = $8,
-          is_active        = $9,
-          updated_at       = NOW()
+          internal_note = $8,
+          is_active = $9,
+          updated_at = NOW()
         WHERE id = $10
-        RETURNING *;
+        RETURNING *
         `,
         [
           logic,
@@ -209,49 +144,33 @@ export default async function handler(req, res) {
         ]
       );
 
-      return res.status(200).json({
-        ok: true,
-        rule: updated.rows[0],
-      });
+      return res.status(200).json({ ok: true, rule: updated.rows[0] });
     }
 
-    /* ==========================================================
-       DELETE — delete rule
-    =========================================================== */
+    /* ===========================
+       DELETE — remove rule
+    =========================== */
     if (method === "DELETE") {
       const ruleId = id || req.query.id;
+
       if (!ruleId) {
-        return res.status(400).json({
-          ok: false,
-          error: "Missing rule id",
-        });
+        return res.status(400).json({ ok: false, error: "Missing rule id" });
       }
 
       await client.query(
-        `
-        DELETE FROM requirements_rules_v2
-        WHERE id = $1
-        `,
+        `DELETE FROM requirements_rules_v2 WHERE id = $1`,
         [ruleId]
       );
 
-      return res.status(200).json({
-        ok: true,
-        deleted: true,
-      });
+      return res.status(200).json({ ok: true, deleted: true });
     }
 
-    /* Default — method not allowed */
-    return res.status(405).json({
-      ok: false,
-      error: "Method not allowed",
-    });
+    return res
+      .status(405)
+      .json({ ok: false, error: "Method not allowed" });
   } catch (err) {
     console.error("REQ-V2 RULES ERROR:", err);
-    return res.status(500).json({
-      ok: false,
-      error: err.message,
-    });
+    return res.status(500).json({ ok: false, error: err.message });
   } finally {
     try {
       await client.end();
