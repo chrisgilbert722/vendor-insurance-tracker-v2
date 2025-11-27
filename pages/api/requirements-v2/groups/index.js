@@ -1,138 +1,121 @@
 // pages/api/requirements-v2/groups/index.js
-import { supabase } from "../../../../lib/supabaseClient";
+import { Client } from "pg";
+
+export const config = {
+  api: { bodyParser: true },
+};
 
 export default async function handler(req, res) {
+  const client = new Client({
+    connectionString: process.env.DATABASE_URL,
+  });
+
   const { method } = req;
+  const { orgId, id } = req.query;
 
-  // -------------------------
-  // GET GROUPS (with rule count)
-  // -------------------------
-  if (method === "GET") {
-    const { orgId } = req.query;
+  try {
+    await client.connect();
 
-    if (!orgId) {
-      return res.status(400).json({ ok: false, error: "Missing orgId" });
+    /* ===========================
+       GET — list groups for org
+       =========================== */
+    if (method === "GET") {
+      if (!orgId) {
+        return res
+          .status(400)
+          .json({ ok: false, error: "Missing orgId" });
+      }
+
+      const result = await client.query(
+        `SELECT *
+           FROM requirement_groups
+          WHERE org_id = $1
+          ORDER BY order_index ASC, id ASC`,
+        [orgId]
+      );
+
+      return res.status(200).json({ ok: true, groups: result.rows });
     }
 
-    // FIXED: Proper rule counting using Supabase aggregate
-    const { data, error } = await supabase
-      .from("requirements_groups_v2")
-      .select(`
-        id,
-        org_id,
-        name,
-        description,
-        is_active,
-        created_at,
-        rules:requirements_rules_v2(count)
-      `)
-      .eq("org_id", orgId)
-      .order("created_at", { ascending: false });
+    /* ===========================
+       POST — create new group
+       =========================== */
+    if (method === "POST") {
+      const { name, description } = req.body;
 
-    if (error) {
-      console.error("GET groups error:", error);
-      return res.status(500).json({ ok: false, error: error.message });
+      if (!name || !orgId) {
+        return res.status(400).json({
+          ok: false,
+          error: "Missing group name or orgId",
+        });
+      }
+
+      const insertRes = await client.query(
+        `INSERT INTO requirement_groups
+           (org_id, name, description, is_active, created_at)
+         VALUES ($1, $2, $3, TRUE, NOW())
+         RETURNING *;`,
+        [orgId, name, description || null]
+      );
+
+      return res.status(200).json({ ok: true, group: insertRes.rows[0] });
     }
 
-    const groups =
-      data?.map((g) => ({
-        id: g.id,
-        org_id: g.org_id,
-        name: g.name,
-        description: g.description,
-        is_active: g.is_active,
-        created_at: g.created_at,
-        rule_count: g.rules?.[0]?.count || 0,
-      })) || [];
+    /* ===========================
+       PUT — update group
+       =========================== */
+    if (method === "PUT") {
+      const { name, description, is_active } = req.body;
 
-    return res.status(200).json({ ok: true, groups });
+      if (!id) {
+        return res
+          .status(400)
+          .json({ ok: false, error: "Missing group id" });
+      }
+
+      const update = await client.query(
+        `UPDATE requirement_groups
+            SET name        = COALESCE($1, name),
+                description = COALESCE($2, description),
+                is_active   = COALESCE($3, is_active),
+                updated_at  = NOW()
+          WHERE id = $4
+          RETURNING *;`,
+        [name, description, is_active, id]
+      );
+
+      return res.status(200).json({
+        ok: true,
+        group: update.rows[0],
+      });
+    }
+
+    /* ===========================
+       DELETE — delete group
+       =========================== */
+    if (method === "DELETE") {
+      if (!id) {
+        return res
+          .status(400)
+          .json({ ok: false, error: "Missing group id" });
+      }
+
+      await client.query(
+        `DELETE FROM requirement_groups
+          WHERE id = $1`,
+        [id]
+      );
+
+      return res.status(200).json({ ok: true, deleted: true });
+    }
+
+    return res.status(405).json({ ok: false, error: "Method not allowed" });
+  } catch (err) {
+    console.error("REQ-V2 GROUPS ERROR:", err);
+    return res.status(500).json({ ok: false, error: err.message });
+  } finally {
+    try {
+      await client.end();
+    } catch (_) {}
   }
-
-  // -------------------------
-  // CREATE GROUP
-  // -------------------------
-  if (method === "POST") {
-    const { orgId, name, description } = req.body || {};
-
-    if (!orgId || !name) {
-      return res
-        .status(400)
-        .json({ ok: false, error: "orgId and name are required" });
-    }
-
-    const { data, error } = await supabase
-      .from("requirements_groups_v2")
-      .insert({
-        org_id: orgId,
-        name,
-        description: description || null,
-      })
-      .select()
-      .single();
-
-    if (error) {
-      console.error("POST group error:", error);
-      return res.status(500).json({ ok: false, error: error.message });
-    }
-
-    return res.status(201).json({ ok: true, group: data });
-  }
-
-  // -------------------------
-  // UPDATE GROUP
-  // -------------------------
-  if (method === "PUT") {
-    const { id, name, description, is_active } = req.body || {};
-
-    if (!id)
-      return res.status(400).json({ ok: false, error: "Missing group id" });
-
-    const updates = {};
-    if (name !== undefined) updates.name = name;
-    if (description !== undefined) updates.description = description;
-    if (is_active !== undefined) updates.is_active = is_active;
-
-    const { data, error } = await supabase
-      .from("requirements_groups_v2")
-      .update(updates)
-      .eq("id", id)
-      .select()
-      .single();
-
-    if (error) {
-      console.error("PUT group error:", error);
-      return res.status(500).json({ ok: false, error: error.message });
-    }
-
-    if (!data)
-      return res.status(404).json({ ok: false, error: "Group not found" });
-
-    return res.status(200).json({ ok: true, group: data });
-  }
-
-  // -------------------------
-  // DELETE GROUP
-  // -------------------------
-  if (method === "DELETE") {
-    const { id } = req.query;
-    if (!id)
-      return res.status(400).json({ ok: false, error: "Missing group id" });
-
-    const { error } = await supabase
-      .from("requirements_groups_v2")
-      .delete()
-      .eq("id", id);
-
-    if (error) {
-      console.error("DELETE group error:", error);
-      return res.status(500).json({ ok: false, error: error.message });
-    }
-
-    return res.status(200).json({ ok: true });
-  }
-
-  res.setHeader("Allow", ["GET", "POST", "PUT", "DELETE"]);
-  return res
-    .status(405)
-    .json({ ok: false, error: `Method ${method} Not Allowed` });
 }
