@@ -1,11 +1,12 @@
 // pages/admin/requirements-v3.js
+
 import { useEffect, useState, useMemo } from "react";
 import { useRole } from "../../lib/useRole";
 import { useOrg } from "../../context/OrgContext";
 import ToastV2 from "../../components/ToastV2";
 
 /* ==========================================================
-   REQUIREMENTS ENGINE V3 — ELITE COCKPIT MODE
+   REQUIREMENTS ENGINE V3 — ELITE COCKPIT MODE (API-ONLY)
    ========================================================== */
 
 const FIELD_OPTIONS = [
@@ -72,7 +73,7 @@ export default function RequirementsV3Page() {
   );
 
   /* --------------------------
-      LOAD GROUPS + RULES
+      LOAD GROUPS (API-ONLY)
      -------------------------- */
   useEffect(() => {
     if (loadingOrgs) return;
@@ -88,17 +89,13 @@ export default function RequirementsV3Page() {
     try {
       const res = await fetch(`/api/requirements-v2/groups?orgId=${orgId}`);
       const json = await res.json();
+
       if (!json.ok) throw new Error(json.error || "Failed to load groups");
 
-      let list = json.groups || [];
-
-      // 🔥 FIX — DO NOT USE order_index (causes the column error)
-      // Sort safely by created_at instead
-      list.sort((a, b) => new Date(a.created_at) - new Date(b.created_at));
+      const list = json.groups || [];
 
       setGroups(list);
-
-      if (list.length) {
+      if (list.length > 0) {
         setActiveGroupId(list[0].id);
         await loadRulesForGroup(list[0].id);
       } else {
@@ -111,45 +108,59 @@ export default function RequirementsV3Page() {
       setLoading(false);
     }
   }
-
-  async function loadRulesForGroup(id) {
-    if (!id) {
+  /* --------------------------
+      LOAD RULES (API-ONLY)
+     -------------------------- */
+  async function loadRulesForGroup(groupId) {
+    if (!groupId) {
       setRules([]);
       setEvaluation({ ok: false, error: "", results: {} });
       return;
     }
+
     try {
-      const res = await fetch(`/api/requirements-v2/rules?groupId=${id}`);
+      const res = await fetch(`/api/requirements-v2/rules?groupId=${groupId}`);
       const json = await res.json();
+
       if (!json.ok) throw new Error(json.error || "Failed to load rules");
+
       setRules(json.rules || []);
       setEvaluation({ ok: false, error: "", results: {} });
     } catch (err) {
       setError(err.message || "Failed to load rules.");
     }
   }
-  /* --------------------------
-      GROUP CRUD
-     -------------------------- */
 
+  /* --------------------------
+      CREATE GROUP
+     -------------------------- */
   async function handleCreateGroup() {
     if (!canEdit || !orgId) return;
+
     const name = prompt("New group name:");
     if (!name) return;
+
     try {
       setSaving(true);
+
       const res = await fetch("/api/requirements-v2/groups", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ orgId, name }),
       });
+
       const json = await res.json();
-      if (!json.ok) throw new Error(json.error || "Failed to create group");
+      if (!json.ok) throw new Error(json.error || "Group creation failed");
 
       setGroups((prev) => [json.group, ...prev]);
       setActiveGroupId(json.group.id);
       setRules([]);
-      setToast({ open: true, type: "success", message: "Group created." });
+
+      setToast({
+        open: true,
+        type: "success",
+        message: "Group created.",
+      });
     } catch (err) {
       setToast({ open: true, type: "error", message: err.message });
     } finally {
@@ -157,163 +168,35 @@ export default function RequirementsV3Page() {
     }
   }
 
+  /* --------------------------
+      UPDATE GROUP
+     -------------------------- */
   async function handleUpdateGroup(patch) {
     if (!canEdit || !activeGroup) return;
 
     const updated = { ...activeGroup, ...patch };
+
+    // instant UI update
     setGroups((prev) =>
       prev.map((g) => (g.id === activeGroup.id ? updated : g))
     );
 
     try {
       setSaving(true);
+
       const res = await fetch("/api/requirements-v2/groups", {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(updated),
       });
+
       const json = await res.json();
-      if (!json.ok) throw new Error(json.error || "Failed to update group");
-
-      setToast({ open: true, type: "success", message: "Group updated." });
-    } catch (err) {
-      setToast({ open: true, type: "error", message: err.message });
-    } finally {
-      setSaving(false);
-    }
-  }
-
-  async function handleDeleteGroup(id) {
-    if (!canEdit || !id) return;
-    if (!window.confirm("Delete this group and all its rules?")) return;
-
-    try {
-      setSaving(true);
-      const res = await fetch(`/api/requirements-v2/groups?id=${id}`, {
-        method: "DELETE",
-      });
-      const json = await res.json();
-      if (!json.ok) throw new Error(json.error || "Failed to delete group");
-
-      const remaining = groups.filter((g) => g.id !== id);
-      setGroups(remaining);
-
-      if (remaining.length) {
-        setActiveGroupId(remaining[0].id);
-        await loadRulesForGroup(remaining[0].id);
-      } else {
-        setActiveGroupId(null);
-        setRules([]);
-      }
-
-      setToast({ open: true, type: "success", message: "Group deleted." });
-    } catch (err) {
-      setToast({ open: true, type: "error", message: err.message });
-    } finally {
-      setSaving(false);
-    }
-  }
-  /* --------------------------
-      RULE CRUD
-     -------------------------- */
-
-  async function handleCreateRule() {
-    if (!activeGroup || !canEdit) return;
-
-    const field_key = prompt("Field key (e.g. policy.glEachOccurrence):");
-    if (!field_key) return;
-
-    const expected_value = prompt("Expected value:");
-    if (!expected_value) return;
-
-    try {
-      setSaving(true);
-      const res = await fetch("/api/requirements-v2/rules", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          groupId: activeGroup.id,
-          field_key,
-          operator: "equals",
-          expected_value,
-          severity: "medium",
-        }),
-      });
-      const json = await res.json();
-      if (!json.ok) throw new Error(json.error || "Failed to create rule");
-
-      setRules((prev) => [...prev, json.rule]);
-      setToast({ open: true, type: "success", message: "Rule created." });
-    } catch (err) {
-      setToast({ open: true, type: "error", message: err.message });
-    } finally {
-      setSaving(false);
-    }
-  }
-
-  async function handleUpdateRule(id, patch) {
-    if (!canEdit || !id) return;
-
-    const current = rules.find((r) => r.id === id);
-    if (!current) return;
-
-    const updated = { ...current, ...patch };
-    setRules((prev) => prev.map((r) => (r.id === id ? updated : r)));
-
-    try {
-      setSaving(true);
-      const res = await fetch("/api/requirements-v2/rules", {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(updated),
-      });
-      const json = await res.json();
-      if (!json.ok) throw new Error(json.error || "Failed to update rule");
-
-      setToast({ open: true, type: "success", message: "Rule updated." });
-    } catch (err) {
-      setToast({ open: true, type: "error", message: err.message });
-    } finally {
-      setSaving(false);
-    }
-  }
-
-  async function handleDeleteRule(id) {
-    if (!canEdit || !id) return;
-    if (!window.confirm("Delete this rule?")) return;
-
-    try {
-      setSaving(true);
-      const res = await fetch(`/api/requirements-v2/rules?id=${id}`, {
-        method: "DELETE",
-      });
-      const json = await res.json();
-      if (!json.ok) throw new Error(json.error || "Failed to delete rule");
-
-      setRules((prev) => prev.filter((r) => r.id !== id));
-      setToast({ open: true, type: "success", message: "Rule deleted." });
-    } catch (err) {
-      setToast({ open: true, type: "error", message: err.message });
-    } finally {
-      setSaving(false);
-    }
-  }
-
-  /* --------------------------
-      ENGINE ACTIONS
-     -------------------------- */
-
-  async function handleRunEngine() {
-    try {
-      setSaving(true);
-      const res = await fetch("/api/engine/run-v3", { method: "POST" });
-      const json = await res.json();
-      if (!json.ok) throw new Error(json.error || "Engine run failed");
+      if (!json.ok) throw new Error(json.error || "Group update failed");
 
       setToast({
         open: true,
         type: "success",
-        message: "Engine run completed.",
+        message: "Group updated.",
       });
     } catch (err) {
       setToast({
@@ -327,10 +210,214 @@ export default function RequirementsV3Page() {
   }
 
   /* --------------------------
-      SAMPLE POLICY EVAL
+      DELETE GROUP
+     -------------------------- */
+  async function handleDeleteGroup(id) {
+    if (!canEdit || !id) return;
+
+    if (!window.confirm("Delete group & all rules?")) return;
+
+    try {
+      setSaving(true);
+
+      const res = await fetch(`/api/requirements-v2/groups?id=${id}`, {
+        method: "DELETE",
+      });
+
+      const json = await res.json();
+      if (!json.ok) throw new Error(json.error || "Delete failed");
+
+      const remaining = groups.filter((g) => g.id !== id);
+
+      setGroups(remaining);
+
+      if (remaining.length > 0) {
+        setActiveGroupId(remaining[0].id);
+        await loadRulesForGroup(remaining[0].id);
+      } else {
+        setActiveGroupId(null);
+        setRules([]);
+      }
+
+      setToast({
+        open: true,
+        type: "success",
+        message: "Group deleted.",
+      });
+    } catch (err) {
+      setToast({
+        open: true,
+        type: "error",
+        message: err.message,
+      });
+    } finally {
+      setSaving(false);
+    }
+  }
+  /* --------------------------
+      RULE CRUD — CREATE
+     -------------------------- */
+  async function handleCreateRule() {
+    if (!activeGroup || !canEdit) return;
+
+    const field_key = prompt("Field key (e.g. policy.coverage_type):");
+    if (!field_key) return;
+
+    const expected_value = prompt("Expected value:");
+    if (!expected_value) return;
+
+    try {
+      setSaving(true);
+
+      const res = await fetch("/api/requirements-v2/rules", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          groupId: activeGroup.id,
+          field_key,
+          operator: "equals",
+          expected_value,
+          severity: "medium",
+        }),
+      });
+
+      const json = await res.json();
+      if (!json.ok) throw new Error(json.error || "Failed to create rule");
+
+      setRules((prev) => [...prev, json.rule]);
+
+      setToast({
+        open: true,
+        type: "success",
+        message: "Rule created.",
+      });
+    } catch (err) {
+      setToast({
+        open: true,
+        type: "error",
+        message: err.message,
+      });
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  /* --------------------------
+      RULE CRUD — UPDATE
+     -------------------------- */
+  async function handleUpdateRule(ruleId, patch) {
+    if (!ruleId || !canEdit) return;
+
+    // Instant UI update
+    const current = rules.find((r) => r.id === ruleId);
+    const updated = { ...current, ...patch };
+
+    setRules((prev) =>
+      prev.map((r) => (r.id === ruleId ? updated : r))
+    );
+
+    try {
+      setSaving(true);
+
+      const res = await fetch("/api/requirements-v2/rules", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(updated),
+      });
+
+      const json = await res.json();
+      if (!json.ok) throw new Error(json.error || "Failed to update rule");
+
+      setToast({
+        open: true,
+        type: "success",
+        message: "Rule updated.",
+      });
+    } catch (err) {
+      setToast({
+        open: true,
+        type: "error",
+        message: err.message,
+      });
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  /* --------------------------
+      RULE CRUD — DELETE
+     -------------------------- */
+  async function handleDeleteRule(ruleId) {
+    if (!ruleId || !canEdit) return;
+
+    if (!window.confirm("Delete this rule?")) return;
+
+    try {
+      setSaving(true);
+
+      const res = await fetch(`/api/requirements-v2/rules?id=${ruleId}`, {
+        method: "DELETE",
+      });
+
+      const json = await res.json();
+      if (!json.ok) throw new Error(json.error || "Failed to delete rule");
+
+      setRules((prev) => prev.filter((r) => r.id !== ruleId));
+
+      setToast({
+        open: true,
+        type: "success",
+        message: "Rule deleted.",
+      });
+    } catch (err) {
+      setToast({
+        open: true,
+        type: "error",
+        message: err.message,
+      });
+    } finally {
+      setSaving(false);
+    }
+  }
+  /* --------------------------
+      ENGINE ACTIONS — RUN NOW
+     -------------------------- */
+  async function handleRunEngine() {
+    try {
+      setSaving(true);
+
+      const res = await fetch("/api/engine/run-v3", {
+        method: "POST",
+      });
+
+      const json = await res.json();
+      if (!json.ok) throw new Error(json.error || "Engine run failed");
+
+      setToast({
+        open: true,
+        type: "success",
+        message: json.message || "Engine run completed.",
+      });
+    } catch (err) {
+      setToast({
+        open: true,
+        type: "error",
+        message: err.message || "Engine failed.",
+      });
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  /* --------------------------
+      SAMPLE POLICY EVALUATION
      -------------------------- */
   function handleEvaluateSamplePolicy() {
-    setEvaluation({ ok: false, error: "", results: {} });
+    setEvaluation({
+      ok: false,
+      error: "",
+      results: {},
+    });
 
     let parsed;
     try {
@@ -343,18 +430,27 @@ export default function RequirementsV3Page() {
       });
     }
 
+    // Evaluate each rule locally using the preview rule engine
     const results = {};
     for (const r of rules) {
       results[r.id] = evaluateRule(r, parsed);
     }
 
-    setEvaluation({ ok: true, error: "", results });
+    setEvaluation({
+      ok: true,
+      error: "",
+      results,
+    });
+
     setToast({
       open: true,
       type: "success",
       message: "Sample evaluated.",
     });
   }
+  /* --------------------------
+      MAIN RENDER
+     -------------------------- */
   return (
     <div
       style={{
@@ -381,7 +477,7 @@ export default function RequirementsV3Page() {
         }}
       />
 
-      {/* HEADER */}
+      {/* PAGE HEADER */}
       <div style={{ marginBottom: 18, position: "relative", zIndex: 2 }}>
         <div
           style={{
@@ -488,7 +584,9 @@ export default function RequirementsV3Page() {
         </div>
       )}
 
-      {/* MAIN GRID */}
+      {/* ============================
+         GRID LAYOUT (3 COLUMNS)
+         ============================ */}
       <div
         style={{
           position: "relative",
@@ -498,11 +596,567 @@ export default function RequirementsV3Page() {
           gap: 18,
         }}
       >
-        {/* LEFT PANEL END */}
-        {/* MIDDLE + RIGHT PANELS were already included above */}
+        {/* ============================
+           LEFT COLUMN — GROUPS LIST
+           ============================ */}
+        <div
+          style={{
+            position: "relative",
+            borderRadius: 22,
+            padding: 18,
+            background:
+              "linear-gradient(145deg, rgba(11,20,40,0.96), rgba(7,12,26,0.92))",
+            border: "1px solid rgba(80,120,255,0.32)",
+            boxShadow:
+              "0 0 25px rgba(54,88,255,0.25), inset 0 0 20px rgba(20,40,90,0.45)",
+            backdropFilter: "blur(8px)",
+          }}
+        >
+          {/* Glow Bar */}
+          <div
+            style={{
+              position: "absolute",
+              top: 0,
+              left: 0,
+              right: 0,
+              height: 3,
+              background:
+                "linear-gradient(90deg, transparent, #3b82f6, #8b5cf6, transparent)",
+            }}
+          />
+
+          {/* Left Column Header */}
+          <div
+            style={{
+              display: "flex",
+              justifyContent: "space-between",
+              marginBottom: 12,
+              alignItems: "center",
+            }}
+          >
+            <div>
+              <div
+                style={{
+                  fontSize: 12,
+                  textTransform: "uppercase",
+                  color: "#9ca3af",
+                  letterSpacing: 1.4,
+                }}
+              >
+                Groups
+              </div>
+              <div style={{ fontSize: 12, color: "#e5e7eb", opacity: 0.75 }}>
+                Organize related rule categories.
+              </div>
+            </div>
+
+            <button
+              onClick={handleCreateGroup}
+              disabled={!canEdit || !orgId}
+              style={{
+                borderRadius: 12,
+                padding: "8px 14px",
+                border: "1px solid rgba(56,189,248,0.8)",
+                background:
+                  "linear-gradient(120deg, rgba(0,212,255,0.25), rgba(0,119,182,0.25))",
+                color: "#e0f2fe",
+                fontSize: 12,
+                cursor: !canEdit || !orgId ? "not-allowed" : "pointer",
+                opacity: !canEdit || !orgId ? 0.5 : 1,
+              }}
+            >
+              + New
+            </button>
+          </div>
+
+          {/* GROUP LIST */}
+          <div
+            style={{
+              display: "flex",
+              flexDirection: "column",
+              gap: 10,
+              maxHeight: 520,
+              overflowY: "auto",
+              paddingRight: 4,
+            }}
+          >
+            {loading ? (
+              <div style={{ fontSize: 12, color: "#9ca3af" }}>
+                Loading groups…
+              </div>
+            ) : groups.length === 0 ? (
+              <div
+                style={{
+                  padding: 10,
+                  borderRadius: 12,
+                  border: "1px dashed rgba(148,163,184,0.6)",
+                  fontSize: 12,
+                  color: "#9ca3af",
+                }}
+              >
+                No groups yet.
+              </div>
+            ) : (
+              groups.map((g) => (
+                <button
+                  key={g.id}
+                  onClick={() => {
+                    setActiveGroupId(g.id);
+                    loadRulesForGroup(g.id);
+                  }}
+                  style={{
+                    textAlign: "left",
+                    borderRadius: 16,
+                    padding: "10px 12px",
+                    border:
+                      activeGroupId === g.id
+                        ? "1px solid rgba(59,130,246,0.9)"
+                        : "1px solid rgba(51,65,85,0.6)",
+                    background:
+                      activeGroupId === g.id
+                        ? "rgba(17,24,39,0.95)"
+                        : "rgba(15,23,42,0.92)",
+                    color: "#e5e7eb",
+                    cursor: "pointer",
+                  }}
+                >
+                  <div
+                    style={{
+                      fontSize: 14,
+                      fontWeight: 500,
+                      marginBottom: 2,
+                    }}
+                  >
+                    {g.name}
+                  </div>
+                  <div style={{ fontSize: 11, color: "#94a3b8" }}>
+                    {g.description || "No description"} ·{" "}
+                    {g.rule_count ?? 0} rules
+                  </div>
+                </button>
+              ))
+            )}
+          </div>
+        </div>
+
+        {/* ============================
+           MIDDLE COLUMN — RULES EDITOR
+           ============================ */}
+        <div
+          style={{
+            borderRadius: 22,
+            padding: 18,
+            background:
+              "linear-gradient(135deg, rgba(12,22,45,0.97), rgba(6,12,28,0.95))",
+            border: "1px solid rgba(90,120,255,0.32)",
+            boxShadow:
+              "0 0 30px rgba(64,106,255,0.22), inset 0 0 25px rgba(20,30,60,0.55)",
+            backdropFilter: "blur(10px)",
+          }}
+        >
+          {!activeGroup ? (
+            <div style={{ fontSize: 13, color: "#9ca3af" }}>
+              Select a group on the left to edit its rules.
+            </div>
+          ) : (
+            <>
+              {/* GROUP EDITOR */}
+              <div style={{ display: "flex", gap: 14, marginBottom: 14 }}>
+                <div style={{ flex: 1 }}>
+                  <input
+                    value={activeGroup.name || ""}
+                    onChange={(e) =>
+                      handleUpdateGroup({ name: e.target.value })
+                    }
+                    disabled={!canEdit}
+                    style={{
+                      width: "100%",
+                      borderRadius: 14,
+                      padding: "10px 14px",
+                      background:
+                        "linear-gradient(120deg, rgba(15,23,42,0.92), rgba(15,23,42,0.8))",
+                      border: "1px solid rgba(51,65,85,0.85)",
+                      color: "#e5e7eb",
+                      fontSize: 14,
+                    }}
+                  />
+
+                  <textarea
+                    value={activeGroup.description || ""}
+                    onChange={(e) =>
+                      handleUpdateGroup({ description: e.target.value })
+                    }
+                    disabled={!canEdit}
+                    rows={2}
+                    placeholder="Describe what this lane enforces…"
+                    style={{
+                      marginTop: 10,
+                      width: "100%",
+                      borderRadius: 14,
+                      padding: "10px 14px",
+                      background:
+                        "linear-gradient(120deg, rgba(15,23,42,0.9), rgba(15,23,42,0.75))",
+                      border: "1px solid rgba(51,65,85,0.8)",
+                      color: "#e5e7eb",
+                      fontSize: 13,
+                      resize: "vertical",
+                    }}
+                  />
+                </div>
+
+                {/* RIGHT SETTINGS */}
+                <div
+                  style={{
+                    width: 130,
+                    display: "flex",
+                    flexDirection: "column",
+                    gap: 10,
+                  }}
+                >
+                  <label
+                    style={{
+                      display: "flex",
+                      gap: 6,
+                      alignItems: "center",
+                      fontSize: 12,
+                      color: "#9ca3af",
+                    }}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={activeGroup.is_active ?? true}
+                      onChange={(e) =>
+                        handleUpdateGroup({ is_active: e.target.checked })
+                      }
+                      disabled={!canEdit}
+                    />
+                    Active
+                  </label>
+
+                  <button
+                    disabled={!canEdit}
+                    onClick={() => handleDeleteGroup(activeGroup.id)}
+                    style={{
+                      borderRadius: 12,
+                      padding: "8px 10px",
+                      border: "1px solid rgba(248,113,113,0.8)",
+                      background:
+                        "linear-gradient(120deg, rgba(255,76,76,0.35), rgba(91,6,6,0.3))",
+                      color: "#fecaca",
+                      fontSize: 12,
+                      cursor: "pointer",
+                    }}
+                  >
+                    Delete
+                  </button>
+                </div>
+              </div>
+
+              {/* RULES HEADER */}
+              <div
+                style={{
+                  display: "flex",
+                  justifyContent: "space-between",
+                  marginBottom: 10,
+                }}
+              >
+                <div style={{ fontSize: 13, color: "#94a3b8" }}>
+                  {rules.length} rules in this lane
+                </div>
+
+                <button
+                  onClick={handleCreateRule}
+                  disabled={!canEdit}
+                  style={{
+                    borderRadius: 999,
+                    padding: "7px 14px",
+                    border: "1px solid rgba(56,189,248,0.8)",
+                    background:
+                      "linear-gradient(120deg, rgba(8,47,73,0.9), rgba(15,23,42,1))",
+                    color: "#e0f2fe",
+                    fontSize: 12,
+                    cursor: "pointer",
+                  }}
+                >
+                  + New rule
+                </button>
+              </div>
+
+              {/* RULE LIST */}
+              <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                {rules.length === 0 ? (
+                  <div
+                    style={{
+                      padding: "10px 8px",
+                      borderRadius: 12,
+                      border: "1px dashed rgba(148,163,184,0.6)",
+                      color: "#9ca3af",
+                      fontSize: 12,
+                    }}
+                  >
+                    No rules yet. Add one above.
+                  </div>
+                ) : (
+                  rules.map((rule) => (
+                    <RuleCard
+                      key={rule.id}
+                      rule={rule}
+                      onUpdate={(patch) =>
+                        handleUpdateRule(rule.id, patch)
+                      }
+                      onDelete={() => handleDeleteRule(rule.id)}
+                      canEdit={canEdit}
+                    />
+                  ))
+                )}
+              </div>
+            </>
+          )}
+        </div>
+        {/* ============================
+           RIGHT COLUMN — PREVIEW + ENGINE
+           ============================ */}
+        <div
+          style={{
+            borderRadius: 22,
+            padding: 18,
+            background:
+              "linear-gradient(135deg, rgba(9,15,30,0.97), rgba(4,9,20,0.95))",
+            border: "1px solid rgba(80,120,255,0.32)",
+            boxShadow:
+              "0 0 30px rgba(64,106,255,0.27), inset 0 0 25px rgba(10,20,45,0.5)",
+            backdropFilter: "blur(10px)",
+          }}
+        >
+          {/* Right column title */}
+          <div
+            style={{
+              fontSize: 11,
+              textTransform: "uppercase",
+              color: "#9ca3af",
+              letterSpacing: 1.6,
+              marginBottom: 6,
+            }}
+          >
+            Live Rule Preview
+          </div>
+
+          {/* ENGINE RUN BUTTON */}
+          <div
+            style={{
+              display: "flex",
+              justifyContent: "space-between",
+              marginBottom: 10,
+              alignItems: "center",
+            }}
+          >
+            <div style={{ fontSize: 11, color: "#6b7280" }}>
+              Preview and run engine against all vendors.
+            </div>
+
+            <button
+              onClick={handleRunEngine}
+              disabled={!canEdit || !orgId || saving}
+              style={{
+                borderRadius: 12,
+                padding: "8px 14px",
+                border: "1px solid rgba(0,212,255,0.6)",
+                background:
+                  "linear-gradient(120deg, rgba(0,212,255,0.3), rgba(5,90,120,0.3))",
+                color: "#e0f2fe",
+                fontSize: 12,
+                cursor:
+                  !canEdit || !orgId || saving ? "not-allowed" : "pointer",
+                opacity: !canEdit || !orgId || saving ? 0.5 : 1,
+              }}
+            >
+              Run engine now
+            </button>
+          </div>
+
+          {/* RULE PREVIEW */}
+          {activeGroup && rules.length > 0 ? (
+            <div style={{ fontSize: 13, color: "#cbd5f5" }}>
+              {rules.map((r, i) => {
+                const sevColor =
+                  SEVERITY_COLORS[r.severity] || SEVERITY_COLORS.medium;
+
+                return (
+                  <div
+                    key={r.id}
+                    style={{
+                      padding: "7px 0",
+                      borderBottom:
+                        i === rules.length - 1
+                          ? "none"
+                          : "1px solid rgba(30,64,175,0.55)",
+                    }}
+                  >
+                    <div>
+                      IF{" "}
+                      <code style={{ color: "#93c5fd" }}>
+                        {r.field_key}
+                      </code>{" "}
+                      {operatorLabel(r.operator)}{" "}
+                      <code style={{ color: "#a5b4fc" }}>
+                        {r.expected_value}
+                      </code>{" "}
+                      THEN{" "}
+                      <span style={{ color: sevColor }}>
+                        {String(r.severity).toUpperCase()} ALERT
+                      </span>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          ) : (
+            <div style={{ fontSize: 13, color: "#9ca3af" }}>
+              Add rules for a preview of policy logic.
+            </div>
+          )}
+
+          {/* SAMPLE POLICY EVALUATION */}
+          <div
+            style={{
+              marginTop: 12,
+              paddingTop: 10,
+              borderTop: "1px solid rgba(30,64,175,0.7)",
+              display: "flex",
+              flexDirection: "column",
+              gap: 8,
+            }}
+          >
+            <div
+              style={{
+                fontSize: 11,
+                textTransform: "uppercase",
+                color: "#9ca3af",
+                letterSpacing: 1.5,
+              }}
+            >
+              Sample Policy Evaluation
+            </div>
+
+            {/* JSON TEXTAREA */}
+            <textarea
+              value={samplePolicyText}
+              onChange={(e) => setSamplePolicyText(e.target.value)}
+              rows={7}
+              style={{
+                width: "100%",
+                borderRadius: 12,
+                padding: "8px 10px",
+                border: "1px solid rgba(51,65,85,0.8)",
+                background: "rgba(15,23,42,0.96)",
+                color: "#e5e7eb",
+                fontFamily: "monospace",
+                fontSize: 12,
+              }}
+            />
+
+            {/* EVALUATE SAMPLE BUTTON */}
+            <button
+              onClick={handleEvaluateSamplePolicy}
+              disabled={!activeGroup || !rules.length}
+              style={{
+                borderRadius: 999,
+                padding: "7px 14px",
+                border: "1px solid rgba(129,140,248,0.9)",
+                background:
+                  "linear-gradient(120deg,rgba(30,64,175,1),rgba(15,23,42,1))",
+                color: "#e0e7ff",
+                fontSize: 12,
+                cursor:
+                  !activeGroup || !rules.length ? "not-allowed" : "pointer",
+                opacity: !activeGroup || !rules.length ? 0.5 : 1,
+              }}
+            >
+              Evaluate sample policy
+            </button>
+
+            {/* SAMPLE RESULTS */}
+            {evaluation.ok && (
+              <div
+                style={{
+                  borderRadius: 12,
+                  border: "1px solid rgba(30,64,175,0.5)",
+                  background:
+                    "radial-gradient(circle,rgba(15,23,42,0.98),rgba(15,23,42,0.96))",
+                  padding: "8px 10px",
+                  maxHeight: 200,
+                  overflowY: "auto",
+                }}
+              >
+                {rules.map((r) => {
+                  const passed = evaluation.results[r.id];
+
+                  return (
+                    <div
+                      key={r.id}
+                      style={{
+                        display: "flex",
+                        justifyContent: "space-between",
+                        marginBottom: 6,
+                        paddingBottom: 6,
+                        borderBottom:
+                          "1px solid rgba(30,64,175,0.45)",
+                      }}
+                    >
+                      <div>
+                        <div style={{ color: "#e5e7eb", fontSize: 12 }}>
+                          <code style={{ color: "#93c5fd" }}>
+                            {r.field_key}
+                          </code>{" "}
+                          {operatorLabel(r.operator)}{" "}
+                          <code style={{ color: "#a5b4fc" }}>
+                            {r.expected_value}
+                          </code>
+                        </div>
+
+                        {r.requirement_text && (
+                          <div
+                            style={{
+                              fontSize: 11,
+                              color: "#9ca3af",
+                              marginTop: 2,
+                            }}
+                          >
+                            {r.requirement_text}
+                          </div>
+                        )}
+                      </div>
+
+                      <div
+                        style={{
+                          borderRadius: 999,
+                          padding: "3px 10px",
+                          fontSize: 10,
+                          border: passed
+                            ? "1px solid #22c55e"
+                            : "1px solid #ef4444",
+                          color: passed ? "#22c55e" : "#ef4444",
+                          background: passed
+                            ? "rgba(34,197,94,0.15)"
+                            : "rgba(239,68,68,0.15)",
+                          textTransform: "uppercase",
+                          letterSpacing: 1,
+                        }}
+                      >
+                        {passed ? "Pass" : "Fail"}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        </div>
       </div>
 
-      {/* SAVING TAG */}
+      {/* ============================
+          SAVING TAG
+      ============================ */}
       {saving && (
         <div
           style={{
@@ -522,6 +1176,7 @@ export default function RequirementsV3Page() {
         </div>
       )}
 
+      {/* TOAST */}
       <ToastV2
         open={toast.open}
         message={toast.message}
@@ -536,7 +1191,6 @@ export default function RequirementsV3Page() {
     </div>
   );
 }
-
 /* =======================================================
    RULECARD — ELITE TACTICAL HOLOGRAM EDITION
    ======================================================= */
@@ -562,19 +1216,19 @@ function RuleCard({ rule, onUpdate, onDelete, canEdit }) {
         overflow: "hidden",
       }}
     >
-      {/* Glow Edge */}
+      {/* Glow edge */}
       <div
         style={{
           position: "absolute",
           inset: 0,
           borderRadius: 18,
           boxShadow: "0 0 14px rgba(80,120,255,0.45)",
-          opacity: 0.45,
+          opacity: 0.35,
           pointerEvents: "none",
         }}
       />
 
-      {/* Hover layer */}
+      {/* Hover wash */}
       <div
         className="tactical-hover"
         style={{
@@ -584,8 +1238,8 @@ function RuleCard({ rule, onUpdate, onDelete, canEdit }) {
           background:
             "linear-gradient(120deg, rgba(80,120,255,0.14), rgba(120,60,255,0.12))",
           opacity: 0,
-          transition: "opacity 0.3s ease",
           pointerEvents: "none",
+          transition: "opacity 0.3s ease",
         }}
       />
 
@@ -595,7 +1249,7 @@ function RuleCard({ rule, onUpdate, onDelete, canEdit }) {
         }
       `}</style>
 
-      {/* FIELD + OPERATOR */}
+      {/* FIELD KEY + OPERATOR */}
       <div
         style={{
           display: "flex",
@@ -604,6 +1258,7 @@ function RuleCard({ rule, onUpdate, onDelete, canEdit }) {
           marginBottom: 12,
         }}
       >
+        {/* Field */}
         <select
           value={rule.field_key || ""}
           onChange={(e) => onUpdate({ field_key: e.target.value })}
@@ -626,6 +1281,7 @@ function RuleCard({ rule, onUpdate, onDelete, canEdit }) {
           ))}
         </select>
 
+        {/* Operator */}
         <select
           value={rule.operator || "equals"}
           onChange={(e) => onUpdate({ operator: e.target.value })}
@@ -649,7 +1305,7 @@ function RuleCard({ rule, onUpdate, onDelete, canEdit }) {
         </select>
       </div>
 
-      {/* VALUE + SEVERITY */}
+      {/* EXPECTED VALUE + SEVERITY */}
       <div style={{ display: "flex", gap: 10, marginBottom: 12 }}>
         <input
           value={rule.expected_value || ""}
@@ -731,15 +1387,16 @@ function RuleCard({ rule, onUpdate, onDelete, canEdit }) {
         }}
       />
 
-      {/* FOOTER */}
+      {/* FOOTER ACTIONS */}
       <div
         style={{
           display: "flex",
           justifyContent: "space-between",
-          marginTop: 6,
           alignItems: "center",
+          marginTop: 6,
         }}
       >
+        {/* ACTIVE TOGGLE */}
         <label
           style={{
             display: "flex",
@@ -758,6 +1415,7 @@ function RuleCard({ rule, onUpdate, onDelete, canEdit }) {
           Active
         </label>
 
+        {/* DELETE BUTTON */}
         <button
           disabled={!canEdit}
           onClick={onDelete}
@@ -771,7 +1429,6 @@ function RuleCard({ rule, onUpdate, onDelete, canEdit }) {
             fontSize: 12,
             fontWeight: 600,
             cursor: canEdit ? "pointer" : "not-allowed",
-            boxShadow: "0 0 10px rgba(255,50,50,0.3)",
           }}
         >
           Delete
@@ -782,18 +1439,16 @@ function RuleCard({ rule, onUpdate, onDelete, canEdit }) {
 }
 
 /* =======================================================
-   OPERATOR LABEL
+   OPERATOR LABEL HELPER
    ======================================================= */
-
 function operatorLabel(op) {
   const found = OPERATOR_OPTIONS.find((o) => o.key === op);
   return found ? found.label : op;
 }
 
 /* =======================================================
-   LOCAL PREVIEW RULE ENGINE
+   LOCAL PREVIEW RULE EVALUATION LOGIC
    ======================================================= */
-
 function evaluateRule(rule, policyObj) {
   if (!rule || rule.is_active === false) return false;
 
@@ -803,11 +1458,11 @@ function evaluateRule(rule, policyObj) {
 
   if (rawVal === undefined || rawVal === null) return false;
 
-  const parseNum = (v) => {
+  const normalizeNum = (v) => {
     if (typeof v === "number") return v;
     if (typeof v === "string") {
-      const cleaned = v.replace(/[^0-9.\-]/g, "");
-      const parsed = parseFloat(cleaned);
+      const clean = v.replace(/[^0-9.\-]/g, "");
+      const parsed = parseFloat(clean);
       return isNaN(parsed) ? null : parsed;
     }
     return null;
@@ -823,13 +1478,13 @@ function evaluateRule(rule, policyObj) {
         .toLowerCase()
         .includes(String(expected).toLowerCase());
     case "gte": {
-      const a = parseNum(rawVal);
-      const b = parseNum(expected);
+      const a = normalizeNum(rawVal);
+      const b = normalizeNum(expected);
       return a !== null && b !== null && a >= b;
     }
     case "lte": {
-      const a = parseNum(rawVal);
-      const b = parseNum(expected);
+      const a = normalizeNum(rawVal);
+      const b = normalizeNum(expected);
       return a !== null && b !== null && a <= b;
     }
     default:
