@@ -16,14 +16,15 @@ export default async function handler(req, res) {
   try {
     await client.connect();
 
-    /* ======================================
-       GET — list groups for org
-    ======================================= */
+    // ================================
+    // GET GROUPS
+    // ================================
     if (method === "GET") {
       if (!orgId) {
-        return res
-          .status(400)
-          .json({ ok: false, error: "Missing orgId" });
+        return res.status(400).json({
+          ok: false,
+          error: "Missing orgId",
+        });
       }
 
       const result = await client.query(
@@ -54,24 +55,23 @@ export default async function handler(req, res) {
       });
     }
 
-    /* ======================================
-       POST — create
-    ======================================= */
+    // ================================
+    // CREATE GROUP
+    // ================================
     if (method === "POST") {
       const { name, description } = req.body;
-
       if (!name || !orgId) {
         return res.status(400).json({
           ok: false,
-          error: "Missing group name or orgId",
+          error: "Missing name or orgId",
         });
       }
 
       const insertRes = await client.query(
         `
         INSERT INTO requirements_groups_v2
-          (org_id, name, description, is_active, created_at)
-        VALUES ($1, $2, $3, TRUE, NOW())
+          (org_id, name, description, is_active, created_at, updated_at)
+        VALUES ($1, $2, $3, TRUE, NOW(), NOW())
         RETURNING *;
         `,
         [orgId, name, description || null]
@@ -83,16 +83,16 @@ export default async function handler(req, res) {
       });
     }
 
-    /* ======================================
-       PUT — update
-    ======================================= */
+    // ================================
+    // UPDATE GROUP
+    // ================================
     if (method === "PUT") {
       const { name, description, is_active } = req.body;
 
       if (!id) {
         return res.status(400).json({
           ok: false,
-          error: "Missing group id",
+          error: "Missing id",
         });
       }
 
@@ -116,14 +116,14 @@ export default async function handler(req, res) {
       });
     }
 
-    /* ======================================
-       DELETE — remove
-    ======================================= */
+    // ================================
+    // DELETE GROUP
+    // ================================
     if (method === "DELETE") {
       if (!id) {
         return res.status(400).json({
           ok: false,
-          error: "Missing group id",
+          error: "Missing id",
         });
       }
 
@@ -138,13 +138,13 @@ export default async function handler(req, res) {
       });
     }
 
-    /* Fallback */
-    return res
-      .status(405)
-      .json({ ok: false, error: "Method not allowed" });
+    return res.status(405).json({
+      ok: false,
+      error: "Method not allowed",
+    });
 
   } catch (err) {
-    console.error("REQ-V2 GROUPS ERROR:", err);
+    console.error("GROUPS API ERROR:", err);
     return res.status(500).json({
       ok: false,
       error: err.message,
