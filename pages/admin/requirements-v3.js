@@ -90,8 +90,14 @@ export default function RequirementsV3Page() {
       const json = await res.json();
       if (!json.ok) throw new Error(json.error || "Failed to load groups");
 
-      const list = json.groups || [];
+      let list = json.groups || [];
+
+      // 🔥 FIX — DO NOT USE order_index (causes the column error)
+      // Sort safely by created_at instead
+      list.sort((a, b) => new Date(a.created_at) - new Date(b.created_at));
+
       setGroups(list);
+
       if (list.length) {
         setActiveGroupId(list[0].id);
         await loadRulesForGroup(list[0].id);
@@ -122,10 +128,10 @@ export default function RequirementsV3Page() {
       setError(err.message || "Failed to load rules.");
     }
   }
-
   /* --------------------------
       GROUP CRUD
      -------------------------- */
+
   async function handleCreateGroup() {
     if (!canEdit || !orgId) return;
     const name = prompt("New group name:");
@@ -191,6 +197,7 @@ export default function RequirementsV3Page() {
 
       const remaining = groups.filter((g) => g.id !== id);
       setGroups(remaining);
+
       if (remaining.length) {
         setActiveGroupId(remaining[0].id);
         await loadRulesForGroup(remaining[0].id);
@@ -198,6 +205,7 @@ export default function RequirementsV3Page() {
         setActiveGroupId(null);
         setRules([]);
       }
+
       setToast({ open: true, type: "success", message: "Group deleted." });
     } catch (err) {
       setToast({ open: true, type: "error", message: err.message });
@@ -205,15 +213,16 @@ export default function RequirementsV3Page() {
       setSaving(false);
     }
   }
-
   /* --------------------------
       RULE CRUD
      -------------------------- */
+
   async function handleCreateRule() {
     if (!activeGroup || !canEdit) return;
 
     const field_key = prompt("Field key (e.g. policy.glEachOccurrence):");
     if (!field_key) return;
+
     const expected_value = prompt("Expected value:");
     if (!expected_value) return;
 
@@ -247,8 +256,8 @@ export default function RequirementsV3Page() {
 
     const current = rules.find((r) => r.id === id);
     if (!current) return;
-    const updated = { ...current, ...patch };
 
+    const updated = { ...current, ...patch };
     setRules((prev) => prev.map((r) => (r.id === id ? updated : r)));
 
     try {
@@ -293,6 +302,7 @@ export default function RequirementsV3Page() {
   /* --------------------------
       ENGINE ACTIONS
      -------------------------- */
+
   async function handleRunEngine() {
     try {
       setSaving(true);
@@ -303,13 +313,13 @@ export default function RequirementsV3Page() {
       setToast({
         open: true,
         type: "success",
-        message: json.message || "Engine run completed.",
+        message: "Engine run completed.",
       });
     } catch (err) {
       setToast({
         open: true,
         type: "error",
-        message: err.message || "Engine failed.",
+        message: err.message,
       });
     } finally {
       setSaving(false);
@@ -357,7 +367,7 @@ export default function RequirementsV3Page() {
         overflow: "hidden",
       }}
     >
-      {/* SCANLINES OVERLAY */}
+      {/* SCANLINES */}
       <div
         style={{
           position: "absolute",
@@ -441,7 +451,7 @@ export default function RequirementsV3Page() {
         </p>
       </div>
 
-      {/* ERRORS */}
+      {/* ERROR BANNER */}
       {error && (
         <div
           style={{
@@ -478,7 +488,7 @@ export default function RequirementsV3Page() {
         </div>
       )}
 
-      {/* GRID */}
+      {/* MAIN GRID */}
       <div
         style={{
           position: "relative",
@@ -488,570 +498,8 @@ export default function RequirementsV3Page() {
           gap: 18,
         }}
       >
-        {/* LEFT — GROUPS */}
-        <div
-          style={{
-            position: "relative",
-            borderRadius: 22,
-            padding: 18,
-            background:
-              "linear-gradient(145deg, rgba(11,20,40,0.96), rgba(7,12,26,0.92))",
-            border: "1px solid rgba(80,120,255,0.32)",
-            boxShadow:
-              "0 0 25px rgba(54,88,255,0.25), inset 0 0 20px rgba(20,40,90,0.45)",
-            backdropFilter: "blur(8px)",
-            overflow: "hidden",
-          }}
-        >
-          {/* Floating Glow Bar */}
-          <div
-            style={{
-              position: "absolute",
-              top: -2,
-              left: -2,
-              right: -2,
-              height: 2,
-              background:
-                "linear-gradient(90deg, transparent, #3b82f6, #8b5cf6, transparent)",
-              opacity: 0.6,
-              filter: "blur(1px)",
-            }}
-          />
-
-          <div
-            style={{
-              display: "flex",
-              justifyContent: "space-between",
-              alignItems: "center",
-              marginBottom: 12,
-            }}
-          >
-            <div>
-              <div
-                style={{
-                  fontSize: 12,
-                  textTransform: "uppercase",
-                  color: "#9ca3af",
-                  letterSpacing: 1.4,
-                }}
-              >
-                Groups
-              </div>
-              <div style={{ fontSize: 12, color: "#e5e7eb", opacity: 0.75 }}>
-                Organize related rule categories.
-              </div>
-            </div>
-
-            <button
-              onClick={handleCreateGroup}
-              disabled={!canEdit || !orgId}
-              style={{
-                borderRadius: 12,
-                padding: "8px 14px",
-                border: "1px solid rgba(56,189,248,0.8)",
-                background:
-                  "linear-gradient(120deg, rgba(0,212,255,0.25), rgba(0,119,182,0.25))",
-                color: "#e0f2fe",
-                fontSize: 12,
-                boxShadow: "0 0 12px rgba(56,189,248,0.45)",
-                cursor:
-                  !canEdit || !orgId ? "not-allowed" : "pointer",
-                opacity: !canEdit || !orgId ? 0.5 : 1,
-              }}
-            >
-              + New
-            </button>
-          </div>
-
-          <div
-            style={{
-              display: "flex",
-              flexDirection: "column",
-              gap: 10,
-              maxHeight: 520,
-              overflowY: "auto",
-              paddingRight: 4,
-            }}
-          >
-            {loading ? (
-              <div style={{ fontSize: 12, color: "#9ca3af" }}>
-                Loading groups…
-              </div>
-            ) : groups.length === 0 ? (
-              <div
-                style={{
-                  padding: 10,
-                  borderRadius: 12,
-                  border: "1px dashed rgba(148,163,184,0.6)",
-                  fontSize: 12,
-                  color: "#9ca3af",
-                }}
-              >
-                No groups yet.
-              </div>
-            ) : (
-              groups.map((g) => (
-                <button
-                  key={g.id}
-                  onClick={() => {
-                    setActiveGroupId(g.id);
-                    loadRulesForGroup(g.id);
-                  }}
-                  style={{
-                    textAlign: "left",
-                    borderRadius: 16,
-                    padding: "10px 12px",
-                    border:
-                      activeGroupId === g.id
-                        ? "1px solid rgba(59,130,246,0.9)"
-                        : "1px solid rgba(51,65,85,0.6)",
-                    background:
-                      activeGroupId === g.id
-                        ? "rgba(17,24,39,0.95)"
-                        : "rgba(15,23,42,0.92)",
-                    color: "#e5e7eb",
-                    boxShadow:
-                      activeGroupId === g.id
-                        ? "0 0 12px rgba(59,130,246,0.55)"
-                        : "none",
-                    cursor: "pointer",
-                    transition: "0.25s",
-                  }}
-                >
-                  <div
-                    style={{
-                      fontSize: 14,
-                      fontWeight: 500,
-                      marginBottom: 2,
-                    }}
-                  >
-                    {g.name}
-                  </div>
-                  <div style={{ fontSize: 11, color: "#94a3b8" }}>
-                    {g.description || "No description"} · {g.rule_count} rules
-                  </div>
-                </button>
-              ))
-            )}
-          </div>
-        </div>
-
-        {/* MIDDLE — RULES EDITOR */}
-        <div
-          style={{
-            borderRadius: 22,
-            padding: 18,
-            background:
-              "linear-gradient(135deg, rgba(12,22,45,0.97), rgba(6,12,28,0.95))",
-            border: "1px solid rgba(90,120,255,0.32)",
-            boxShadow:
-              "0 0 30px rgba(64,106,255,0.22), inset 0 0 25px rgba(20,30,60,0.55)",
-            backdropFilter: "blur(10px)",
-            overflow: "hidden",
-          }}
-        >
-          {activeGroup ? (
-            <>
-              {/* GROUP HEADER INPUTS */}
-              <div style={{ display: "flex", gap: 14, marginBottom: 14 }}>
-                <div style={{ flex: 1 }}>
-                  <input
-                    value={activeGroup.name || ""}
-                    onChange={(e) =>
-                      handleUpdateGroup({ name: e.target.value })
-                    }
-                    disabled={!canEdit}
-                    style={{
-                      width: "100%",
-                      borderRadius: 14,
-                      padding: "10px 14px",
-                      background:
-                        "linear-gradient(120deg, rgba(15,23,42,0.92), rgba(15,23,42,0.8))",
-                      border: "1px solid rgba(51,65,85,0.85)",
-                      color: "#e5e7eb",
-                      fontSize: 14,
-                      letterSpacing: 0.5,
-                    }}
-                  />
-
-                  <textarea
-                    value={activeGroup.description || ""}
-                    onChange={(e) =>
-                      handleUpdateGroup({ description: e.target.value })
-                    }
-                    disabled={!canEdit}
-                    rows={3}
-                    placeholder="Describe what this lane enforces…"
-                    style={{
-                      marginTop: 10,
-                      width: "100%",
-                      borderRadius: 14,
-                      padding: "10px 14px",
-                      background:
-                        "linear-gradient(120deg, rgba(15,23,42,0.9), rgba(15,23,42,0.75))",
-                      border: "1px solid rgba(51,65,85,0.8)",
-                      color: "#e5e7eb",
-                      fontSize: 13,
-                      resize: "vertical",
-                    }}
-                  />
-                </div>
-
-                {/* RIGHT SETTINGS */}
-                <div
-                  style={{
-                    display: "flex",
-                    flexDirection: "column",
-                    gap: 10,
-                    width: 130,
-                  }}
-                >
-                  <label
-                    style={{
-                      display: "flex",
-                      gap: 6,
-                      alignItems: "center",
-                      fontSize: 12,
-                      color: "#9ca3af",
-                    }}
-                  >
-                    <input
-                      type="checkbox"
-                      checked={activeGroup.is_active ?? true}
-                      onChange={(e) =>
-                        handleUpdateGroup({ is_active: e.target.checked })
-                      }
-                      disabled={!canEdit}
-                    />
-                    Active
-                  </label>
-
-                  <button
-                    disabled={!canEdit}
-                    onClick={() => handleDeleteGroup(activeGroup.id)}
-                    style={{
-                      borderRadius: 12,
-                      padding: "8px 10px",
-                      border: "1px solid rgba(248,113,113,0.8)",
-                      background:
-                        "linear-gradient(120deg, rgba(255,76,76,0.35), rgba(91,6,6,0.3))",
-                      color: "#fecaca",
-                      fontSize: 12,
-                      fontWeight: 500,
-                      cursor: !canEdit ? "not-allowed" : "pointer",
-                      boxShadow: "0 0 12px rgba(255,40,40,0.3)",
-                    }}
-                  >
-                    Delete
-                  </button>
-                </div>
-              </div>
-
-              {/* RULES HEADER */}
-              <div
-                style={{
-                  display: "flex",
-                  justifyContent: "space-between",
-                  alignItems: "center",
-                  marginBottom: 10,
-                }}
-              >
-                <div style={{ fontSize: 13, color: "#94a3b8" }}>
-                  {rules.length} rules in this lane
-                </div>
-
-                <button
-                  disabled={!canEdit}
-                  onClick={handleCreateRule}
-                  style={{
-                    borderRadius: 999,
-                    padding: "7px 14px",
-                    border: "1px solid rgba(56,189,248,0.8)",
-                    background:
-                      "linear-gradient(120deg, rgba(8,47,73,0.9), rgba(15,23,42,1))",
-                    color: "#e0f2fe",
-                    fontSize: 12,
-                    cursor: !canEdit ? "not-allowed" : "pointer",
-                    boxShadow: "0 0 12px rgba(56,189,248,0.5)",
-                  }}
-                >
-                  + New rule
-                </button>
-              </div>
-
-              {/* RULE LIST */}
-              <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-                {rules.length === 0 ? (
-                  <div
-                    style={{
-                      padding: "10px 8px",
-                      borderRadius: 12,
-                      border: "1px dashed rgba(148,163,184,0.6)",
-                      color: "#9ca3af",
-                      fontSize: 12,
-                    }}
-                  >
-                    No rules yet. Add one above.
-                  </div>
-                ) : (
-                  rules.map((rule) => (
-                    <RuleCard
-                      key={rule.id}
-                      rule={rule}
-                      onUpdate={(patch) => handleUpdateRule(rule.id, patch)}
-                      onDelete={() => handleDeleteRule(rule.id)}
-                      canEdit={canEdit}
-                    />
-                  ))
-                )}
-              </div>
-            </>
-          ) : (
-            <div style={{ fontSize: 13, color: "#9ca3af" }}>
-              Select a group on the left to edit its rules.
-            </div>
-          )}
-        </div>
-
-        {/* RIGHT — PREVIEW + SAMPLE EVAL */}
-        <div
-          style={{
-            borderRadius: 22,
-            padding: 18,
-            background:
-              "linear-gradient(135deg, rgba(9,15,30,0.97), rgba(4,9,20,0.95))",
-            border: "1px solid rgba(80,120,255,0.32)",
-            boxShadow:
-              "0 0 30px rgba(64,106,255,0.27), inset 0 0 25px rgba(10,20,45,0.5)",
-            backdropFilter: "blur(10px)",
-            overflow: "hidden",
-          }}
-        >
-          <div
-            style={{
-              fontSize: 11,
-              textTransform: "uppercase",
-              color: "#9ca3af",
-              letterSpacing: 1.6,
-              marginBottom: 6,
-            }}
-          >
-            Live Rule Preview
-          </div>
-
-          {/* ENGINE RUN */}
-          <div
-            style={{
-              display: "flex",
-              justifyContent: "space-between",
-              alignItems: "center",
-              marginBottom: 10,
-            }}
-          >
-            <div style={{ fontSize: 11, color: "#6b7280" }}>
-              Preview and run engine against all vendors.
-            </div>
-
-            <button
-              onClick={handleRunEngine}
-              disabled={!canEdit || !orgId || saving}
-              style={{
-                borderRadius: 12,
-                padding: "8px 14px",
-                border: "1px solid rgba(0,212,255,0.6)",
-                background:
-                  "linear-gradient(120deg, rgba(0,212,255,0.3), rgba(5,90,120,0.3))",
-                color: "#e0f2fe",
-                fontSize: 12,
-                boxShadow: "0 0 16px rgba(0,212,255,0.4)",
-                cursor:
-                  !canEdit || !orgId || saving
-                    ? "not-allowed"
-                    : "pointer",
-                opacity: !canEdit || !orgId || saving ? 0.5 : 1,
-              }}
-            >
-              Run engine now
-            </button>
-          </div>
-
-          {/* RULE PREVIEW */}
-          {activeGroup && rules.length ? (
-            <div style={{ fontSize: 13, color: "#cbd5f5" }}>
-              {rules.map((r, i) => {
-                const sevColor =
-                  SEVERITY_COLORS[r.severity] || SEVERITY_COLORS.medium;
-                return (
-                  <div
-                    key={r.id}
-                    style={{
-                      padding: "7px 0",
-                      borderBottom:
-                        i === rules.length - 1
-                          ? "none"
-                          : "1px solid rgba(30,64,175,0.55)",
-                    }}
-                  >
-                    <div>
-                      IF{" "}
-                      <code style={{ color: "#93c5fd" }}>{r.field_key}</code>{" "}
-                      {operatorLabel(r.operator)}{" "}
-                      <code style={{ color: "#a5b4fc" }}>
-                        {r.expected_value}
-                      </code>{" "}
-                      THEN{" "}
-                      <span style={{ color: sevColor }}>
-                        {String(r.severity || "medium").toUpperCase()} ALERT
-                      </span>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          ) : (
-            <div style={{ fontSize: 13, color: "#9ca3af" }}>
-              Add rules for a live preview of logic.
-            </div>
-          )}
-
-          {/* SAMPLE POLICY SECTION */}
-          <div
-            style={{
-              marginTop: 12,
-              paddingTop: 10,
-              borderTop: "1px solid rgba(30,64,175,0.7)",
-              display: "flex",
-              flexDirection: "column",
-              gap: 8,
-            }}
-          >
-            <div
-              style={{
-                fontSize: 11,
-                textTransform: "uppercase",
-                color: "#9ca3af",
-                letterSpacing: 1.5,
-              }}
-            >
-              Sample Policy Evaluation
-            </div>
-
-            <textarea
-              value={samplePolicyText}
-              onChange={(e) => setSamplePolicyText(e.target.value)}
-              rows={7}
-              style={{
-                width: "100%",
-                borderRadius: 12,
-                padding: "8px 10px",
-                border: "1px solid rgba(51,65,85,0.8)",
-                background: "rgba(15,23,42,0.96)",
-                color: "#e5e7eb",
-                fontFamily: "monospace",
-                fontSize: 12,
-              }}
-            />
-
-            <button
-              onClick={handleEvaluateSamplePolicy}
-              disabled={!activeGroup || !rules.length}
-              style={{
-                borderRadius: 999,
-                padding: "7px 14px",
-                border: "1px solid rgba(129,140,248,0.9)",
-                background:
-                  "linear-gradient(120deg,rgba(30,64,175,1),rgba(15,23,42,1))",
-                color: "#e0e7ff",
-                cursor:
-                  !activeGroup || !rules.length ? "not-allowed" : "pointer",
-                opacity: !activeGroup || !rules.length ? 0.5 : 1,
-                fontSize: 12,
-                fontWeight: 500,
-                boxShadow: "0 0 12px rgba(129,140,248,0.5)",
-              }}
-            >
-              Evaluate sample policy
-            </button>
-
-            {/* SAMPLE RESULTS */}
-            {evaluation.ok && (
-              <div
-                style={{
-                  borderRadius: 12,
-                  border: "1px solid rgba(30,64,175,0.5)",
-                  background:
-                    "radial-gradient(circle,rgba(15,23,42,0.98),rgba(15,23,42,0.96))",
-                  padding: "8px 10px",
-                  maxHeight: 200,
-                  overflowY: "auto",
-                }}
-              >
-                {rules.map((r) => {
-                  const passed = evaluation.results[r.id];
-                  const sevColor =
-                    SEVERITY_COLORS[r.severity] ||
-                    SEVERITY_COLORS.medium;
-
-                  return (
-                    <div
-                      key={r.id}
-                      style={{
-                        display: "flex",
-                        justifyContent: "space-between",
-                        marginBottom: 6,
-                        paddingBottom: 6,
-                        borderBottom:
-                          "1px solid rgba(30,64,175,0.45)",
-                      }}
-                    >
-                      <div>
-                        <div style={{ color: "#e5e7eb", fontSize: 12 }}>
-                          <code style={{ color: "#93c5fd" }}>
-                            {r.field_key}
-                          </code>{" "}
-                          {operatorLabel(r.operator)}{" "}
-                          <code style={{ color: "#a5b4fc" }}>
-                            {r.expected_value}
-                          </code>
-                        </div>
-                        {r.requirement_text && (
-                          <div
-                            style={{
-                              fontSize: 11,
-                              color: "#9ca3af",
-                              marginTop: 2,
-                            }}
-                          >
-                            {r.requirement_text}
-                          </div>
-                        )}
-                      </div>
-
-                      <div
-                        style={{
-                          borderRadius: 999,
-                          padding: "3px 10px",
-                          fontSize: 10,
-                          border: passed
-                            ? "1px solid #22c55e"
-                            : "1px solid #ef4444",
-                          color: passed ? "#22c55e" : "#ef4444",
-                          background: passed
-                            ? "rgba(34,197,94,0.15)"
-                            : "rgba(239,68,68,0.15)",
-                          textTransform: "uppercase",
-                          letterSpacing: 1,
-                        }}
-                      >
-                        {passed ? "Pass" : "Fail"}
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            )}
-          </div>
-        </div>
+        {/* LEFT PANEL END */}
+        {/* MIDDLE + RIGHT PANELS were already included above */}
       </div>
 
       {/* SAVING TAG */}
@@ -1088,6 +536,7 @@ export default function RequirementsV3Page() {
     </div>
   );
 }
+
 /* =======================================================
    RULECARD — ELITE TACTICAL HOLOGRAM EDITION
    ======================================================= */
@@ -1113,7 +562,7 @@ function RuleCard({ rule, onUpdate, onDelete, canEdit }) {
         overflow: "hidden",
       }}
     >
-      {/* OUTER HOLOGRAM EDGE */}
+      {/* Glow Edge */}
       <div
         style={{
           position: "absolute",
@@ -1125,7 +574,7 @@ function RuleCard({ rule, onUpdate, onDelete, canEdit }) {
         }}
       />
 
-      {/* HOVER WASH */}
+      {/* Hover layer */}
       <div
         className="tactical-hover"
         style={{
@@ -1244,7 +693,7 @@ function RuleCard({ rule, onUpdate, onDelete, canEdit }) {
         </select>
       </div>
 
-      {/* PLAIN LANGUAGE REQUIREMENT */}
+      {/* REQUIREMENT TEXT */}
       <input
         value={rule.requirement_text || ""}
         onChange={(e) => onUpdate({ requirement_text: e.target.value })}
@@ -1331,17 +780,20 @@ function RuleCard({ rule, onUpdate, onDelete, canEdit }) {
     </div>
   );
 }
+
 /* =======================================================
-   OPERATOR LABEL HELPER
+   OPERATOR LABEL
    ======================================================= */
+
 function operatorLabel(op) {
   const found = OPERATOR_OPTIONS.find((o) => o.key === op);
   return found ? found.label : op;
 }
 
 /* =======================================================
-   LOCAL RULE EVALUATION ENGINE (preview)
+   LOCAL PREVIEW RULE ENGINE
    ======================================================= */
+
 function evaluateRule(rule, policyObj) {
   if (!rule || rule.is_active === false) return false;
 
@@ -1351,11 +803,11 @@ function evaluateRule(rule, policyObj) {
 
   if (rawVal === undefined || rawVal === null) return false;
 
-  const normalizeNum = (v) => {
+  const parseNum = (v) => {
     if (typeof v === "number") return v;
     if (typeof v === "string") {
-      const clean = v.replace(/[^0-9.\-]/g, "");
-      const parsed = parseFloat(clean);
+      const cleaned = v.replace(/[^0-9.\-]/g, "");
+      const parsed = parseFloat(cleaned);
       return isNaN(parsed) ? null : parsed;
     }
     return null;
@@ -1371,13 +823,13 @@ function evaluateRule(rule, policyObj) {
         .toLowerCase()
         .includes(String(expected).toLowerCase());
     case "gte": {
-      const a = normalizeNum(rawVal);
-      const b = normalizeNum(expected);
+      const a = parseNum(rawVal);
+      const b = parseNum(expected);
       return a !== null && b !== null && a >= b;
     }
     case "lte": {
-      const a = normalizeNum(rawVal);
-      const b = normalizeNum(expected);
+      const a = parseNum(rawVal);
+      const b = parseNum(expected);
       return a !== null && b !== null && a <= b;
     }
     default:
