@@ -18,6 +18,9 @@ export default async function handler(req, res) {
   const form = formidable({ multiples: false });
 
   try {
+    // -----------------------------------------
+    // 1) Parse form-data (vendorId + orgId + file)
+    // -----------------------------------------
     const { fields, files } = await new Promise((resolve, reject) => {
       form.parse(req, (err, flds, fls) => {
         if (err) reject(err);
@@ -25,7 +28,7 @@ export default async function handler(req, res) {
       });
     });
 
-    // Expect vendorId + orgId in the form
+    // vendor + org
     const vendorId = Number(fields.vendorId?.[0] || fields.vendorId);
     const orgId = Number(fields.orgId?.[0] || fields.orgId);
 
@@ -33,22 +36,46 @@ export default async function handler(req, res) {
       return res.status(400).json({ ok: false, error: "Missing vendorId" });
     }
 
+    // File required
     const file = files.file?.[0] || files.file;
     if (!file) {
       return res.status(400).json({ ok: false, error: "No file uploaded" });
     }
 
-    // Read PDF buffer
+    // -----------------------------------------
+    // 2) Read PDF + extract text
+    // -----------------------------------------
     const buffer = fs.readFileSync(file.filepath);
     const pdfData = await pdfParse(buffer);
-
-    // 🧠 Simple text extraction stub
     const text = pdfData.text || "";
 
-    // TODO: improve these with better parsing / regex / model
+    // -----------------------------------------
+    // 3) Simple regex-based extraction
+    //    (we will replace later with AI-powered extraction)
+    // -----------------------------------------
     const extracted = extractFieldsFromCOI(text);
 
-    // 🔌 Connect to Neon
+    // -----------------------------------------
+    // 4) Build JSON for Rule Engine V3.5
+    // -----------------------------------------
+    const policyObject = {
+      "policy.coverage_type": extracted.coverage_type || null,
+      "policy.effective_date": extracted.effective_date || null,
+      "policy.expiration_date": extracted.expiration_date || null,
+      "policy.carrier": extracted.carrier || null,
+
+      // TODO: add real limit extraction later
+      "policy.glEachOccurrence": null,
+      "policy.glAggregate": null,
+
+      // TODO: add endorsement parsing later
+      "endorsement.form_number": null,
+      "endorsement.aiText": null,
+    };
+
+    // -----------------------------------------
+    // 5) DB connection (Neon/PG)
+    // -----------------------------------------
     const connectionString =
       process.env.POSTGRES_URL_NON_POOLING ||
       process.env.POSTGRES_PRISMA_URL ||
@@ -59,10 +86,11 @@ export default async function handler(req, res) {
       connectionString,
       ssl: { rejectUnauthorized: false },
     });
-
     await client.connect();
 
-    // Insert or update policy for this vendor & coverage type
+    // -----------------------------------------
+    // 6) Save policy + extracted JSON
+    // -----------------------------------------
     const policyInsert = await client.query(
       `
       INSERT INTO policies (
@@ -74,9 +102,12 @@ export default async function handler(req, res) {
         policy_number,
         carrier,
         effective_date,
-        expiration_date
+        expiration_date,
+        extracted
       )
-      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)
+      VALUES (
+        $1,$2,$3,$4,$5,$6,$7,$8,$9,$10::jsonb
+      )
       RETURNING *;
       `,
       [
@@ -89,18 +120,23 @@ export default async function handler(req, res) {
         extracted.carrier,
         extracted.effective_date,
         extracted.expiration_date,
+        JSON.stringify(policyObject),
       ]
     );
 
     const policy = policyInsert.rows[0];
 
-    // ✅ Run requirements engine for this vendor
+    // -----------------------------------------
+    // 7) TEMPORARY: invoke legacy engine until V3.5 engine lands
+    // -----------------------------------------
     const checkRes = await fetch(
       `${process.env.NEXT_PUBLIC_BASE_URL || ""}/api/requirements/check?vendorId=${vendorId}&orgId=${orgId || ""}`
     );
     const check = await checkRes.json();
 
-    // 🔐 Write to vendor_compliance_cache + alerts + risk_history
+    // -----------------------------------------
+    // 8) Write compliance snapshot + alerts
+    // -----------------------------------------
     await upsertComplianceCacheAndAlerts(client, {
       vendorId,
       orgId,
@@ -113,6 +149,7 @@ export default async function handler(req, res) {
       ok: true,
       policy,
       evaluation: check,
+      extracted: policyObject, // return normalized JSON
     });
   } catch (err) {
     console.error("COI upload error:", err);
@@ -120,12 +157,10 @@ export default async function handler(req, res) {
   }
 }
 
-/**
- * SUPER SIMPLE extraction stub from COI text.
- * Replace / extend with better regex or an AI-powered parser later.
- */
+/* ------------------------------------------------------------------
+   BASIC EXTRACTION STUB
+------------------------------------------------------------------*/
 function extractFieldsFromCOI(text) {
-  // naive defaults
   let coverage_type = "General Liability";
   let vendor_name = "";
   let policy_number = "";
@@ -133,7 +168,6 @@ function extractFieldsFromCOI(text) {
   let effective_date = "";
   let expiration_date = "";
 
-  // VERY rough regexes — you will tune these with your real COI PDFs
   const vendorMatch = text.match(/INSURED\s+([\s\S]*?)\n/);
   if (vendorMatch) vendor_name = vendorMatch[1].trim();
 
@@ -161,13 +195,12 @@ function extractFieldsFromCOI(text) {
   };
 }
 
-/**
- * Write the evaluation into vendor_compliance_cache, alerts, risk_history.
- */
+/* ------------------------------------------------------------------
+   COMPLIANCE CACHE + ALERTS (legacy)
+------------------------------------------------------------------*/
 async function upsertComplianceCacheAndAlerts(client, { vendorId, orgId, evaluation }) {
   const now = new Date().toISOString();
 
-  // 1) Upsert vendor_compliance_cache
   await client.query(
     `
     INSERT INTO vendor_compliance_cache (
@@ -201,7 +234,7 @@ async function upsertComplianceCacheAndAlerts(client, { vendorId, orgId, evaluat
     ]
   );
 
-  // 2) Alerts for failing requirements
+  // failing alerts
   if (evaluation.failing && evaluation.failing.length > 0) {
     for (const fail of evaluation.failing) {
       await client.query(
@@ -210,21 +243,20 @@ async function upsertComplianceCacheAndAlerts(client, { vendorId, orgId, evaluat
           id, created_at, is_read, org_id, vendor_id, type, message
         )
         VALUES (
-          gen_random_uuid(), $1, FALSE, $2, $3, $4, $5
+          gen_random_uuid(), $1, FALSE, $2, $3, 'requirement_failure', $4
         );
         `,
         [
           now,
           orgId || null,
           vendorId,
-          "requirement_failure",
           fail.detail || fail.requirement_text || "Requirement failed",
         ]
       );
     }
   }
 
-  // 3) Risk history snapshot
+  // risk history
   let riskScore = 100;
   riskScore -= (evaluation.failing?.length || 0) * 20;
   riskScore -= (evaluation.missing?.length || 0) * 10;
