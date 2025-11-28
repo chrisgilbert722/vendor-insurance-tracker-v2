@@ -358,7 +358,6 @@ function handleMoveRule(dragIndex, hoverIndex, laneKey) {
     const [removed] = updated.splice(dragIndex, 1);
     updated.splice(hoverIndex, 0, removed);
 
-    // now rebuild the full rule list with updated order for that lane
     const other = prev.filter((r) => r.severity !== laneKey);
 
     return [...other, ...updated];
@@ -372,7 +371,6 @@ async function handleRunEngine() {
   try {
     setRunningEngine(true);
 
-    // Pre-log entry
     setEngineLog((prev) => [
       {
         at: new Date().toISOString(),
@@ -397,7 +395,6 @@ async function handleRunEngine() {
 
     setLastRunAt(new Date().toISOString());
 
-    // success log
     setEngineLog((prev) => [
       {
         at: new Date().toISOString(),
@@ -491,7 +488,7 @@ return (
       }}
     />
 
-    {/* MAIN CONTENT */}
+    {/* MAIN CONTENT WRAPPER */}
     <div style={{ position: "relative", zIndex: 1 }}>
       {/* HEADER */}
       <div style={{ marginBottom: 18 }}>
@@ -579,23 +576,6 @@ return (
           </span>
         </div>
       </div>
-
-      {/* ERRORS */}
-      {error && (
-        <div
-          style={{
-            marginBottom: 14,
-            padding: "8px 10px",
-            borderRadius: 10,
-            background: "rgba(127,29,29,0.95)",
-            border: "1px solid rgba(248,113,113,0.9)",
-            color: "#fecaca",
-            fontSize: 13,
-          }}
-        >
-          {error}
-        </div>
-      )}
 
       {/* GRID WRAPPER */}
       <div
@@ -789,6 +769,11 @@ return (
             })}
           </div>
         </DndProvider>
+
+        {/* MISSING WRAPPER CLOSURES — FIXED */}
+        </div> {/* CLOSE GRID WRAPPER */}
+      </div> {/* CLOSE MAIN CONTENT */}
+    </div> {/* CLOSE OUTER PAGE WRAPPER */}
         {/* RIGHT PANEL — ENGINE + SAMPLE EVAL */}
         <div
           style={{
