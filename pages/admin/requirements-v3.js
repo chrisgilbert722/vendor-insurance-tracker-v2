@@ -4,10 +4,14 @@
 // SECTION A — IMPORTS + STATE
 // ----------------------------
 
-import { useEffect, useState, useMemo } from "react";
+import { useEffect, useState, useMemo, useRef } from "react";
 import { useRole } from "../../lib/useRole";
 import { useOrg } from "../../context/OrgContext";
 import ToastV2 from "../../components/ToastV2";
+
+// Drag & Drop for Rule Reordering (FULL MERGE UPGRADE)
+import { DndProvider, useDrag, useDrop } from "react-dnd";
+import { HTML5Backend } from "react-dnd-html5-backend";
 
 const FIELD_OPTIONS = [
   { key: "policy.coverage_type", label: "Coverage Type" },
@@ -32,6 +36,9 @@ const SEVERITY_COLORS = {
   low: "#22c55e",
 };
 
+// Drag type for react-dnd
+const ITEM_TYPE = "REQUIREMENT_RULE";
+
 export default function RequirementsV3Page() {
   const { isAdmin, isManager } = useRole();
   const { activeOrgId: orgId, loadingOrgs } = useOrg();
@@ -52,7 +59,7 @@ export default function RequirementsV3Page() {
   });
 
   const [samplePolicyText, setSamplePolicyText] = useState(
-`{
+    `{
   "policy.coverage_type": "General Liability",
   "policy.glEachOccurrence": 1000000,
   "policy.glAggregate": 2000000,
@@ -66,6 +73,11 @@ export default function RequirementsV3Page() {
     error: "",
     results: {},
   });
+
+  // NEW: Engine run state + activity log (Full Merge)
+  const [runningEngine, setRunningEngine] = useState(false);
+  const [engineLog, setEngineLog] = useState([]);
+  const [lastRunAt, setLastRunAt] = useState(null);
 
   const activeGroup = useMemo(
     () => groups.find((g) => g.id === activeGroupId) || null,
@@ -385,12 +397,36 @@ export default function RequirementsV3Page() {
   }
 
   // --------------------------
+  // DRAG & DROP: LOCAL ORDER
+  // --------------------------
+
+  function handleMoveRule(dragIndex, hoverIndex) {
+    setRules((prev) => {
+      const updated = [...prev];
+      const [removed] = updated.splice(dragIndex, 1);
+      updated.splice(hoverIndex, 0, removed);
+      return updated;
+    });
+  }
+
+  // --------------------------
   // ENGINE + SAMPLE EVAL
   // --------------------------
 
   async function handleRunEngine() {
     try {
-      setSaving(true);
+      setRunningEngine(true);
+
+      // Pre-log
+      setEngineLog((prev) => [
+        {
+          at: new Date().toISOString(),
+          level: "info",
+          message: "Dispatching Rule Engine V3 run…",
+        },
+        ...prev,
+      ]);
+
       const res = await fetch("/api/engine/run-v3", { method: "POST" });
 
       let json;
@@ -410,15 +446,36 @@ export default function RequirementsV3Page() {
           json.alerts_created || 0
         } alerts.`;
 
+      setLastRunAt(new Date().toISOString());
+
+      // Success log
+      setEngineLog((prev) => [
+        {
+          at: new Date().toISOString(),
+          level: "success",
+          message: msg,
+        },
+        ...prev,
+      ]);
+
       setToast({ open: true, type: "success", message: msg });
     } catch (err) {
+      const msg = err.message || "Engine failed.";
+      setEngineLog((prev) => [
+        {
+          at: new Date().toISOString(),
+          level: "error",
+          message: msg,
+        },
+        ...prev,
+      ]);
       setToast({
         open: true,
         type: "error",
-        message: err.message || "Engine failed.",
+        message: msg,
       });
     } finally {
-      setSaving(false);
+      setRunningEngine(false);
     }
   }
 
@@ -444,6 +501,7 @@ export default function RequirementsV3Page() {
     setEvaluation({ ok: true, error: "", results });
     setToast({ open: true, type: "success", message: "Sample evaluated." });
   }
+
   // -----------------------------------
   // RENDER — COCKPIT LAYOUT
   // -----------------------------------
@@ -551,9 +609,9 @@ export default function RequirementsV3Page() {
               color: "#cbd5f5",
             }}
           >
-            Every rule here is evaluated against vendor policies and updates
-            the Alerts Cockpit in real time. This is your AI coverage engine
-            for limits, endorsements, and policy health.
+            Every rule here is evaluated against vendor policies and updates the
+            Alerts Cockpit in real time. This is your AI coverage engine for
+            limits, endorsements, and policy health.
           </p>
 
           <div
@@ -563,9 +621,9 @@ export default function RequirementsV3Page() {
               color: "#9ca3af",
             }}
           >
-            Org: <span style={{ color: "#e5e7eb" }}>{orgId || "none"}</span>{" "}
-            · Groups: <span style={{ color: "#e5e7eb" }}>{groups.length}</span>{" "}
-            · Active:{" "}
+            Org: <span style={{ color: "#e5e7eb" }}>{orgId || "none"}</span> ·
+            Groups: <span style={{ color: "#e5e7eb" }}>{groups.length}</span> ·
+            Active:{" "}
             <span style={{ color: "#e5e7eb" }}>
               {activeGroup ? activeGroup.name : "none"}
             </span>
@@ -655,24 +713,24 @@ export default function RequirementsV3Page() {
                 </div>
               </div>
 
-            <button
-              onClick={handleCreateGroup}
-              disabled={!canEdit || !orgId}
-              style={{
-                padding: "8px 14px",
-                borderRadius: 999,
-                border: "1px solid rgba(56,189,248,0.8)",
-                background:
-                  "radial-gradient(circle at top,#38bdf8,#0ea5e9,#0f172a)",
-                color: "white",
-                fontSize: 12,
-                fontWeight: 500,
-                cursor: !canEdit || !orgId ? "not-allowed" : "pointer",
-                opacity: !canEdit || !orgId ? 0.6 : 1,
-              }}
-            >
-              + New Group
-            </button>
+              <button
+                onClick={handleCreateGroup}
+                disabled={!canEdit || !orgId}
+                style={{
+                  padding: "8px 14px",
+                  borderRadius: 999,
+                  border: "1px solid rgba(56,189,248,0.8)",
+                  background:
+                    "radial-gradient(circle at top,#38bdf8,#0ea5e9,#0f172a)",
+                  color: "white",
+                  fontSize: 12,
+                  fontWeight: 500,
+                  cursor: !canEdit || !orgId ? "not-allowed" : "pointer",
+                  opacity: !canEdit || !orgId ? 0.6 : 1,
+                }}
+              >
+                + New Group
+              </button>
             </div>
 
             {/* GROUP LIST */}
@@ -752,7 +810,7 @@ export default function RequirementsV3Page() {
             </div>
           </div>
 
-          {/* MIDDLE PANEL — RULES */}
+          {/* MIDDLE PANEL — RULES (with Drag & Drop) */}
           <div
             style={{
               borderRadius: 22,
@@ -825,7 +883,7 @@ export default function RequirementsV3Page() {
                   {/* RIGHT CONTROLS */}
                   <div
                     style={{
-                      width: 140,
+                      width: 160,
                       display: "flex",
                       flexDirection: "column",
                       gap: 8,
@@ -889,7 +947,7 @@ export default function RequirementsV3Page() {
                   </div>
                 </div>
 
-                {/* RULE LIST */}
+                {/* RULE LIST WITH DnD */}
                 <div
                   style={{
                     flex: 1,
@@ -914,24 +972,26 @@ export default function RequirementsV3Page() {
                       start defining coverage logic.
                     </div>
                   ) : (
-                    rules.map((rule) => (
-                      <RuleCard
-                        key={rule.id}
-                        rule={rule}
-                        canEdit={canEdit}
-                        onUpdate={(patch) =>
-                          handleUpdateRule(rule.id, patch)
-                        }
-                        onDelete={() => handleDeleteRule(rule.id)}
-                      />
-                    ))
+                    <DndProvider backend={HTML5Backend}>
+                      {rules.map((rule, index) => (
+                        <RuleRow
+                          key={rule.id}
+                          index={index}
+                          rule={rule}
+                          moveRule={handleMoveRule}
+                          canEdit={canEdit}
+                          onUpdate={(patch) => handleUpdateRule(rule.id, patch)}
+                          onDelete={() => handleDeleteRule(rule.id)}
+                        />
+                      ))}
+                    </DndProvider>
                   )}
                 </div>
               </>
             )}
           </div>
 
-          {/* RIGHT PANEL — PREVIEW + SAMPLE EVAL */}
+          {/* RIGHT PANEL — ENGINE + SAMPLE EVAL */}
           <div
             style={{
               borderRadius: 22,
@@ -946,7 +1006,7 @@ export default function RequirementsV3Page() {
               gap: 18,
             }}
           >
-            {/* LIVE RULE PREVIEW */}
+            {/* LIVE RULE PREVIEW + ENGINE CONTROL */}
             <div>
               <div
                 style={{
@@ -963,7 +1023,7 @@ export default function RequirementsV3Page() {
                 style={{
                   fontSize: 13,
                   color: "#cbd5f5",
-                  marginBottom: 10,
+                  marginBottom: 8,
                 }}
               >
                 Run the engine across all vendors using the current rule
@@ -972,23 +1032,64 @@ export default function RequirementsV3Page() {
 
               <button
                 onClick={handleRunEngine}
-                disabled={saving}
+                disabled={runningEngine}
                 style={{
                   padding: "9px 14px",
                   borderRadius: 12,
                   border: "1px solid #10b981",
-                  background: saving
+                  background: runningEngine
                     ? "rgba(16,185,129,0.25)"
                     : "linear-gradient(90deg,#10b981,#059669)",
                   color: "white",
                   fontWeight: 500,
                   fontSize: 13,
-                  cursor: saving ? "not-allowed" : "pointer",
-                  marginBottom: 10,
+                  cursor: runningEngine ? "not-allowed" : "pointer",
+                  marginBottom: 6,
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: 8,
                 }}
               >
-                {saving ? "Running engine…" : "Run engine now"}
+                {runningEngine ? (
+                  <>
+                    <span
+                      style={{
+                        width: 12,
+                        height: 12,
+                        borderRadius: "999px",
+                        border: "2px solid rgba(187,247,208,0.9)",
+                        borderTopColor: "transparent",
+                        animation: "spin 0.9s linear infinite",
+                      }}
+                    />
+                    Running engine…
+                  </>
+                ) : (
+                  <>
+                    <span>⚡</span>
+                    Run engine now
+                  </>
+                )}
               </button>
+
+              <div
+                style={{
+                  fontSize: 11,
+                  color: "#9ca3af",
+                  marginBottom: 8,
+                }}
+              >
+                {lastRunAt ? (
+                  <>
+                    Last run:{" "}
+                    <span style={{ color: "#e5e7eb" }}>
+                      {new Date(lastRunAt).toLocaleString()}
+                    </span>
+                  </>
+                ) : (
+                  "Engine has not been run in this session."
+                )}
+              </div>
 
               {/* SIMPLE TEXT PREVIEW */}
               <div
@@ -997,9 +1098,10 @@ export default function RequirementsV3Page() {
                   border: "1px solid rgba(51,65,85,0.9)",
                   background: "rgba(15,23,42,0.96)",
                   padding: 8,
-                  maxHeight: 170,
+                  maxHeight: 150,
                   overflowY: "auto",
                   fontSize: 12,
+                  marginBottom: 8,
                 }}
               >
                 {activeGroup && rules.length > 0 ? (
@@ -1036,6 +1138,78 @@ export default function RequirementsV3Page() {
                     Add rules in the middle panel to preview how policies will
                     be evaluated.
                   </div>
+                )}
+              </div>
+
+              {/* ENGINE ACTIVITY LOG */}
+              <div
+                style={{
+                  borderRadius: 12,
+                  border: "1px solid rgba(55,65,81,0.9)",
+                  background:
+                    "repeating-linear-gradient(135deg,rgba(15,23,42,1),rgba(15,23,42,1) 6px,rgba(17,24,39,1) 6px,rgba(17,24,39,1) 12px)",
+                  padding: 8,
+                  maxHeight: 130,
+                  overflowY: "auto",
+                  fontSize: 11,
+                }}
+              >
+                {engineLog.length === 0 ? (
+                  <div style={{ color: "#6b7280" }}>
+                    No engine runs yet. Click{" "}
+                    <span style={{ color: "#e5e7eb" }}>Run engine now</span> to
+                    trigger a full vendor evaluation.
+                  </div>
+                ) : (
+                  engineLog.map((entry, idx) => {
+                    const color =
+                      entry.level === "error"
+                        ? "#fecaca"
+                        : entry.level === "success"
+                        ? "#bbf7d0"
+                        : "#e5e7eb";
+                    const dotColor =
+                      entry.level === "error"
+                        ? "#f97373"
+                        : entry.level === "success"
+                        ? "#4ade80"
+                        : "#38bdf8";
+
+                    return (
+                      <div
+                        key={`${entry.at}-${idx}`}
+                        style={{
+                          display: "flex",
+                          gap: 6,
+                          alignItems: "flex-start",
+                          marginBottom: 4,
+                          color,
+                        }}
+                      >
+                        <span
+                          style={{
+                            width: 6,
+                            height: 6,
+                            marginTop: 4,
+                            borderRadius: "999px",
+                            background: dotColor,
+                            boxShadow: `0 0 10px ${dotColor}`,
+                          }}
+                        />
+                        <div>
+                          <div
+                            style={{
+                              color: "#9ca3af",
+                              marginBottom: 1,
+                            }}
+                          >
+                            {new Date(entry.at).toLocaleTimeString()}
+                          </div>
+                          <div>{entry.message}</div>
+                        </div>
+                      </div>
+                    );
+                  })
                 )}
               </div>
             </div>
@@ -1096,6 +1270,20 @@ export default function RequirementsV3Page() {
               >
                 Evaluate sample policy
               </button>
+
+              {evaluation.ok && (
+                <div
+                  style={{
+                    marginTop: 8,
+                    fontSize: 11,
+                    color: "#9ca3af",
+                  }}
+                >
+                  Sample evaluation complete. ({Object.keys(evaluation.results)
+                    .length || 0}{" "}
+                  rules evaluated.)
+                </div>
+              )}
             </div>
           </div>
         </div>
@@ -1133,9 +1321,67 @@ export default function RequirementsV3Page() {
           }))
         }
       />
+
+      {/* GLOBAL SPIN ANIMATION FOR ENGINE BUTTON */}
+      <style jsx global>{`
+        @keyframes spin {
+          to {
+            transform: rotate(360deg);
+          }
+        }
+      `}</style>
     </div>
   );
 }
+
+// -----------------------------------------------------
+// DRAGGABLE RULE ROW WRAPPER
+// -----------------------------------------------------
+
+function RuleRow({ rule, index, moveRule, onUpdate, onDelete, canEdit }) {
+  const ref = useRef(null);
+
+  const [, drop] = useDrop({
+    accept: ITEM_TYPE,
+    hover(item) {
+      if (!ref.current) return;
+      const dragIndex = item.index;
+      const hoverIndex = index;
+      if (dragIndex === hoverIndex) return;
+      moveRule(dragIndex, hoverIndex);
+      item.index = hoverIndex;
+    },
+  });
+
+  const [{ isDragging }, drag] = useDrag({
+    type: ITEM_TYPE,
+    item: { index },
+    collect: (monitor) => ({
+      isDragging: monitor.isDragging(),
+    }),
+  });
+
+  drag(drop(ref));
+
+  return (
+    <div
+      ref={ref}
+      style={{
+        opacity: isDragging ? 0.6 : 1,
+        transform: isDragging ? "scale(0.995)" : "scale(1)",
+        transition: "transform 0.12s ease, opacity 0.12s ease",
+      }}
+    >
+      <RuleCard
+        rule={rule}
+        onUpdate={onUpdate}
+        onDelete={onDelete}
+        canEdit={canEdit}
+      />
+    </div>
+  );
+}
+
 // -----------------------------------------------------
 // RULECARD + HELPERS
 // -----------------------------------------------------
@@ -1157,14 +1403,59 @@ function RuleCard({ rule, onUpdate, onDelete, canEdit }) {
         border: "1px solid rgba(71,85,105,0.9)",
         boxShadow:
           "0 0 18px rgba(15,23,42,0.9), inset 0 0 12px rgba(15,23,42,0.9)",
+        cursor: canEdit ? "grab" : "default",
       }}
     >
+      {/* DRAG HANDLE */}
+      <div
+        style={{
+          position: "absolute",
+          top: 8,
+          right: 10,
+          width: 14,
+          height: 18,
+          opacity: 0.4,
+          display: "flex",
+          flexDirection: "column",
+          justifyContent: "space-between",
+        }}
+      >
+        <span
+          style={{
+            display: "block",
+            width: "100%",
+            height: 2,
+            background: "rgba(148,163,184,0.9)",
+            borderRadius: 999,
+          }}
+        />
+        <span
+          style={{
+            display: "block",
+            width: "100%",
+            height: 2,
+            background: "rgba(148,163,184,0.9)",
+            borderRadius: 999,
+          }}
+        />
+        <span
+          style={{
+            display: "block",
+            width: "100%",
+            height: 2,
+            background: "rgba(148,163,184,0.9)",
+            borderRadius: 999,
+          }}
+        />
+      </div>
+
       {/* FIELD + OPERATOR */}
       <div
         style={{
           display: "flex",
           gap: 8,
           marginBottom: 8,
+          paddingRight: 18,
         }}
       >
         <select
@@ -1220,9 +1511,7 @@ function RuleCard({ rule, onUpdate, onDelete, canEdit }) {
       >
         <input
           value={rule.expected_value || ""}
-          onChange={(e) =>
-            onUpdate({ expected_value: e.target.value })
-          }
+          onChange={(e) => onUpdate({ expected_value: e.target.value })}
           disabled={!canEdit}
           placeholder="Expected value (e.g. 1000000)"
           style={{
@@ -1262,9 +1551,7 @@ function RuleCard({ rule, onUpdate, onDelete, canEdit }) {
       {/* REQUIREMENT TEXT */}
       <input
         value={rule.requirement_text || ""}
-        onChange={(e) =>
-          onUpdate({ requirement_text: e.target.value })
-        }
+        onChange={(e) => onUpdate({ requirement_text: e.target.value })}
         disabled={!canEdit}
         placeholder="Plain language requirement…"
         style={{
@@ -1299,9 +1586,7 @@ function RuleCard({ rule, onUpdate, onDelete, canEdit }) {
           <input
             type="checkbox"
             checked={rule.is_active ?? true}
-            onChange={(e) =>
-              onUpdate({ is_active: e.target.checked })
-            }
+            onChange={(e) => onUpdate({ is_active: e.target.checked })}
             disabled={!canEdit}
           />
           Active
