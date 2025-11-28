@@ -21,7 +21,6 @@ import { HTML5Backend } from "react-dnd-html5-backend";
 // ----------------------------
 const ITEM_TYPE = "REQUIREMENT_RULE";
 
-// Field options for rules
 const FIELD_OPTIONS = [
   { key: "policy.coverage_type", label: "Coverage Type" },
   { key: "policy.glEachOccurrence", label: "GL Each Occurrence" },
@@ -30,7 +29,6 @@ const FIELD_OPTIONS = [
   { key: "policy.carrier", label: "Carrier Name" },
 ];
 
-// Operators
 const OPERATOR_OPTIONS = [
   { key: "equals", label: "Equals" },
   { key: "not_equals", label: "Not Equals" },
@@ -39,7 +37,6 @@ const OPERATOR_OPTIONS = [
   { key: "contains", label: "Contains" },
 ];
 
-// Severity colors for glow effects
 const SEVERITY_COLORS = {
   critical: "#ff4d6d",
   high: "#ffa600",
@@ -48,7 +45,7 @@ const SEVERITY_COLORS = {
 };
 
 // ==========================================================
-// MAIN PAGE COMPONENT
+// MAIN COMPONENT
 // ==========================================================
 export default function RequirementsV3Page() {
   const { isAdmin, isManager } = useRole();
@@ -60,19 +57,16 @@ export default function RequirementsV3Page() {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
 
-  // Groups + Rules
   const [groups, setGroups] = useState([]);
   const [activeGroupId, setActiveGroupId] = useState(null);
   const [rules, setRules] = useState([]);
 
-  // Toast
   const [toast, setToast] = useState({
     open: false,
     message: "",
     type: "success",
   });
 
-  // Sample policy evaluator input
   const [samplePolicyText, setSamplePolicyText] = useState(`{
   "policy.coverage_type": "General Liability",
   "policy.glEachOccurrence": 1000000,
@@ -81,30 +75,29 @@ export default function RequirementsV3Page() {
   "policy.carrier": "Sample Carrier"
 }`);
 
-  // Evaluation result
   const [evaluation, setEvaluation] = useState({
     ok: false,
     error: "",
     results: {},
   });
 
-  // Engine state
   const [runningEngine, setRunningEngine] = useState(false);
   const [engineLog, setEngineLog] = useState([]);
   const [lastRunAt, setLastRunAt] = useState(null);
 
-  // AI Rule Suggestion Modal
+  // AI Modal
   const [aiOpen, setAiOpen] = useState(false);
   const [aiThinking, setAiThinking] = useState(false);
   const [aiSuggestion, setAiSuggestion] = useState("");
 
+  // Active group memo
   const activeGroup = useMemo(
     () => groups.find((g) => g.id === activeGroupId) || null,
     [groups, activeGroupId]
   );
 
   // ==========================================================
-  // LOAD GROUPS WHEN ORG CHANGES
+  // LOAD GROUPS
   // ==========================================================
   useEffect(() => {
     if (loadingOrgs) return;
@@ -115,9 +108,6 @@ export default function RequirementsV3Page() {
     loadGroups();
   }, [orgId, loadingOrgs]);
 
-  // ==========================================================
-  // API: LOAD GROUPS
-  // ==========================================================
   async function loadGroups() {
     setLoading(true);
     try {
@@ -144,13 +134,10 @@ export default function RequirementsV3Page() {
   }
 
   // ==========================================================
-  // API: LOAD RULES FOR GROUP
+  // LOAD RULES
   // ==========================================================
   async function loadRulesForGroup(groupId) {
-    if (!groupId) {
-      setRules([]);
-      return;
-    }
+    if (!groupId) return setRules([]);
 
     try {
       const res = await fetch(`/api/requirements-v2/rules?groupId=${groupId}`);
@@ -927,7 +914,9 @@ export default function RequirementsV3Page() {
                       type="checkbox"
                       checked={activeGroup?.is_active ?? true}
                       onChange={(e) =>
-                        handleUpdateGroup({ is_active: e.target.checked })
+                        handleUpdateGroup({
+                          is_active: e.target.checked,
+                        })
                       }
                       disabled={!canEdit}
                     />
@@ -954,7 +943,7 @@ export default function RequirementsV3Page() {
 
                   <button
                     onClick={() => handleDeleteGroup(activeGroup.id)}
-                    disabled(!canEdit)
+                    disabled={!canEdit}
                     style={{
                       padding: "7px 10px",
                       borderRadius: 999,
@@ -1205,6 +1194,7 @@ export default function RequirementsV3Page() {
                         : entry.level === "success"
                         ? "#bbf7d0"
                         : "#e5e7eb";
+
                     const dotColor =
                       entry.level === "error"
                         ? "#f97373"
@@ -1467,6 +1457,7 @@ export default function RequirementsV3Page() {
       `}</style>
     </div>
   );
+}
 // ==========================================================
 // LANE COLUMN — CINEMATIC DROP ZONE
 // ==========================================================
@@ -1613,7 +1604,6 @@ function RuleRow({
     </div>
   );
 }
-
 // ==========================================================
 // RULE CARD — FULL EDITOR UI
 // ==========================================================
@@ -1687,7 +1677,9 @@ function RuleCard({ rule, onUpdate, onDelete, canEdit }) {
       <div style={{ display: "flex", gap: 10, marginBottom: 10 }}>
         <input
           value={rule.expected_value}
-          onChange={(e) => onUpdate({ expected_value: e.target.value })}
+          onChange={(e) =>
+            onUpdate({ expected_value: e.target.value })
+          }
           disabled={!canEdit}
           style={inputStyle}
         />
