@@ -1,7 +1,7 @@
 // pages/admin/requirements-v3.js
 // ==========================================================
-// PHASE 3 — FULL MERGE VERSION
-// Cinematic Lanes + DnD + CRUD + Engine + AI Assistance
+// PHASE 4 — FULL MERGE VERSION
+// Cinematic Lanes + DnD + CRUD + Engine + AI Assistance + AI Builder V2
 // ==========================================================
 
 // ----------------------------
@@ -12,7 +12,6 @@ import { useRole } from "../../lib/useRole";
 import { useOrg } from "../../context/OrgContext";
 import ToastV2 from "../../components/ToastV2";
 
-// Drag & Drop
 import { DndProvider, useDrag, useDrop } from "react-dnd";
 import { HTML5Backend } from "react-dnd-html5-backend";
 
@@ -52,7 +51,9 @@ export default function RequirementsV3Page() {
   const { activeOrgId: orgId, loadingOrgs } = useOrg();
   const canEdit = isAdmin || isManager;
 
-  // Base state
+  // ----------------------------
+  // BASE STATE
+  // ----------------------------
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
@@ -67,6 +68,7 @@ export default function RequirementsV3Page() {
     type: "success",
   });
 
+  // SAMPLE POLICY
   const [samplePolicyText, setSamplePolicyText] = useState(`{
   "policy.coverage_type": "General Liability",
   "policy.glEachOccurrence": 1000000,
@@ -81,21 +83,26 @@ export default function RequirementsV3Page() {
     results: {},
   });
 
+  // ENGINE STATE
   const [runningEngine, setRunningEngine] = useState(false);
   const [engineLog, setEngineLog] = useState([]);
   const [lastRunAt, setLastRunAt] = useState(null);
 
-  // AI Modal
+  // AI SUGGESTION MODAL
   const [aiOpen, setAiOpen] = useState(false);
   const [aiThinking, setAiThinking] = useState(false);
   const [aiSuggestion, setAiSuggestion] = useState("");
+
+  // ----------------------------
+  // 🔥 PHASE 4: AI BUILDER INPUT STATE
+  // ----------------------------
+  const [aiInput, setAiInput] = useState("");
 
   // Active group memo
   const activeGroup = useMemo(
     () => groups.find((g) => g.id === activeGroupId) || null,
     [groups, activeGroupId]
   );
-
   // ==========================================================
   // LOAD GROUPS
   // ==========================================================
@@ -150,6 +157,7 @@ export default function RequirementsV3Page() {
       setError(err.message || "Failed to load rules.");
     }
   }
+
   // ==========================================================
   // GROUP CRUD
   // ==========================================================
@@ -533,6 +541,95 @@ export default function RequirementsV3Page() {
       }
     })();
   }
+
+  // ==========================================================
+  // 🔥 PHASE 4 — AI BUILDER: AUTO-CREATE GROUPS/RULES
+  // ==========================================================
+  async function handleAiBuildRules() {
+    if (!aiInput.trim()) {
+      return setToast({
+        open: true,
+        type: "error",
+        message: "Please enter some text for AI to parse.",
+      });
+    }
+
+    if (!orgId) {
+      return setToast({
+        open: true,
+        type: "error",
+        message: "Missing orgId — cannot build rules.",
+      });
+    }
+
+    try {
+      setSaving(true);
+
+      const res = await fetch("/api/requirements-v3/ai-parse", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ text: aiInput }),
+      });
+
+      const json = await res.json();
+
+      if (!res.ok || !json.ok) {
+        throw new Error(json.error || "AI parsing failed.");
+      }
+
+      if (!json.groups || !Array.isArray(json.groups)) {
+        throw new Error("AI did not return any groups.");
+      }
+
+      for (const g of json.groups) {
+        const grpRes = await fetch(
+          `/api/requirements-v2/groups?orgId=${orgId}`,
+          {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ name: g.name }),
+          }
+        );
+
+        const grpJson = await grpRes.json();
+        if (!grpRes.ok || !grpJson.ok) continue;
+
+        const groupId = grpJson.group.id;
+
+        for (const r of g.rules || []) {
+          await fetch("/api/requirements-v2/rules", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              groupId,
+              field_key: r.field_key,
+              operator: r.operator,
+              expected_value: r.expected_value,
+              severity: r.severity || "medium",
+              requirement_text: r.requirement_text || "",
+            }),
+          });
+        }
+      }
+
+      await loadGroups();
+      setAiInput("");
+
+      setToast({
+        open: true,
+        type: "success",
+        message: "AI successfully generated rules.",
+      });
+    } catch (err) {
+      setToast({
+        open: true,
+        type: "error",
+        message: err.message || "AI build failed.",
+      });
+    } finally {
+      setSaving(false);
+    }
+  }
   // ==========================================================
   // RENDER — PAGE LAYOUT
   // ==========================================================
@@ -677,6 +774,77 @@ export default function RequirementsV3Page() {
             {error}
           </div>
         )}
+
+        {/* 🔥 AI RULE BUILDER — TOP CINEMATIC PANEL */}
+        <div
+          style={{
+            marginBottom: 24,
+            padding: "24px 28px",
+            borderRadius: 24,
+            background: "rgba(15,23,42,0.78)",
+            border: "1px solid rgba(80,120,255,0.35)",
+            boxShadow:
+              "0 0 35px rgba(64,106,255,0.25), inset 0 0 28px rgba(20,30,60,0.5)",
+            backdropFilter: "blur(12px)",
+          }}
+        >
+          <div
+            style={{
+              fontSize: 14,
+              textTransform: "uppercase",
+              letterSpacing: 1.4,
+              color: "#9ca3af",
+              marginBottom: 10,
+            }}
+          >
+            AI Rule Builder
+          </div>
+
+          <textarea
+            value={aiInput}
+            onChange={(e) => setAiInput(e.target.value)}
+            placeholder={`Paste insurance requirements or type in natural language...
+Example: "Vendors must carry GL 1M/2M, Auto 1M CSL, WC statutory + EL 1M.
+Must include Additional Insured and Waiver of Subrogation."`}
+            rows={5}
+            style={{
+              width: "100%",
+              borderRadius: 18,
+              padding: "16px 18px",
+              border: "1px solid rgba(80,120,255,0.35)",
+              background:
+                "linear-gradient(145deg,rgba(15,23,42,0.96),rgba(20,30,60,0.98))",
+              color: "#e5e7eb",
+              fontSize: 14,
+              fontFamily: "system-ui, sans-serif",
+              marginBottom: 14,
+              resize: "vertical",
+              outline: "none",
+            }}
+          />
+
+          <button
+            onClick={handleAiBuildRules}
+            disabled={!aiInput.trim() || saving}
+            style={{
+              padding: "12px 20px",
+              borderRadius: 14,
+              border: "1px solid rgba(56,189,248,0.9)",
+              background: !aiInput.trim()
+                ? "rgba(56,189,248,0.28)"
+                : "linear-gradient(90deg,#38bdf8,#0ea5e9,#1e3a8a)",
+              color: "white",
+              fontSize: 15,
+              fontWeight: 600,
+              cursor: !aiInput.trim() ? "not-allowed" : "pointer",
+              boxShadow: "0 0 18px rgba(56,189,248,0.3)",
+              transition: "0.2s ease",
+            }}
+          >
+            ⚡ Generate Rules (AI)
+          </button>
+        </div>
+
         {/* GRID WRAPPER */}
         <div
           style={{
@@ -1575,7 +1743,10 @@ function RuleRow({
 
   const [{ isDragging }, drag] = useDrag({
     type: ITEM_TYPE,
-    item: { index, laneKey },
+    item: {
+      index,
+      laneKey,
+    },
     collect: (monitor) => ({
       isDragging: monitor.isDragging(),
     }),
@@ -1705,7 +1876,9 @@ function RuleCard({ rule, onUpdate, onDelete, canEdit }) {
       {/* REQUIREMENT TEXT */}
       <textarea
         value={rule.requirement_text || ""}
-        onChange={(e) => onUpdate({ requirement_text: e.target.value })}
+        onChange={(e) =>
+          onUpdate({ requirement_text: e.target.value })
+        }
         disabled={!canEdit}
         rows={2}
         placeholder="Explain the logic of this requirement…"
@@ -1789,15 +1962,16 @@ const dragDotStyle = {
   background: "rgba(148,163,184,0.9)",
   borderRadius: 999,
 };
-
 // ==========================================================
-// HELPERS
+// HELPERS — OPERATOR LABEL
 // ==========================================================
 function operatorLabel(op) {
   const found = OPERATOR_OPTIONS.find((o) => o.key === op);
   return found ? found.label : op;
 }
-
+// ==========================================================
+// HELPERS — RULE EVALUATION LOGIC
+// ==========================================================
 function evaluateRule(rule, policyObj) {
   if (!rule || rule.is_active === false) return false;
 
@@ -1807,17 +1981,22 @@ function evaluateRule(rule, policyObj) {
   switch (rule.operator) {
     case "equals":
       return String(rawVal) === String(expected);
+
     case "not_equals":
       return String(rawVal) !== String(expected);
+
     case "contains":
       return String(rawVal ?? "")
         .toString()
         .toLowerCase()
         .includes(String(expected).toLowerCase());
+
     case "gte":
       return Number(rawVal) >= Number(expected);
+
     case "lte":
       return Number(rawVal) <= Number(expected);
+
     default:
       return false;
   }
