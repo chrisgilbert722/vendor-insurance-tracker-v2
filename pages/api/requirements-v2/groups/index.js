@@ -1,10 +1,11 @@
+// pages/api/requirements-v2/groups/index.js
+
 import { Client } from "pg";
 
 export const config = {
-  api: {
-    bodyParser: true,
-  },
+  api: { bodyParser: true },
 };
+
 export default async function handler(req, res) {
   const client = new Client({
     connectionString: process.env.DATABASE_URL,
@@ -15,6 +16,10 @@ export default async function handler(req, res) {
 
   try {
     await client.connect();
+
+    // ================================
+    // GET — all groups for an org
+    // ================================
     if (method === "GET") {
       if (!orgId) {
         return res.status(400).json({ ok: false, error: "Missing orgId" });
@@ -22,7 +27,7 @@ export default async function handler(req, res) {
 
       const result = await client.query(
         `
-        SELECT
+        SELECT 
           g.id,
           g.org_id,
           g.name,
@@ -39,17 +44,22 @@ export default async function handler(req, res) {
         FROM requirements_groups_v2 g
         WHERE g.org_id = $1
         ORDER BY g.order_index ASC, g.created_at ASC
-        `,
+      `,
         [orgId]
       );
 
       return res.status(200).json({ ok: true, groups: result.rows });
     }
+
+    // ================================
+    // POST — CREATE group
+    // ================================
     if (method === "POST") {
       const { name, description } = req.body;
 
-      if (!name || !orgId)
-        return res.status(400).json({ ok: false, error: "Missing data" });
+      if (!orgId || !name) {
+        return res.status(400).json({ ok: false, error: "Missing orgId or name" });
+      }
 
       const insert = await client.query(
         `
@@ -57,56 +67,61 @@ export default async function handler(req, res) {
           (org_id, name, description, is_active, order_index)
         VALUES ($1, $2, $3, TRUE, 0)
         RETURNING *;
-        `,
+      `,
         [orgId, name, description || null]
       );
 
       return res.status(200).json({ ok: true, group: insert.rows[0] });
     }
 
+    // ================================
+    // PUT — UPDATE group
+    // ================================
     if (method === "PUT") {
-      const { name, description, is_active, order_index } = req.body;
+      const { name, description, is_active, order_index, id } = req.body;
 
-      if (!id)
+      if (!id) {
         return res.status(400).json({ ok: false, error: "Missing group id" });
+      }
 
       const update = await client.query(
         `
         UPDATE requirements_groups_v2
         SET
-          name = COALESCE($1, name),
+          name        = COALESCE($1, name),
           description = COALESCE($2, description),
-          is_active = COALESCE($3, is_active),
+          is_active   = COALESCE($3, is_active),
           order_index = COALESCE($4, order_index),
-          updated_at = NOW()
+          updated_at  = NOW()
         WHERE id = $5
         RETURNING *;
-        `,
+      `,
         [name, description, is_active, order_index, id]
       );
 
       return res.status(200).json({ ok: true, group: update.rows[0] });
     }
 
+    // ================================
+    // DELETE — remove group
+    // ================================
     if (method === "DELETE") {
-      if (!id)
+      if (!id) {
         return res.status(400).json({ ok: false, error: "Missing group id" });
+      }
 
-      await client.query(`DELETE FROM requirements_groups_v2 WHERE id = $1`, [
-        id,
-      ]);
+      await client.query("DELETE FROM requirements_groups_v2 WHERE id = $1", [id]);
 
       return res.status(200).json({ ok: true, deleted: true });
     }
+
     return res.status(405).json({ ok: false, error: "Method not allowed" });
-
   } catch (err) {
-    console.error("GROUPS API ERROR:", err);
+    console.error("GROUP API ERROR:", err);
     return res.status(500).json({ ok: false, error: err.message });
-
   } finally {
     try {
       await client.end();
-    } catch (_) {}
+    } catch {}
   }
 }
