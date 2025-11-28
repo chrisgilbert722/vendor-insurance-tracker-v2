@@ -1148,8 +1148,6 @@ function LaneColumn({
     accept: ITEM_TYPE,
     drop: (item) => {
       const movedRule = rules[item.index];
-
-      // If rule is being dropped from another lane, update severity
       if (movedRule && movedRule.severity !== laneKey) {
         onUpdateRule(movedRule.id, { severity: laneKey });
       }
@@ -1245,6 +1243,7 @@ function RuleRow({
       if (dragIndex === hoverIndex) return;
 
       moveRule(dragIndex, hoverIndex, laneKey);
+
       item.index = hoverIndex;
     },
   });
@@ -1302,7 +1301,7 @@ function RuleCard({ rule, onUpdate, onDelete, canEdit }) {
         userSelect: "none",
       }}
     >
-      {/* DRAG HANDLE */}
+      {/* Drag Handle */}
       <div
         style={{
           position: "absolute",
@@ -1321,7 +1320,7 @@ function RuleCard({ rule, onUpdate, onDelete, canEdit }) {
         <span style={dragDotStyle} />
       </div>
 
-      {/* FIELD + OPERATOR */}
+      {/* Field + Operator */}
       <div
         style={{
           display: "flex",
@@ -1330,7 +1329,6 @@ function RuleCard({ rule, onUpdate, onDelete, canEdit }) {
           paddingRight: 18,
         }}
       >
-        {/* FIELD SELECTOR */}
         <select
           value={rule.field_key || FIELD_OPTIONS[0].key}
           onChange={(e) => onUpdate({ field_key: e.target.value })}
@@ -1344,15 +1342,11 @@ function RuleCard({ rule, onUpdate, onDelete, canEdit }) {
           ))}
         </select>
 
-        {/* OPERATOR SELECTOR */}
         <select
           value={rule.operator || "equals"}
           onChange={(e) => onUpdate({ operator: e.target.value })}
           disabled={!canEdit}
-          style={{
-            ...selectStyle,
-            width: 150,
-          }}
+          style={{ ...selectStyle, width: 150 }}
         >
           {OPERATOR_OPTIONS.map((op) => (
             <option key={op.key} value={op.key}>
@@ -1462,7 +1456,7 @@ function RuleCard({ rule, onUpdate, onDelete, canEdit }) {
   );
 }
 
-// Shared style objects for RuleCard
+// Shared style objects
 const selectStyle = {
   flex: 1,
   borderRadius: 10,
