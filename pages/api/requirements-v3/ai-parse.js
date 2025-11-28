@@ -10,25 +10,75 @@ const client = new OpenAI({
 });
 
 export default async function handler(req, res) {
-  try {
-    const { text } = req.body || {};
+  if (req.method !== "POST") {
+    return res
+      .status(405)
+      .json({ ok: false, error: "Method not allowed" });
+  }
 
-    const completion = await client.responses.create({
-      model: "gpt-4.1-mini",
-      input: "Return JSON: {\"hello\": \"world\"}",
+  const { text } = req.body || {};
+
+  if (!text || typeof text !== "string") {
+    return res
+      .status(400)
+      .json({ ok: false, error: "Missing or invalid text." });
+  }
+
+  try {
+    const prompt = `
+You are an insurance compliance assistant.
+Return ONLY valid JSON describing "groups" and "rules".
+
+Example format:
+{
+  "groups": [
+    {
+      "name": "General Liability",
+      "rules": [
+        {
+          "field_key": "policy.glEachOccurrence",
+          "operator": "gte",
+          "expected_value": 1000000,
+          "severity": "critical",
+          "requirement_text": "GL ≥ $1M per occurrence"
+        }
+      ]
+    }
+  ]
+}
+
+User text:
+"""${text}"""
+
+Return ONLY JSON — no commentary.
+`;
+
+    // 🔥 Use the classic Chat Completions API (your SDK supports this)
+    const completion = await client.chat.completions.create({
+      model: "gpt-4o-mini",  // BEST JSON OUTPUT for older SDKs
+      messages: [
+        { role: "system", content: "You output ONLY valid JSON." },
+        { role: "user", content: prompt },
+      ],
+      temperature: 0,
       response_format: { type: "json_object" },
     });
 
-    // 🔥 TEMP: Return the ENTIRE RAW RESPONSE so we can SEE it
-    return res.status(200).json({
-      ok: true,
-      raw: completion,
-    });
+    // Classic chat completions structure
+    const raw = completion.choices?.[0]?.message?.content;
+
+    if (!raw) {
+      throw new Error("AI returned no JSON content.");
+    }
+
+    const parsed = JSON.parse(raw);
+
+    return res.status(200).json({ ok: true, ...parsed });
   } catch (err) {
-    console.error("DEBUG ERROR:", err);
+    console.error("AI PARSE ERROR:", err);
     return res.status(500).json({
       ok: false,
-      error: err.message,
+      error: "Failed to parse rules with AI.",
     });
   }
 }
