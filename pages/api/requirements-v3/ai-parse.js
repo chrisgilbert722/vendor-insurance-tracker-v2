@@ -26,12 +26,11 @@ export default async function handler(req, res) {
 
   try {
     const prompt = `
-You are an insurance compliance assistant.
-The user will give free-text insurance requirements.
-Your job is to output strict JSON that describes groups and rules.
+You are an insurance compliance assistant. 
+The user will give free-text insurance requirements. 
+Return ONLY valid JSON describing groups and rules.
 
-RULE FORMAT:
-
+FORMAT:
 {
   "groups": [
     {
@@ -42,7 +41,7 @@ RULE FORMAT:
           "operator": "gte",
           "expected_value": 1000000,
           "severity": "critical",
-          "requirement_text": "GL Each Occurrence ≥ 1,000,000"
+          "requirement_text": "General Liability limit must be ≥ $1M per occurrence"
         }
       ]
     }
@@ -57,28 +56,27 @@ Allowed field_keys:
 - policy.carrier
 
 Allowed operators:
-"equals", "not_equals", "contains", "gte", "lte"
+equals, not_equals, contains, gte, lte
 
 Allowed severities:
-"critical","high","medium","low"
+critical, high, medium, low
 
-Return JSON ONLY.
+DO NOT RETURN ANYTHING EXCEPT JSON.
 
-Now parse this requirement text:
-
+User requirement text:
 """${text}"""
 `;
 
     const completion = await client.responses.create({
       model: "gpt-4.1-mini",
       input: prompt,
-      response_format: {
-        type: "json_object"
-      }
+      response_format: { type: "json_object" }
     });
 
-    const content = completion.output[0].content[0].text;
-    const parsed = JSON.parse(content);
+    // The correct way to read output for Responses API
+    const raw = completion.output_text; 
+
+    const parsed = JSON.parse(raw);
 
     return res.status(200).json({ ok: true, ...parsed });
   } catch (err) {
