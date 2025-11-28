@@ -197,6 +197,67 @@ export default function RequirementsV3Page() {
       setSaving(false);
     }
   }
+  // ==========================================================
+  // GROUP CRUD
+  // ==========================================================
+  async function handleCreateGroup() {
+    console.log("DEBUG — orgId = ", orgId);
+
+    if (!canEdit) {
+      return setToast({
+        open: true,
+        type: "error",
+        message: "You do not have permission to create groups.",
+      });
+    }
+
+    if (!orgId) {
+      return setToast({
+        open: true,
+        type: "error",
+        message: "Missing orgId — cannot create group.",
+      });
+    }
+
+    const name = prompt("New group name:");
+    if (!name) return;
+
+    try {
+      setSaving(true);
+
+      // CRITICAL: orgId must be passed via query param
+      const url = `/api/requirements-v2/groups?orgId=${orgId}`;
+      console.log("POST to:", url);
+
+      const res = await fetch(url, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name }),
+      });
+
+      const json = await res.json();
+      console.log("CREATE GROUP response:", json);
+
+      if (!res.ok || !json.ok) {
+        throw new Error(json.error || "Group creation failed");
+      }
+
+      setGroups((prev) => [json.group, ...prev]);
+      setActiveGroupId(json.group.id);
+
+      setToast({
+        open: true,
+        type: "success",
+        message: "Group created successfully!",
+      });
+    } catch (err) {
+      console.error("CREATE GROUP ERROR:", err);
+      setToast({ open: true, type: "error", message: err.message });
+    } finally {
+      setSaving(false);
+    }
+  }
+
   async function handleUpdateGroup(patch) {
     if (!canEdit || !activeGroup) return;
 
@@ -490,8 +551,6 @@ export default function RequirementsV3Page() {
       return;
     }
 
-    // Very simple heuristic: create a new rule with AI text as requirement_text only.
-    // You can later expand this to parse out field/operator/expected_value.
     const aiText = aiSuggestion;
 
     (async () => {
