@@ -11,7 +11,7 @@ export default async function handler(req, res) {
   });
 
   const { method } = req;
-  const { groupId, id } = req.query;
+  const { groupId: queryGroupId, id } = req.query;
 
   try {
     await client.connect();
@@ -20,7 +20,7 @@ export default async function handler(req, res) {
     // GET — list rules for group
     // -------------------------
     if (method === "GET") {
-      if (!groupId) {
+      if (!queryGroupId) {
         return res
           .status(400)
           .json({ ok: false, error: "Missing groupId" });
@@ -44,7 +44,7 @@ export default async function handler(req, res) {
         WHERE r.group_id = $1
         ORDER BY r.created_at ASC
         `,
-        [groupId]
+        [queryGroupId]
       );
 
       return res.status(200).json({ ok: true, rules: result.rows });
@@ -67,7 +67,7 @@ export default async function handler(req, res) {
       if (!groupId || !field_key) {
         return res.status(400).json({
           ok: false,
-          error: "Missing required fields",
+          error: "Missing required fields (groupId and field_key needed)",
         });
       }
 
@@ -97,6 +97,7 @@ export default async function handler(req, res) {
     // -------------------------
     if (method === "PUT") {
       const body = req.body;
+
       if (!body.id) {
         return res.status(400).json({ ok: false, error: "Missing rule id" });
       }
@@ -139,14 +140,21 @@ export default async function handler(req, res) {
         return res.status(400).json({ ok: false, error: "Missing rule id" });
       }
 
-      await client.query(`DELETE FROM requirements_rules_v2 WHERE id = $1`, [
-        id,
-      ]);
+      await client.query(
+        `DELETE FROM requirements_rules_v2 WHERE id = $1`,
+        [id]
+      );
 
       return res.status(200).json({ ok: true, deleted: true });
     }
 
-    return res.status(405).json({ ok: false, error: "Method not allowed" });
+    // -------------------------
+    // Invalid method
+    // -------------------------
+    return res
+      .status(405)
+      .json({ ok: false, error: "Method not allowed" });
+
   } catch (err) {
     console.error("RULES API ERROR:", err);
     return res.status(500).json({ ok: false, error: err.message });
