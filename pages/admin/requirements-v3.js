@@ -191,7 +191,6 @@ export default function RequirementsV3Page() {
     try {
       setSaving(true);
 
-      // CRITICAL: orgId must be passed via query param
       const url = `/api/requirements-v2/groups?orgId=${orgId}`;
       console.log("POST to:", url);
 
@@ -248,7 +247,6 @@ export default function RequirementsV3Page() {
       setToast({ open: true, type: "success", message: "Group updated." });
     } catch (err) {
       setToast({ open: true, type: "error", message: err.message });
-      // reload to undo optimistic change
       loadGroups();
     } finally {
       setSaving(false);
@@ -887,7 +885,9 @@ export default function RequirementsV3Page() {
                   <textarea
                     value={activeGroup?.description || ""}
                     onChange={(e) =>
-                      handleUpdateGroup({ description: e.target.value })
+                      handleUpdateGroup({
+                        description: e.target.value,
+                      })
                     }
                     disabled={!canEdit}
                     rows={2}
@@ -954,7 +954,7 @@ export default function RequirementsV3Page() {
 
                   <button
                     onClick={() => handleDeleteGroup(activeGroup.id)}
-                    disabled={!canEdit}
+                    disabled(!canEdit)
                     style={{
                       padding: "7px 10px",
                       borderRadius: 999,
@@ -1028,7 +1028,6 @@ export default function RequirementsV3Page() {
               </div>
             </DndProvider>
           </div>
-
           {/* RIGHT PANEL — ENGINE + EVALUATOR + AI */}
           <div
             style={{
@@ -1391,7 +1390,8 @@ export default function RequirementsV3Page() {
                         width: "100%",
                         padding: "8px 14px",
                         borderRadius: 12,
-                        background: "linear-gradient(90deg,#a855f7,#7e22ce)",
+                        background:
+                          "linear-gradient(90deg,#a855f7,#7e22ce)",
                         color: "white",
                         fontWeight: 500,
                         border: "none",
@@ -1613,6 +1613,7 @@ function RuleRow({
     </div>
   );
 }
+
 // ==========================================================
 // RULE CARD — FULL EDITOR UI
 // ==========================================================
