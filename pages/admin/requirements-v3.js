@@ -677,7 +677,6 @@ export default function RequirementsV3Page() {
             {error}
           </div>
         )}
-
         {/* GRID WRAPPER */}
         <div
           style={{
@@ -1544,7 +1543,6 @@ function LaneColumn({
     </div>
   );
 }
-
 // ==========================================================
 // RULE ROW — DRAGGABLE WRAPPER FOR EACH RULE
 // ==========================================================
@@ -1761,7 +1759,6 @@ function RuleCard({ rule, onUpdate, onDelete, canEdit }) {
     </div>
   );
 }
-
 // ==========================================================
 // SHARED STYLE OBJECTS
 // ==========================================================
