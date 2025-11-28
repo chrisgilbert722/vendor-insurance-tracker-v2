@@ -1,4 +1,5 @@
 // pages/api/requirements-v2/rules/[id].js
+
 import { Client } from "pg";
 
 export const config = {
@@ -6,91 +7,68 @@ export const config = {
 };
 
 export default async function handler(req, res) {
-  const { id } = req.query;
-  const method = req.method;
-
-  if (!id) {
-    return res.status(400).json({ ok: false, error: "Missing rule id" });
-  }
-
   const client = new Client({
     connectionString: process.env.DATABASE_URL,
   });
 
+  const { method } = req;
+  const { id } = req.query;
+
   try {
     await client.connect();
 
-    // ==================================================
-    // PUT — UPDATE RULE
-    // ==================================================
+    // ================================
+    // PUT — UPDATE rule
+    // ================================
     if (method === "PUT") {
-      const {
-        coverage_type,
-        min_limit_each_occurrence,
-        min_limit_aggregate,
-        require_additional_insured,
-        require_waiver,
-        min_risk_score,
-        notes,
-      } = req.body;
+      const updateFields = req.body;
 
       const update = await client.query(
         `
-        UPDATE requirements
-        SET 
-          coverage_type = $1,
-          min_limit_each_occurrence = $2,
-          min_limit_aggregate = $3,
-          require_additional_insured = $4,
-          require_waiver = $5,
-          min_risk_score = $6,
-          notes = $7,
-          updated_at = NOW()
+        UPDATE requirements_rules_v2
+        SET
+          field_key      = COALESCE($1, field_key),
+          operator       = COALESCE($2, operator),
+          expected_value = COALESCE($3, expected_value),
+          severity       = COALESCE($4, severity),
+          requirement_text = COALESCE($5, requirement_text),
+          internal_note    = COALESCE($6, internal_note),
+          is_active        = COALESCE($7, is_active),
+          updated_at       = NOW()
         WHERE id = $8
         RETURNING *;
-        `,
+      `,
         [
-          coverage_type || null,
-          min_limit_each_occurrence || null,
-          min_limit_aggregate || null,
-          require_additional_insured ?? null,
-          require_waiver ?? null,
-          min_risk_score || null,
-          notes || null,
+          updateFields.field_key,
+          updateFields.operator,
+          updateFields.expected_value,
+          updateFields.severity,
+          updateFields.requirement_text,
+          updateFields.internal_note,
+          updateFields.is_active,
           id,
         ]
       );
 
-      return res.status(200).json({
-        ok: true,
-        rule: update.rows[0],
-      });
+      return res.status(200).json({ ok: true, rule: update.rows[0] });
     }
 
-    // ==================================================
-    // DELETE — DELETE RULE
-    // ==================================================
+    // ================================
+    // DELETE — remove rule
+    // ================================
     if (method === "DELETE") {
-      await client.query(
-        `
-        DELETE FROM requirements
-        WHERE id = $1
-        `,
-        [id]
-      );
+      await client.query("DELETE FROM requirements_rules_v2 WHERE id = $1", [id]);
 
       return res.status(200).json({ ok: true, deleted: true });
     }
 
-    return res
-      .status(405)
-      .json({ ok: false, error: `Method ${method} not allowed` });
+    return res.status(405).json({ ok: false, error: "Method not allowed" });
   } catch (err) {
-    console.error("REQ-V2 RULE ERROR:", err);
+    console.error("RULE DELETE/UPDATE ERROR:", err);
     return res.status(500).json({ ok: false, error: err.message });
   } finally {
     try {
       await client.end();
-    } catch (_) {}
+    } catch {}
   }
 }
