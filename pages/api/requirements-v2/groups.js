@@ -21,7 +21,9 @@ export default async function handler(req, res) {
     // -------------------------
     if (method === "GET") {
       if (!orgId) {
-        return res.status(400).json({ ok: false, error: "Missing orgId" });
+        return res
+          .status(400)
+          .json({ ok: false, error: "Missing orgId" });
       }
 
       const result = await client.query(
@@ -83,7 +85,9 @@ export default async function handler(req, res) {
       const { name, description, is_active, order_index } = req.body;
 
       if (!id) {
-        return res.status(400).json({ ok: false, error: "Missing group id" });
+        return res
+          .status(400)
+          .json({ ok: false, error: "Missing group id" });
       }
 
       const updateRes = await client.query(
@@ -109,17 +113,22 @@ export default async function handler(req, res) {
     // -------------------------
     if (method === "DELETE") {
       if (!id) {
-        return res.status(400).json({ ok: false, error: "Missing group id" });
+        return res
+          .status(400)
+          .json({ ok: false, error: "Missing group id" });
       }
 
-      await client.query(`DELETE FROM requirements_groups_v2 WHERE id = $1`, [
-        id,
-      ]);
+      await client.query(
+        `DELETE FROM requirements_groups_v2 WHERE id = $1`,
+        [id]
+      );
 
       return res.status(200).json({ ok: true, deleted: true });
     }
 
-    return res.status(405).json({ ok: false, error: "Method not allowed" });
+    return res
+      .status(405)
+      .json({ ok: false, error: "Method not allowed" });
   } catch (err) {
     console.error("GROUPS API ERROR:", err);
     return res.status(500).json({ ok: false, error: err.message });
