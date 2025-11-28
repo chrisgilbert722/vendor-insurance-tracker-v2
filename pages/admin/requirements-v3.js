@@ -587,351 +587,191 @@ export default function RequirementsV3Page() {
       }
     })();
   }
-  // ==========================================================
-  // RENDER — PAGE LAYOUT
-  // ==========================================================
-  return (
+{/* -------------------------------------- */}
+{/* MIDDLE PANEL — GROUP HEADER + LANES */}
+{/* -------------------------------------- */}
+<div
+  style={{
+    borderRadius: 22,
+    padding: 18,
+    background: "rgba(15,23,42,0.82)",
+    border: "1px solid rgba(80,120,255,0.3)",
+    boxShadow:
+      "0 0 25px rgba(64,106,255,0.28), inset 0 0 22px rgba(15,23,42,0.9)",
+    backdropFilter: "blur(12px)",
+    display: "flex",
+    flexDirection: "column",
+  }}
+>
+  {/* ---------- GROUP HEADER ---------- */}
+  {activeGroup ? (
     <div
       style={{
-        minHeight: "100vh",
-        position: "relative",
-        background:
-          "radial-gradient(circle at top,#020617 0%,#020617 55%,#000 100%)",
-        padding: "32px 40px 40px",
-        color: "#e5e7eb",
-        overflow: "hidden",
+        display: "flex",
+        gap: 12,
+        marginBottom: 12,
+        alignItems: "flex-start",
       }}
     >
-      {/* BACKGROUND AURA */}
-      <div
-        style={{
-          position: "absolute",
-          inset: 0,
-          background:
-            "radial-gradient(circle at 10% 0%,rgba(56,189,248,0.18),transparent 55%),radial-gradient(circle at 90% 10%,rgba(129,140,248,0.18),transparent 55%)",
-          pointerEvents: "none",
-        }}
-      />
-
-      {/* SCANLINES */}
-      <div
-        style={{
-          position: "absolute",
-          inset: 0,
-          background:
-            "linear-gradient(rgba(148,163,184,0.08) 1px, transparent 1px)",
-          backgroundSize: "100% 3px",
-          opacity: 0.2,
-          pointerEvents: "none",
-        }}
-      />
-
-      {/* MAIN CONTENT WRAPPER */}
-      <div style={{ position: "relative", zIndex: 1 }}>
-        {/* HEADER */}
-        <div style={{ marginBottom: 18 }}>
-          <div
-            style={{
-              display: "inline-flex",
-              gap: 8,
-              padding: "4px 10px",
-              borderRadius: 999,
-              border: "1px solid rgba(148,163,184,0.4)",
-              background:
-                "linear-gradient(120deg,rgba(15,23,42,0.94),rgba(15,23,42,0.7))",
-              marginBottom: 6,
-            }}
-          >
-            <span
-              style={{
-                fontSize: 10,
-                color: "#9ca3af",
-                letterSpacing: "0.12em",
-                textTransform: "uppercase",
-              }}
-            >
-              Requirements Engine V3
-            </span>
-            <span
-              style={{
-                fontSize: 10,
-                color: "#38bdf8",
-                letterSpacing: "0.08em",
-                textTransform: "uppercase",
-              }}
-            >
-              Coverage • Limits • Endorsements
-            </span>
-          </div>
-
-          <h1
-            style={{
-              margin: 0,
-              fontSize: 26,
-              fontWeight: 600,
-            }}
-          >
-            Define{" "}
-            <span
-              style={{
-                background:
-                  "linear-gradient(90deg,#38bdf8,#a5b4fc,#e5e7eb)",
-                WebkitBackgroundClip: "text",
-                color: "transparent",
-              }}
-            >
-              coverage rules
-            </span>{" "}
-            that power alerts automatically.
-          </h1>
-
-          <p
-            style={{
-              marginTop: 6,
-              maxWidth: 720,
-              fontSize: 13,
-              color: "#cbd5f5",
-            }}
-          >
-            Every rule here is evaluated against vendor policies and updates the
-            Alerts Cockpit in real time. This is your AI coverage engine for
-            limits, endorsements, and policy health.
-          </p>
-
-          <div
-            style={{
-              marginTop: 6,
-              fontSize: 12,
-              color: "#9ca3af",
-            }}
-          >
-            Org:{" "}
-            <span style={{ color: "#e5e7eb" }}>{orgId || "none"}</span> · Groups:{" "}
-            <span style={{ color: "#e5e7eb" }}>{groups.length}</span> · Active:{" "}
-            <span style={{ color: "#e5e7eb" }}>
-              {activeGroup ? activeGroup.name : "none"}
-            </span>
-          </div>
-        </div>
-
-        {/* GRID WRAPPER */}
-        <div
+      {/* LEFT SIDE: NAME + DESCRIPTION */}
+      <div style={{ flex: 1 }}>
+        <input
+          value={activeGroup?.name || ""}
+          onChange={(e) =>
+            handleUpdateGroup({ name: e.target.value })
+          }
+          disabled={!canEdit}
           style={{
-            display: "grid",
-            gridTemplateColumns: "minmax(0,1.2fr) minmax(0,2fr) minmax(0,1.4fr)",
-            gap: 18,
-            alignItems: "stretch",
+            width: "100%",
+            borderRadius: 12,
+            padding: "8px 10px",
+            border: "1px solid rgba(51,65,85,0.9)",
+            background: "rgba(15,23,42,0.96)",
+            color: "#e5e7eb",
+            fontSize: 14,
+          }}
+        />
+
+        <textarea
+          value={activeGroup?.description || ""}
+          onChange={(e) =>
+            handleUpdateGroup({ description: e.target.value })
+          }
+          disabled={!canEdit}
+          rows={2}
+          placeholder="Describe what this lane enforces…"
+          style={{
+            marginTop: 6,
+            width: "100%",
+            borderRadius: 12,
+            padding: "8px 10px",
+            border: "1px solid rgba(51,65,85,0.9)",
+            background: "rgba(15,23,42,0.96)",
+            color: "#cbd5f5",
+            fontSize: 13,
+            resize: "vertical",
+          }}
+        />
+      </div>
+
+      {/* RIGHT SIDE: CONTROLS */}
+      <div
+        style={{
+          width: 140,
+          display: "flex",
+          flexDirection: "column",
+          gap: 8,
+        }}
+      >
+        <label
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: 6,
+            fontSize: 12,
+            color: "#9ca3af",
           }}
         >
-          {/* -------------------------------------- */}
-          {/* LEFT PANEL — GROUP LIST */}
-          {/* -------------------------------------- */}
-          <div
-            style={{
-              borderRadius: 22,
-              padding: 18,
-              background: "rgba(15,23,42,0.78)",
-              border: "1px solid rgba(80,120,255,0.25)",
-              boxShadow:
-                "0 0 25px rgba(64,106,255,0.25), inset 0 0 20px rgba(20,30,60,0.45)",
-              backdropFilter: "blur(12px)",
-              display: "flex",
-              flexDirection: "column",
-            }}
-          >
-            <div
-              style={{
-                display: "flex",
-                justifyContent: "space-between",
-                alignItems: "center",
-                marginBottom: 10,
-              }}
-            >
-              <div>
-                <div
-                  style={{
-                    fontSize: 12,
-                    textTransform: "uppercase",
-                    letterSpacing: 1.4,
-                    color: "#9ca3af",
-                  }}
-                >
-                  Groups
-                </div>
-                <div
-                  style={{
-                    fontSize: 12,
-                    color: "#cbd5f5",
-                  }}
-                >
-                  Organize lanes of related coverage rules.
-                </div>
-              </div>
+          <input
+            type="checkbox"
+            checked={activeGroup?.is_active ?? true}
+            onChange={(e) =>
+              handleUpdateGroup({ is_active: e.target.checked })
+            }
+            disabled={!canEdit}
+          />
+          Active
+        </label>
 
-              {/* CREATE GROUP BUTTON */}
-              <button
-                onClick={handleCreateGroup}
-                disabled={!canEdit || !orgId}
-                style={{
-                  padding: "8px 14px",
-                  borderRadius: 999,
-                  border: "1px solid rgba(56,189,248,0.8)",
-                  background:
-                    "radial-gradient(circle at top,#38bdf8,#0ea5e9,#0f172a)",
-                  color: "white",
-                  fontSize: 12,
-                  fontWeight: 500,
-                  cursor: !canEdit || !orgId ? "not-allowed" : "pointer",
-                  opacity: !canEdit || !orgId ? 0.6 : 1,
-                }}
-              >
-                + New Group
-              </button>
-            </div>
+        <button
+          onClick={handleCreateRule}
+          disabled={!canEdit}
+          style={{
+            padding: "7px 10px",
+            borderRadius: 999,
+            border: "1px solid rgba(56,189,248,0.8)",
+            background:
+              "radial-gradient(circle at top,#0ea5e9,#0f172a)",
+            color: "white",
+            fontSize: 12,
+            fontWeight: 500,
+            cursor: !canEdit ? "not-allowed" : "pointer",
+          }}
+        >
+          + New Rule
+        </button>
 
-            {/* GROUP LIST */}
-            <div
-              style={{
-                marginTop: 4,
-                borderRadius: 18,
-                border: "1px solid rgba(51,65,85,0.9)",
-                background: "rgba(15,23,42,0.96)",
-                flex: 1,
-                padding: 10,
-                overflowY: "auto",
-              }}
-            >
-              {groups.length === 0 ? (
-                <div
-                  style={{
-                    fontSize: 12,
-                    color: "#9ca3af",
-                    padding: "8px 6px",
-                    borderRadius: 12,
-                    border: "1px dashed rgba(75,85,99,0.9)",
-                    background: "rgba(15,23,42,0.9)",
-                  }}
-                >
-                  No groups yet. Click <strong>+ New Group</strong> to create
-                  your first lane.
-                </div>
-              ) : (
-                groups.map((g) => {
-                  const isActive = g.id === activeGroupId;
-                  return (
-                    <button
-                      key={g.id}
-                      onClick={() => {
-                        setActiveGroupId(g.id);
-                        loadRulesForGroup(g.id);
-                      }}
-                      style={{
-                        width: "100%",
-                        textAlign: "left",
-                        borderRadius: 14,
-                        padding: "8px 10px",
-                        marginBottom: 6,
-                        border: isActive
-                          ? "1px solid rgba(56,189,248,0.9)"
-                          : "1px solid rgba(51,65,85,0.9)",
-                        background: isActive
-                          ? "radial-gradient(circle at top,#1d4ed8,#020617)"
-                          : "rgba(15,23,42,0.96)",
-                        color: "#e5e7eb",
-                        cursor: "pointer",
-                        transition: "0.2s ease",
-                      }}
-                    >
-                      <div
-                        style={{
-                          fontSize: 13,
-                          fontWeight: 500,
-                          marginBottom: 2,
-                        }}
-                      >
-                        {g.name || "Untitled group"}
-                      </div>
-                      <div
-                        style={{
-                          fontSize: 11,
-                          color: "#9ca3af",
-                        }}
-                      >
-                        {g.description || "No description"} ·{" "}
-                        {g.rule_count || 0} rules
-                      </div>
-                    </button>
-                  );
-                })
-              )}
-            </div>
-          </div>
+        <button
+          onClick={() => handleDeleteGroup(activeGroup.id)}
+          disabled={!canEdit}
+          style={{
+            padding: "7px 10px",
+            borderRadius: 999,
+            border: "1px solid rgba(248,113,113,0.85)",
+            background:
+              "radial-gradient(circle at top,#b91c1c,#111827)",
+            color: "#fecaca",
+            fontSize: 12,
+            fontWeight: 500,
+            cursor: !canEdit ? "not-allowed" : "pointer",
+          }}
+        >
+          Delete group
+        </button>
+      </div>
+    </div>
+  ) : (
+    <div style={{ fontSize: 13, color: "#9ca3af", marginBottom: 12 }}>
+      Select a group on the left to edit its rules.
+    </div>
+  )}
 
-          {/* -------------------------------------- */}
-          {/* MIDDLE PANEL — CINEMATIC LANES */}
-          {/* -------------------------------------- */}
-          <DndProvider backend={HTML5Backend}>
-            <div
-              style={{
-                display: "grid",
-                gridTemplateColumns: "1fr 1fr 1fr",
-                gap: 18,
-                minHeight: 480,
-              }}
-            >
-              {["critical", "required", "recommended"].map((laneKey) => {
-                const laneLabel =
-                  laneKey === "critical"
-                    ? "Critical / Must-Have"
-                    : laneKey === "required"
-                    ? "Required"
-                    : "Recommended";
+  {/* ---------- LANE GRID ---------- */}
+  <DndProvider backend={HTML5Backend}>
+    <div
+      style={{
+        display: "grid",
+        gridTemplateColumns: "1fr 1fr 1fr",
+        gap: 18,
+        minHeight: 420,
+      }}
+    >
+      {["critical", "required", "recommended"].map((laneKey) => {
+        const laneLabel =
+          laneKey === "critical"
+            ? "Critical / Must-Have"
+            : laneKey === "required"
+            ? "Required"
+            : "Recommended";
 
-                const laneColor =
-                  laneKey === "critical"
-                    ? "rgba(248,113,113,0.35)"
-                    : laneKey === "required"
-                    ? "rgba(59,130,246,0.35)"
-                    : "rgba(168,85,247,0.35)";
+        const laneColor =
+          laneKey === "critical"
+            ? "rgba(248,113,113,0.35)"
+            : laneKey === "required"
+            ? "rgba(59,130,246,0.35)"
+            : "rgba(168,85,247,0.35)";
 
-                const laneRules = rules.filter(
-                  (r) => r.severity === laneKey
-                );
+        const laneRules = rules.filter(
+          (r) => r.severity === laneKey
+        );
 
-                return (
-                  <LaneColumn
-                    key={laneKey}
-                    laneKey={laneKey}
-                    label={laneLabel}
-                    color={laneColor}
-                    rules={laneRules}
-                    onMoveRule={handleMoveRule}
-                    onUpdateRule={handleUpdateRule}
-                    onDeleteRule={handleDeleteRule}
-                    canEdit={canEdit}
-                  />
-                );
-              })}
-            </div>
-          </DndProvider>
-
-          {/* -------------------------------------- */}
-          {/* RIGHT PANEL — ENGINE + EVALUATOR */}
-          {/* -------------------------------------- */}
-          <div
-            style={{
-              borderRadius: 22,
-              padding: 20,
-              background: "rgba(15,23,42,0.78)",
-              border: "1px solid rgba(80,120,255,0.25)",
-              boxShadow:
-                "0 0 25px rgba(64,106,255,0.25), inset 0 0 20px rgba(20,30,60,0.45)",
-              backdropFilter: "blur(12px)",
-              display: "flex",
-              flexDirection: "column",
-              gap: 18,
-            }}
-          >
+        return (
+          <LaneColumn
+            key={laneKey}
+            laneKey={laneKey}
+            label={laneLabel}
+            color={laneColor}
+            rules={laneRules}
+            onMoveRule={handleMoveRule}
+            onUpdateRule={handleUpdateRule}
+            onDeleteRule={handleDeleteRule}
+            canEdit={canEdit}
+          />
+        );
+      })}
+    </div>
+  </DndProvider>
+</div>
             {/* ENGINE CONTROL */}
             <div>
               <div
