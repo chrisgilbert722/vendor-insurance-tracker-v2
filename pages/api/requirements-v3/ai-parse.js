@@ -61,22 +61,29 @@ equals, not_equals, contains, gte, lte
 Allowed severities:
 critical, high, medium, low
 
-DO NOT RETURN ANYTHING EXCEPT JSON.
+Return ONLY JSON.
 
-User requirement text:
+User text:
 """${text}"""
 `;
 
     const completion = await client.responses.create({
       model: "gpt-4.1-mini",
       input: prompt,
-      response_format: { type: "json_object" }
+      response_format: { type: "json_object" },
     });
 
-    // The correct way to read output for Responses API
-    const raw = completion.output_text; 
+    // ------------------------------
+    // THE CORRECT READ METHOD FOR GPT-4.1
+    // ------------------------------
+    const rawJson = completion.output?.[0]?.content?.[0]?.text;
 
-    const parsed = JSON.parse(raw);
+    if (!rawJson) {
+      console.error("NO JSON RETURNED:", completion);
+      throw new Error("AI did not return JSON output.");
+    }
+
+    const parsed = JSON.parse(rawJson);
 
     return res.status(200).json({ ok: true, ...parsed });
   } catch (err) {
