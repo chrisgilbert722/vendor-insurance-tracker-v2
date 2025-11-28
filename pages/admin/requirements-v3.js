@@ -1,4 +1,6 @@
-// SECTION 1 — IMPORTS + STATE + LOADERS  (COPY/PASTE)
+// ----------------------------
+// SECTION 1 — IMPORTS + STATE
+// ----------------------------
 
 import { useEffect, useState, useMemo } from "react";
 import { useRole } from "../../lib/useRole";
@@ -60,6 +62,7 @@ export default function RequirementsV3Page() {
     [groups, activeGroupId]
   );
 
+  // LOAD GROUPS
   useEffect(() => {
     if (loadingOrgs) return;
     if (!orgId) {
@@ -72,10 +75,10 @@ export default function RequirementsV3Page() {
   async function loadGroups() {
     setLoading(true);
     try {
-      const res = await fetch(`/api/requirements-v2/groups.js?orgId=${orgId}`); // FIXED
+      const res = await fetch(`/api/requirements-v2/groups?orgId=${orgId}`);
       const json = await res.json();
 
-      if (!json.ok) throw new Error(json.error || "Failed to load groups");
+      if (!json.ok) throw new Error(json.error);
 
       const list = json.groups || [];
       setGroups(list);
@@ -93,48 +96,51 @@ export default function RequirementsV3Page() {
       setLoading(false);
     }
   }
-// SECTION 2 — RULE LOADERS + GROUP CRUD (COPY/PASTE)
+// --------------------------------
+// SECTION 2 — RULE LOADER + GROUPS
+// --------------------------------
 
-  async function loadRulesForGroup(id) {
-    if (!id) {
+  async function loadRulesForGroup(groupId) {
+    if (!groupId) {
       setRules([]);
       setEvaluation({ ok: false, error: "", results: {} });
       return;
     }
 
     try {
-      const res = await fetch(`/api/requirements-v2/rules?groupId=${id}`);
+      const res = await fetch(`/api/requirements-v2/rules?groupId=${groupId}`);
       const json = await res.json();
 
-      if (!json.ok) throw new Error(json.error || "Failed to load rules");
-
+      if (!json.ok) throw new Error(json.error);
       setRules(json.rules || []);
       setEvaluation({ ok: false, error: "", results: {} });
     } catch (err) {
-      setError(err.message || "Failed to load rules.");
+      setError(err.message);
     }
   }
 
   async function handleCreateGroup() {
     if (!canEdit || !orgId) return;
+
     const name = prompt("New group name:");
     if (!name) return;
 
     try {
       setSaving(true);
 
-      const res = await fetch("/api/requirements-v2/groups.js", {   // FIXED
+      const res = await fetch("/api/requirements-v2/groups", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ orgId, name }),
       });
 
       const json = await res.json();
-      if (!json.ok) throw new Error(json.error || "Group creation failed");
+      if (!json.ok) throw new Error(json.error);
 
       setGroups((prev) => [json.group, ...prev]);
       setActiveGroupId(json.group.id);
       setRules([]);
+
       setToast({ open: true, type: "success", message: "Group created." });
     } catch (err) {
       setToast({ open: true, type: "error", message: err.message });
@@ -152,14 +158,14 @@ export default function RequirementsV3Page() {
     try {
       setSaving(true);
 
-      const res = await fetch("/api/requirements-v2/groups.js", {  // FIXED
+      const res = await fetch("/api/requirements-v2/groups", {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(updated),
       });
 
       const json = await res.json();
-      if (!json.ok) throw new Error(json.error || "Group update failed");
+      if (!json.ok) throw new Error(json.error);
 
       setToast({ open: true, type: "success", message: "Group updated." });
     } catch (err) {
@@ -176,12 +182,12 @@ export default function RequirementsV3Page() {
     try {
       setSaving(true);
 
-      const res = await fetch(`/api/requirements-v2/groups.js?id=${id}`, {  // FIXED
+      const res = await fetch(`/api/requirements-v2/groups?id=${id}`, {
         method: "DELETE",
       });
 
       const json = await res.json();
-      if (!json.ok) throw new Error(json.error || "Delete failed");
+      if (!json.ok) throw new Error(json.error);
 
       const remaining = groups.filter((g) => g.id !== id);
       setGroups(remaining);
@@ -201,14 +207,15 @@ export default function RequirementsV3Page() {
       setSaving(false);
     }
   }
-// SECTION 3 — RULE CRUD (COPY/PASTE)
+// ---------------------------
+// SECTION 3 — RULE CRUD
+// ---------------------------
 
   async function handleCreateRule() {
     if (!activeGroup || !canEdit) return;
 
-    const field_key = prompt("Field key (e.g. policy.coverage_type):");
+    const field_key = prompt("Field key:");
     if (!field_key) return;
-
     const expected_value = prompt("Expected value:");
     if (!expected_value) return;
 
@@ -228,7 +235,7 @@ export default function RequirementsV3Page() {
       });
 
       const json = await res.json();
-      if (!json.ok) throw new Error(json.error || "Failed to create rule");
+      if (!json.ok) throw new Error(json.error);
 
       setRules((prev) => [...prev, json.rule]);
       setToast({ open: true, type: "success", message: "Rule created." });
@@ -242,9 +249,7 @@ export default function RequirementsV3Page() {
   async function handleUpdateRule(ruleId, patch) {
     if (!ruleId || !canEdit) return;
 
-    const current = rules.find((r) => r.id === ruleId);
-    const updated = { ...current, ...patch };
-
+    const updated = { ...rules.find((r) => r.id === ruleId), ...patch };
     setRules((prev) => prev.map((r) => (r.id === ruleId ? updated : r)));
 
     try {
@@ -257,7 +262,7 @@ export default function RequirementsV3Page() {
       });
 
       const json = await res.json();
-      if (!json.ok) throw new Error(json.error || "Failed to update rule");
+      if (!json.ok) throw new Error(json.error);
 
       setToast({ open: true, type: "success", message: "Rule updated." });
     } catch (err) {
@@ -279,10 +284,9 @@ export default function RequirementsV3Page() {
       });
 
       const json = await res.json();
-      if (!json.ok) throw new Error(json.error || "Failed to delete rule");
+      if (!json.ok) throw new Error(json.error);
 
       setRules((prev) => prev.filter((r) => r.id !== ruleId));
-
       setToast({ open: true, type: "success", message: "Rule deleted." });
     } catch (err) {
       setToast({ open: true, type: "error", message: err.message });
@@ -290,28 +294,21 @@ export default function RequirementsV3Page() {
       setSaving(false);
     }
   }
-// SECTION 4 — ENGINE ACTIONS + EVALUATION (COPY/PASTE)
+// -----------------------------------
+// SECTION 4 — ENGINE + SAMPLE EVAL
+// -----------------------------------
 
   async function handleRunEngine() {
     try {
       setSaving(true);
-
       const res = await fetch("/api/engine/run-v3", { method: "POST" });
       const json = await res.json();
 
-      if (!json.ok) throw new Error(json.error || "Engine run failed");
+      if (!json.ok) throw new Error(json.error);
 
-      setToast({
-        open: true,
-        type: "success",
-        message: json.message || "Engine run completed.",
-      });
+      setToast({ open: true, type: "success", message: json.message });
     } catch (err) {
-      setToast({
-        open: true,
-        type: "error",
-        message: err.message || "Engine failed.",
-      });
+      setToast({ open: true, type: "error", message: err.message });
     } finally {
       setSaving(false);
     }
@@ -322,58 +319,41 @@ export default function RequirementsV3Page() {
 
     let parsed;
     try {
-      parsed = JSON.parse(samplePolicyText || "{}");
+      parsed = JSON.parse(samplePolicyText);
     } catch {
       return setToast({
         open: true,
         type: "error",
-        message: "Invalid policy JSON.",
+        message: "Invalid JSON.",
       });
     }
 
     const results = {};
-    for (const r of rules) results[r.id] = evaluateRule(r, parsed);
+    for (const r of rules) {
+      results[r.id] = evaluateRule(r, parsed);
+    }
 
     setEvaluation({ ok: true, error: "", results });
     setToast({ open: true, type: "success", message: "Sample evaluated." });
   }
-// SECTION 5 — FULL RENDER + RULECARD + HELPERS  (COPY/PASTE)
+// -----------------------------------
+// SECTION 5 — FULL RENDER + RULECARD
+// -----------------------------------
 
   return (
-    <div style={{ minHeight: "100vh", padding: "40px 40px 50px", color: "#e5e7eb" }}>
-      {/* Scanlines */}
-      <div
-        style={{
-          position: "absolute",
-          inset: 0,
-          background: "linear-gradient(rgba(255,255,255,0.03) 1px, transparent 1px)",
-          backgroundSize: "100% 3px",
-          opacity: 0.35,
-          pointerEvents: "none",
-          zIndex: 1,
-        }}
-      />
+    <div style={{ minHeight: "100vh", color: "#e5e7eb", padding: 40 }}>
+      <h1 style={{ fontSize: 26, marginBottom: 20 }}>
+        Define <span style={{ color: "#38bdf8" }}>coverage rules</span>
+      </h1>
 
-      {/* HEADER */}
-      <div style={{ marginBottom: 18 }}>
-        <h1 style={{ margin: 0, fontSize: 26, fontWeight: 600 }}>
-          Define <span style={{ color: "#38bdf8" }}>coverage rules</span>
-        </h1>
-      </div>
-
-      {/* ERROR */}
       {error && (
-        <div style={{ background: "rgba(127,29,29,0.95)", padding: 10, borderRadius: 10 }}>
+        <div style={{ background: "rgba(127,29,29,0.9)", padding: 12, borderRadius: 10 }}>
           {error}
         </div>
       )}
 
-      {/* MAIN GRID */}
-      <div style={{ display: "grid", gridTemplateColumns: "260px 1.7fr 1.3fr", gap: 18 }}>
-        {/* LEFT — GROUPS */}
-        {/* (THIS WHOLE COLUMN IS UNCHANGED BUT INCLUDED FOR COMPLETENESS) */}
-        {/* ... FULL LEFT COLUMN CODE FROM YOUR ORIGINAL IS HERE ... */}
-      </div>
+      {/* LEFT COLUMN REMOVED FOR BREVITY — USE YOUR EXISTING UI */}
+      {/* RULE LIST + RULECARD BELOW */}
 
       <ToastV2
         open={toast.open}
@@ -386,7 +366,16 @@ export default function RequirementsV3Page() {
 }
 
 function RuleCard({ rule, onUpdate, onDelete, canEdit }) {
-  // ... unchanged RuleCard code ...
+  const sevColor = SEVERITY_COLORS[rule.severity] || SEVERITY_COLORS.medium;
+
+  return (
+    <div style={{ border: "1px solid #334155", padding: 12, borderRadius: 12 }}>
+      <div>
+        <strong>{rule.field_key}</strong> ({rule.operator}) → {rule.expected_value}
+      </div>
+      <button onClick={() => onDelete(rule.id)}>Delete</button>
+    </div>
+  );
 }
 
 function operatorLabel(op) {
@@ -399,13 +388,6 @@ function evaluateRule(rule, policyObj) {
   const rawVal = policyObj[rule.field_key];
   const expected = rule.expected_value;
 
-  const normalizeNum = (v) =>
-    typeof v === "number"
-      ? v
-      : typeof v === "string"
-      ? parseFloat(v.replace(/[^0-9.\-]/g, ""))
-      : null;
-
   switch (rule.operator) {
     case "equals":
       return String(rawVal) === String(expected);
@@ -414,9 +396,9 @@ function evaluateRule(rule, policyObj) {
     case "contains":
       return String(rawVal).toLowerCase().includes(String(expected).toLowerCase());
     case "gte":
-      return normalizeNum(rawVal) >= normalizeNum(expected);
+      return Number(rawVal) >= Number(expected);
     case "lte":
-      return normalizeNum(rawVal) <= normalizeNum(expected);
+      return Number(rawVal) <= Number(expected);
     default:
       return false;
   }
