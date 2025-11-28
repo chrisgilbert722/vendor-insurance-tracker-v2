@@ -100,269 +100,269 @@ export default function RequirementsV3Page() {
 // SECTION 2 — RULE LOADER + GROUPS
 // --------------------------------
 
-  async function loadRulesForGroup(groupId) {
-    if (!groupId) {
+async function loadRulesForGroup(groupId) {
+  if (!groupId) {
+    setRules([]);
+    setEvaluation({ ok: false, error: "", results: {} });
+    return;
+  }
+
+  try {
+    const res = await fetch(`/api/requirements-v2/rules?groupId=${groupId}`);
+    const json = await res.json();
+
+    if (!json.ok) throw new Error(json.error);
+    setRules(json.rules || []);
+    setEvaluation({ ok: false, error: "", results: {} });
+  } catch (err) {
+    setError(err.message);
+  }
+}
+
+async function handleCreateGroup() {
+  if (!canEdit || !orgId) return;
+
+  const name = prompt("New group name:");
+  if (!name) return;
+
+  try {
+    setSaving(true);
+
+    const res = await fetch("/api/requirements-v2/groups", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ orgId, name }),
+    });
+
+    const json = await res.json();
+    if (!json.ok) throw new Error(json.error);
+
+    setGroups((prev) => [json.group, ...prev]);
+    setActiveGroupId(json.group.id);
+    setRules([]);
+
+    setToast({ open: true, type: "success", message: "Group created." });
+  } catch (err) {
+    setToast({ open: true, type: "error", message: err.message });
+  } finally {
+    setSaving(false);
+  }
+}
+
+async function handleUpdateGroup(patch) {
+  if (!canEdit || !activeGroup) return;
+
+  const updated = { ...activeGroup, ...patch };
+  setGroups((prev) => prev.map((g) => (g.id === activeGroup.id ? updated : g)));
+
+  try {
+    setSaving(true);
+
+    const res = await fetch("/api/requirements-v2/groups", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(updated),
+    });
+
+    const json = await res.json();
+    if (!json.ok) throw new Error(json.error);
+
+    setToast({ open: true, type: "success", message: "Group updated." });
+  } catch (err) {
+    setToast({ open: true, type: "error", message: err.message });
+  } finally {
+    setSaving(false);
+  }
+}
+
+async function handleDeleteGroup(id) {
+  if (!canEdit || !id) return;
+  if (!window.confirm("Delete group & all rules?")) return;
+
+  try {
+    setSaving(true);
+
+    const res = await fetch(`/api/requirements-v2/groups?id=${id}`, {
+      method: "DELETE",
+    });
+
+    const json = await res.json();
+    if (!json.ok) throw new Error(json.error);
+
+    const remaining = groups.filter((g) => g.id !== id);
+    setGroups(remaining);
+
+    if (remaining.length) {
+      setActiveGroupId(remaining[0].id);
+      await loadRulesForGroup(remaining[0].id);
+    } else {
+      setActiveGroupId(null);
       setRules([]);
-      setEvaluation({ ok: false, error: "", results: {} });
-      return;
     }
 
-    try {
-      const res = await fetch(`/api/requirements-v2/rules?groupId=${groupId}`);
-      const json = await res.json();
-
-      if (!json.ok) throw new Error(json.error);
-      setRules(json.rules || []);
-      setEvaluation({ ok: false, error: "", results: {} });
-    } catch (err) {
-      setError(err.message);
-    }
+    setToast({ open: true, type: "success", message: "Group deleted." });
+  } catch (err) {
+    setToast({ open: true, type: "error", message: err.message });
+  } finally {
+    setSaving(false);
   }
-
-  async function handleCreateGroup() {
-    if (!canEdit || !orgId) return;
-
-    const name = prompt("New group name:");
-    if (!name) return;
-
-    try {
-      setSaving(true);
-
-      const res = await fetch("/api/requirements-v2/groups", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ orgId, name }),
-      });
-
-      const json = await res.json();
-      if (!json.ok) throw new Error(json.error);
-
-      setGroups((prev) => [json.group, ...prev]);
-      setActiveGroupId(json.group.id);
-      setRules([]);
-
-      setToast({ open: true, type: "success", message: "Group created." });
-    } catch (err) {
-      setToast({ open: true, type: "error", message: err.message });
-    } finally {
-      setSaving(false);
-    }
-  }
-
-  async function handleUpdateGroup(patch) {
-    if (!canEdit || !activeGroup) return;
-
-    const updated = { ...activeGroup, ...patch };
-    setGroups((prev) => prev.map((g) => (g.id === activeGroup.id ? updated : g)));
-
-    try {
-      setSaving(true);
-
-      const res = await fetch("/api/requirements-v2/groups", {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(updated),
-      });
-
-      const json = await res.json();
-      if (!json.ok) throw new Error(json.error);
-
-      setToast({ open: true, type: "success", message: "Group updated." });
-    } catch (err) {
-      setToast({ open: true, type: "error", message: err.message });
-    } finally {
-      setSaving(false);
-    }
-  }
-
-  async function handleDeleteGroup(id) {
-    if (!canEdit || !id) return;
-    if (!window.confirm("Delete group & all rules?")) return;
-
-    try {
-      setSaving(true);
-
-      const res = await fetch(`/api/requirements-v2/groups?id=${id}`, {
-        method: "DELETE",
-      });
-
-      const json = await res.json();
-      if (!json.ok) throw new Error(json.error);
-
-      const remaining = groups.filter((g) => g.id !== id);
-      setGroups(remaining);
-
-      if (remaining.length) {
-        setActiveGroupId(remaining[0].id);
-        await loadRulesForGroup(remaining[0].id);
-      } else {
-        setActiveGroupId(null);
-        setRules([]);
-      }
-
-      setToast({ open: true, type: "success", message: "Group deleted." });
-    } catch (err) {
-      setToast({ open: true, type: "error", message: err.message });
-    } finally {
-      setSaving(false);
-    }
-  }
+}
 // ---------------------------
 // SECTION 3 — RULE CRUD
 // ---------------------------
 
-  async function handleCreateRule() {
-    if (!activeGroup || !canEdit) return;
+async function handleCreateRule() {
+  if (!activeGroup || !canEdit) return;
 
-    const field_key = prompt("Field key:");
-    if (!field_key) return;
-    const expected_value = prompt("Expected value:");
-    if (!expected_value) return;
+  const field_key = prompt("Field key:");
+  if (!field_key) return;
+  const expected_value = prompt("Expected value:");
+  if (!expected_value) return;
 
-    try {
-      setSaving(true);
+  try {
+    setSaving(true);
 
-      const res = await fetch("/api/requirements-v2/rules", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          groupId: activeGroup.id,
-          field_key,
-          operator: "equals",
-          expected_value,
-          severity: "medium",
-        }),
-      });
+    const res = await fetch("/api/requirements-v2/rules", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        groupId: activeGroup.id,
+        field_key,
+        operator: "equals",
+        expected_value,
+        severity: "medium",
+      }),
+    });
 
-      const json = await res.json();
-      if (!json.ok) throw new Error(json.error);
+    const json = await res.json();
+    if (!json.ok) throw new Error(json.error);
 
-      setRules((prev) => [...prev, json.rule]);
-      setToast({ open: true, type: "success", message: "Rule created." });
-    } catch (err) {
-      setToast({ open: true, type: "error", message: err.message });
-    } finally {
-      setSaving(false);
-    }
+    setRules((prev) => [...prev, json.rule]);
+    setToast({ open: true, type: "success", message: "Rule created." });
+  } catch (err) {
+    setToast({ open: true, type: "error", message: err.message });
+  } finally {
+    setSaving(false);
   }
+}
 
-  async function handleUpdateRule(ruleId, patch) {
-    if (!ruleId || !canEdit) return;
+async function handleUpdateRule(ruleId, patch) {
+  if (!ruleId || !canEdit) return;
 
-    const updated = { ...rules.find((r) => r.id === ruleId), ...patch };
-    setRules((prev) => prev.map((r) => (r.id === ruleId ? updated : r)));
+  const updated = { ...rules.find((r) => r.id === ruleId), ...patch };
+  setRules((prev) => prev.map((r) => (r.id === ruleId ? updated : r)));
 
-    try {
-      setSaving(true);
+  try {
+    setSaving(true);
 
-      const res = await fetch("/api/requirements-v2/rules", {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(updated),
-      });
+    const res = await fetch("/api/requirements-v2/rules", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(updated),
+    });
 
-      const json = await res.json();
-      if (!json.ok) throw new Error(json.error);
+    const json = await res.json();
+    if (!json.ok) throw new Error(json.error);
 
-      setToast({ open: true, type: "success", message: "Rule updated." });
-    } catch (err) {
-      setToast({ open: true, type: "error", message: err.message });
-    } finally {
-      setSaving(false);
-    }
+    setToast({ open: true, type: "success", message: "Rule updated." });
+  } catch (err) {
+    setToast({ open: true, type: "error", message: err.message });
+  } finally {
+    setSaving(false);
   }
+}
 
-  async function handleDeleteRule(ruleId) {
-    if (!ruleId || !canEdit) return;
-    if (!window.confirm("Delete this rule?")) return;
+async function handleDeleteRule(ruleId) {
+  if (!ruleId || !canEdit) return;
+  if (!window.confirm("Delete this rule?")) return;
 
-    try {
-      setSaving(true);
+  try {
+    setSaving(true);
 
-      const res = await fetch(`/api/requirements-v2/rules?id=${ruleId}`, {
-        method: "DELETE",
-      });
+    const res = await fetch(`/api/requirements-v2/rules?id=${ruleId}`, {
+      method: "DELETE",
+    });
 
-      const json = await res.json();
-      if (!json.ok) throw new Error(json.error);
+    const json = await res.json();
+    if (!json.ok) throw new Error(json.error);
 
-      setRules((prev) => prev.filter((r) => r.id !== ruleId));
-      setToast({ open: true, type: "success", message: "Rule deleted." });
-    } catch (err) {
-      setToast({ open: true, type: "error", message: err.message });
-    } finally {
-      setSaving(false);
-    }
+    setRules((prev) => prev.filter((r) => r.id !== ruleId));
+    setToast({ open: true, type: "success", message: "Rule deleted." });
+  } catch (err) {
+    setToast({ open: true, type: "error", message: err.message });
+  } finally {
+    setSaving(false);
   }
+}
 // -----------------------------------
 // SECTION 4 — ENGINE + SAMPLE EVAL
 // -----------------------------------
 
-  async function handleRunEngine() {
-    try {
-      setSaving(true);
-      const res = await fetch("/api/engine/run-v3", { method: "POST" });
-      const json = await res.json();
+async function handleRunEngine() {
+  try {
+    setSaving(true);
+    const res = await fetch("/api/engine/run-v3", { method: "POST" });
+    const json = await res.json();
 
-      if (!json.ok) throw new Error(json.error);
+    if (!json.ok) throw new Error(json.error);
 
-      setToast({ open: true, type: "success", message: json.message });
-    } catch (err) {
-      setToast({ open: true, type: "error", message: err.message });
-    } finally {
-      setSaving(false);
-    }
+    setToast({ open: true, type: "success", message: json.message });
+  } catch (err) {
+    setToast({ open: true, type: "error", message: err.message });
+  } finally {
+    setSaving(false);
+  }
+}
+
+function handleEvaluateSamplePolicy() {
+  setEvaluation({ ok: false, error: "", results: {} });
+
+  let parsed;
+  try {
+    parsed = JSON.parse(samplePolicyText);
+  } catch {
+    return setToast({
+      open: true,
+      type: "error",
+      message: "Invalid JSON.",
+    });
   }
 
-  function handleEvaluateSamplePolicy() {
-    setEvaluation({ ok: false, error: "", results: {} });
-
-    let parsed;
-    try {
-      parsed = JSON.parse(samplePolicyText);
-    } catch {
-      return setToast({
-        open: true,
-        type: "error",
-        message: "Invalid JSON.",
-      });
-    }
-
-    const results = {};
-    for (const r of rules) {
-      results[r.id] = evaluateRule(r, parsed);
-    }
-
-    setEvaluation({ ok: true, error: "", results });
-    setToast({ open: true, type: "success", message: "Sample evaluated." });
+  const results = {};
+  for (const r of rules) {
+    results[r.id] = evaluateRule(r, parsed);
   }
+
+  setEvaluation({ ok: true, error: "", results });
+  setToast({ open: true, type: "success", message: "Sample evaluated." });
+}
 // -----------------------------------
 // SECTION 5 — FULL RENDER + RULECARD
 // -----------------------------------
 
-  return (
-    <div style={{ minHeight: "100vh", color: "#e5e7eb", padding: 40 }}>
-      <h1 style={{ fontSize: 26, marginBottom: 20 }}>
-        Define <span style={{ color: "#38bdf8" }}>coverage rules</span>
-      </h1>
+return (
+  <div style={{ minHeight: "100vh", color: "#e5e7eb", padding: 40 }}>
+    <h1 style={{ fontSize: 26, marginBottom: 20 }}>
+      Define <span style={{ color: "#38bdf8" }}>coverage rules</span>
+    </h1>
 
-      {error && (
-        <div style={{ background: "rgba(127,29,29,0.9)", padding: 12, borderRadius: 10 }}>
-          {error}
-        </div>
-      )}
+    {error && (
+      <div style={{ background: "rgba(127,29,29,0.9)", padding: 12, borderRadius: 10 }}>
+        {error}
+      </div>
+    )}
 
-      {/* LEFT COLUMN REMOVED FOR BREVITY — USE YOUR EXISTING UI */}
-      {/* RULE LIST + RULECARD BELOW */}
+    {/* TODO: add your left column + UI */}
+    {/* RULE LIST + RULECARD BELOW */}
 
-      <ToastV2
-        open={toast.open}
-        message={toast.message}
-        type={toast.type}
-        onClose={() => setToast((p) => ({ ...p, open: false }))}
-      />
-    </div>
-  );
+    <ToastV2
+      open={toast.open}
+      message={toast.message}
+      type={toast.type}
+      onClose={() => setToast((p) => ({ ...p, open: false }))}
+    />
+  </div>
+);
 }
 
 function RuleCard({ rule, onUpdate, onDelete, canEdit }) {
