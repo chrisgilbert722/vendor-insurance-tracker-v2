@@ -43,7 +43,11 @@ export default function RequirementsV3Page() {
   const [activeGroupId, setActiveGroupId] = useState(null);
   const [rules, setRules] = useState([]);
 
-  const [toast, setToast] = useState({ open: false, message: "", type: "success" });
+  const [toast, setToast] = useState({
+    open: false,
+    message: "",
+    type: "success",
+  });
 
   const [samplePolicyText, setSamplePolicyText] = useState(
 `{
@@ -55,7 +59,11 @@ export default function RequirementsV3Page() {
 }`
   );
 
-  const [evaluation, setEvaluation] = useState({ ok: false, error: "", results: {} });
+  const [evaluation, setEvaluation] = useState({
+    ok: false,
+    error: "",
+    results: {},
+  });
 
   const activeGroup = useMemo(
     () => groups.find((g) => g.id === activeGroupId) || null,
@@ -77,10 +85,11 @@ export default function RequirementsV3Page() {
   async function loadGroups() {
     setLoading(true);
     try {
-      const res = await fetch(`/api/requirements-v2/groups.js?orgId=${orgId}`);  // FIXED
+      // ✅ NO .js IN API PATH
+      const res = await fetch(`/api/requirements-v2/groups?orgId=${orgId}`);
       const json = await res.json();
 
-      if (!json.ok) throw new Error(json.error);
+      if (!json.ok) throw new Error(json.error || "Failed to load groups");
 
       const list = json.groups || [];
       setGroups(list);
@@ -110,15 +119,16 @@ export default function RequirementsV3Page() {
     }
 
     try {
-      const res = await fetch(`/api/requirements-v2/rules.js?groupId=${groupId}`);  // FIXED
+      // ✅ NO .js IN API PATH
+      const res = await fetch(`/api/requirements-v2/rules?groupId=${groupId}`);
       const json = await res.json();
 
-      if (!json.ok) throw new Error(json.error);
+      if (!json.ok) throw new Error(json.error || "Failed to load rules");
 
       setRules(json.rules || []);
       setEvaluation({ ok: false, error: "", results: {} });
     } catch (err) {
-      setError(err.message);
+      setError(err.message || "Failed to load rules.");
     }
   }
 
@@ -131,14 +141,15 @@ export default function RequirementsV3Page() {
     try {
       setSaving(true);
 
-      const res = await fetch("/api/requirements-v2/groups.js", { // FIXED
+      // ✅ NO .js
+      const res = await fetch("/api/requirements-v2/groups", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ orgId, name }),
       });
 
       const json = await res.json();
-      if (!json.ok) throw new Error(json.error);
+      if (!json.ok) throw new Error(json.error || "Group creation failed");
 
       setGroups((prev) => [json.group, ...prev]);
       setActiveGroupId(json.group.id);
@@ -161,14 +172,15 @@ export default function RequirementsV3Page() {
     try {
       setSaving(true);
 
-      const res = await fetch("/api/requirements-v2/groups.js", { // FIXED
+      // ✅ NO .js
+      const res = await fetch("/api/requirements-v2/groups", {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(updated),
       });
 
       const json = await res.json();
-      if (!json.ok) throw new Error(json.error);
+      if (!json.ok) throw new Error(json.error || "Group update failed");
 
       setToast({ open: true, type: "success", message: "Group updated." });
     } catch (err) {
@@ -185,12 +197,13 @@ export default function RequirementsV3Page() {
     try {
       setSaving(true);
 
-      const res = await fetch(`/api/requirements-v2/groups.js?id=${id}`, { // FIXED
+      // ✅ NO .js
+      const res = await fetch(`/api/requirements-v2/groups?id=${id}`, {
         method: "DELETE",
       });
 
       const json = await res.json();
-      if (!json.ok) throw new Error(json.error);
+      if (!json.ok) throw new Error(json.error || "Delete failed");
 
       const remaining = groups.filter((g) => g.id !== id);
       setGroups(remaining);
@@ -225,7 +238,8 @@ export default function RequirementsV3Page() {
     try {
       setSaving(true);
 
-      const res = await fetch("/api/requirements-v2/rules.js", { // FIXED
+      // ✅ NO .js
+      const res = await fetch("/api/requirements-v2/rules", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -238,7 +252,7 @@ export default function RequirementsV3Page() {
       });
 
       const json = await res.json();
-      if (!json.ok) throw new Error(json.error);
+      if (!json.ok) throw new Error(json.error || "Failed to create rule");
 
       setRules((prev) => [...prev, json.rule]);
       setToast({ open: true, type: "success", message: "Rule created." });
@@ -258,14 +272,15 @@ export default function RequirementsV3Page() {
     try {
       setSaving(true);
 
-      const res = await fetch("/api/requirements-v2/rules.js", { // FIXED
+      // ✅ NO .js
+      const res = await fetch("/api/requirements-v2/rules", {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(updated),
       });
 
       const json = await res.json();
-      if (!json.ok) throw new Error(json.error);
+      if (!json.ok) throw new Error(json.error || "Failed to update rule");
 
       setToast({ open: true, type: "success", message: "Rule updated." });
     } catch (err) {
@@ -282,12 +297,13 @@ export default function RequirementsV3Page() {
     try {
       setSaving(true);
 
-      const res = await fetch(`/api/requirements-v2/rules.js?id=${ruleId}`, { // FIXED
+      // ✅ NO .js
+      const res = await fetch(`/api/requirements-v2/rules?id=${ruleId}`, {
         method: "DELETE",
       });
 
       const json = await res.json();
-      if (!json.ok) throw new Error(json.error);
+      if (!json.ok) throw new Error(json.error || "Failed to delete rule");
 
       setRules((prev) => prev.filter((r) => r.id !== ruleId));
       setToast({ open: true, type: "success", message: "Rule deleted." });
@@ -307,11 +323,11 @@ export default function RequirementsV3Page() {
       const res = await fetch("/api/engine/run-v3", { method: "POST" });
       const json = await res.json();
 
-      if (!json.ok) throw new Error(json.error);
+      if (!json.ok) throw new Error(json.error || "Engine run failed");
 
-      setToast({ open: true, type: "success", message: json.message });
+      setToast({ open: true, type: "success", message: json.message || "Engine run complete." });
     } catch (err) {
-      setToast({ open: true, type: "error", message: err.message });
+      setToast({ open: true, type: "error", message: err.message || "Engine failed." });
     } finally {
       setSaving(false);
     }
@@ -339,8 +355,9 @@ export default function RequirementsV3Page() {
     setEvaluation({ ok: true, error: "", results });
     setToast({ open: true, type: "success", message: "Sample evaluated." });
   }
+
 // -----------------------------------
-// SECTION 5 — FULL RENDER + RULECARD
+// SECTION 5 — SIMPLE RENDER + HELPERS
 // -----------------------------------
 
   return (
@@ -355,6 +372,31 @@ export default function RequirementsV3Page() {
         </div>
       )}
 
+      {/* Minimal shell so page renders without blowing up.
+          You can drop your full neon cockpit UI back in later. */}
+
+      <div style={{ marginTop: 20, fontSize: 14 }}>
+        <p>Org: {orgId || "none"}</p>
+        <p>Groups loaded: {groups.length}</p>
+        <p>Active group: {activeGroup ? activeGroup.name : "none"}</p>
+
+        <button
+          onClick={handleRunEngine}
+          disabled={saving}
+          style={{ padding: "6px 10px", marginRight: 10 }}
+        >
+          Run engine now
+        </button>
+
+        <button
+          onClick={handleEvaluateSamplePolicy}
+          disabled={!rules.length}
+          style={{ padding: "6px 10px" }}
+        >
+          Evaluate sample policy
+        </button>
+      </div>
+
       <ToastV2
         open={toast.open}
         message={toast.message}
@@ -364,6 +406,10 @@ export default function RequirementsV3Page() {
     </div>
   );
 }
+
+// -----------------------------------------------------
+// HELPERS
+// -----------------------------------------------------
 
 function operatorLabel(op) {
   const found = OPERATOR_OPTIONS.find((o) => o.key === op);
