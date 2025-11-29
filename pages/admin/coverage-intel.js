@@ -1,19 +1,14 @@
 // pages/admin/coverage-intel.js
 // ==========================================================
 // PHASE 6 — COVERAGE INTEL (AI Insurance Brain)
-// Analyze → Summarize → Generate Rules → Apply to V5
 // ==========================================================
 
-// ----------------------------
-// IMPORTS
-// ----------------------------
 import { useState } from "react";
-import { useOrg } from "../../context/OrgContext";   // <-- NEW
 import ToastV2 from "../../components/ToastV2";
 
-// ----------------------------
+// ==========================================================
 // CONSTANTS
-// ----------------------------
+// ==========================================================
 const SAMPLE_PLACEHOLDER = `Paste insurance requirements or carrier policy text...
 
 Example:
@@ -25,32 +20,22 @@ Additional Insured + Waiver of Subrogation required."`;
 // MAIN COMPONENT
 // ==========================================================
 export default function CoverageIntelPage() {
-  // Org context (needed for Apply-to-V5)
-  const { activeOrgId: orgId } = useOrg();   // <-- REQUIRED
-
-  // Notification system
   const [toast, setToast] = useState({
     open: false,
     message: "",
     type: "success",
   });
 
-  // Source text from user
   const [sourceText, setSourceText] = useState("");
-
-  // AI summary + rule preview data
   const [coverageSummary, setCoverageSummary] = useState(null);
   const [rulePreview, setRulePreview] = useState(null);
 
-  // Loading states
   const [intelLoading, setIntelLoading] = useState(false);
   const [rulePreviewLoading, setRulePreviewLoading] = useState(false);
 
-  // Apply-to-V5 loading
-  const [applyLoading, setApplyLoading] = useState(false);
   // ==========================================================
-  // HANDLER 1 — Analyze Coverage (AI → summary)
-// ==========================================================
+  // HANDLER: AI Coverage Analysis
+  // ==========================================================
   async function handleAnalyzeCoverage() {
     if (!sourceText.trim()) {
       return setToast({
@@ -92,8 +77,8 @@ export default function CoverageIntelPage() {
   }
 
   // ==========================================================
-  // HANDLER 2 — Build Rule Preview (AI → V5 rulePlan)
-// ==========================================================
+  // HANDLER: Generate V5 Rule Preview
+  // ==========================================================
   async function handleGenerateRulePreview() {
     if (!coverageSummary) {
       return setToast({
@@ -114,8 +99,7 @@ export default function CoverageIntelPage() {
       });
 
       const json = await res.json();
-      if (!json.ok)
-        throw new Error(json.error || "Rule preview generation failed.");
+      if (!json.ok) throw new Error(json.error || "Rule preview generation failed.");
 
       setRulePreview(json.rulePlan);
       setToast({
@@ -133,61 +117,8 @@ export default function CoverageIntelPage() {
       setRulePreviewLoading(false);
     }
   }
-
   // ==========================================================
-  // HANDLER 3 — Apply Rule Plan to V5 Engine
-  // ==========================================================
-  async function handleApplyToV5() {
-    if (!orgId) {
-      return setToast({
-        open: true,
-        type: "error",
-        message: "No active org selected — cannot apply to V5.",
-      });
-    }
-
-    if (!rulePreview || !Array.isArray(rulePreview.groups)) {
-      return setToast({
-        open: true,
-        type: "error",
-        message: "No rule plan to apply. Generate preview first.",
-      });
-    }
-
-    try {
-      setApplyLoading(true);
-
-      const res = await fetch("/api/coverage/intel/apply", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          orgId,
-          rulePlan: rulePreview,
-        }),
-      });
-
-      const json = await res.json();
-      if (!json.ok) {
-        throw new Error(json.error || "Apply-to-V5 failed.");
-      }
-
-      setToast({
-        open: true,
-        type: "success",
-        message: `Applied ${json.createdRules} rules in ${json.createdGroups} groups to V5.`,
-      });
-    } catch (err) {
-      setToast({
-        open: true,
-        type: "error",
-        message: err.message || "Failed to apply rules to V5.",
-      });
-    } finally {
-      setApplyLoading(false);
-    }
-  }
-  // ==========================================================
-  // RENDER — PAGE LAYOUT (Full Cinematic Coverage Intel UI)
+  // RENDER — FULL PAGE LAYOUT
   // ==========================================================
   return (
     <div
@@ -213,7 +144,7 @@ export default function CoverageIntelPage() {
       </h1>
 
       <p style={{ marginTop: 6, fontSize: 14, color: "#94a3b8" }}>
-        Paste carrier requirements → analyze coverage → auto-build rules for V5.
+        Paste carrier requirements → extract coverages → generate rule plan for V5.
       </p>
 
       {/* MAIN 3-COLUMN GRID */}
@@ -225,13 +156,15 @@ export default function CoverageIntelPage() {
           gap: 20,
         }}
       >
-        {/* LEFT PANEL — COVERAGE SOURCE TEXT */}
+        {/* LEFT PANEL — SOURCE TEXT */}
         <div
           style={{
             borderRadius: 20,
             padding: 18,
             background: "rgba(15,23,42,0.75)",
             border: "1px solid rgba(80,120,255,0.35)",
+            display: "flex",
+            flexDirection: "column",
           }}
         >
           <div style={{ fontSize: 14, marginBottom: 10 }}>Coverage Text</div>
@@ -273,7 +206,7 @@ export default function CoverageIntelPage() {
           </button>
         </div>
 
-        {/* MIDDLE PANEL — AI COVERAGE SUMMARY */}
+        {/* MIDDLE PANEL — COVERAGE SUMMARY */}
         <div
           style={{
             borderRadius: 20,
@@ -283,20 +216,27 @@ export default function CoverageIntelPage() {
             overflowY: "auto",
           }}
         >
-          <div style={{ fontSize: 14, marginBottom: 10 }}>AI Coverage Summary</div>
+          <div style={{ fontSize: 14, marginBottom: 10 }}>
+            AI Coverage Summary
+          </div>
 
           {!coverageSummary ? (
             <div style={{ color: "#667085", fontSize: 13 }}>
               Run “Analyze Coverage” to populate this summary.
             </div>
           ) : (
-            <pre style={{ whiteSpace: "pre-wrap", fontSize: 13 }}>
+            <pre
+              style={{
+                whiteSpace: "pre-wrap",
+                fontSize: 13,
+                color: "#e2e8f0",
+              }}
+            >
               {JSON.stringify(coverageSummary, null, 2)}
             </pre>
           )}
         </div>
-
-        {/* RIGHT PANEL — RULE PREVIEW + APPLY-TO-V5 */}
+        {/* RIGHT PANEL — RULE PREVIEW */}
         <div
           style={{
             borderRadius: 20,
@@ -304,21 +244,30 @@ export default function CoverageIntelPage() {
             background: "rgba(15,23,42,0.75)",
             border: "1px solid rgba(80,120,255,0.35)",
             overflowY: "auto",
+            display: "flex",
+            flexDirection: "column",
           }}
         >
-          <div style={{ fontSize: 14, marginBottom: 10 }}>Rule Preview (V5 Format)</div>
+          <div style={{ fontSize: 14, marginBottom: 10 }}>
+            Rule Preview (V5)
+          </div>
 
           {!rulePreview ? (
             <div style={{ color: "#667085", fontSize: 13 }}>
-              Analyze coverage → Generate rule preview.
+              Analyze coverage → then generate rule preview.
             </div>
           ) : (
-            <pre style={{ whiteSpace: "pre-wrap", fontSize: 13 }}>
+            <pre
+              style={{
+                whiteSpace: "pre-wrap",
+                fontSize: 13,
+                color: "#e2e8f0",
+              }}
+            >
               {JSON.stringify(rulePreview, null, 2)}
             </pre>
           )}
 
-          {/* Generate Preview Button */}
           <button
             onClick={handleGenerateRulePreview}
             disabled={rulePreviewLoading || !coverageSummary}
@@ -339,39 +288,50 @@ export default function CoverageIntelPage() {
           >
             {rulePreviewLoading ? "Generating…" : "Generate Rule Preview"}
           </button>
-
-          {/* APPLY TO V5 BUTTON */}
-          <button
-            onClick={handleApplyToV5}
-            disabled={!rulePreview || applyLoading}
-            style={{
-              marginTop: 12,
-              width: "100%",
-              padding: "10px",
-              borderRadius: 12,
-              background:
-                !rulePreview
-                  ? "rgba(34,197,94,0.15)"
-                  : "linear-gradient(90deg,#22c55e,#16a34a)",
-              border: "1px solid #22c55e",
-              color: "white",
-              fontWeight: 600,
-              cursor: !rulePreview ? "not-allowed" : "pointer",
-            }}
-          >
-            {applyLoading ? "Applying…" : "Apply Rule Plan to V5"}
-          </button>
         </div>
-            </div> {/* END MAIN GRID */}
-    </div> {/* END MAIN WRAPPER */}
+      </div> {/* END GRID */}
+      {/* TOAST */}
+      <ToastV2
+        open={toast.open}
+        message={toast.message}
+        type={toast.type}
+        onClose={() => setToast((p) => ({ ...p, open: false }))}
+      />
 
-    {/* TOAST */}
-    <ToastV2
-      open={toast.open}
-      message={toast.message}
-      type={toast.type}
-      onClose={() => setToast((p) => ({ ...p, open: false }))}
-    />
-  </div> {/* <--- THIS closes the OUTERMOST PAGE DIV */}
-  );
+      <style jsx global>{`
+        @keyframes spin {
+          to {
+            transform: rotate(360deg);
+          }
+        }
+      `}</style>
+    </div> {/* END MAIN WRAPPER */}
+  ); // END RETURN
+} // END PAGE COMPONENT
+// ==========================================================
+// HELPERS — (Optional future transforms, safe stubs)
+// ==========================================================
+
+// You can extend this later if you want to normalize carrier text,
+// extract numeric limits, validate formats, or auto-detect coverage types.
+function normalizeCoverageText(text) {
+  if (!text) return "";
+  return text.trim();
 }
+
+// Validate AI output shape
+function validateCoverageSummary(summary) {
+  if (!summary) return false;
+  if (typeof summary !== "object") return false;
+  return true;
+}
+
+// Validate rulePreview shape
+function validateRulePlan(plan) {
+  if (!plan) return false;
+  if (typeof plan !== "object") return false;
+  if (!plan.groups) return false;
+  return true;
+}
+
+// END OF FILE
