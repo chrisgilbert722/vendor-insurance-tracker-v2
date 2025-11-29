@@ -1,10 +1,11 @@
 // pages/admin/coverage-intel.js
 // ==========================================================
 // PHASE 6 — COVERAGE INTEL (AI Insurance Brain)
-// Analyze → Summarize → Build Rule Plan for V5
+// Analyze → Summarize → Build Rule Plan for V5 → Apply (Smart Merge)
 // ==========================================================
 
 import { useState } from "react";
+import { useOrg } from "../../context/OrgContext";
 import ToastV2 from "../../components/ToastV2";
 
 // ==========================================================
@@ -21,6 +22,8 @@ Additional Insured + Waiver of Subrogation required."`;
 // PAGE COMPONENT
 // ==========================================================
 export default function CoverageIntelPage() {
+  const { activeOrgId: orgId } = useOrg(); // used by Apply-to-V5
+
   const [toast, setToast] = useState({
     open: false,
     message: "",
@@ -39,9 +42,13 @@ export default function CoverageIntelPage() {
   const [rulePreviewLoading, setRulePreviewLoading] = useState(false);
   const [applyLoading, setApplyLoading] = useState(false);
 
+  // Nuclear summary modal state
+  const [summaryOpen, setSummaryOpen] = useState(false);
+  const [summaryStats, setSummaryStats] = useState(null);
+
   // ==========================================================
   // HANDLER 1 — Analyze Coverage (AI → Summary)
-  // ==========================================================
+// ==========================================================
   async function handleAnalyzeCoverage() {
     if (!sourceText.trim()) {
       return setToast({
@@ -55,6 +62,8 @@ export default function CoverageIntelPage() {
       setIntelLoading(true);
       setCoverageSummary(null);
       setRulePreview(null);
+      setSummaryOpen(false);
+      setSummaryStats(null);
 
       const res = await fetch("/api/coverage/intel", {
         method: "POST",
@@ -98,6 +107,8 @@ export default function CoverageIntelPage() {
     try {
       setRulePreviewLoading(true);
       setRulePreview(null);
+      setSummaryOpen(false);
+      setSummaryStats(null);
 
       const res = await fetch("/api/coverage/intel/rules", {
         method: "POST",
@@ -128,26 +139,60 @@ export default function CoverageIntelPage() {
   }
 
   // ==========================================================
-  // HANDLER 3 — Apply Rule Plan to V5 (UI stub for now)
+  // HANDLER 3 — Apply Rule Plan to V5 (Smart Merge + Nuclear Modal)
 // ==========================================================
   async function handleApplyToV5() {
-    if (!rulePreview) {
+    if (!orgId) {
       return setToast({
         open: true,
         type: "error",
-        message: "Generate a rule preview first.",
+        message: "No active org selected — cannot apply to V5.",
       });
     }
 
-    // 🔥 Stub for now — does NOT hit the DB yet.
-    // In the next phase we’ll point this at /api/coverage/intel/apply.
-    setApplyLoading(true);
+    if (!rulePreview || !Array.isArray(rulePreview.groups)) {
+      return setToast({
+        open: true,
+        type: "error",
+        message: "No rule plan to apply. Generate preview first.",
+      });
+    }
+
     try {
+      setApplyLoading(true);
+      setSummaryOpen(false);
+      setSummaryStats(null);
+
+      const res = await fetch("/api/coverage/intel/apply", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          orgId,
+          rulePlan: rulePreview,
+        }),
+      });
+
+      const json = await res.json();
+      if (!json.ok) throw new Error(json.error || "Apply-to-V5 failed.");
+
+      setSummaryStats({
+        createdGroups: json.createdGroups ?? 0,
+        reusedGroups: json.reusedGroups ?? 0,
+        createdRules: json.createdRules ?? 0,
+        skippedDuplicates: json.skippedDuplicates ?? 0,
+      });
+      setSummaryOpen(true);
+
       setToast({
         open: true,
         type: "success",
-        message:
-          "Apply-to-V5 UI is wired. Next step: hook this to the V5 engine API.",
+        message: "Rule plan applied to V5 (Smart Merge).",
+      });
+    } catch (err) {
+      setToast({
+        open: true,
+        type: "error",
+        message: err.message || "Failed to apply rules to V5.",
       });
     } finally {
       setApplyLoading(false);
@@ -203,9 +248,7 @@ export default function CoverageIntelPage() {
             border: "1px solid rgba(80,120,255,0.35)",
           }}
         >
-          <div style={{ fontSize: 14, marginBottom: 10 }}>
-            Coverage Text
-          </div>
+          <div style={{ fontSize: 14, marginBottom: 10 }}>Coverage Text</div>
 
           <textarea
             value={sourceText}
@@ -346,17 +389,169 @@ export default function CoverageIntelPage() {
               cursor: !rulePreview ? "not-allowed" : "pointer",
             }}
           >
-            {applyLoading ? "Applying…" : "Apply Rule Plan to V5 (UI Stub)"}
+            {applyLoading ? "Applying…" : "Apply Rule Plan to V5"}
           </button>
         </div>
       </div>
+
+      {/* FULLSCREEN NUCLEAR SUMMARY MODAL */}
+      {summaryOpen && summaryStats && (
+        <div
+          style={{
+            position: "fixed",
+            inset: 0,
+            background: "rgba(15,23,42,0.88)",
+            backdropFilter: "blur(10px)",
+            zIndex: 9999,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+          }}
+        >
+          <div
+            style={{
+              width: "100%",
+              maxWidth: 520,
+              borderRadius: 24,
+              padding: 24,
+              background:
+                "radial-gradient(circle at top,#0f172a,#020617 60%,#000)",
+              border: "1px solid rgba(56,189,248,0.5)",
+              boxShadow: "0 40px 80px rgba(0,0,0,0.8)",
+            }}
+          >
+            <div
+              style={{
+                display: "flex",
+                justifyContent: "space-between",
+                alignItems: "center",
+                marginBottom: 16,
+              }}
+            >
+              <div
+                style={{
+                  fontSize: 18,
+                  fontWeight: 700,
+                  color: "#e5e7eb",
+                }}
+              >
+                ✅ Applied to Requirements V5
+              </div>
+              <button
+                onClick={() => setSummaryOpen(false)}
+                style={{
+                  borderRadius: 999,
+                  padding: "4px 10px",
+                  fontSize: 12,
+                  background: "rgba(15,23,42,0.8)",
+                  border: "1px solid rgba(148,163,184,0.6)",
+                  color: "#9ca3af",
+                  cursor: "pointer",
+                }}
+              >
+                Close
+              </button>
+            </div>
+
+            <div
+              style={{
+                display: "grid",
+                gridTemplateColumns: "1fr 1fr",
+                gap: 12,
+                marginBottom: 16,
+              }}
+            >
+              <SummaryCard
+                label="New Groups"
+                value={summaryStats.createdGroups}
+                color="#38bdf8"
+              />
+              <SummaryCard
+                label="Reused Groups"
+                value={summaryStats.reusedGroups}
+                color="#a855f7"
+              />
+              <SummaryCard
+                label="New Rules"
+                value={summaryStats.createdRules}
+                color="#22c55e"
+              />
+              <SummaryCard
+                label="Skipped Duplicates"
+                value={summaryStats.skippedDuplicates}
+                color="#f97316"
+              />
+            </div>
+
+            <p
+              style={{
+                fontSize: 13,
+                color: "#9ca3af",
+                marginBottom: 14,
+              }}
+            >
+              All changes were applied using Smart Merge logic to avoid duplicates
+              and reuse existing groups where possible.
+            </p>
+
+            <div
+              style={{
+                display: "flex",
+                gap: 10,
+                marginTop: 8,
+              }}
+            >
+              <button
+                onClick={() => {
+                  window.location.href = "/admin/requirements-v5";
+                }}
+                style={{
+                  flex: 1,
+                  padding: "10px 12px",
+                  borderRadius: 12,
+                  background:
+                    "linear-gradient(90deg,#38bdf8,#0ea5e9,#6366f1)",
+                  border: "1px solid rgba(56,189,248,0.9)",
+                  color: "white",
+                  fontWeight: 600,
+                  fontSize: 13,
+                  cursor: "pointer",
+                }}
+              >
+                Open V5 Engine
+              </button>
+              <button
+                onClick={() => {
+                  setSummaryOpen(false);
+                }}
+                style={{
+                  padding: "10px 12px",
+                  borderRadius: 12,
+                  background: "rgba(15,23,42,0.9)",
+                  border: "1px solid rgba(148,163,184,0.7)",
+                  color: "#e5e7eb",
+                  fontSize: 13,
+                  cursor: "pointer",
+                }}
+              >
+                Stay on Coverage Intel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* TOAST */}
       <ToastV2
         open={toast.open}
         message={toast.message}
         type={toast.type}
-        onClose={() => setToast((p) => ({ ...p, open: false }))}
+        onClose={() =>
+          setToast((p) => ({
+            ...p,
+            open: false,
+          }))
+        }
       />
 
       <style jsx global>{`
@@ -370,3 +565,40 @@ export default function CoverageIntelPage() {
   );
 }
 
+// ==========================================================
+// SMALL COMPONENT — SUMMARY CARD
+// ==========================================================
+function SummaryCard({ label, value, color }) {
+  return (
+    <div
+      style={{
+        borderRadius: 14,
+        padding: 12,
+        background:
+          "linear-gradient(145deg,rgba(15,23,42,0.96),rgba(15,23,42,0.9))",
+        border: `1px solid ${color}`,
+      }}
+    >
+      <div
+        style={{
+          fontSize: 11,
+          textTransform: "uppercase",
+          letterSpacing: 1,
+          color: "#9ca3af",
+          marginBottom: 6,
+        }}
+      >
+        {label}
+      </div>
+      <div
+        style={{
+          fontSize: 20,
+          fontWeight: 700,
+          color: "#e5e7eb",
+        }}
+      >
+        {value}
+      </div>
+    </div>
+  );
+}
