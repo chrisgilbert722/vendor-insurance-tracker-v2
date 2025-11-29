@@ -240,7 +240,7 @@ export default function Dashboard() {
   const { isAdmin, isManager } = useRole();
   const { activeOrgId } = useOrg();
 
-  // NEW: Real dashboard overview from /api/dashboard/overview
+  // Dashboard V3 overview
   const [dashboard, setDashboard] = useState(null);
   const [dashboardLoading, setDashboardLoading] = useState(true);
 
@@ -260,7 +260,7 @@ export default function Dashboard() {
     fail: 0,
   });
 
-  // Alerts (V2 wrapper)
+  // Alerts
   const [alerts, setAlerts] = useState([]);
   const [showAlerts, setShowAlerts] = useState(false);
 
@@ -280,9 +280,7 @@ export default function Dashboard() {
         setDashboardLoading(true);
         const res = await fetch(`/api/dashboard/overview?orgId=${activeOrgId}`);
         const data = await res.json();
-        if (data.ok) {
-          setDashboard(data.overview);
-        }
+        if (data.ok) setDashboard(data.overview);
       } catch (err) {
         console.error("Dashboard Load Error:", err);
       } finally {
@@ -303,11 +301,12 @@ export default function Dashboard() {
       if (data.ok) setPolicies(data.policies);
       setLoading(false);
     }
+
     load();
   }, []);
 
   /* ===========================
-      LOAD COMPLIANCE FOR VENDORS
+      LOAD COMPLIANCE
   ============================ */
   useEffect(() => {
     if (!policies.length || !activeOrgId) return;
@@ -369,7 +368,10 @@ export default function Dashboard() {
         policyType: primary.coverage_type,
       };
 
-      setEliteMap((prev) => ({ ...prev, [vendorId]: { loading: true } }));
+      setEliteMap((prev) => ({
+        ...prev,
+        [vendorId]: { loading: true },
+      }));
 
       fetch("/api/elite/evaluate", {
         method: "POST",
@@ -398,7 +400,9 @@ export default function Dashboard() {
       ELITE SUMMARY COUNTER
   ============================ */
   useEffect(() => {
-    let pass = 0, warn = 0, fail = 0;
+    let pass = 0,
+      warn = 0,
+      fail = 0;
 
     Object.values(eliteMap).forEach((e) => {
       if (!e || e.loading || e.error) return;
@@ -411,7 +415,7 @@ export default function Dashboard() {
   }, [eliteMap]);
 
   /* ===========================
-      V1 ALERT LOGGER (TEMP)
+      TEMPORARY V1 ALERT LOGGING
   ============================ */
   async function logAlert(vendorId, type, message) {
     if (!activeOrgId) return;
@@ -423,7 +427,7 @@ export default function Dashboard() {
   }
 
   /* ===========================
-      BASIC ALERT TRIGGERS (TEMP)
+      POLICY-BASED ALERT TRIGGERS (TEMP)
   ============================ */
   useEffect(() => {
     if (!policies.length || !activeOrgId) return;
@@ -459,7 +463,7 @@ export default function Dashboard() {
   }, [policies, eliteMap, complianceMap, activeOrgId]);
 
   /* ===========================
-      FETCH ALERTS V2 (via wrapper)
+      LOAD ALERTS (V2 wrapper)
   ============================ */
   useEffect(() => {
     if (!activeOrgId) return;
@@ -476,16 +480,29 @@ export default function Dashboard() {
   }, [activeOrgId]);
 
   /* ===========================
-      ⚠️ FIXED: COMPUTED VALUES MUST BE BEFORE RETURN()
+      FIXED — COMPUTED METRICS MUST BE BEFORE RETURN()
   ============================ */
-
-  const avgScore = dashboard?.globalScore ?? 0;  // <— FIX: defined before return
+  const avgScore = dashboard?.globalScore ?? 0;
   const totalVendors = dashboard?.vendorCount ?? 0;
   const alertsCount =
     (dashboard?.alerts?.expired ?? 0) +
     (dashboard?.alerts?.critical30d ?? 0) +
     (dashboard?.alerts?.warning90d ?? 0) +
     (dashboard?.alerts?.eliteFails ?? 0);
+
+  /* ===========================
+      FILTERED POLICIES (MUST BE ABOVE RETURN)
+  ============================ */
+  const filtered = policies.filter((p) => {
+    const t = filterText.toLowerCase();
+    return (
+      !t ||
+      p.vendor_name?.toLowerCase().includes(t) ||
+      p.policy_number?.toLowerCase().includes(t) ||
+      p.carrier?.toLowerCase().includes(t) ||
+      p.coverage_type?.toLowerCase().includes(t)
+    );
+  });
   return (
     <div
       style={{
@@ -534,7 +551,7 @@ export default function Dashboard() {
           DASHBOARD V3 • GLOBAL COMPLIANCE ENGINE
         </div>
 
-        {/* LEFT SIDE — Title + Summary */}
+        {/* LEFT SIDE — Title Area */}
         <div style={{ paddingTop: 22 }}>
           <h1
             style={{
@@ -560,11 +577,11 @@ export default function Dashboard() {
               lineHeight: 1.5,
             }}
           >
-            Live AI-powered oversight across all vendors, policies, expirations,
-            and risk engines. This is your command center.
+            Live AI-powered oversight across all vendors, policies,
+            expirations, and risk engines. This is your command center.
           </p>
 
-          {/* AI SNAPSHOT BAR */}
+          {/* AI SNAPSHOT */}
           <div
             style={{
               marginTop: 12,
@@ -603,7 +620,7 @@ export default function Dashboard() {
             </span>
           </div>
 
-          {/* PRIMARY ACTIONS */}
+          {/* ACTION BUTTONS */}
           <div
             style={{
               marginTop: 16,
@@ -632,7 +649,7 @@ export default function Dashboard() {
                     "0 0 18px rgba(56,189,248,0.35),0 0 32px rgba(30,64,175,0.25)",
                 }}
               >
-                <span>+ Upload New COI</span>
+                + Upload New COI
               </a>
             )}
 
@@ -690,7 +707,7 @@ export default function Dashboard() {
           </div>
 
           {/* =======================================
-              🔥 NEW — SEVERITY BREAKDOWN WIDGET
+              🔥 NEW — SEVERITY BREAKDOWN
           ======================================= */}
           <div
             style={{
@@ -745,7 +762,9 @@ export default function Dashboard() {
                 />
               </div>
             ) : (
-              <div style={{ fontSize: 12, color: GP.textMuted }}>Loading…</div>
+              <div style={{ fontSize: 12, color: GP.textMuted }}>
+                Loading…
+              </div>
             )}
           </div>
 
@@ -770,7 +789,9 @@ export default function Dashboard() {
               }}
             >
               {alerts.length === 0 ? (
-                <div style={{ fontSize: 12, color: GP.textMuted }}>No alerts yet.</div>
+                <div style={{ fontSize: 12, color: GP.textMuted }}>
+                  No alerts yet.
+                </div>
               ) : (
                 alerts.map((a) => (
                   <div
@@ -1115,7 +1136,7 @@ export default function Dashboard() {
                         </span>
                       </td>
 
-                      {/* AI Risk Score */}
+                      {/* AI Risk */}
                       <td
                         style={{
                           ...td,
@@ -1131,7 +1152,7 @@ export default function Dashboard() {
                       >
                         <div>{ai.score}</div>
 
-                        {/* AI Score Mini Bar */}
+                        {/* AI Score Bar */}
                         <div
                           style={{
                             marginTop: 4,
@@ -1159,12 +1180,12 @@ export default function Dashboard() {
                         </div>
                       </td>
 
-                      {/* Compliance Badge */}
+                      {/* Compliance */}
                       <td style={{ ...td, textAlign: "center" }}>
                         {renderComplianceBadge(p.vendor_id, complianceMap)}
                       </td>
 
-                      {/* Elite Pill */}
+                      {/* Elite */}
                       <td style={{ ...td, textAlign: "center" }}>
                         {elite && !elite.loading && !elite.error ? (
                           <EliteStatusPill status={elite.overall} />
@@ -1299,3 +1320,8 @@ const td = {
   fontSize: 12,
   color: "#e5e7eb",
 };
+// ===============================
+// End of Dashboard.js (FINAL)
+// ===============================
+
+export {}; // prevents isolatedModules / ensures clean EOF
