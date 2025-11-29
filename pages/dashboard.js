@@ -50,6 +50,7 @@ function computeDaysLeft(dateStr) {
 function computeRisk(p) {
   const daysLeft = computeDaysLeft(p.expiration_date);
   const flags = [];
+
   if (daysLeft === null) {
     return {
       daysLeft: null,
@@ -243,9 +244,14 @@ export default function Dashboard() {
   const [dashboard, setDashboard] = useState(null);
   const [dashboardLoading, setDashboardLoading] = useState(true);
 
+  // Policies
   const [policies, setPolicies] = useState([]);
   const [loading, setLoading] = useState(true);
+
+  // Filters
   const [filterText, setFilterText] = useState("");
+
+  // Compliance + Elite
   const [complianceMap, setComplianceMap] = useState({});
   const [eliteMap, setEliteMap] = useState({});
   const [eliteSummary, setEliteSummary] = useState({
@@ -254,9 +260,11 @@ export default function Dashboard() {
     fail: 0,
   });
 
+  // Alerts (V2 wrapper)
   const [alerts, setAlerts] = useState([]);
   const [showAlerts, setShowAlerts] = useState(false);
 
+  // Drawer
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [drawerVendor, setDrawerVendor] = useState(null);
   const [drawerPolicies, setDrawerPolicies] = useState([]);
@@ -299,7 +307,7 @@ export default function Dashboard() {
   }, []);
 
   /* ===========================
-      LOAD COMPLIANCE
+      LOAD COMPLIANCE FOR VENDORS
   ============================ */
   useEffect(() => {
     if (!policies.length || !activeOrgId) return;
@@ -330,8 +338,7 @@ export default function Dashboard() {
               : { loading: false, error: data.error },
           }));
         })
-        .catch((err) => {
-          console.error("Compliance Error:", err);
+        .catch(() => {
           setComplianceMap((prev) => ({
             ...prev,
             [vendorId]: { loading: false, error: "Failed to load" },
@@ -378,8 +385,7 @@ export default function Dashboard() {
               : { loading: false, error: data.error },
           }));
         })
-        .catch((err) => {
-          console.error("Elite Error:", err);
+        .catch(() => {
           setEliteMap((prev) => ({
             ...prev,
             [vendorId]: { loading: false, error: "Failed to load" },
@@ -389,12 +395,10 @@ export default function Dashboard() {
   }, [policies, eliteMap]);
 
   /* ===========================
-      ELITE SUMMARY COUNTS
+      ELITE SUMMARY COUNTER
   ============================ */
   useEffect(() => {
-    let pass = 0,
-      warn = 0,
-      fail = 0;
+    let pass = 0, warn = 0, fail = 0;
 
     Object.values(eliteMap).forEach((e) => {
       if (!e || e.loading || e.error) return;
@@ -408,7 +412,6 @@ export default function Dashboard() {
 
   /* ===========================
       V1 ALERT LOGGER (TEMP)
-      Will be replaced by Alerts V2 auto-generation
   ============================ */
   async function logAlert(vendorId, type, message) {
     if (!activeOrgId) return;
@@ -420,8 +423,7 @@ export default function Dashboard() {
   }
 
   /* ===========================
-      TRIGGER BASIC ALERTS (TEMP)
-      This stays until Alerts V2 cron replaces it fully
+      BASIC ALERT TRIGGERS (TEMP)
   ============================ */
   useEffect(() => {
     if (!policies.length || !activeOrgId) return;
@@ -436,15 +438,9 @@ export default function Dashboard() {
       if (elite?.overall === "fail") {
         logAlert(p.vendor_id, "elite_fail", `${name} failed Elite Engine`);
       }
-
       if (ai.score < 60) {
-        logAlert(
-          p.vendor_id,
-          "risk_low",
-          `${name} dropped to risk ${ai.score}`
-        );
+        logAlert(p.vendor_id, "risk_low", `${name} dropped to risk ${ai.score}`);
       }
-
       if (risk.daysLeft !== null && risk.daysLeft < 5) {
         logAlert(
           p.vendor_id,
@@ -452,7 +448,6 @@ export default function Dashboard() {
           `${name} has a policy expiring in ${risk.daysLeft} days`
         );
       }
-
       if (compliance?.missing?.length > 0) {
         logAlert(
           p.vendor_id,
@@ -464,7 +459,7 @@ export default function Dashboard() {
   }, [policies, eliteMap, complianceMap, activeOrgId]);
 
   /* ===========================
-      FETCH ALERTS (V1 -> V2 wrapper)
+      FETCH ALERTS V2 (via wrapper)
   ============================ */
   useEffect(() => {
     if (!activeOrgId) return;
@@ -479,6 +474,18 @@ export default function Dashboard() {
     const interval = setInterval(loadAlerts, 7000);
     return () => clearInterval(interval);
   }, [activeOrgId]);
+
+  /* ===========================
+      ⚠️ FIXED: COMPUTED VALUES MUST BE BEFORE RETURN()
+  ============================ */
+
+  const avgScore = dashboard?.globalScore ?? 0;  // <— FIX: defined before return
+  const totalVendors = dashboard?.vendorCount ?? 0;
+  const alertsCount =
+    (dashboard?.alerts?.expired ?? 0) +
+    (dashboard?.alerts?.critical30d ?? 0) +
+    (dashboard?.alerts?.warning90d ?? 0) +
+    (dashboard?.alerts?.eliteFails ?? 0);
   return (
     <div
       style={{
@@ -742,7 +749,7 @@ export default function Dashboard() {
             )}
           </div>
 
-          {/* ALERT DROPDOWN (unchanged) */}
+          {/* ALERT DROPDOWN */}
           {showAlerts && (
             <div
               style={{
@@ -769,7 +776,8 @@ export default function Dashboard() {
                   <div
                     key={a.id}
                     style={{
-                      paddingBottom: 8, marginBottom: 8,
+                      paddingBottom: 8,
+                      marginBottom: 8,
                       borderBottom: "1px solid rgba(55,65,81,0.8)",
                     }}
                   >
@@ -784,7 +792,11 @@ export default function Dashboard() {
                     >
                       {a.type.replace(/_/g, " ")}
                     </div>
-                    <div style={{ fontSize: 12, color: "#e5e7eb" }}>{a.message}</div>
+
+                    <div style={{ fontSize: 12, color: "#e5e7eb" }}>
+                      {a.message}
+                    </div>
+
                     <div style={{ fontSize: 10, color: GP.textMuted, marginTop: 2 }}>
                       {new Date(a.created_at).toLocaleString()}
                     </div>
@@ -851,6 +863,7 @@ export default function Dashboard() {
               >
                 Global Score
               </div>
+
               <div
                 style={{
                   fontSize: 32,
@@ -863,6 +876,7 @@ export default function Dashboard() {
               >
                 {dashboardLoading ? "—" : Number(avgScore).toFixed(0)}
               </div>
+
               <div style={{ fontSize: 10, color: GP.textMuted }}>/100</div>
             </div>
           </div>
@@ -880,6 +894,7 @@ export default function Dashboard() {
             <div style={{ fontSize: 12, color: GP.textSoft, marginBottom: 6 }}>
               Elite Engine Snapshot
             </div>
+
             <div
               style={{
                 display: "flex",
@@ -891,6 +906,7 @@ export default function Dashboard() {
               <span>PASS</span>
               <span>{eliteSummary.pass}</span>
             </div>
+
             <div
               style={{
                 display: "flex",
@@ -902,6 +918,7 @@ export default function Dashboard() {
               <span>WARN</span>
               <span>{eliteSummary.warn}</span>
             </div>
+
             <div
               style={{
                 display: "flex",
@@ -1067,7 +1084,7 @@ export default function Dashboard() {
                       {/* Days Left */}
                       <td style={td}>{risk.daysLeft ?? "—"}</td>
 
-                      {/* Status (Expired / Critical / Warning / OK) */}
+                      {/* Status */}
                       <td
                         style={{
                           ...td,
@@ -1098,7 +1115,7 @@ export default function Dashboard() {
                         </span>
                       </td>
 
-                      {/* AI Risk */}
+                      {/* AI Risk Score */}
                       <td
                         style={{
                           ...td,
@@ -1114,7 +1131,7 @@ export default function Dashboard() {
                       >
                         <div>{ai.score}</div>
 
-                        {/* AI Score Bar */}
+                        {/* AI Score Mini Bar */}
                         <div
                           style={{
                             marginTop: 4,
@@ -1142,12 +1159,12 @@ export default function Dashboard() {
                         </div>
                       </td>
 
-                      {/* Compliance */}
+                      {/* Compliance Badge */}
                       <td style={{ ...td, textAlign: "center" }}>
                         {renderComplianceBadge(p.vendor_id, complianceMap)}
                       </td>
 
-                      {/* Elite */}
+                      {/* Elite Pill */}
                       <td style={{ ...td, textAlign: "center" }}>
                         {elite && !elite.loading && !elite.error ? (
                           <EliteStatusPill status={elite.overall} />
