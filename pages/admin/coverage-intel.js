@@ -362,8 +362,8 @@ export default function CoverageIntelPage() {
             {applyLoading ? "Applying…" : "Apply Rule Plan to V5"}
           </button>
         </div>
-      </div> {/* END MAIN GRID */}
-    </div>   {/* END MAIN WRAPPER */}
+            </div> {/* END MAIN GRID */}
+    </div> {/* END MAIN WRAPPER */}
 
     {/* TOAST */}
     <ToastV2
@@ -372,5 +372,6 @@ export default function CoverageIntelPage() {
       type={toast.type}
       onClose={() => setToast((p) => ({ ...p, open: false }))}
     />
+  </div> {/* <--- THIS closes the OUTERMOST PAGE DIV */}
   );
 }
