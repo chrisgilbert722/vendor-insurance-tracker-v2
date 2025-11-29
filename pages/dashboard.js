@@ -233,8 +233,9 @@ function renderComplianceBadge(vendorId, complianceMap) {
     </span>
   );
 }
+
 /* ===========================
-   MAIN DASHBOARD
+   MAIN DASHBOARD COMPONENT
 =========================== */
 export default function Dashboard() {
   const { isAdmin, isManager } = useRole();
@@ -251,14 +252,10 @@ export default function Dashboard() {
   // Filters
   const [filterText, setFilterText] = useState("");
 
-  // Compliance + Elite
+  // Compliance / Elite
   const [complianceMap, setComplianceMap] = useState({});
   const [eliteMap, setEliteMap] = useState({});
-  const [eliteSummary, setEliteSummary] = useState({
-    pass: 0,
-    warn: 0,
-    fail: 0,
-  });
+  const [eliteSummary, setEliteSummary] = useState({ pass: 0, warn: 0, fail: 0 });
 
   // Alerts
   const [alerts, setAlerts] = useState([]);
@@ -269,31 +266,23 @@ export default function Dashboard() {
   const [drawerVendor, setDrawerVendor] = useState(null);
   const [drawerPolicies, setDrawerPolicies] = useState([]);
 
-  /* ===========================
-      LOAD DASHBOARD OVERVIEW (V3)
-  ============================ */
+  /* LOAD OVERVIEW */
   useEffect(() => {
     if (!activeOrgId) return;
-
     async function loadDashboard() {
       try {
         setDashboardLoading(true);
         const res = await fetch(`/api/dashboard/overview?orgId=${activeOrgId}`);
         const data = await res.json();
         if (data.ok) setDashboard(data.overview);
-      } catch (err) {
-        console.error("Dashboard Load Error:", err);
       } finally {
         setDashboardLoading(false);
       }
     }
-
     loadDashboard();
   }, [activeOrgId]);
 
-  /* ===========================
-      LOAD POLICIES
-  ============================ */
+  /* LOAD POLICIES */
   useEffect(() => {
     async function load() {
       const res = await fetch("/api/get-policies");
@@ -301,25 +290,18 @@ export default function Dashboard() {
       if (data.ok) setPolicies(data.policies);
       setLoading(false);
     }
-
     load();
   }, []);
 
-  /* ===========================
-      LOAD COMPLIANCE
-  ============================ */
+  /* LOAD COMPLIANCE */
   useEffect(() => {
     if (!policies.length || !activeOrgId) return;
-
     const vendorIds = [...new Set(policies.map((p) => p.vendor_id))];
 
     vendorIds.forEach((vendorId) => {
       if (complianceMap[vendorId]?.loading === false) return;
 
-      setComplianceMap((prev) => ({
-        ...prev,
-        [vendorId]: { loading: true },
-      }));
+      setComplianceMap((prev) => ({ ...prev, [vendorId]: { loading: true } }));
 
       fetch(`/api/requirements/check?vendorId=${vendorId}&orgId=${activeOrgId}`)
         .then((res) => res.json())
@@ -346,12 +328,9 @@ export default function Dashboard() {
     });
   }, [policies, activeOrgId, complianceMap]);
 
-  /* ===========================
-      LOAD ELITE ENGINE RESULTS
-  ============================ */
+  /* LOAD ELITE */
   useEffect(() => {
     if (!policies.length) return;
-
     const vendorIds = [...new Set(policies.map((p) => p.vendor_id))];
 
     vendorIds.forEach((vendorId) => {
@@ -368,10 +347,7 @@ export default function Dashboard() {
         policyType: primary.coverage_type,
       };
 
-      setEliteMap((prev) => ({
-        ...prev,
-        [vendorId]: { loading: true },
-      }));
+      setEliteMap((prev) => ({ ...prev, [vendorId]: { loading: true } }));
 
       fetch("/api/elite/evaluate", {
         method: "POST",
@@ -396,92 +372,34 @@ export default function Dashboard() {
     });
   }, [policies, eliteMap]);
 
-  /* ===========================
-      ELITE SUMMARY COUNTER
-  ============================ */
+  /* ELITE SUMMARY */
   useEffect(() => {
     let pass = 0,
       warn = 0,
       fail = 0;
-
     Object.values(eliteMap).forEach((e) => {
       if (!e || e.loading || e.error) return;
       if (e.overall === "pass") pass++;
       else if (e.overall === "warn") warn++;
       else if (e.overall === "fail") fail++;
     });
-
     setEliteSummary({ pass, warn, fail });
   }, [eliteMap]);
 
-  /* ===========================
-      TEMPORARY V1 ALERT LOGGING
-  ============================ */
-  async function logAlert(vendorId, type, message) {
-    if (!activeOrgId) return;
-    await fetch("/api/alerts/log", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ vendorId, orgId: activeOrgId, type, message }),
-    });
-  }
-
-  /* ===========================
-      POLICY-BASED ALERT TRIGGERS (TEMP)
-  ============================ */
-  useEffect(() => {
-    if (!policies.length || !activeOrgId) return;
-
-    policies.forEach((p) => {
-      const risk = computeRisk(p);
-      const elite = eliteMap[p.vendor_id];
-      const compliance = complianceMap[p.vendor_id];
-      const ai = computeAiRisk({ risk, elite, compliance });
-      const name = p.vendor_name || "Vendor";
-
-      if (elite?.overall === "fail") {
-        logAlert(p.vendor_id, "elite_fail", `${name} failed Elite Engine`);
-      }
-      if (ai.score < 60) {
-        logAlert(p.vendor_id, "risk_low", `${name} dropped to risk ${ai.score}`);
-      }
-      if (risk.daysLeft !== null && risk.daysLeft < 5) {
-        logAlert(
-          p.vendor_id,
-          "expires_soon",
-          `${name} has a policy expiring in ${risk.daysLeft} days`
-        );
-      }
-      if (compliance?.missing?.length > 0) {
-        logAlert(
-          p.vendor_id,
-          "missing_coverage",
-          `${name} missing required coverage`
-        );
-      }
-    });
-  }, [policies, eliteMap, complianceMap, activeOrgId]);
-
-  /* ===========================
-      LOAD ALERTS (V2 wrapper)
-  ============================ */
+  /* V2 ALERT LOADER */
   useEffect(() => {
     if (!activeOrgId) return;
-
     async function loadAlerts() {
       const res = await fetch(`/api/alerts/get?orgId=${activeOrgId}`);
       const data = await res.json();
       if (data.ok) setAlerts(data.alerts);
     }
-
     loadAlerts();
     const interval = setInterval(loadAlerts, 7000);
     return () => clearInterval(interval);
   }, [activeOrgId]);
 
-  /* ===========================
-      FIXED — COMPUTED METRICS MUST BE BEFORE RETURN()
-  ============================ */
+  /* COMPUTED VALUES */
   const avgScore = dashboard?.globalScore ?? 0;
   const totalVendors = dashboard?.vendorCount ?? 0;
   const alertsCount =
@@ -490,9 +408,7 @@ export default function Dashboard() {
     (dashboard?.alerts?.warning90d ?? 0) +
     (dashboard?.alerts?.eliteFails ?? 0);
 
-  /* ===========================
-      FILTERED POLICIES (MUST BE ABOVE RETURN)
-  ============================ */
+  /* FILTERED POLICIES */
   const filtered = policies.filter((p) => {
     const t = filterText.toLowerCase();
     return (
@@ -503,6 +419,7 @@ export default function Dashboard() {
       p.coverage_type?.toLowerCase().includes(t)
     );
   });
+
   return (
     <div
       style={{
@@ -514,7 +431,7 @@ export default function Dashboard() {
       }}
     >
       {/* =======================================
-          HERO COMMAND PANEL — cockpit-hero
+          HERO COMMAND PANEL
       ======================================= */}
       <div
         className="cockpit-hero cockpit-pulse"
@@ -536,21 +453,6 @@ export default function Dashboard() {
           position: "relative",
         }}
       >
-        {/* HUD LABEL */}
-        <div
-          style={{
-            position: "absolute",
-            top: 12,
-            left: 18,
-            fontSize: 10,
-            letterSpacing: "0.18em",
-            textTransform: "uppercase",
-            color: "rgba(148,163,184,0.7)",
-          }}
-        >
-          DASHBOARD V3 • GLOBAL COMPLIANCE ENGINE
-        </div>
-
         {/* LEFT SIDE — Title Area */}
         <div style={{ paddingTop: 22 }}>
           <h1
@@ -706,9 +608,9 @@ export default function Dashboard() {
             />
           </div>
 
-          {/* =======================================
-              🔥 NEW — SEVERITY BREAKDOWN
-          ======================================= */}
+          {/* ===============================
+              SEVERITY BREAKDOWN WIDGET
+          =============================== */}
           <div
             style={{
               marginTop: 22,
@@ -768,7 +670,9 @@ export default function Dashboard() {
             )}
           </div>
 
-          {/* ALERT DROPDOWN */}
+          {/* ===============================
+              ALERT DROPDOWN (WITH RESOLVE)
+          =============================== */}
           {showAlerts && (
             <div
               style={{
@@ -821,6 +725,47 @@ export default function Dashboard() {
                     <div style={{ fontSize: 10, color: GP.textMuted, marginTop: 2 }}>
                       {new Date(a.created_at).toLocaleString()}
                     </div>
+
+                    {/* RESOLVE BUTTON */}
+                    <button
+                      onClick={async (e) => {
+                        e.stopPropagation();
+
+                        await fetch("/api/alerts-v2/resolve", {
+                          method: "POST",
+                          headers: { "Content-Type": "application/json" },
+                          body: JSON.stringify({
+                            alertId: a.id,
+                            orgId: activeOrgId,
+                          }),
+                        });
+
+                        // Refresh alerts
+                        const refreshed = await fetch(
+                          `/api/alerts/get?orgId=${activeOrgId}`
+                        ).then((r) => r.json());
+                        if (refreshed.ok) setAlerts(refreshed.alerts);
+
+                        // Refresh dashboard (Severity Breakdown updates)
+                        const dash = await fetch(
+                          `/api/dashboard/overview?orgId=${activeOrgId}`
+                        ).then((r) => r.json());
+                        if (dash.ok) setDashboard(dash.overview);
+                      }}
+                      style={{
+                        marginTop: 8,
+                        padding: "6px 10px",
+                        borderRadius: 8,
+                        border: "1px solid rgba(56,189,248,0.6)",
+                        background: "rgba(15,23,42,0.6)",
+                        color: "#38bdf8",
+                        fontSize: 11,
+                        cursor: "pointer",
+                        fontWeight: 600,
+                      }}
+                    >
+                      ✔ Resolve
+                    </button>
                   </div>
                 ))
               )}
@@ -828,7 +773,9 @@ export default function Dashboard() {
           )}
         </div>
 
-        {/* RIGHT SIDE — GLOBAL SCORE + ELITE SNAPSHOT */}
+        {/* =======================================
+            RIGHT SIDE — GLOBAL SCORE + ELITE SNAPSHOT
+        ======================================= */}
         <div
           style={{
             display: "flex",
@@ -848,8 +795,7 @@ export default function Dashboard() {
               background:
                 "conic-gradient(from 220deg,#22c55e,#a3e635,#facc15,#fb7185,#0f172a)",
               padding: 5,
-              boxShadow:
-                "0 0 50px rgba(34,197,94,0.45),0 0 80px rgba(148,163,184,0.3)",
+              boxShadow: "0 0 50px rgba(34,197,94,0.45),0 0 80px rgba(148,163,184,0.3)",
             }}
           >
             <div
@@ -967,25 +913,18 @@ export default function Dashboard() {
           gap: 24,
         }}
       >
-        {/* TRAJECTORY — compliance score over time */}
         <ComplianceTrajectoryChart />
-
-        {/* PASS / WARN / FAIL donut */}
         <PassFailDonutChart />
       </div>
 
       {/* =======================================
-          SECONDARY CHARTS — Heatmap + Severity Dist + Risk Timeline
+          SECONDARY CHARTS
       ======================================= */}
 
-      {/* EXPIRING CERTIFICATES HEATMAP */}
       <ExpiringCertsHeatmap policies={policies} />
-
-      {/* SEVERITY DISTRIBUTION CHART */}
       <SeverityDistributionChart policies={policies} />
-
-      {/* RISK TIMELINE */}
       <RiskTimelineChart policies={policies} />
+
       {/* =======================================
           POLICIES TABLE
       ======================================= */}
@@ -1033,7 +972,6 @@ export default function Dashboard() {
 
       {!loading && filtered.length > 0 && (
         <>
-          {/* TABLE SHELL */}
           <div
             className="cockpit-table-shell"
             style={{
@@ -1087,25 +1025,13 @@ export default function Dashboard() {
                           "linear-gradient(90deg,rgba(15,23,42,0.98),rgba(15,23,42,0.92))",
                       }}
                     >
-                      {/* Vendor */}
                       <td style={td}>{p.vendor_name || "—"}</td>
-
-                      {/* Policy */}
                       <td style={td}>{p.policy_number}</td>
-
-                      {/* Carrier */}
                       <td style={td}>{p.carrier}</td>
-
-                      {/* Coverage */}
                       <td style={td}>{p.coverage_type}</td>
-
-                      {/* Expires */}
                       <td style={td}>{p.expiration_date || "—"}</td>
-
-                      {/* Days Left */}
                       <td style={td}>{risk.daysLeft ?? "—"}</td>
 
-                      {/* Status */}
                       <td
                         style={{
                           ...td,
@@ -1119,7 +1045,6 @@ export default function Dashboard() {
                             risk.severity.slice(1)}
                       </td>
 
-                      {/* Risk Tier */}
                       <td style={{ ...td, textAlign: "center" }}>
                         <span
                           style={{
@@ -1136,7 +1061,6 @@ export default function Dashboard() {
                         </span>
                       </td>
 
-                      {/* AI Risk */}
                       <td
                         style={{
                           ...td,
@@ -1152,7 +1076,6 @@ export default function Dashboard() {
                       >
                         <div>{ai.score}</div>
 
-                        {/* AI Score Bar */}
                         <div
                           style={{
                             marginTop: 4,
@@ -1180,12 +1103,10 @@ export default function Dashboard() {
                         </div>
                       </td>
 
-                      {/* Compliance */}
                       <td style={{ ...td, textAlign: "center" }}>
                         {renderComplianceBadge(p.vendor_id, complianceMap)}
                       </td>
 
-                      {/* Elite */}
                       <td style={{ ...td, textAlign: "center" }}>
                         {elite && !elite.loading && !elite.error ? (
                           <EliteStatusPill status={elite.overall} />
@@ -1200,7 +1121,6 @@ export default function Dashboard() {
                         )}
                       </td>
 
-                      {/* Flags */}
                       <td style={{ ...td, textAlign: "center" }}>
                         {flags.length > 0 ? (
                           <span
@@ -1220,7 +1140,6 @@ export default function Dashboard() {
             </table>
           </div>
 
-          {/* DRAWER */}
           {drawerOpen && drawerVendor && (
             <VendorDrawer
               vendor={drawerVendor}
@@ -1272,7 +1191,7 @@ function SeverityBox({ label, count, color }) {
 }
 
 /* =======================================
-   MINI KPI COMPONENT (existing)
+   MINI KPI COMPONENT
 ======================================= */
 function MiniKpi({ label, value, color, icon }) {
   return (
@@ -1320,8 +1239,9 @@ const td = {
   fontSize: 12,
   color: "#e5e7eb",
 };
-// ===============================
-// End of Dashboard.js (FINAL)
-// ===============================
 
-export {}; // prevents isolatedModules / ensures clean EOF
+/* =======================================
+   EOF — PREVENT ISOLATED MODULE ERRORS
+======================================= */
+export {}; // Final end of Dashboard.js
+
