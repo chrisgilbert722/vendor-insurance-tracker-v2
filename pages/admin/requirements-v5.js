@@ -1,24 +1,15 @@
 // pages/admin/requirements-v5.js
 // ==========================================================
-// PHASE 5 — V5 ENGINE
-// Cinematic Lanes + DnD + CRUD + Engine
-// + AI Suggest + AI Builder V2 + AI Explain Rule + Conflict AI
+// PHASE 5 — V5 ENGINE (FULL CLEAN VERSION)
 // ==========================================================
 
-// ----------------------------
-// IMPORTS
-// ----------------------------
 import { useEffect, useState, useMemo, useRef } from "react";
 import { useRole } from "../../lib/useRole";
 import { useOrg } from "../../context/OrgContext";
 import ToastV2 from "../../components/ToastV2";
-
 import { DndProvider, useDrag, useDrop } from "react-dnd";
 import { HTML5Backend } from "react-dnd-html5-backend";
 
-// ----------------------------
-// CONSTANTS
-// ----------------------------
 const ITEM_TYPE = "REQUIREMENT_RULE";
 
 const FIELD_OPTIONS = [
@@ -39,22 +30,204 @@ const OPERATOR_OPTIONS = [
 
 const SEVERITY_COLORS = {
   critical: "#ff4d6d",
+  required: "#3b82f6",
+  recommended: "#a855f7",
   high: "#ffa600",
   medium: "#f8c300",
   low: "#22c55e",
 };
 
-// ==========================================================
-// MAIN COMPONENT
-// ==========================================================
+// -------------------------------
+// Helper: operator label
+// -------------------------------
+function operatorLabel(key) {
+  return OPERATOR_OPTIONS.find((o) => o.key === key)?.label || key;
+}
+
+// -------------------------------
+// Helper: evaluation logic
+// -------------------------------
+function evaluateRule(rule, policy) {
+  try {
+    const v = policy[rule.field_key];
+
+    switch (rule.operator) {
+      case "equals": return v == rule.expected_value;
+      case "not_equals": return v != rule.expected_value;
+      case "gte": return Number(v) >= Number(rule.expected_value);
+      case "lte": return Number(v) <= Number(rule.expected_value);
+      case "contains":
+        return String(v || "").toLowerCase().includes(String(rule.expected_value).toLowerCase());
+      default:
+        return false;
+    }
+  } catch {
+    return false;
+  }
+}
+
+// -------------------------------
+// Helper: conflict rule IDs
+// -------------------------------
+function getConflictedRuleIds(conflicts) {
+  const ids = new Set();
+  for (const c of conflicts) {
+    if (Array.isArray(c.rules)) c.rules.forEach((id) => ids.add(id));
+  }
+  return [...ids];
+}
+
+// -------------------------------
+// AI Builder stub (prevents crash)
+// -------------------------------
+async function handleAiBuildRules() {
+  console.log("AI Build Rules placeholder executed");
+}
+
+// -------------------------------
+// RULE CARD — Drag Component
+// -------------------------------
+function RuleCard({
+  rule, index, laneKey, onMoveRule,
+  onDeleteRule, onExplain, canEdit, conflictedRuleIds
+}) {
+  const ref = useRef(null);
+  const isBad = conflictedRuleIds.includes(rule.id);
+
+  const [, drop] = useDrop({
+    accept: ITEM_TYPE,
+    hover(item) {
+      if (item.lane !== laneKey) return;
+      if (item.index === index) return;
+      onMoveRule(item.index, index, laneKey);
+      item.index = index;
+    },
+  });
+
+  const [{ isDragging }, drag] = useDrag({
+    type: ITEM_TYPE,
+    item: { id: rule.id, index, lane: laneKey },
+    collect: (m) => ({ isDragging: m.isDragging() }),
+  });
+
+  drag(drop(ref));
+
+  return (
+    <div
+      ref={ref}
+      style={{
+        opacity: isDragging ? 0.35 : 1,
+        marginBottom: 10,
+        padding: 10,
+        borderRadius: 12,
+        border: isBad
+          ? "1px solid rgba(248,113,113,0.7)"
+          : "1px solid rgba(80,120,255,0.25)",
+        background: "rgba(15,23,42,0.95)",
+        boxShadow: isBad
+          ? "0 0 12px rgba(239,68,68,0.55)"
+          : "0 0 12px rgba(80,120,255,0.15)",
+        cursor: canEdit ? "grab" : "default",
+      }}
+    >
+      <div style={{ fontSize: 13, marginBottom: 6 }}>
+        IF <span style={{ color: "#93c5fd" }}>{rule.field_key}</span>{" "}
+        {operatorLabel(rule.operator)}{" "}
+        <span style={{ color: "#c4b5fd" }}>{rule.expected_value}</span>
+      </div>
+
+      <div style={{ display: "flex", justifyContent: "space-between" }}>
+        <button
+          onClick={() => onExplain(rule)}
+          style={{
+            fontSize: 11,
+            padding: "3px 6px",
+            borderRadius: 6,
+            background: "rgba(56,189,248,0.2)",
+            border: "1px solid rgba(56,189,248,0.4)",
+            color: "#7dd3fc",
+          }}
+        >
+          Explain
+          </button>
+
+        {canEdit && (
+          <button
+            onClick={() => onDeleteRule(rule.id)}
+            style={{
+              fontSize: 11,
+              padding: "3px 6px",
+              borderRadius: 6,
+              background: "rgba(239,68,68,0.2)",
+              border: "1px solid rgba(239,68,68,0.4)",
+              color: "#fca5a5",
+            }}
+          >
+            Delete
+          </button>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// -------------------------------
+// LANE COLUMN
+// -------------------------------
+function LaneColumn({
+  laneKey, label, color, rules,
+  onMoveRule, onDeleteRule, onExplain, canEdit,
+  conflictedRuleIds
+}) {
+  return (
+    <div
+      style={{
+        padding: 12,
+        borderRadius: 18,
+        background: "rgba(15,23,42,0.82)",
+        border: "1px solid rgba(80,120,255,0.25)",
+      }}
+    >
+      <div
+        style={{
+          color,
+          borderBottom: `1px solid ${color}`,
+          paddingBottom: 6,
+          marginBottom: 10,
+          fontSize: 13,
+          fontWeight: 600,
+        }}
+      >
+        {label}
+      </div>
+
+      {rules.length === 0 && (
+        <div style={{ fontSize: 12, color: "#6b7280", padding: 8, textAlign: "center" }}>
+          No rules in this lane.
+        </div>
+      )}
+
+      {rules.map((rule, i) => (
+        <RuleCard
+          key={rule.id}
+          index={i}
+          rule={rule}
+          laneKey={laneKey}
+          conflictedRuleIds={conflictedRuleIds}
+          onMoveRule={onMoveRule}
+          onDeleteRule={onDeleteRule}
+          onExplain={onExplain}
+          canEdit={canEdit}
+        />
+      ))}
+    </div>
+  );
+}
 export default function RequirementsV5Page() {
   const { isAdmin, isManager } = useRole();
   const { activeOrgId: orgId, loadingOrgs } = useOrg();
   const canEdit = isAdmin || isManager;
 
-  // ----------------------------
-  // BASE STATE
-  // ----------------------------
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
@@ -64,12 +237,9 @@ export default function RequirementsV5Page() {
   const [rules, setRules] = useState([]);
 
   const [toast, setToast] = useState({
-    open: false,
-    message: "",
-    type: "success",
+    open: false, message: "", type: "success"
   });
 
-  // SAMPLE POLICY
   const [samplePolicyText, setSamplePolicyText] = useState(`{
   "policy.coverage_type": "General Liability",
   "policy.glEachOccurrence": 1000000,
@@ -79,36 +249,28 @@ export default function RequirementsV5Page() {
 }`);
 
   const [evaluation, setEvaluation] = useState({
-    ok: false,
-    error: "",
-    results: {},
+    ok: false, error: "", results: {}
   });
 
-  // ENGINE STATE
   const [runningEngine, setRunningEngine] = useState(false);
   const [engineLog, setEngineLog] = useState([]);
   const [lastRunAt, setLastRunAt] = useState(null);
 
-  // AI SUGGESTION MODAL
   const [aiOpen, setAiOpen] = useState(false);
   const [aiThinking, setAiThinking] = useState(false);
   const [aiSuggestion, setAiSuggestion] = useState("");
 
-  // PHASE 4: AI BUILDER INPUT STATE
   const [aiInput, setAiInput] = useState("");
 
-  // PHASE 5: EXPLAIN RULE STATE
   const [explainOpen, setExplainOpen] = useState(false);
   const [explainLoading, setExplainLoading] = useState(false);
   const [explainText, setExplainText] = useState("");
   const [explainRule, setExplainRule] = useState(null);
 
-  // PHASE 5: CONFLICT AI STATE
   const [conflicts, setConflicts] = useState([]);
   const [conflictOpen, setConflictOpen] = useState(false);
   const [conflictLoading, setConflictLoading] = useState(false);
 
-  // Active group + conflict map
   const activeGroup = useMemo(
     () => groups.find((g) => g.id === activeGroupId) || null,
     [groups, activeGroupId]
@@ -118,15 +280,13 @@ export default function RequirementsV5Page() {
     () => getConflictedRuleIds(conflicts),
     [conflicts]
   );
-  // ==========================================================
-  // LOAD GROUPS
-  // ==========================================================
+
+  // -------------------------------------
+  // LOADERS
+  // -------------------------------------
   useEffect(() => {
     if (loadingOrgs) return;
-    if (!orgId) {
-      setLoading(false);
-      return;
-    }
+    if (!orgId) return setLoading(false);
     loadGroups();
   }, [orgId, loadingOrgs]);
 
@@ -135,91 +295,51 @@ export default function RequirementsV5Page() {
     try {
       const res = await fetch(`/api/requirements-v2/groups?orgId=${orgId}`);
       const json = await res.json();
+      if (!json.ok) throw new Error(json.error);
 
-      if (!res.ok || !json.ok) throw new Error(json.error);
-
-      const list = json.groups || [];
-      setGroups(list);
-
-      if (list.length > 0) {
-        setActiveGroupId(list[0].id);
-        await loadRulesForGroup(list[0].id);
-      } else {
-        setActiveGroupId(null);
-        setRules([]);
+      setGroups(json.groups || []);
+      if (json.groups.length > 0) {
+        setActiveGroupId(json.groups[0].id);
+        await loadRulesForGroup(json.groups[0].id);
       }
     } catch (err) {
-      setError(err.message || "Failed to load groups.");
+      setError(err.message);
     } finally {
       setLoading(false);
     }
   }
 
-  // ==========================================================
-  // LOAD RULES
-  // ==========================================================
-  async function loadRulesForGroup(groupId) {
-    if (!groupId) return setRules([]);
-
+  async function loadRulesForGroup(id) {
+    if (!id) return setRules([]);
     try {
-      const res = await fetch(`/api/requirements-v2/rules?groupId=${groupId}`);
+      const res = await fetch(`/api/requirements-v2/rules?groupId=${id}`);
       const json = await res.json();
-
-      if (!res.ok || !json.ok) throw new Error(json.error);
-
+      if (!json.ok) throw new Error(json.error);
       setRules(json.rules || []);
     } catch (err) {
-      setError(err.message || "Failed to load rules.");
+      setError(err.message);
     }
   }
 
-  // ==========================================================
+  // -------------------------------------
   // GROUP CRUD
-  // ==========================================================
+  // -------------------------------------
   async function handleCreateGroup() {
-    if (!canEdit) {
-      return setToast({
-        open: true,
-        type: "error",
-        message: "You do not have permission to create groups.",
-      });
-    }
-
-    if (!orgId) {
-      return setToast({
-        open: true,
-        type: "error",
-        message: "Missing orgId — cannot create group.",
-      });
-    }
-
+    if (!canEdit) return;
     const name = prompt("New group name:");
     if (!name) return;
 
     try {
       setSaving(true);
-
-      const url = `/api/requirements-v2/groups?orgId=${orgId}`;
-      const res = await fetch(url, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name }),
+      const res = await fetch(`/api/requirements-v2/groups?orgId=${orgId}`, {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name })
       });
-
       const json = await res.json();
+      if (!json.ok) throw new Error(json.error);
 
-      if (!res.ok || !json.ok) {
-        throw new Error(json.error || "Group creation failed");
-      }
-
-      setGroups((prev) => [json.group, ...prev]);
+      setGroups((p) => [json.group, ...p]);
       setActiveGroupId(json.group.id);
-
-      setToast({
-        open: true,
-        type: "success",
-        message: "Group created successfully!",
-      });
     } catch (err) {
       setToast({ open: true, type: "error", message: err.message });
     } finally {
@@ -228,13 +348,10 @@ export default function RequirementsV5Page() {
   }
 
   async function handleUpdateGroup(patch) {
-    if (!canEdit || !activeGroup) return;
+    if (!activeGroup || !canEdit) return;
 
     const updated = { ...activeGroup, ...patch };
-
-    setGroups((prev) =>
-      prev.map((g) => (g.id === activeGroup.id ? updated : g))
-    );
+    setGroups((p) => p.map((g) => (g.id === activeGroup.id ? updated : g)));
 
     try {
       setSaving(true);
@@ -243,11 +360,8 @@ export default function RequirementsV5Page() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(updated),
       });
-
       const json = await res.json();
-      if (!res.ok || !json.ok) throw new Error(json.error);
-
-      setToast({ open: true, type: "success", message: "Group updated." });
+      if (!json.ok) throw new Error(json.error);
     } catch (err) {
       setToast({ open: true, type: "error", message: err.message });
       loadGroups();
@@ -257,31 +371,27 @@ export default function RequirementsV5Page() {
   }
 
   async function handleDeleteGroup(id) {
-    if (!canEdit || !id) return;
-    if (!confirm("Delete this group and all its rules?")) return;
+    if (!canEdit) return;
+    if (!confirm("Delete this group?")) return;
 
     try {
       setSaving(true);
-
       const res = await fetch(`/api/requirements-v2/groups?id=${id}`, {
         method: "DELETE",
       });
-
       const json = await res.json();
-      if (!res.ok || !json.ok) throw new Error(json.error);
+      if (!json.ok) throw new Error(json.error);
 
-      const remaining = groups.filter((g) => g.id !== id);
-      setGroups(remaining);
+      const remain = groups.filter((g) => g.id !== id);
+      setGroups(remain);
 
-      if (remaining.length) {
-        setActiveGroupId(remaining[0].id);
-        await loadRulesForGroup(remaining[0].id);
+      if (remain.length) {
+        setActiveGroupId(remain[0].id);
+        loadRulesForGroup(remain[0].id);
       } else {
         setActiveGroupId(null);
         setRules([]);
       }
-
-      setToast({ open: true, type: "success", message: "Group deleted." });
     } catch (err) {
       setToast({ open: true, type: "error", message: err.message });
     } finally {
@@ -289,37 +399,31 @@ export default function RequirementsV5Page() {
     }
   }
 
-  // ==========================================================
+  // -------------------------------------
   // RULE CRUD
-  // ==========================================================
+  // -------------------------------------
   async function handleCreateRule() {
     if (!activeGroup || !canEdit) return;
 
-    const field_key = prompt("Field key (e.g. policy.coverage_type):");
-    if (!field_key) return;
-    const expected_value = prompt("Expected value:");
-    if (!expected_value) return;
+    const field_key = prompt("Field key:"); if (!field_key) return;
+    const expected_value = prompt("Expected value:"); if (!expected_value) return;
 
     try {
       setSaving(true);
-
       const res = await fetch("/api/requirements-v2/rules", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
+        method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           groupId: activeGroup.id,
           field_key,
           operator: "equals",
           expected_value,
-          severity: "medium",
+          severity: "required",
         }),
       });
-
       const json = await res.json();
-      if (!res.ok || !json.ok) throw new Error(json.error);
+      if (!json.ok) throw new Error(json.error);
 
-      setRules((prev) => [...prev, json.rule]);
-      setToast({ open: true, type: "success", message: "Rule created." });
+      setRules((p) => [...p, json.rule]);
     } catch (err) {
       setToast({ open: true, type: "error", message: err.message });
     } finally {
@@ -328,28 +432,22 @@ export default function RequirementsV5Page() {
   }
 
   async function handleUpdateRule(ruleId, patch) {
-    if (!ruleId || !canEdit) return;
+    if (!canEdit) return;
+    const cur = rules.find((r) => r.id === ruleId);
+    if (!cur) return;
 
-    const current = rules.find((r) => r.id === ruleId);
-    if (!current) return;
-
-    const updated = { ...current, ...patch };
-
-    setRules((prev) => prev.map((r) => (r.id === ruleId ? updated : r)));
+    const updated = { ...cur, ...patch };
+    setRules((p) => p.map((r) => (r.id === ruleId ? updated : r)));
 
     try {
       setSaving(true);
-
       const res = await fetch("/api/requirements-v2/rules", {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(updated),
       });
-
       const json = await res.json();
-      if (!res.ok || !json.ok) throw new Error(json.error);
-
-      setToast({ open: true, type: "success", message: "Rule updated." });
+      if (!json.ok) throw new Error(json.error);
     } catch (err) {
       setToast({ open: true, type: "error", message: err.message });
       loadRulesForGroup(activeGroupId);
@@ -359,50 +457,46 @@ export default function RequirementsV5Page() {
   }
 
   async function handleDeleteRule(ruleId) {
-    if (!ruleId || !canEdit) return;
-    if (!confirm("Delete this rule?")) return;
+    if (!canEdit) return;
+    if (!confirm("Delete rule?")) return;
 
     try {
       setSaving(true);
-
       const res = await fetch(`/api/requirements-v2/rules?id=${ruleId}`, {
         method: "DELETE",
       });
-
       const json = await res.json();
-      if (!res.ok || !json.ok) throw new Error(json.error);
+      if (!json.ok) throw new Error(json.error);
 
-      setRules((prev) => prev.filter((r) => r.id !== ruleId));
-      setToast({ open: true, type: "success", message: "Rule deleted." });
+      setRules((p) => p.filter((r) => r.id !== ruleId));
     } catch (err) {
       setToast({ open: true, type: "error", message: err.message });
     } finally {
       setSaving(false);
     }
   }
-
-  // ==========================================================
-  // DRAG & DROP: MOVE + REORDER WITHIN LANE
-  // ==========================================================
+  // -------------------------------------
+  // DRAG & DROP MOVE
+  // -------------------------------------
   function handleMoveRule(dragIndex, hoverIndex, laneKey) {
     setRules((prev) => {
-      const sameLane = prev.filter((r) => r.severity === laneKey);
+      const lane = prev.filter((r) => r.severity === laneKey);
       const other = prev.filter((r) => r.severity !== laneKey);
 
-      const updated = [...sameLane];
+      const updated = [...lane];
       const [removed] = updated.splice(dragIndex, 1);
       updated.splice(hoverIndex, 0, removed);
 
       return [...other, ...updated];
     });
   }
-  // ==========================================================
+
+  // -------------------------------------
   // ENGINE RUN
-  // ==========================================================
+  // -------------------------------------
   async function handleRunEngine() {
     try {
       setRunningEngine(true);
-
       setEngineLog((prev) => [
         {
           at: new Date().toISOString(),
@@ -426,7 +520,6 @@ export default function RequirementsV5Page() {
         } alerts.`;
 
       setLastRunAt(new Date().toISOString());
-
       setEngineLog((prev) => [
         {
           at: new Date().toISOString(),
@@ -435,7 +528,6 @@ export default function RequirementsV5Page() {
         },
         ...prev,
       ]);
-
       setToast({ open: true, type: "success", message: msg });
     } catch (err) {
       const msg = err.message || "Engine failed.";
@@ -448,16 +540,15 @@ export default function RequirementsV5Page() {
         },
         ...prev,
       ]);
-
       setToast({ open: true, type: "error", message: msg });
     } finally {
       setRunningEngine(false);
     }
   }
 
-  // ==========================================================
-  // SAMPLE POLICY EVALUATOR
-  // ==========================================================
+  // -------------------------------------
+  // SAMPLE POLICY EVALUATION
+  // -------------------------------------
   function handleEvaluateSamplePolicy() {
     setEvaluation({ ok: false, error: "", results: {} });
 
@@ -480,10 +571,9 @@ export default function RequirementsV5Page() {
     setEvaluation({ ok: true, error: "", results });
     setToast({ open: true, type: "success", message: "Sample evaluated." });
   }
-
-  // ==========================================================
-  // AI RULE SUGGESTION
-  // ==========================================================
+  // -------------------------------------
+  // AI RULE SUGGESTION (UI-ONLY MOCK)
+  // -------------------------------------
   function handleOpenAiSuggest() {
     if (!activeGroup) {
       return setToast({
@@ -515,7 +605,6 @@ export default function RequirementsV5Page() {
     (async () => {
       try {
         setSaving(true);
-
         const res = await fetch("/api/requirements-v2/rules", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -528,12 +617,10 @@ export default function RequirementsV5Page() {
             requirement_text: aiText,
           }),
         });
-
         const json = await res.json();
-        if (!res.ok || !json.ok) throw new Error(json.error);
+        if (!json.ok) throw new Error(json.error);
 
-        setRules((prev) => [...prev, json.rule]);
-
+        setRules((p) => [...p, json.rule]);
         setToast({
           open: true,
           type: "success",
@@ -548,9 +635,9 @@ export default function RequirementsV5Page() {
     })();
   }
 
-  // ==========================================================
+  // -------------------------------------
   // AI EXPLAIN RULE
-  // ==========================================================
+  // -------------------------------------
   async function handleExplainRule(rule) {
     if (!rule) return;
 
@@ -571,11 +658,7 @@ export default function RequirementsV5Page() {
       });
 
       const json = await res.json();
-
-      if (!json.ok) {
-        throw new Error(json.error || "Failed to explain rule.");
-      }
-
+      if (!json.ok) throw new Error(json.error || "Failed to explain rule.");
       setExplainText(json.explanation || "");
     } catch (err) {
       setExplainText(
@@ -586,25 +669,19 @@ export default function RequirementsV5Page() {
     }
   }
 
-  // ==========================================================
-  // CONFLICT AI — V5 OFFICIAL WIRED HANDLER
-  // ==========================================================
+  // -------------------------------------
+  // CONFLICT AI — V5 HANDLER
+  // -------------------------------------
   async function handleScanConflicts() {
     try {
       setConflictLoading(true);
       setConflictOpen(true);
 
       const res = await fetch(`/api/requirements-v5/conflicts?orgId=${orgId}`);
-
       const json = await res.json();
+      if (!json.ok) throw new Error(json.error || "Conflict scan failed.");
 
-      if (!json.ok) {
-        throw new Error(json.error || "Conflict scan failed.");
-      }
-
-      // Store full AI conflicts
       setConflicts(json.aiDetails || []);
-
       setToast({
         open: true,
         type: "success",
@@ -620,9 +697,9 @@ export default function RequirementsV5Page() {
       setConflictLoading(false);
     }
   }
-  // ==========================================================
-  // RENDER — PAGE LAYOUT (FULL V5 JSX)
-  // ==========================================================
+  // -------------------------------------
+  // RENDER — PAGE LAYOUT
+  // -------------------------------------
   return (
     <div
       style={{
@@ -659,7 +736,7 @@ export default function RequirementsV5Page() {
         }}
       />
 
-      {/* MAIN CONTENT WRAPPER */}
+      {/* MAIN CONTENT */}
       <div style={{ position: "relative", zIndex: 1 }}>
         {/* HEADER */}
         <div style={{ marginBottom: 18 }}>
@@ -685,7 +762,6 @@ export default function RequirementsV5Page() {
             >
               Requirements Engine V5
             </span>
-
             <span
               style={{
                 fontSize: 10,
@@ -739,13 +815,15 @@ export default function RequirementsV5Page() {
             }}
           >
             Org:{" "}
-            <span style={{ color: "#e5e7eb" }}>{orgId || "none"}</span> · Groups:{" "}
-            <span style={{ color: "#e5e7eb" }}>{groups.length}</span> · Active:{" "}
+            <span style={{ color: "#e5e7eb" }}>{orgId || "none"}</span> ·
+            Groups: <span style={{ color: "#e5e7eb" }}>{groups.length}</span> ·
+            Active:{" "}
             <span style={{ color: "#e5e7eb" }}>
               {activeGroup ? activeGroup.name : "none"}
             </span>
           </div>
         </div>
+
         {/* ERROR BANNER */}
         {error && (
           <div
@@ -763,7 +841,7 @@ export default function RequirementsV5Page() {
           </div>
         )}
 
-        {/* 🔥 AI RULE BUILDER — TOP CINEMATIC PANEL */}
+        {/* AI RULE BUILDER */}
         <div
           style={{
             marginBottom: 24,
@@ -832,7 +910,7 @@ Must include Additional Insured and Waiver of Subrogation."`}
             ⚡ Generate Rules (AI)
           </button>
         </div>
-        {/* GRID WRAPPER — LEFT / MIDDLE / RIGHT */}
+        {/* GRID WRAPPER */}
         <div
           style={{
             display: "grid",
@@ -842,7 +920,7 @@ Must include Additional Insured and Waiver of Subrogation."`}
             alignItems: "stretch",
           }}
         >
-          {/* LEFT PANEL — GROUP LIST */}
+          {/* LEFT PANEL — GROUPS */}
           <div
             style={{
               borderRadius: 22,
@@ -1007,6 +1085,7 @@ Must include Additional Insured and Waiver of Subrogation."`}
               )}
             </div>
           </div>
+
           {/* MIDDLE PANEL — GROUP HEADER + LANES */}
           <div
             style={{
@@ -1030,7 +1109,6 @@ Must include Additional Insured and Waiver of Subrogation."`}
                   alignItems: "flex-start",
                 }}
               >
-                {/* LEFT SIDE — GROUP NAME + DESCRIPTION */}
                 <div style={{ flex: 1 }}>
                   <input
                     value={activeGroup?.name || ""}
@@ -1073,7 +1151,6 @@ Must include Additional Insured and Waiver of Subrogation."`}
                   />
                 </div>
 
-                {/* RIGHT SIDE — ACTION BUTTONS */}
                 <div
                   style={{
                     width: 140,
@@ -1153,7 +1230,6 @@ Must include Additional Insured and Waiver of Subrogation."`}
               </div>
             )}
 
-            {/* LANES — CRITICAL • REQUIRED • RECOMMENDED */}
             <DndProvider backend={HTML5Backend}>
               <div
                 style={{
@@ -1173,10 +1249,10 @@ Must include Additional Insured and Waiver of Subrogation."`}
 
                   const laneColor =
                     laneKey === "critical"
-                      ? "rgba(248,113,113,0.35)"
+                      ? "rgba(248,113,113,0.75)"
                       : laneKey === "required"
-                      ? "rgba(59,130,246,0.35)"
-                      : "rgba(168,85,247,0.35)";
+                      ? "rgba(59,130,246,0.8)"
+                      : "rgba(168,85,247,0.8)";
 
                   const laneRules = rules.filter(
                     (r) => r.severity === laneKey
@@ -1190,17 +1266,17 @@ Must include Additional Insured and Waiver of Subrogation."`}
                       color={laneColor}
                       rules={laneRules}
                       onMoveRule={handleMoveRule}
-                      onUpdateRule={handleUpdateRule}
                       onDeleteRule={handleDeleteRule}
                       onExplain={handleExplainRule}
                       canEdit={canEdit}
+                      conflictedRuleIds={conflictedRuleIds}
                     />
                   );
                 })}
               </div>
             </DndProvider>
           </div>
-          {/* RIGHT PANEL — ENGINE + EVAL + AI SUGGEST + CONFLICT AI */}
+          {/* RIGHT PANEL — ENGINE + EVAL + AI SUGGEST + CONFLICT */}
           <div
             style={{
               borderRadius: 22,
@@ -1240,7 +1316,6 @@ Must include Additional Insured and Waiver of Subrogation."`}
                 definitions.
               </div>
 
-              {/* ENGINE RUN BUTTON */}
               <button
                 onClick={handleRunEngine}
                 disabled={runningEngine}
@@ -1283,7 +1358,6 @@ Must include Additional Insured and Waiver of Subrogation."`}
                 )}
               </button>
 
-              {/* PHASE 5 — CONFLICT AI BUTTON */}
               <button
                 onClick={handleScanConflicts}
                 disabled={conflictLoading}
@@ -1327,7 +1401,6 @@ Must include Additional Insured and Waiver of Subrogation."`}
                 )}
               </button>
 
-              {/* LAST RUN TIME */}
               <div
                 style={{
                   fontSize: 11,
@@ -1347,7 +1420,6 @@ Must include Additional Insured and Waiver of Subrogation."`}
                 )}
               </div>
 
-              {/* RULE PREVIEW LIST */}
               <div
                 style={{
                   borderRadius: 12,
@@ -1394,7 +1466,6 @@ Must include Additional Insured and Waiver of Subrogation."`}
                 )}
               </div>
 
-              {/* ENGINE ACTIVITY LOG */}
               <div
                 style={{
                   borderRadius: 12,
@@ -1539,7 +1610,7 @@ Must include Additional Insured and Waiver of Subrogation."`}
               )}
             </div>
 
-            {/* AI SUGGESTION BUTTON */}
+            {/* AI SUGGEST BUTTON */}
             <div style={{ marginTop: 10 }}>
               <button
                 onClick={handleOpenAiSuggest}
@@ -1638,202 +1709,200 @@ Must include Additional Insured and Waiver of Subrogation."`}
               </div>
             )}
           </div>
-      {/* EXPLAIN RULE DRAWER */}
-      {explainOpen && (
-        <div
-          style={{
-            position: "fixed",
-            top: 0,
-            right: 0,
-            width: "360px",
-            height: "100vh",
-            background:
-              "linear-gradient(145deg,rgba(15,23,42,0.98),rgba(15,23,42,0.96))",
-            borderLeft: "1px solid rgba(148,163,184,0.4)",
-            boxShadow: "-20px 0 40px rgba(0,0,0,0.6)",
-            padding: "18px",
-            zIndex: 999,
-            display: "flex",
-            flexDirection: "column",
-            gap: 16,
-          }}
-        >
-          {/* HEADER */}
-          <div
-            style={{
-              display: "flex",
-              justifyContent: "space-between",
-              alignItems: "center",
-            }}
-          >
-            <div
-              style={{
-                fontSize: 14,
-                fontWeight: 600,
-                color: "#e5e7eb",
-              }}
-            >
-              AI Explanation
-            </div>
-
-            <button
-              onClick={() => setExplainOpen(false)}
-              style={{
-                borderRadius: 999,
-                padding: "4px 8px",
-                fontSize: 12,
-                background: "rgba(15,23,42,0.8)",
-                border: "1px solid rgba(148,163,184,0.6)",
-                color: "#9ca3af",
-                cursor: "pointer",
-              }}
-            >
-              Close
-            </button>
-          </div>
-
-          {/* CONTENT */}
-          <div
-            style={{
-              borderRadius: 12,
-              border: "1px solid rgba(51,65,85,0.9)",
-              background: "rgba(15,23,42,0.96)",
-              padding: 12,
-              color: "#cbd5f5",
-              fontSize: 13,
-              overflowY: "auto",
-              flex: 1,
-              whiteSpace: "pre-wrap",
-            }}
-          >
-            {explainLoading
-              ? "AI is analyzing this rule..."
-              : explainText || "No explanation available for this rule."}
-          </div>
         </div>
-      )}
-      {/* CONFLICT DRAWER */}
-      {conflictOpen && (
-        <div
-          style={{
-            position: "fixed",
-            top: 0,
-            right: 0,
-            width: "400px",
-            height: "100vh",
-            background:
-              "linear-gradient(145deg,rgba(15,23,42,0.98),rgba(15,23,42,0.96))",
-            borderLeft: "1px solid rgba(148,163,184,0.4)",
-            boxShadow: "-20px 0 40px rgba(0,0,0,0.6)",
-            padding: "22px",
-            zIndex: 1000,
-            overflowY: "auto",
-            display: "flex",
-            flexDirection: "column",
-            gap: 16,
-          }}
-        >
-          {/* HEADER */}
+        {/* EXPLAIN RULE DRAWER */}
+        {explainOpen && (
           <div
             style={{
+              position: "fixed",
+              top: 0,
+              right: 0,
+              width: "360px",
+              height: "100vh",
+              background:
+                "linear-gradient(145deg,rgba(15,23,42,0.98),rgba(15,23,42,0.96))",
+              borderLeft: "1px solid rgba(148,163,184,0.4)",
+              boxShadow: "-20px 0 40px rgba(0,0,0,0.6)",
+              padding: "18px",
+              zIndex: 999,
               display: "flex",
-              justifyContent: "space-between",
-              alignItems: "center",
+              flexDirection: "column",
+              gap: 16,
             }}
           >
             <div
               style={{
-                fontSize: 16,
-                fontWeight: 700,
-                color: "#e5e7eb",
+                display: "flex",
+                justifyContent: "space-between",
+                alignItems: "center",
               }}
             >
-              Conflict Analysis
-            </div>
-
-            <button
-              onClick={() => setConflictOpen(false)}
-              style={{
-                borderRadius: 999,
-                padding: "4px 8px",
-                fontSize: 12,
-                background: "rgba(15,23,42,0.8)",
-                border: "1px solid rgba(148,163,184,0.6)",
-                color: "#9ca3af",
-                cursor: "pointer",
-              }}
-            >
-              Close
-            </button>
-          </div>
-
-          {/* LOADING */}
-          {conflictLoading && (
-            <div style={{ color: "#cbd5f5", fontSize: 13 }}>
-              AI is analyzing all rules for conflicts…
-            </div>
-          )}
-
-          {/* NO CONFLICTS */}
-          {!conflictLoading && conflicts.length === 0 && (
-            <div
-              style={{
-                fontSize: 13,
-                color: "#9ca3af",
-                padding: 12,
-                borderRadius: 12,
-                border: "1px solid rgba(55,65,81,0.6)",
-                background: "rgba(15,23,42,0.8)",
-              }}
-            >
-              ✅ No conflicts detected.
-            </div>
-          )}
-
-          {/* CONFLICT LIST */}
-          {!conflictLoading &&
-            conflicts.length > 0 &&
-            conflicts.map((c, idx) => (
               <div
-                key={idx}
                 style={{
-                  padding: 14,
-                  borderRadius: 14,
-                  marginBottom: 12,
-                  background:
-                    "linear-gradient(145deg,rgba(31,41,55,0.8),rgba(17,24,39,0.9))",
-                  border: "1px solid rgba(239,68,68,0.6)",
+                  fontSize: 14,
+                  fontWeight: 600,
+                  color: "#e5e7eb",
                 }}
               >
-                <div
-                  style={{
-                    color: "#fca5a5",
-                    fontWeight: 600,
-                    marginBottom: 6,
-                    fontSize: 14,
-                  }}
-                >
-                  ⚠ Conflict #{idx + 1}
-                </div>
-
-                <div style={{ color: "#e5e7eb", fontSize: 13 }}>
-                  {c.summary}
-                </div>
-
-                <div
-                  style={{
-                    color: "#fcd34d",
-                    fontSize: 12,
-                    marginTop: 8,
-                    fontStyle: "italic",
-                  }}
-                >
-                  Suggestion: {c.suggestion}
-                </div>
+                AI Explanation
               </div>
-            ))}
-        </div>
-      )}
+
+              <button
+                onClick={() => setExplainOpen(false)}
+                style={{
+                  borderRadius: 999,
+                  padding: "4px 8px",
+                  fontSize: 12,
+                  background: "rgba(15,23,42,0.8)",
+                  border: "1px solid rgba(148,163,184,0.6)",
+                  color: "#9ca3af",
+                  cursor: "pointer",
+                }}
+              >
+                Close
+              </button>
+            </div>
+
+            <div
+              style={{
+                borderRadius: 12,
+                border: "1px solid rgba(51,65,85,0.9)",
+                background: "rgba(15,23,42,0.96)",
+                padding: 12,
+                color: "#cbd5f5",
+                fontSize: 13,
+                overflowY: "auto",
+                flex: 1,
+                whiteSpace: "pre-wrap",
+              }}
+            >
+              {explainLoading
+                ? "AI is analyzing this rule..."
+                : explainText || "No explanation available for this rule."}
+            </div>
+          </div>
+        )}
+
+        {/* CONFLICT DRAWER */}
+        {conflictOpen && (
+          <div
+            style={{
+              position: "fixed",
+              top: 0,
+              right: 0,
+              width: "400px",
+              height: "100vh",
+              background:
+                "linear-gradient(145deg,rgba(15,23,42,0.98),rgba(15,23,42,0.96))",
+              borderLeft: "1px solid rgba(148,163,184,0.4)",
+              boxShadow: "-20px 0 40px rgba(0,0,0,0.6)",
+              padding: "22px",
+              zIndex: 1000,
+              overflowY: "auto",
+              display: "flex",
+              flexDirection: "column",
+              gap: 16,
+            }}
+          >
+            <div
+              style={{
+                display: "flex",
+                justifyContent: "space-between",
+                alignItems: "center",
+              }}
+            >
+              <div
+                style={{
+                  fontSize: 16,
+                  fontWeight: 700,
+                  color: "#e5e7eb",
+                }}
+              >
+                Conflict Analysis
+              </div>
+
+              <button
+                onClick={() => setConflictOpen(false)}
+                style={{
+                  borderRadius: 999,
+                  padding: "4px 8px",
+                  fontSize: 12,
+                  background: "rgba(15,23,42,0.8)",
+                  border: "1px solid rgba(148,163,184,0.6)",
+                  color: "#9ca3af",
+                  cursor: "pointer",
+                }}
+              >
+                Close
+              </button>
+            </div>
+
+            {conflictLoading && (
+              <div style={{ color: "#cbd5f5", fontSize: 13 }}>
+                AI is analyzing all rules for conflicts…
+              </div>
+            )}
+
+            {!conflictLoading && conflicts.length === 0 && (
+              <div
+                style={{
+                  fontSize: 13,
+                  color: "#9ca3af",
+                  padding: 12,
+                  borderRadius: 12,
+                  border: "1px solid rgba(55,65,81,0.6)",
+                  background: "rgba(15,23,42,0.8)",
+                }}
+              >
+                ✅ No conflicts detected.
+              </div>
+            )}
+
+            {!conflictLoading &&
+              conflicts.length > 0 &&
+              conflicts.map((c, idx) => (
+                <div
+                  key={idx}
+                  style={{
+                    padding: 14,
+                    borderRadius: 14,
+                    marginBottom: 12,
+                    background:
+                      "linear-gradient(145deg,rgba(31,41,55,0.8),rgba(17,24,39,0.9))",
+                    border: "1px solid rgba(239,68,68,0.6)",
+                  }}
+                >
+                  <div
+                    style={{
+                      color: "#fca5a5",
+                      fontWeight: 600,
+                      marginBottom: 6,
+                      fontSize: 14,
+                    }}
+                  >
+                    ⚠ Conflict #{idx + 1}
+                  </div>
+
+                  <div style={{ color: "#e5e7eb", fontSize: 13 }}>
+                    {c.summary}
+                  </div>
+
+                  <div
+                    style={{
+                      color: "#fcd34d",
+                      fontSize: 12,
+                      marginTop: 8,
+                      fontStyle: "italic",
+                    }}
+                  >
+                    Suggestion: {c.suggestion}
+                  </div>
+                </div>
+              ))}
+          </div>
+        )}
+      </div>
+
       {/* SAVING INDICATOR */}
       {saving && (
         <div
@@ -1875,6 +1944,6 @@ Must include Additional Insured and Waiver of Subrogation."`}
           }
         }
       `}</style>
-    </div> 
-  ); 
-} // END RequirementsV5Page
+    </div>
+  );
+}
