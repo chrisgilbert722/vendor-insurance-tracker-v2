@@ -1,7 +1,6 @@
 // pages/api/dashboard/overview.js
-// REAL production dashboard engine using live data from Neon
-
-import { sql } from "../../../lib/db";  // ✅ FIXED PATH
+import { sql } from "../../../lib/db";
+import { getAlertStatsV2 } from "../../../lib/alertsV2Engine";
 
 export default async function handler(req, res) {
   try {
@@ -14,9 +13,7 @@ export default async function handler(req, res) {
     // 1. Vendors
     //
     const vendors = await sql`
-      SELECT id 
-      FROM vendors 
-      WHERE org_id = ${orgId};
+      SELECT id FROM vendors WHERE org_id = ${orgId};
     `;
     const vendorCount = vendors.length;
 
@@ -42,7 +39,6 @@ export default async function handler(req, res) {
 
     policies.forEach((p) => {
       if (!p.expiration_date) return;
-
       const exp = new Date(p.expiration_date);
 
       if (exp < today) expiredCount++;
@@ -51,7 +47,7 @@ export default async function handler(req, res) {
     });
 
     //
-    // 3. Alerts table — elite fails
+    // 3. Elite fails (old system — keep for now)
     //
     const eliteFails = await sql`
       SELECT COUNT(*) 
@@ -59,10 +55,10 @@ export default async function handler(req, res) {
       WHERE org_id = ${orgId}
         AND severity = 'critical';
     `;
-    const eliteFailCount = Number(eliteFails[0].count || 0);
+    const eliteFailCount = Number(eliteFails[0]?.count || 0);
 
     //
-    // 4. Vendor Compliance Cache — CORE ENGINE RESULT
+    // 4. Vendor Compliance Cache
     //
     const compliance = await sql`
       SELECT vendor_id, status, passing, failing, missing
@@ -80,17 +76,14 @@ export default async function handler(req, res) {
       else if (c.status === "warn") warn++;
       else if (c.status === "fail") fail++;
 
-      // Collect failing rules for "top violations"
-      try {
-        const fails = c.failing || [];
-        fails.forEach((f) => {
-          if (f?.field_key) allFailures.push(f.field_key);
-        });
-      } catch (_) {}
+      const failingRules = c.failing || [];
+      failingRules.forEach((f) => {
+        if (f?.field_key) allFailures.push(f.field_key);
+      });
     });
 
     //
-    // Top Violations
+    // 5. Top violations
     //
     const violationMap = {};
     allFailures.forEach((v) => {
@@ -103,7 +96,7 @@ export default async function handler(req, res) {
       .map(([label, count]) => ({ label, count }));
 
     //
-    // 5. Dashboard trajectory (historical)
+    // 6. Trajectory (dashboard_metrics)
     //
     const metrics = await sql`
       SELECT snapshot_date, avg_score
@@ -119,7 +112,13 @@ export default async function handler(req, res) {
     }));
 
     //
-    // 6. Global score calculation
+    // ⭐ 7. ALERTS V2 SEVERITY BREAKDOWN — THE NEW PART
+    //
+    const severity = await getAlertStatsV2(Number(orgId));
+    // { critical: X, high: Y, medium: Z, low: W }
+
+    //
+    // 8. Compute global score
     //
     const globalScore =
       compliance.length > 0
@@ -147,12 +146,13 @@ export default async function handler(req, res) {
         },
 
         engineSnapshot: { pass, warn, fail },
-
         trajectory,
-
         passWarnFail: { pass, warn, fail },
-
         topViolations,
+
+        // ⭐ New part for Dashboard V3
+        severityBreakdown: severity, 
+        // { critical, high, medium, low }
       },
     });
   } catch (err) {
