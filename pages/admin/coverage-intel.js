@@ -1,7 +1,8 @@
 // pages/admin/coverage-intel.js
 // ==========================================================
-// PHASE 6+7 — COVERAGE INTEL (AI Insurance Brain)
-// Text or PDF → Analyze → Summarize → Build Rule Plan → Apply (Smart Merge)
+// PHASE 6+7+8 — COVERAGE INTEL (AI Insurance Brain)
+// Text or PDF → Analyze → Summarize → Build Rule Plan →
+// Scan Conflicts (AI) → Apply (Smart Merge) with nuclear modals
 // ==========================================================
 
 import { useState } from "react";
@@ -22,7 +23,7 @@ Additional Insured + Waiver of Subrogation required."`;
 // PAGE COMPONENT
 // ==========================================================
 export default function CoverageIntelPage() {
-  const { activeOrgId: orgId } = useOrg(); // used by Apply-to-V5
+  const { activeOrgId: orgId } = useOrg(); // used by Apply-to-V5 and conflicts
 
   const [toast, setToast] = useState({
     open: false,
@@ -30,7 +31,7 @@ export default function CoverageIntelPage() {
     type: "success",
   });
 
-  // User input text
+  // User input text + PDF
   const [sourceText, setSourceText] = useState("");
   const [pdfFile, setPdfFile] = useState(null);
 
@@ -43,14 +44,19 @@ export default function CoverageIntelPage() {
   const [pdfLoading, setPdfLoading] = useState(false);
   const [rulePreviewLoading, setRulePreviewLoading] = useState(false);
   const [applyLoading, setApplyLoading] = useState(false);
+  const [conflictLoading, setConflictLoading] = useState(false);
 
-  // Nuclear summary modal state
+  // Nuclear summary modal state (Apply)
   const [summaryOpen, setSummaryOpen] = useState(false);
   const [summaryStats, setSummaryStats] = useState(null);
 
+  // Conflict modal state
+  const [conflictOpen, setConflictOpen] = useState(false);
+  const [conflicts, setConflicts] = useState([]);
+
   // ==========================================================
   // HANDLER 1 — Analyze Coverage (TEXT → Summary)
-// ==========================================================
+  // ==========================================================
   async function handleAnalyzeCoverage() {
     if (!sourceText.trim()) {
       return setToast({
@@ -66,6 +72,8 @@ export default function CoverageIntelPage() {
       setRulePreview(null);
       setSummaryOpen(false);
       setSummaryStats(null);
+      setConflictOpen(false);
+      setConflicts([]);
 
       const res = await fetch("/api/coverage/intel", {
         method: "POST",
@@ -96,7 +104,7 @@ export default function CoverageIntelPage() {
 
   // ==========================================================
   // HANDLER 1B — Analyze Coverage (PDF → Summary)
-// ==========================================================
+  // ==========================================================
   async function handleAnalyzePdf() {
     if (!pdfFile) {
       return setToast({
@@ -112,6 +120,8 @@ export default function CoverageIntelPage() {
       setRulePreview(null);
       setSummaryOpen(false);
       setSummaryStats(null);
+      setConflictOpen(false);
+      setConflicts([]);
 
       const formData = new FormData();
       formData.append("file", pdfFile);
@@ -144,7 +154,7 @@ export default function CoverageIntelPage() {
 
   // ==========================================================
   // HANDLER 2 — Build Rule Preview (AI → V5 rulePlan)
-// ==========================================================
+  // ==========================================================
   async function handleGenerateRulePreview() {
     if (!coverageSummary) {
       return setToast({
@@ -159,6 +169,8 @@ export default function CoverageIntelPage() {
       setRulePreview(null);
       setSummaryOpen(false);
       setSummaryStats(null);
+      setConflictOpen(false);
+      setConflicts([]);
 
       const res = await fetch("/api/coverage/intel/rules", {
         method: "POST",
@@ -189,8 +201,65 @@ export default function CoverageIntelPage() {
   }
 
   // ==========================================================
-  // HANDLER 3 — Apply Rule Plan to V5 (Smart Merge + Nuclear Modal)
-// ==========================================================
+  // HANDLER 3 — AI CONFLICT DETECTION
+  // ==========================================================
+  async function handleScanConflicts() {
+    if (!orgId) {
+      return setToast({
+        open: true,
+        type: "error",
+        message: "No active org selected — cannot scan conflicts.",
+      });
+    }
+
+    if (!rulePreview || !Array.isArray(rulePreview.groups)) {
+      return setToast({
+        open: true,
+        type: "error",
+        message: "No rule plan to compare. Generate preview first.",
+      });
+    }
+
+    try {
+      setConflictLoading(true);
+      setConflictOpen(false);
+      setConflicts([]);
+
+      const res = await fetch("/api/coverage/conflicts", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          orgId,
+          rulePlan: rulePreview,
+        }),
+      });
+
+      const json = await res.json();
+      if (!json.ok)
+        throw new Error(json.error || "Conflict detection failed.");
+
+      setConflicts(json.conflicts || []);
+      setConflictOpen(true);
+
+      setToast({
+        open: true,
+        type: "success",
+        message: "Conflict scan complete.",
+      });
+    } catch (err) {
+      setToast({
+        open: true,
+        type: "error",
+        message: err.message || "Failed to scan conflicts.",
+      });
+    } finally {
+      setConflictLoading(false);
+    }
+  }
+
+  // ==========================================================
+  // HANDLER 4 — Apply Rule Plan to V5 (Smart Merge + Nuclear Modal)
+  // ==========================================================
   async function handleApplyToV5() {
     if (!orgId) {
       return setToast({
@@ -277,7 +346,7 @@ export default function CoverageIntelPage() {
 
       <p style={{ marginTop: 6, fontSize: 14, color: "#94a3b8" }}>
         Paste text or upload a carrier PDF → extract coverages → generate rule
-        plan for V5.
+        plan → scan conflicts → apply to V5.
       </p>
 
       {/* MAIN 3-COLUMN GRID */}
@@ -419,7 +488,7 @@ export default function CoverageIntelPage() {
           )}
         </div>
 
-        {/* RIGHT PANEL — RULE PREVIEW + APPLY UI */}
+        {/* RIGHT PANEL — RULE PREVIEW + CONFLICTS + APPLY */}
         <div
           style={{
             borderRadius: 20,
@@ -473,10 +542,31 @@ export default function CoverageIntelPage() {
           </button>
 
           <button
+            onClick={handleScanConflicts}
+            disabled={conflictLoading || !rulePreview}
+            style={{
+              marginTop: 10,
+              width: "100%",
+              padding: "10px",
+              borderRadius: 12,
+              background:
+                !rulePreview
+                  ? "rgba(248,113,113,0.20)"
+                  : "linear-gradient(90deg,#ef4444,#b91c1c)",
+              border: "1px solid rgba(248,113,113,0.9)",
+              color: "white",
+              fontWeight: 600,
+              cursor: !rulePreview ? "not-allowed" : "pointer",
+            }}
+          >
+            {conflictLoading ? "Scanning conflicts…" : "Scan Conflicts (AI)"}
+          </button>
+
+          <button
             onClick={handleApplyToV5}
             disabled={applyLoading || !rulePreview}
             style={{
-              marginTop: 12,
+              marginTop: 10,
               width: "100%",
               padding: "10px",
               borderRadius: 12,
@@ -495,7 +585,187 @@ export default function CoverageIntelPage() {
         </div>
       </div>
 
-      {/* FULLSCREEN NUCLEAR SUMMARY MODAL */}
+      {/* FULLSCREEN CONFLICT MODAL */}
+      {conflictOpen && (
+        <div
+          style={{
+            position: "fixed",
+            inset: 0,
+            background: "rgba(15,23,42,0.92)",
+            backdropFilter: "blur(10px)",
+            zIndex: 9998,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+          }}
+        >
+          <div
+            style={{
+              width: "100%",
+              maxWidth: 720,
+              maxHeight: "80vh",
+              borderRadius: 24,
+              padding: 24,
+              background:
+                "radial-gradient(circle at top,#020617,#020617 60%,#000)",
+              border: "1px solid rgba(248,113,113,0.7)",
+              boxShadow: "0 40px 80px rgba(0,0,0,0.9)",
+              overflowY: "auto",
+            }}
+          >
+            <div
+              style={{
+                display: "flex",
+                justifyContent: "space-between",
+                alignItems: "center",
+                marginBottom: 16,
+              }}
+            >
+              <div
+                style={{
+                  fontSize: 18,
+                  fontWeight: 700,
+                  color: "#fecaca",
+                }}
+              >
+                ⚠ Conflict Analysis (AI)
+              </div>
+              <button
+                onClick={() => setConflictOpen(false)}
+                style={{
+                  borderRadius: 999,
+                  padding: "4px 10px",
+                  fontSize: 12,
+                  background: "rgba(15,23,42,0.9)",
+                  border: "1px solid rgba(148,163,184,0.6)",
+                  color: "#9ca3af",
+                  cursor: "pointer",
+                }}
+              >
+                Close
+              </button>
+            </div>
+
+            {conflicts.length === 0 ? (
+              <div style={{ color: "#a7f3d0", fontSize: 13 }}>
+                ✅ No conflicts found between existing V5 rules and this rule
+                plan.
+              </div>
+            ) : (
+              conflicts.map((c, idx) => (
+                <div
+                  key={idx}
+                  style={{
+                    marginBottom: 14,
+                    padding: 12,
+                    borderRadius: 14,
+                    background:
+                      "linear-gradient(135deg,rgba(30,64,175,0.6),rgba(24,24,27,0.9))",
+                    border: "1px solid rgba(248,113,113,0.8)",
+                  }}
+                >
+                  <div
+                    style={{
+                      fontSize: 13,
+                      color: "#fecaca",
+                      fontWeight: 600,
+                      marginBottom: 6,
+                    }}
+                  >
+                    Conflict #{idx + 1} — {c.type || "other"}
+                  </div>
+
+                  <div
+                    style={{
+                      fontSize: 12,
+                      color: "#e5e7eb",
+                      marginBottom: 6,
+                    }}
+                  >
+                    {c.summary}
+                  </div>
+
+                  <div
+                    style={{
+                      display: "grid",
+                      gridTemplateColumns: "1fr 1fr",
+                      gap: 8,
+                      marginTop: 4,
+                      fontSize: 11,
+                      color: "#cbd5f5",
+                    }}
+                  >
+                    <div
+                      style={{
+                        padding: 8,
+                        borderRadius: 10,
+                        background: "rgba(127,29,29,0.45)",
+                        border: "1px solid rgba(248,113,113,0.7)",
+                      }}
+                    >
+                      <div
+                        style={{
+                          fontWeight: 600,
+                          marginBottom: 4,
+                          color: "#fecaca",
+                        }}
+                      >
+                        Existing Rule
+                      </div>
+                      <div>{c.existingRule?.groupName}</div>
+                      <div>{c.existingRule?.requirement_text}</div>
+                      <div>
+                        {c.existingRule?.field_key} {c.existingRule?.operator}{" "}
+                        {String(c.existingRule?.expected_value ?? "")}
+                      </div>
+                    </div>
+
+                    <div
+                      style={{
+                        padding: 8,
+                        borderRadius: 10,
+                        background: "rgba(30,64,175,0.45)",
+                        border: "1px solid rgba(96,165,250,0.8)",
+                      }}
+                    >
+                      <div
+                        style={{
+                          fontWeight: 600,
+                          marginBottom: 4,
+                          color: "#bfdbfe",
+                        }}
+                      >
+                        New Rule (Plan)
+                      </div>
+                      <div>{c.newRule?.groupName}</div>
+                      <div>{c.newRule?.requirement_text}</div>
+                      <div>
+                        {c.newRule?.field_key} {c.newRule?.operator}{" "}
+                        {String(c.newRule?.expected_value ?? "")}
+                      </div>
+                    </div>
+                  </div>
+
+                  {c.suggestedResolution && (
+                    <div
+                      style={{
+                        marginTop: 6,
+                        fontSize: 12,
+                        color: "#fbbf24",
+                        fontStyle: "italic",
+                      }}
+                    >
+                      Suggested resolution: {c.suggestedResolution}
+                    </div>
+                  )}
+                </div>
+              ))
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* FULLSCREEN APPLY SUMMARY MODAL */}
       {summaryOpen && summaryStats && (
         <div
           style={{
@@ -701,3 +971,4 @@ function SummaryCard({ label, value, color }) {
     </div>
   );
 }
+
