@@ -1557,9 +1557,13 @@ function evaluateRule(rule, policyObj) {
     case "lte":
       return Number(rawVal) <= Number(expected);
 
-    default:
+        default:
       return false;
   }
 }
 
+// 👇👇👇 ADD THIS — FINAL CLOSING BRACE FOR THE PAGE COMPONENT
+}  // <-- this closes: export default function RequirementsV5Page()
+
 // END OF FILE
+
