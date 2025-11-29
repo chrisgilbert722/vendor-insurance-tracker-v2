@@ -1,4 +1,4 @@
-// components/Sidebar.js — Tactical Neon Rail V7 (Corrected Real Routes)
+// components/Sidebar.js — Tactical Neon Rail V8 (V5 + Coverage Intel Corrected)
 import React from "react";
 
 export default function Sidebar({ pathname, isAdmin, isManager, isViewer }) {
@@ -35,7 +35,8 @@ export default function Sidebar({ pathname, isAdmin, isManager, isViewer }) {
         ⚡
       </div>
 
-      {/* MAIN NAV */}
+      {/* ===== MAIN NAVIGATION ===== */}
+
       <RailLink
         href="/dashboard"
         label="Dashboard"
@@ -77,17 +78,27 @@ export default function Sidebar({ pathname, isAdmin, isManager, isViewer }) {
         />
       )}
 
-      {/* ⭐ NEW RULE ENGINE V3 LINK (ADMIN ONLY) ⭐ */}
+      {/* ⭐ NEW: COVERAGE INTEL (AI Insurance Brain) ⭐ */}
       {isAdmin && (
         <RailLink
-          href="/admin/requirements-v3"
-          label="Rules"
-          icon="🧠"
-          active={pathname === "/admin/requirements-v3"}
+          href="/admin/coverage-intel"
+          label="AI Intel"
+          icon="🧬"
+          active={pathname === "/admin/coverage-intel"}
         />
       )}
 
-      {/* LOGOUT */}
+      {/* ⭐ NEW: REQUIREMENTS ENGINE V5 (FINAL ENGINE) ⭐ */}
+      {isAdmin && (
+        <RailLink
+          href="/admin/requirements-v5"
+          label="Rules"
+          icon="🧠"
+          active={pathname === "/admin/requirements-v5"}
+        />
+      )}
+
+      {/* ===== LOGOUT ===== */}
       <div style={{ marginTop: "auto" }}>
         <RailLink
           href="/auth/login"
