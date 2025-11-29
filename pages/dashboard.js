@@ -5,7 +5,7 @@ import { useRole } from "../lib/useRole";
 import { useOrg } from "../context/OrgContext";
 import EliteStatusPill from "../components/elite/EliteStatusPill";
 
-// Charts (now API-powered)
+// Charts
 import ComplianceTrajectoryChart from "../components/charts/ComplianceTrajectoryChart";
 import PassFailDonutChart from "../components/charts/PassFailDonutChart";
 import ExpiringCertsHeatmap from "../components/charts/ExpiringCertsHeatmap";
@@ -20,18 +20,20 @@ const GP = {
   panel: "rgba(15,23,42,0.98)",
   borderSoft: "rgba(51,65,85,0.9)",
   borderStrong: "rgba(148,163,184,0.8)",
+
   neonBlue: "#38bdf8",
   neonPurple: "#a855f7",
   neonGreen: "#22c55e",
   neonGold: "#facc15",
   neonRed: "#fb7185",
+
   text: "#e5e7eb",
   textSoft: "#9ca3af",
   textMuted: "#6b7280",
 };
 
 /* ===========================
-   RISK HELPERS
+   RISK / HELPER FUNCTIONS
 =========================== */
 function parseExpiration(dateStr) {
   if (!dateStr) return null;
@@ -48,7 +50,6 @@ function computeDaysLeft(dateStr) {
 function computeRisk(p) {
   const daysLeft = computeDaysLeft(p.expiration_date);
   const flags = [];
-
   if (daysLeft === null) {
     return {
       daysLeft: null,
@@ -135,8 +136,9 @@ function computeAiRisk({ risk, elite, compliance }) {
   }
 
   let complianceFactor = 1.0;
-  if (compliance?.failing?.length > 0) complianceFactor = 0.5;
-  else if (compliance?.missing?.length > 0) complianceFactor = 0.7;
+  if (compliance && compliance.failing?.length > 0) complianceFactor = 0.5;
+  else if (compliance && compliance.missing?.length > 0)
+    complianceFactor = 0.7;
 
   let score = Math.round(base * eliteFactor * complianceFactor);
   score = Math.max(0, Math.min(score, 100));
@@ -167,7 +169,7 @@ function renderComplianceBadge(vendorId, complianceMap) {
       <span
         style={{
           ...base,
-          background: GP.panel,
+          background: "rgba(15,23,42,0.98)",
           color: GP.textSoft,
         }}
       >
@@ -232,23 +234,26 @@ function renderComplianceBadge(vendorId, complianceMap) {
 }
 
 /* ===========================
-   MAIN DASHBOARD — STATE + API HOOKUP
+   MAIN DASHBOARD
 =========================== */
 export default function Dashboard() {
   const { isAdmin, isManager } = useRole();
   const { activeOrgId } = useOrg();
 
-  // NEW LIVE DASHBOARD STATE (from /api/dashboard/overview)
+  // NEW: Real dashboard overview from /api/dashboard/overview
   const [dashboard, setDashboard] = useState(null);
   const [dashboardLoading, setDashboardLoading] = useState(true);
 
-  // existing state
   const [policies, setPolicies] = useState([]);
   const [loading, setLoading] = useState(true);
   const [filterText, setFilterText] = useState("");
   const [complianceMap, setComplianceMap] = useState({});
   const [eliteMap, setEliteMap] = useState({});
-  const [eliteSummary, setEliteSummary] = useState({ pass: 0, warn: 0, fail: 0 });
+  const [eliteSummary, setEliteSummary] = useState({
+    pass: 0,
+    warn: 0,
+    fail: 0,
+  });
 
   const [alerts, setAlerts] = useState([]);
   const [showAlerts, setShowAlerts] = useState(false);
@@ -256,6 +261,7 @@ export default function Dashboard() {
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [drawerVendor, setDrawerVendor] = useState(null);
   const [drawerPolicies, setDrawerPolicies] = useState([]);
+
   /* LOAD REAL DASHBOARD OVERVIEW (V3) */
   useEffect(() => {
     if (!activeOrgId) return;
@@ -288,14 +294,14 @@ export default function Dashboard() {
     }
     load();
   }, []);
-  /* LOAD COMPLIANCE (per vendor) */
+
+  /* LOAD COMPLIANCE */
   useEffect(() => {
     if (!policies.length || !activeOrgId) return;
 
     const vendorIds = [...new Set(policies.map((p) => p.vendor_id))];
 
     vendorIds.forEach((vendorId) => {
-      // prevent re-fetching
       if (complianceMap[vendorId]?.loading === false) return;
 
       setComplianceMap((prev) => ({
@@ -305,18 +311,18 @@ export default function Dashboard() {
 
       fetch(`/api/requirements/check?vendorId=${vendorId}&orgId=${activeOrgId}`)
         .then((res) => res.json())
-        .then((res) => {
+        .then((data) => {
           setComplianceMap((prev) => ({
             ...prev,
-            [vendorId]: res.ok
+            [vendorId]: data.ok
               ? {
                   loading: false,
-                  summary: res.summary,
-                  missing: res.missing || [],
-                  failing: res.failing || [],
-                  passing: res.passing || [],
+                  summary: data.summary,
+                  missing: data.missing || [],
+                  failing: data.failing || [],
+                  passing: data.passing || [],
                 }
-              : { loading: false, error: res.error },
+              : { loading: false, error: data.error },
           }));
         })
         .catch((err) => {
@@ -327,9 +333,9 @@ export default function Dashboard() {
           }));
         });
     });
-  }, [policies, activeOrgId]);
+  }, [policies, activeOrgId, complianceMap]);
 
-  /* LOAD ELITE ENGINE PER VENDOR */
+  /* LOAD ELITE */
   useEffect(() => {
     if (!policies.length) return;
 
@@ -357,12 +363,12 @@ export default function Dashboard() {
         body: JSON.stringify({ coidata }),
       })
         .then((res) => res.json())
-        .then((res) => {
+        .then((data) => {
           setEliteMap((prev) => ({
             ...prev,
-            [vendorId]: res.ok
-              ? { loading: false, overall: res.overall, rules: res.rules }
-              : { loading: false, error: res.error },
+            [vendorId]: data.ok
+              ? { loading: false, overall: data.overall, rules: data.rules }
+              : { loading: false, error: data.error },
           }));
         })
         .catch((err) => {
@@ -391,7 +397,7 @@ export default function Dashboard() {
     setEliteSummary({ pass, warn, fail });
   }, [eliteMap]);
 
-  /* LOG ALERTS FROM ENGINES */
+  /* LOG ALERT */
   async function logAlert(vendorId, type, message) {
     if (!activeOrgId) return;
     await fetch("/api/alerts/log", {
@@ -401,7 +407,7 @@ export default function Dashboard() {
     });
   }
 
-  /* TRIGGER ALERTS (Risk + Elite + Compliance) */
+  /* TRIGGER ALERTS */
   useEffect(() => {
     if (!policies.length || !activeOrgId) return;
 
@@ -442,7 +448,7 @@ export default function Dashboard() {
     });
   }, [policies, eliteMap, complianceMap, activeOrgId]);
 
-  /* FETCH ALERTS LIVE */
+  /* FETCH ALERTS */
   useEffect(() => {
     if (!activeOrgId) return;
 
@@ -456,412 +462,7 @@ export default function Dashboard() {
     const interval = setInterval(loadAlerts, 7000);
     return () => clearInterval(interval);
   }, [activeOrgId]);
-{/* =======================================
-    HERO COMMAND PANEL — cockpit-hero + cockpit-pulse
-======================================= */}
-<div
-  className="cockpit-hero cockpit-pulse"
-  style={{
-    borderRadius: 28,
-    padding: 22,
-    marginBottom: 30,
-    border: "1px solid rgba(148,163,184,0.45)",
-    background:
-      "radial-gradient(circle at top left,rgba(15,23,42,0.98),rgba(15,23,42,0.92))",
-    boxShadow: `
-      0 0 55px rgba(0,0,0,0.85),
-      0 0 70px rgba(56,189,248,0.35),
-      inset 0 0 25px rgba(0,0,0,0.7)
-    `,
-    display: "grid",
-    gridTemplateColumns: "minmax(0,1.8fr) minmax(0,1.3fr)",
-    gap: 24,
-    position: "relative",
-  }}
->
-  {/* HUD LABEL */}
-  <div
-    style={{
-      position: "absolute",
-      top: 12,
-      left: 18,
-      fontSize: 10,
-      letterSpacing: "0.18em",
-      textTransform: "uppercase",
-      color: "rgba(148,163,184,0.7)",
-    }}
-  >
-    DASHBOARD V3 • GLOBAL COMPLIANCE ENGINE
-  </div>
 
-  {/* LEFT SIDE — Title + AI Summary + CTAs + KPIs */}
-  <div style={{ paddingTop: 22 }}>
-    <h1
-      style={{
-        fontSize: 30,
-        fontWeight: 600,
-        margin: 0,
-        letterSpacing: 0.18,
-        background:
-          "linear-gradient(90deg,#38bdf8,#a855f7,#22c55e,#facc15)",
-        WebkitBackgroundClip: "text",
-        color: "transparent",
-      }}
-    >
-      Vendor Insurance Intelligence
-    </h1>
-
-    <p
-      style={{
-        marginTop: 8,
-        fontSize: 13,
-        color: GP.textSoft,
-        maxWidth: 640,
-        lineHeight: 1.5,
-      }}
-    >
-      Live AI-powered oversight across all vendors, policies, expirations,
-      and risk engines. This is your command center.
-    </p>
-
-    {/* LIVE AI SNAPSHOT BAR */}
-    <div
-      style={{
-        marginTop: 12,
-        fontSize: 12,
-        color: GP.textSoft,
-        borderRadius: 999,
-        padding: "6px 12px",
-        border: "1px solid rgba(55,65,81,0.9)",
-        background:
-          "linear-gradient(90deg,rgba(15,23,42,0.98),rgba(15,23,42,0.9))",
-        display: "inline-flex",
-        alignItems: "center",
-        gap: 10,
-      }}
-    >
-      <span>🤖</span>
-      <span>
-        AI snapshot: system health{" "}
-        <strong
-          style={{
-            color:
-              Number(dashboard?.globalScore) >= 80
-                ? GP.neonGreen
-                : Number(dashboard?.globalScore) >= 60
-                ? GP.neonGold
-                : GP.neonRed,
-          }}
-        >
-          {dashboardLoading
-            ? "—"
-            : (dashboard?.globalScore ?? 0).toFixed(0)}
-        </strong>
-        /100 across{" "}
-        <strong style={{ color: GP.neonBlue }}>
-          {dashboardLoading
-            ? "—"
-            : dashboard?.vendorCount ?? 0}
-        </strong>
-        vendors,{" "}
-        {dashboardLoading
-          ? "—"
-          : (dashboard?.alerts?.expired ?? 0) +
-            (dashboard?.alerts?.critical30d ?? 0) +
-            (dashboard?.alerts?.warning90d ?? 0) +
-            (dashboard?.alerts?.eliteFails ?? 0)}{" "}
-        active alerts.
-      </span>
-    </div>
-
-    {/* ACTION BUTTONS */}
-    <div
-      style={{
-        marginTop: 16,
-        display: "flex",
-        alignItems: "center",
-        gap: 12,
-        flexWrap: "wrap",
-      }}
-    >
-      {(isAdmin || isManager) && (
-        <a
-          href="/upload-coi"
-          style={{
-            display: "inline-flex",
-            alignItems: "center",
-            gap: 8,
-            padding: "8px 16px",
-            borderRadius: 999,
-            background:
-              "radial-gradient(circle at top left,#0ea5e9,#1d4ed8,#020617)",
-            color: "#e0f2fe",
-            fontSize: 13,
-            fontWeight: 600,
-            textDecoration: "none",
-            boxShadow:
-              "0 0 18px rgba(56,189,248,0.35),0 0 32px rgba(30,64,175,0.25)",
-          }}
-        >
-          <span>+ Upload New COI</span>
-        </a>
-      )}
-
-      <button
-        onClick={() => setShowAlerts((s) => !s)}
-        style={{
-          padding: "8px 14px",
-          borderRadius: 999,
-          border: "1px solid rgba(51,65,85,0.9)",
-          background: "rgba(15,23,42,0.9)",
-          cursor: "pointer",
-          display: "flex",
-          gap: 6,
-          fontSize: 13,
-          color: "#e5e7eb",
-        }}
-      >
-        🔔 Alerts (
-        {dashboardLoading
-          ? "—"
-          : (dashboard?.alerts?.expired ?? 0) +
-            (dashboard?.alerts?.critical30d ?? 0) +
-            (dashboard?.alerts?.warning90d ?? 0) +
-            (dashboard?.alerts?.eliteFails ?? 0)}
-        )
-      </button>
-    </div>
-
-    {/* MINI KPI STRIP — Powered by Real API */}
-    <div
-      style={{
-        marginTop: 20,
-        display: "grid",
-        gridTemplateColumns: "repeat(auto-fit,minmax(160px,1fr))",
-        gap: 12,
-      }}
-    >
-      <MiniKpi
-        label="Expired"
-        value={dashboard?.alerts?.expired ?? 0}
-        color={GP.neonRed}
-        icon="🔥"
-      />
-      <MiniKpi
-        label="Critical ≤30d"
-        value={dashboard?.alerts?.critical30d ?? 0}
-        color={GP.neonGold}
-        icon="⚠️"
-      />
-      <MiniKpi
-        label="Warning ≤90d"
-        value={dashboard?.alerts?.warning90d ?? 0}
-        color={GP.neonBlue}
-        icon="🟡"
-      />
-      <MiniKpi
-        label="Elite Fails"
-        value={dashboard?.alerts?.eliteFails ?? 0}
-        color={GP.neonRed}
-        icon="🧠"
-      />
-    </div>
-  </div>
-
-  {/* RIGHT SIDE — GLOBAL SCORE DONUT (REAL) */}
-  <div
-    style={{
-      display: "flex",
-      flexDirection: "column",
-      alignItems: "flex-end",
-      gap: 16,
-      paddingTop: 28,
-    }}
-  >
-    <div
-      style={{
-        position: "relative",
-        width: 160,
-        height: 160,
-        borderRadius: "50%",
-        background:
-          "conic-gradient(from 220deg,#22c55e,#a3e635,#facc15,#fb7185,#0f172a)",
-        padding: 5,
-        boxShadow:
-          "0 0 50px rgba(34,197,94,0.45),0 0 80px rgba(148,163,184,0.3)",
-      }}
-    >
-      <div
-        style={{
-          position: "absolute",
-          inset: 12,
-          borderRadius: "50%",
-          background:
-            "radial-gradient(circle at 30% 0,#020617,#020617 60%,#000)",
-        }}
-      />
-      <div
-        style={{
-          position: "relative",
-          zIndex: 1,
-          height: "100%",
-          display: "flex",
-          flexDirection: "column",
-          alignItems: "center",
-          justifyContent: "center",
-        }}
-      >
-        <div
-          style={{
-            fontSize: 11,
-            letterSpacing: "0.1em",
-            textTransform: "uppercase",
-            color: GP.textSoft,
-            marginBottom: 2,
-          }}
-        >
-          Global Score
-        </div>
-
-        <div
-          style={{
-            fontSize: 32,
-            fontWeight: 700,
-            background: "linear-gradient(120deg,#22c55e,#bef264,#facc15)",
-            WebkitBackgroundClip: "text",
-            color: "transparent",
-          }}
-        >
-          {dashboardLoading
-            ? "—"
-            : (dashboard?.globalScore ?? 0).toFixed(0)}
-        </div>
-
-        <div style={{ fontSize: 10, color: GP.textMuted }}>/100</div>
-      </div>
-    </div>
-
-    {/* ELITE SNAPSHOT (existing logic) */}
-    <div
-      style={{
-        borderRadius: 18,
-        padding: 12,
-        border: "1px solid rgba(51,65,85,0.9)",
-        background: "rgba(15,23,42,0.98)",
-        minWidth: 220,
-      }}
-    >
-      <div
-        style={{
-          fontSize: 12,
-          color: GP.textSoft,
-          marginBottom: 6,
-        }}
-      >
-        Elite Engine Snapshot
-      </div>
-
-      <div
-        style={{
-          display: "flex",
-          justifyContent: "space-between",
-          fontSize: 11,
-          color: "#4ade80",
-        }}
-      >
-        <span>PASS</span>
-        <span>{eliteSummary.pass}</span>
-      </div>
-      <div
-        style={{
-          display: "flex",
-          justifyContent: "space-between",
-          fontSize: 11,
-          color: "#facc15",
-        }}
-      >
-        <span>WARN</span>
-        <span>{eliteSummary.warn}</span>
-      </div>
-      <div
-        style={{
-          display: "flex",
-          justifyContent: "space-between",
-          fontSize: 11,
-          color: "#fb7185",
-        }}
-      >
-        <span>FAIL</span>
-        <span>{eliteSummary.fail}</span>
-      </div>
-    </div>
-  </div>
-</div>
-      {/* =======================================
-          CHART ROW — cockpit-telemetry
-      ======================================= */}
-      <div
-        className="cockpit-telemetry"
-        style={{
-          marginTop: 10,
-          marginBottom: 40,
-          display: "grid",
-          gridTemplateColumns: "minmax(0,2fr) minmax(0,1.2fr)",
-          gap: 24,
-        }}
-      >
-        <ComplianceTrajectoryChart />
-        <PassFailDonutChart />
-      </div>
-
-      {/* OTHER CHARTS */}
-      <ExpiringCertsHeatmap policies={policies} />
-      <SeverityDistributionChart policies={policies} />
-      <RiskTimelineChart policies={policies} />
-      {/* =======================================
-          POLICIES TABLE
-      ======================================= */}
-      <h2
-        style={{
-          marginTop: 32,
-          marginBottom: 10,
-          fontSize: 20,
-          fontWeight: 600,
-          color: "#e5e7eb",
-        }}
-      >
-        Policies
-      </h2>
-
-      <input
-        type="text"
-        placeholder="Search vendors, carriers, policy #, coverage…"
-        value={filterText}
-        onChange={(e) => setFilterText(e.target.value)}
-        style={{
-          padding: "8px 12px",
-          width: 320,
-          borderRadius: 999,
-          border: "1px solid rgba(51,65,85,0.95)",
-          background: "rgba(15,23,42,0.96)",
-          color: "#e5e7eb",
-          fontSize: 12,
-          marginBottom: 14,
-          outline: "none",
-        }}
-      />
-
-      {loading && (
-        <div style={{ fontSize: 13, color: GP.textSoft }}>
-          Loading policies…
-        </div>
-      )}
-
-      {!loading && filtered.length === 0 && (
-        <div style={{ fontSize: 13, color: GP.textSoft }}>
-          No matching policies.
-        </div>
-      )}
   const filtered = policies.filter((p) => {
     const t = filterText.toLowerCase();
     return (
@@ -892,10 +493,8 @@ export default function Dashboard() {
     setDrawerPolicies([]);
   }
 
-  // derived stats (can be used anywhere)
   const avgScore = dashboard?.globalScore ?? 0;
   const totalVendors = dashboard?.vendorCount ?? 0;
-
   const alertsCount =
     (dashboard?.alerts?.expired ?? 0) +
     (dashboard?.alerts?.critical30d ?? 0) +
@@ -912,7 +511,405 @@ export default function Dashboard() {
         color: GP.text,
       }}
     >
-      {/* hero panel here (Section 4) */}
+      {/* =======================================
+          HERO COMMAND PANEL
+      ======================================= */}
+      <div
+        className="cockpit-hero cockpit-pulse"
+        style={{
+          borderRadius: 28,
+          padding: 22,
+          marginBottom: 30,
+          border: "1px solid rgba(148,163,184,0.45)",
+          background:
+            "radial-gradient(circle at top left,rgba(15,23,42,0.98),rgba(15,23,42,0.92))",
+          boxShadow: `
+            0 0 55px rgba(0,0,0,0.85),
+            0 0 70px rgba(56,189,248,0.35),
+            inset 0 0 25px rgba(0,0,0,0.7)
+          `,
+          display: "grid",
+          gridTemplateColumns: "minmax(0,1.8fr) minmax(0,1.3fr)",
+          gap: 24,
+          position: "relative",
+        }}
+      >
+        {/* HUD LABEL */}
+        <div
+          style={{
+            position: "absolute",
+            top: 12,
+            left: 18,
+            fontSize: 10,
+            letterSpacing: "0.18em",
+            textTransform: "uppercase",
+            color: "rgba(148,163,184,0.7)",
+          }}
+        >
+          DASHBOARD V3 • GLOBAL COMPLIANCE ENGINE
+        </div>
+
+        {/* LEFT SIDE */}
+        <div style={{ paddingTop: 22 }}>
+          <h1
+            style={{
+              fontSize: 30,
+              fontWeight: 600,
+              margin: 0,
+              letterSpacing: 0.18,
+              background:
+                "linear-gradient(90deg,#38bdf8,#a855f7,#22c55e,#facc15)",
+              WebkitBackgroundClip: "text",
+              color: "transparent",
+            }}
+          >
+            Vendor Insurance Intelligence
+          </h1>
+
+          <p
+            style={{
+              marginTop: 8,
+              fontSize: 13,
+              color: GP.textSoft,
+              maxWidth: 640,
+              lineHeight: 1.5,
+            }}
+          >
+            Live AI-powered oversight across all vendors, policies,
+            expirations, and risk engines. This is your command center.
+          </p>
+
+          {/* AI SNAPSHOT BAR */}
+          <div
+            style={{
+              marginTop: 12,
+              fontSize: 12,
+              color: GP.textSoft,
+              borderRadius: 999,
+              padding: "6px 12px",
+              border: "1px solid rgba(55,65,81,0.9)",
+              background:
+                "linear-gradient(90deg,rgba(15,23,42,0.98),rgba(15,23,42,0.9))",
+              display: "inline-flex",
+              alignItems: "center",
+              gap: 10,
+            }}
+          >
+            <span>🤖</span>
+            <span>
+              AI snapshot: system health{" "}
+              <strong
+                style={{
+                  color:
+                    Number(avgScore) >= 80
+                      ? GP.neonGreen
+                      : Number(avgScore) >= 60
+                      ? GP.neonGold
+                      : GP.neonRed,
+                }}
+              >
+                {dashboardLoading
+                  ? "—"
+                  : Number(avgScore).toFixed(0)}
+              </strong>
+              /100 across{" "}
+              <strong style={{ color: GP.neonBlue }}>
+                {dashboardLoading ? "—" : totalVendors}
+              </strong>{" "}
+              vendors, {dashboardLoading ? "—" : alertsCount} active alerts.
+            </span>
+          </div>
+
+          {/* ACTIONS */}
+          <div
+            style={{
+              marginTop: 16,
+              display: "flex",
+              alignItems: "center",
+              gap: 12,
+              flexWrap: "wrap",
+            }}
+          >
+            {(isAdmin || isManager) && (
+              <a
+                href="/upload-coi"
+                style={{
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: 8,
+                  padding: "8px 16px",
+                  borderRadius: 999,
+                  background:
+                    "radial-gradient(circle at top left,#0ea5e9,#1d4ed8,#020617)",
+                  color: "#e0f2fe",
+                  fontSize: 13,
+                  fontWeight: 600,
+                  textDecoration: "none",
+                  boxShadow:
+                    "0 0 18px rgba(56,189,248,0.35),0 0 32px rgba(30,64,175,0.25)",
+                }}
+              >
+                <span>+ Upload New COI</span>
+              </a>
+            )}
+
+            <button
+              onClick={() => setShowAlerts((s) => !s)}
+              style={{
+                padding: "8px 14px",
+                borderRadius: 999,
+                border: "1px solid rgba(51,65,85,0.9)",
+                background: "rgba(15,23,42,0.9)",
+                cursor: "pointer",
+                display: "flex",
+                gap: 6,
+                fontSize: 13,
+                color: "#e5e7eb",
+              }}
+            >
+              🔔 Alerts ({alerts.length})
+            </button>
+          </div>
+
+          {/* KPI STRIP */}
+          <div
+            style={{
+              marginTop: 20,
+              display: "grid",
+              gridTemplateColumns:
+                "repeat(auto-fit,minmax(160px,1fr))",
+              gap: 12,
+            }}
+          >
+            <MiniKpi
+              label="Expired"
+              value={dashboard?.alerts?.expired ?? 0}
+              color={GP.neonRed}
+              icon="🔥"
+            />
+            <MiniKpi
+              label="Critical ≤30d"
+              value={dashboard?.alerts?.critical30d ?? 0}
+              color={GP.neonGold}
+              icon="⚠️"
+            />
+            <MiniKpi
+              label="Warning ≤90d"
+              value={dashboard?.alerts?.warning90d ?? 0}
+              color={GP.neonBlue}
+              icon="🟡"
+            />
+            <MiniKpi
+              label="Elite Fails"
+              value={dashboard?.alerts?.eliteFails ?? 0}
+              color={GP.neonRed}
+              icon="🧠"
+            />
+          </div>
+
+          {/* ALERT DROPDOWN */}
+          {showAlerts && (
+            <div
+              style={{
+                position: "absolute",
+                top: "100%",
+                right: 22,
+                marginTop: 10,
+                width: 320,
+                background:
+                  "radial-gradient(circle at top,#020617,#020617 70%,#020617)",
+                border: "1px solid rgba(51,65,85,0.9)",
+                borderRadius: 16,
+                padding: 12,
+                maxHeight: 340,
+                overflowY: "auto",
+                boxShadow: "0 12px 40px rgba(0,0,0,0.7)",
+                zIndex: 20,
+              }}
+            >
+              {alerts.length === 0 ? (
+                <div style={{ fontSize: 12, color: GP.textMuted }}>
+                  No alerts yet.
+                </div>
+              ) : (
+                alerts.map((a) => (
+                  <div
+                    key={a.id}
+                    style={{
+                      paddingBottom: 8,
+                      marginBottom: 8,
+                      borderBottom:
+                        "1px solid rgba(55,65,81,0.8)",
+                    }}
+                  >
+                    <div
+                      style={{
+                        fontSize: 11,
+                        fontWeight: 600,
+                        color: GP.neonBlue,
+                        textTransform: "uppercase",
+                        marginBottom: 2,
+                      }}
+                    >
+                      {a.type.replace(/_/g, " ")}
+                    </div>
+                    <div
+                      style={{
+                        fontSize: 12,
+                        color: "#e5e7eb",
+                      }}
+                    >
+                      {a.message}
+                    </div>
+                    <div
+                      style={{
+                        fontSize: 10,
+                        color: GP.textMuted,
+                        marginTop: 2,
+                      }}
+                    >
+                      {new Date(a.created_at).toLocaleString()}
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
+          )}
+        </div>
+
+        {/* RIGHT SIDE — GLOBAL SCORE + ELITE SNAPSHOT */}
+        <div
+          style={{
+            display: "flex",
+            flexDirection: "column",
+            alignItems: "flex-end",
+            gap: 16,
+            paddingTop: 28,
+          }}
+        >
+          <div
+            style={{
+              position: "relative",
+              width: 160,
+              height: 160,
+              borderRadius: "50%",
+              background:
+                "conic-gradient(from 220deg,#22c55e,#a3e635,#facc15,#fb7185,#0f172a)",
+              padding: 5,
+              boxShadow:
+                "0 0 50px rgba(34,197,94,0.45),0 0 80px rgba(148,163,184,0.3)",
+            }}
+          >
+            <div
+              style={{
+                position: "absolute",
+                inset: 12,
+                borderRadius: "50%",
+                background:
+                  "radial-gradient(circle at 30% 0,#020617,#020617 60%,#000)",
+              }}
+            />
+            <div
+              style={{
+                position: "relative",
+                zIndex: 1,
+                height: "100%",
+                display: "flex",
+                flexDirection: "column",
+                alignItems: "center",
+                justifyContent: "center",
+              }}
+            >
+              <div
+                style={{
+                  fontSize: 11,
+                  letterSpacing: "0.1em",
+                  textTransform: "uppercase",
+                  color: GP.textSoft,
+                  marginBottom: 2,
+                }}
+              >
+                Global Score
+              </div>
+              <div
+                style={{
+                  fontSize: 32,
+                  fontWeight: 700,
+                  background:
+                    "linear-gradient(120deg,#22c55e,#bef264,#facc15)",
+                  WebkitBackgroundClip: "text",
+                  color: "transparent",
+                }}
+              >
+                {dashboardLoading
+                  ? "—"
+                  : Number(avgScore).toFixed(0)}
+              </div>
+              <div
+                style={{
+                  fontSize: 10,
+                  color: GP.textMuted,
+                }}
+              >
+                /100
+              </div>
+            </div>
+          </div>
+
+          <div
+            style={{
+              borderRadius: 18,
+              padding: 12,
+              border: "1px solid rgba(51,65,85,0.9)",
+              background: "rgba(15,23,42,0.98)",
+              minWidth: 220,
+            }}
+          >
+            <div
+              style={{
+                fontSize: 12,
+                color: GP.textSoft,
+                marginBottom: 6,
+              }}
+            >
+              Elite Engine Snapshot
+            </div>
+            <div
+              style={{
+                display: "flex",
+                justifyContent: "space-between",
+                fontSize: 11,
+                color: "#4ade80",
+              }}
+            >
+              <span>PASS</span>
+              <span>{eliteSummary.pass}</span>
+            </div>
+            <div
+              style={{
+                display: "flex",
+                justifyContent: "space-between",
+                fontSize: 11,
+                color: "#facc15",
+              }}
+            >
+              <span>WARN</span>
+              <span>{eliteSummary.warn}</span>
+            </div>
+            <div
+              style={{
+                display: "flex",
+                justifyContent: "space-between",
+                fontSize: 11,
+                color: "#fb7185",
+              }}
+            >
+              <span>FAIL</span>
+              <span>{eliteSummary.fail}</span>
+            </div>
+          </div>
+        </div>
+      </div>
 
       {/* =======================================
           CHART ROW — cockpit-telemetry
@@ -1161,6 +1158,7 @@ export default function Dashboard() {
     </div>
   );
 }
+
 /* MINI KPI INSIDE HERO */
 function MiniKpi({ label, value, color, icon }) {
   return (
