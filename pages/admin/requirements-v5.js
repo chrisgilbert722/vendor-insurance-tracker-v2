@@ -2,7 +2,7 @@
 // ==========================================================
 // PHASE 5 — V5 ENGINE
 // Cinematic Lanes + DnD + CRUD + Engine
-// + AI Suggest + AI Builder V2 + AI Explain Rule + Conflict AI
+// + AI Suggest • AI Builder V2 • AI Explain Rule • Conflict AI
 // ==========================================================
 
 // ----------------------------
@@ -69,7 +69,7 @@ export default function RequirementsV5Page() {
     type: "success",
   });
 
-  // SAMPLE POLICY
+  // SAMPLE POLICY TEXT INPUT
   const [samplePolicyText, setSamplePolicyText] = useState(`{
   "policy.coverage_type": "General Liability",
   "policy.glEachOccurrence": 1000000,
@@ -78,6 +78,7 @@ export default function RequirementsV5Page() {
   "policy.carrier": "Sample Carrier"
 }`);
 
+  // SAMPLE POLICY RESULTS
   const [evaluation, setEvaluation] = useState({
     ok: false,
     error: "",
@@ -94,32 +95,33 @@ export default function RequirementsV5Page() {
   const [aiThinking, setAiThinking] = useState(false);
   const [aiSuggestion, setAiSuggestion] = useState("");
 
-  // PHASE 4: AI BUILDER INPUT STATE
+  // AI BUILDER (TEXT → RULES)
   const [aiInput, setAiInput] = useState("");
 
-  // PHASE 5: EXPLAIN RULE STATE
+  // AI EXPLAIN RULE
   const [explainOpen, setExplainOpen] = useState(false);
   const [explainLoading, setExplainLoading] = useState(false);
   const [explainText, setExplainText] = useState("");
   const [explainRule, setExplainRule] = useState(null);
 
-  // PHASE 5: CONFLICT AI STATE
+  // AI CONFLICT DETECTION
   const [conflicts, setConflicts] = useState([]);
   const [conflictOpen, setConflictOpen] = useState(false);
   const [conflictLoading, setConflictLoading] = useState(false);
 
-  // Active group + conflict map
+  // WHAT GROUP IS SELECTED
   const activeGroup = useMemo(
     () => groups.find((g) => g.id === activeGroupId) || null,
     [groups, activeGroupId]
   );
 
+  // INLINE RULE-ID HIGHLIGHTER FOR CONFLICTS
   const conflictedRuleIds = useMemo(
     () => getConflictedRuleIds(conflicts),
     [conflicts]
   );
   // ==========================================================
-  // LOAD GROUPS
+  // LOAD GROUPS WHEN ORG CHANGES
   // ==========================================================
   useEffect(() => {
     if (loadingOrgs) return;
@@ -156,7 +158,7 @@ export default function RequirementsV5Page() {
   }
 
   // ==========================================================
-  // LOAD RULES
+  // LOAD RULES FOR GIVEN GROUP
   // ==========================================================
   async function loadRulesForGroup(groupId) {
     if (!groupId) return setRules([]);
@@ -550,7 +552,7 @@ export default function RequirementsV5Page() {
   }
 
   // ==========================================================
-  // PHASE 5 — EXPLAIN RULE HANDLER
+  // EXPLAIN RULE HANDLER
   // ==========================================================
   async function handleExplainRule(rule) {
     if (!rule) return;
@@ -589,29 +591,39 @@ export default function RequirementsV5Page() {
   }
 
   // ==========================================================
-  // PHASE 5 — CONFLICT AI HANDLER
+  // CONFLICT AI HANDLER — UPDATED TO USE /api/requirements-v5/conflicts
   // ==========================================================
   async function handleScanConflicts() {
+    if (!orgId) {
+      setToast({
+        open: true,
+        type: "error",
+        message: "No active org selected — cannot scan conflicts.",
+      });
+      return;
+    }
+
     try {
       setConflictLoading(true);
       setConflictOpen(true);
+      setConflicts([]);
 
-      const res = await fetch("/api/rules/conflicts", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          groups,
-          rules,
-        }),
-      });
+      const res = await fetch(
+        `/api/requirements-v5/conflicts?orgId=${orgId}`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+        }
+      );
 
-      const json = await res.json();
+      const json = await res.json(); // Always JSON with our API
 
-      if (!res.ok || !json.ok) {
+      if (!json.ok) {
         throw new Error(json.error || "Conflict scan failed.");
       }
 
-      setConflicts(json.conflicts || []);
+      // Use logicConflicts from API as conflicts array
+      setConflicts(json.logicConflicts || json.conflicts || []);
 
       setToast({
         open: true,
@@ -630,7 +642,7 @@ export default function RequirementsV5Page() {
   }
 
   // ==========================================================
-  // PHASE 4 — AI BUILDER: AUTO-CREATE GROUPS/RULES
+  // AI BUILDER — TEXT → GROUPS/RULES
   // ==========================================================
   async function handleAiBuildRules() {
     if (!aiInput.trim()) {
@@ -717,396 +729,6 @@ export default function RequirementsV5Page() {
       setSaving(false);
     }
   }
-  // ==========================================================
-  // RENDER — PAGE LAYOUT (FULL V5 JSX)
-  // ==========================================================
-  return (
-    <div
-      style={{
-        minHeight: "100vh",
-        position: "relative",
-        background:
-          "radial-gradient(circle at top,#020617 0%,#020617 55%,#000 100%)",
-        padding: "32px 40px 40px",
-        color: "#e5e7eb",
-        overflow: "hidden",
-      }}
-    >
-      {/* BACKGROUND AURA */}
-      <div
-        style={{
-          position: "absolute",
-          inset: 0,
-          background:
-            "radial-gradient(circle at 10% 0%,rgba(56,189,248,0.18),transparent 55%),radial-gradient(circle at 90% 10%,rgba(129,140,248,0.18),transparent 55%)",
-          pointerEvents: "none",
-        }}
-      />
-
-      {/* SCANLINES */}
-      <div
-        style={{
-          position: "absolute",
-          inset: 0,
-          background:
-            "linear-gradient(rgba(148,163,184,0.08) 1px, transparent 1px)",
-          backgroundSize: "100% 3px",
-          opacity: 0.2,
-          pointerEvents: "none",
-        }}
-      />
-
-      {/* MAIN CONTENT WRAPPER */}
-      <div style={{ position: "relative", zIndex: 1 }}>
-        {/* HEADER */}
-        <div style={{ marginBottom: 18 }}>
-          <div
-            style={{
-              display: "inline-flex",
-              gap: 8,
-              padding: "4px 10px",
-              borderRadius: 999,
-              border: "1px solid rgba(148,163,184,0.4)",
-              background:
-                "linear-gradient(120deg,rgba(15,23,42,0.94),rgba(15,23,42,0.7))",
-              marginBottom: 6,
-            }}
-          >
-            <span
-              style={{
-                fontSize: 10,
-                color: "#9ca3af",
-                letterSpacing: "0.12em",
-                textTransform: "uppercase",
-              }}
-            >
-              Requirements Engine V5
-            </span>
-            <span
-              style={{
-                fontSize: 10,
-                color: "#38bdf8",
-                letterSpacing: "0.08em",
-                textTransform: "uppercase",
-              }}
-            >
-              AI Builder • AI Explain • Conflict Intelligence
-            </span>
-          </div>
-
-          <h1
-            style={{
-              margin: 0,
-              fontSize: 26,
-              fontWeight: 600,
-            }}
-          >
-            Define{" "}
-            <span
-              style={{
-                background:
-                  "linear-gradient(90deg,#38bdf8,#a5b4fc,#e5e7eb)",
-                WebkitBackgroundClip: "text",
-                color: "transparent",
-              }}
-            >
-              coverage rules
-            </span>{" "}
-            that power alerts and AI decisions.
-          </h1>
-
-          <p
-            style={{
-              marginTop: 6,
-              maxWidth: 720,
-              fontSize: 13,
-              color: "#cbd5f5",
-            }}
-          >
-            This is your AI-enhanced insurance brain — automatically building,
-            explaining, and auditing all coverage requirements.
-          </p>
-
-          <div
-            style={{
-              marginTop: 6,
-              fontSize: 12,
-              color: "#9ca3af",
-            }}
-          >
-            Org: <span style={{ color: "#e5e7eb" }}>{orgId || "none"}</span> ·
-            Groups: <span style={{ color: "#e5e7eb" }}>{groups.length}</span> ·
-            Active:{" "}
-            <span style={{ color: "#e5e7eb" }}>
-              {activeGroup ? activeGroup.name : "none"}
-            </span>
-          </div>
-        </div>
-
-        {/* ERROR BANNER */}
-        {error && (
-          <div
-            style={{
-              marginBottom: 14,
-              padding: "8px 10px",
-              borderRadius: 10,
-              background: "rgba(127,29,29,0.95)",
-              border: "1px solid rgba(248,113,113,0.9)",
-              color: "#fecaca",
-              fontSize: 13,
-            }}
-          >
-            {error}
-          </div>
-        )}
-
-        {/* 🔥 AI RULE BUILDER — TOP CINEMATIC PANEL */}
-        <div
-          style={{
-            marginBottom: 24,
-            padding: "24px 28px",
-            borderRadius: 24,
-            background: "rgba(15,23,42,0.78)",
-            border: "1px solid rgba(80,120,255,0.35)",
-            boxShadow:
-              "0 0 35px rgba(64,106,255,0.25), inset 0 0 28px rgba(20,30,60,0.5)",
-            backdropFilter: "blur(12px)",
-          }}
-        >
-          <div
-            style={{
-              fontSize: 14,
-              textTransform: "uppercase",
-              letterSpacing: 1.4,
-              color: "#9ca3af",
-              marginBottom: 10,
-            }}
-          >
-            AI Rule Builder
-          </div>
-
-          <textarea
-            value={aiInput}
-            onChange={(e) => setAiInput(e.target.value)}
-            placeholder={`Paste insurance requirements or type in natural language...
-Example: "Vendors must carry GL 1M/2M, Auto 1M CSL, WC statutory + EL 1M.
-Must include Additional Insured and Waiver of Subrogation."`}
-            rows={5}
-            style={{
-              width: "100%",
-              borderRadius: 18,
-              padding: "16px 18px",
-              border: "1px solid rgba(80,120,255,0.35)",
-              background:
-                "linear-gradient(145deg,rgba(15,23,42,0.96),rgba(20,30,60,0.98))",
-              color: "#e5e7eb",
-              fontSize: 14,
-              fontFamily: "system-ui, sans-serif",
-              marginBottom: 14,
-              resize: "vertical",
-              outline: "none",
-            }}
-          />
-
-          <button
-            onClick={handleAiBuildRules}
-            disabled={!aiInput.trim() || saving}
-            style={{
-              padding: "12px 20px",
-              borderRadius: 14,
-              border: "1px solid rgba(56,189,248,0.9)",
-              background: !aiInput.trim()
-                ? "rgba(56,189,248,0.28)"
-                : "linear-gradient(90deg,#38bdf8,#0ea5e9,#1e3a8a)",
-              color: "white",
-              fontSize: 15,
-              fontWeight: 600,
-              cursor: !aiInput.trim() ? "not-allowed" : "pointer",
-              boxShadow: "0 0 18px rgba(56,189,248,0.3)",
-              transition: "0.2s ease",
-            }}
-          >
-            ⚡ Generate Rules (AI)
-          </button>
-        </div>
-
-        {/* GRID WRAPPER — LEFT / MIDDLE / RIGHT */}
-        <div
-          style={{
-            display: "grid",
-            gridTemplateColumns:
-              "minmax(0,1.2fr) minmax(0,2fr) minmax(0,1.4fr)",
-            gap: 18,
-            alignItems: "stretch",
-          }}
-        >
-          {/* LEFT PANEL — GROUP LIST */}
-          <div
-            style={{
-              borderRadius: 22,
-              padding: 18,
-              background: "rgba(15,23,42,0.78)",
-              border: "1px solid rgba(80,120,255,0.25)",
-              boxShadow:
-                "0 0 25px rgba(64,106,255,0.25), inset 0 0 20px rgba(20,30,60,0.45)",
-              backdropFilter: "blur(12px)",
-              display: "flex",
-              flexDirection: "column",
-            }}
-          >
-            <div
-              style={{
-                display: "flex",
-                justifyContent: "space-between",
-                alignItems: "center",
-                marginBottom: 10,
-              }}
-            >
-              <div>
-                <div
-                  style={{
-                    fontSize: 12,
-                    textTransform: "uppercase",
-                    letterSpacing: 1.4,
-                    color: "#9ca3af",
-                  }}
-                >
-                  Groups
-                </div>
-                <div
-                  style={{
-                    fontSize: 12,
-                    color: "#cbd5f5",
-                  }}
-                >
-                  Organize lanes of related coverage rules.
-                </div>
-              </div>
-
-              <button
-                onClick={handleCreateGroup}
-                disabled={!canEdit || !orgId}
-                style={{
-                  padding: "8px 14px",
-                  borderRadius: 999,
-                  border: "1px solid rgba(56,189,248,0.8)",
-                  background:
-                    "radial-gradient(circle at top,#38bdf8,#0ea5e9,#0f172a)",
-                  color: "white",
-                  fontSize: 12,
-                  fontWeight: 500,
-                  cursor: !canEdit || !orgId ? "not-allowed" : "pointer",
-                  opacity: !canEdit || !orgId ? 0.6 : 1,
-                }}
-              >
-                + New Group
-              </button>
-            </div>
-
-            <div
-              style={{
-                marginTop: 4,
-                borderRadius: 18,
-                border: "1px solid rgba(51,65,85,0.9)",
-                background: "rgba(15,23,42,0.96)",
-                flex: 1,
-                padding: 10,
-                overflowY: "auto",
-              }}
-            >
-              {groups.length === 0 ? (
-                <div
-                  style={{
-                    fontSize: 12,
-                    color: "#9ca3af",
-                    padding: "8px 6px",
-                    borderRadius: 12,
-                    border: "1px dashed rgba(75,85,99,0.9)",
-                    background: "rgba(15,23,42,0.9)",
-                  }}
-                >
-                  No groups yet. Click <strong>+ New Group</strong> to create
-                  your first lane.
-                </div>
-              ) : (
-                groups.map((g) => {
-                  const isActive = g.id === activeGroupId;
-
-                  const groupHasConflict = conflicts.some((c) =>
-                    (c.rules || []).some((id) =>
-                      rules.some(
-                        (r) => r.id === id && r.group_id === g.id
-                      )
-                    )
-                  );
-
-                  return (
-                    <button
-                      key={g.id}
-                      onClick={() => {
-                        setActiveGroupId(g.id);
-                        loadRulesForGroup(g.id);
-                      }}
-                      style={{
-                        width: "100%",
-                        textAlign: "left",
-                        borderRadius: 14,
-                        padding: "8px 10px",
-                        marginBottom: 6,
-                        border: isActive
-                          ? "1px solid rgba(56,189,248,0.9)"
-                          : "1px solid rgba(51,65,85,0.9)",
-                        background: isActive
-                          ? "radial-gradient(circle at top,#1d4ed8,#020617)"
-                          : "rgba(15,23,42,0.96)",
-                        color: "#e5e7eb",
-                        cursor: "pointer",
-                        transition: "0.2s ease",
-                      }}
-                    >
-                      <div
-                        style={{
-                          fontSize: 13,
-                          fontWeight: 500,
-                          marginBottom: 2,
-                        }}
-                      >
-                        {g.name || "Untitled group"}
-                      </div>
-                      <div
-                        style={{
-                          fontSize: 11,
-                          color: "#9ca3af",
-                          display: "flex",
-                          alignItems: "center",
-                          gap: 6,
-                        }}
-                      >
-                        {g.description || "No description"} ·{" "}
-                        {g.rule_count || 0} rules
-                        {groupHasConflict && (
-                          <span
-                            style={{
-                              padding: "2px 6px",
-                              borderRadius: 6,
-                              fontSize: 10,
-                              color: "#fecaca",
-                              background: "rgba(127,29,29,0.7)",
-                              border:
-                                "1px solid rgba(248,113,113,0.8)",
-                            }}
-                          >
-                            ⚠ Conflicts
-                          </span>
-                        )}
-                      </div>
-                    </button>
-                  );
-                })
-              )}
-            </div>
-          </div>
-
           {/* MIDDLE PANEL — GROUP HEADER + LANES */}
           <div
             style={{
@@ -1297,7 +919,6 @@ Must include Additional Insured and Waiver of Subrogation."`}
               </div>
             </DndProvider>
           </div>
-
           {/* RIGHT PANEL — ENGINE + EVAL + AI SUGGEST + CONFLICT AI */}
           <div
             style={{
@@ -1545,6 +1166,7 @@ Must include Additional Insured and Waiver of Subrogation."`}
                           color,
                         }}
                       >
+                        ❤️
                         <span
                           style={{
                             width: 6,
@@ -1745,9 +1367,6 @@ Must include Additional Insured and Waiver of Subrogation."`}
               </div>
             )}
           </div>
-        </div>
-      </div>
-
       {/* EXPLAIN RULE DRAWER */}
       {explainOpen && (
         <div
@@ -1768,6 +1387,7 @@ Must include Additional Insured and Waiver of Subrogation."`}
             gap: 16,
           }}
         >
+          {/* HEADER */}
           <div
             style={{
               display: "flex",
@@ -1801,6 +1421,7 @@ Must include Additional Insured and Waiver of Subrogation."`}
             </button>
           </div>
 
+          {/* CONTENT */}
           <div
             style={{
               borderRadius: 12,
@@ -1821,7 +1442,9 @@ Must include Additional Insured and Waiver of Subrogation."`}
         </div>
       )}
 
-      {/* CONFLICT DRAWER */}
+      {/* ======================================================= */}
+      {/* 🎯 CONFLICT DRAWER (AI DETECTED COVERAGE CONFLICTS)    */}
+      {/* ======================================================= */}
       {conflictOpen && (
         <div
           style={{
@@ -1842,6 +1465,7 @@ Must include Additional Insured and Waiver of Subrogation."`}
             gap: 16,
           }}
         >
+          {/* HEADER */}
           <div
             style={{
               display: "flex",
@@ -1856,7 +1480,7 @@ Must include Additional Insured and Waiver of Subrogation."`}
                 color: "#e5e7eb",
               }}
             >
-              Conflict Analysis
+              Conflict Analysis (AI)
             </div>
 
             <button
@@ -1875,12 +1499,14 @@ Must include Additional Insured and Waiver of Subrogation."`}
             </button>
           </div>
 
+          {/* LOADING */}
           {conflictLoading && (
             <div style={{ color: "#cbd5f5", fontSize: 13 }}>
               AI is analyzing all rules for conflicts…
             </div>
           )}
 
+          {/* NO CONFLICTS */}
           {!conflictLoading && conflicts.length === 0 && (
             <div
               style={{
@@ -1896,6 +1522,7 @@ Must include Additional Insured and Waiver of Subrogation."`}
             </div>
           )}
 
+          {/* CONFLICT LIST */}
           {!conflictLoading &&
             conflicts.length > 0 &&
             conflicts.map((c, idx) => (
@@ -1920,421 +1547,35 @@ Must include Additional Insured and Waiver of Subrogation."`}
                 >
                   ⚠ Conflict #{idx + 1}
                 </div>
-                <div style={{ color: "#e5e7eb", fontSize: 13 }}>
-                  {c.summary}
-                </div>
+
+                {/* SUMMARY */}
                 <div
                   style={{
-                    color: "#fcd34d",
-                    fontSize: 12,
-                    marginTop: 8,
-                    fontStyle: "italic",
+                    color: "#e5e7eb",
+                    fontSize: 13,
+                    marginBottom: 6,
                   }}
                 >
-                  Suggestion: {c.suggestion}
+                  {c.summary}
                 </div>
+
+                {/* SUGGESTION */}
+                {c.suggestion && (
+                  <div
+                    style={{
+                      color: "#fcd34d",
+                      fontSize: 12,
+                      marginTop: 8,
+                      fontStyle: "italic",
+                    }}
+                  >
+                    Suggestion: {c.suggestion}
+                  </div>
+                )}
               </div>
             ))}
         </div>
       )}
-
-      {/* SAVING INDICATOR */}
-      {saving && (
-        <div
-          style={{
-            position: "fixed",
-            right: 18,
-            bottom: 18,
-            padding: "6px 12px",
-            borderRadius: 999,
-            background: "rgba(15,23,42,0.9)",
-            border: "1px solid rgba(148,163,184,0.7)",
-            color: "#e5e7eb",
-            fontSize: 12,
-            zIndex: 50,
-          }}
-        >
-          Saving…
-        </div>
-      )}
-
-      {/* TOAST */}
-      <ToastV2
-        open={toast.open}
-        message={toast.message}
-        type={toast.type}
-        onClose={() =>
-          setToast((p) => ({
-            ...p,
-            open: false,
-          }))
-        }
-      />
-
-      <style jsx global>{`
-        @keyframes spin {
-          to {
-            transform: rotate(360deg);
-          }
-        }
-      `}</style>
-    </div>
-  );
-}
-// ==========================================================
-// LANE COLUMN — CINEMATIC DROP ZONE
-// ==========================================================
-function LaneColumn({
-  laneKey,
-  label,
-  color,
-  rules,
-  onMoveRule,
-  onUpdateRule,
-  onDeleteRule,
-  onExplain,
-  canEdit,
-}) {
-  const [{ isOver }, drop] = useDrop({
-    accept: ITEM_TYPE,
-    drop: (item) => {
-      const movedRule = rules[item.index];
-      if (movedRule && movedRule.severity !== laneKey) {
-        onUpdateRule(movedRule.id, { severity: laneKey });
-      }
-    },
-    collect: (monitor) => ({
-      isOver: monitor.isOver(),
-    }),
-  });
-
-  return (
-    <div
-      ref={drop}
-      style={{
-        borderRadius: 20,
-        padding: 16,
-        border: `1px solid ${color}`,
-        background: isOver
-          ? `linear-gradient(180deg, ${color}, rgba(15,23,42,0.95))`
-          : "rgba(15,23,42,0.95)",
-        boxShadow: isOver
-          ? `0 0 24px ${color}`
-          : "0 0 18px rgba(0,0,0,0.4)",
-        minHeight: 420,
-        display: "flex",
-        flexDirection: "column",
-        transition: "0.2s ease",
-      }}
-    >
-      <div
-        style={{
-          fontSize: 14,
-          fontWeight: 600,
-          marginBottom: 8,
-          color: color.replace("0.35", "1"),
-        }}
-      >
-        {label}
-      </div>
-
-      <div style={{ flex: 1 }}>
-        {rules.length === 0 ? (
-          <div
-            style={{
-              color: "#6b7280",
-              fontSize: 12,
-              padding: 8,
-              opacity: 0.6,
-            }}
-          >
-            Drag rules here
-          </div>
-        ) : (
-          rules.map((rule, index) => (
-            <RuleRow
-              key={rule.id}
-              index={index}
-              rule={rule}
-              laneKey={laneKey}
-              moveRule={onMoveRule}
-              onUpdate={(patch) => onUpdateRule(rule.id, patch)}
-              onDelete={() => onDeleteRule(rule.id)}
-              onExplain={onExplain}
-              canEdit={canEdit}
-            />
-          ))
-        )}
-      </div>
-    </div>
-  );
-}
-
-// ==========================================================
-// RULE ROW — DRAGGABLE WRAPPER FOR EACH RULE
-// ==========================================================
-function RuleRow({
-  rule,
-  index,
-  laneKey,
-  moveRule,
-  onUpdate,
-  onDelete,
-  onExplain,
-  canEdit,
-}) {
-  const ref = useRef(null);
-
-  const [, drop] = useDrop({
-    accept: ITEM_TYPE,
-    hover(item) {
-      if (!ref.current) return;
-      if (item.laneKey !== laneKey) return;
-
-      const dragIndex = item.index;
-      const hoverIndex = index;
-
-      if (dragIndex === hoverIndex) return;
-
-      moveRule(dragIndex, hoverIndex, laneKey);
-      item.index = hoverIndex;
-    },
-  });
-
-  const [{ isDragging }, drag] = useDrag({
-    type: ITEM_TYPE,
-    item: { index, laneKey },
-    collect: (monitor) => ({
-      isDragging: monitor.isDragging(),
-    }),
-  });
-
-  drag(drop(ref));
-
-  return (
-    <div
-      ref={ref}
-      style={{
-        opacity: isDragging ? 0.6 : 1,
-        transform: isDragging ? "scale(0.985)" : "scale(1)",
-        transition: "transform 0.12s ease, opacity 0.12s ease",
-        marginBottom: 8,
-      }}
-    >
-      <RuleCard
-        rule={rule}
-        onUpdate={onUpdate}
-        onDelete={onDelete}
-        onExplain={onExplain}
-        canEdit={canEdit}
-      />
-    </div>
-  );
-}
-
-// ==========================================================
-// RULE CARD — FULL EDITOR UI + AI EXPLAIN + INLINE CONFLICT
-// ==========================================================
-function RuleCard({ rule, onUpdate, onDelete, onExplain, canEdit }) {
-  const sevColor =
-    SEVERITY_COLORS[rule.severity] || SEVERITY_COLORS.medium;
-
-  const isConflicted =
-    typeof window !== "undefined" &&
-    window.__CONFLICTED_RULE_IDS &&
-    window.__CONFLICTED_RULE_IDS.has &&
-    window.__CONFLICTED_RULE_IDS.has(rule.id);
-
-  return (
-    <div
-      style={{
-        borderRadius: 14,
-        padding: 12,
-        background:
-          "linear-gradient(145deg,rgba(15,23,42,0.98),rgba(15,23,42,0.94))",
-        border: "1px solid rgba(71,85,105,0.85)",
-        boxShadow:
-          "0 0 18px rgba(15,23,42,0.9), inset 0 0 12px rgba(15,23,42,0.9)",
-        userSelect: "none",
-        position: "relative",
-      }}
-    >
-      {/* DRAG HANDLE */}
-      <div
-        style={{
-          position: "absolute",
-          top: 10,
-          right: 10,
-          width: 14,
-          height: 18,
-          opacity: 0.4,
-          display: "flex",
-          flexDirection: "column",
-          justifyContent: "space-between",
-        }}
-      >
-        <span style={dragDotStyle} />
-        <span style={dragDotStyle} />
-        <span style={dragDotStyle} />
-      </div>
-
-      {/* FIELD + OPERATOR */}
-      <div style={{ display: "flex", gap: 10, marginBottom: 10 }}>
-        <select
-          value={rule.field_key}
-          onChange={(e) => onUpdate({ field_key: e.target.value })}
-          disabled={!canEdit}
-          style={selectStyle}
-        >
-          {FIELD_OPTIONS.map((f) => (
-            <option key={f.key} value={f.key}>
-              {f.label}
-            </option>
-          ))}
-        </select>
-
-        <select
-          value={rule.operator}
-          onChange={(e) => onUpdate({ operator: e.target.value })}
-          disabled={!canEdit}
-          style={{ ...selectStyle, width: 150 }}
-        >
-          {OPERATOR_OPTIONS.map((op) => (
-            <option key={op.key} value={op.key}>
-              {op.label}
-            </option>
-          ))}
-        </select>
-      </div>
-
-      {/* VALUE + SEVERITY */}
-      <div style={{ display: "flex", gap: 10, marginBottom: 10 }}>
-        <input
-          value={rule.expected_value}
-          onChange={(e) =>
-            onUpdate({ expected_value: e.target.value })
-          }
-          disabled={!canEdit}
-          style={inputStyle}
-        />
-
-        <select
-          value={rule.severity}
-          onChange={(e) => onUpdate({ severity: e.target.value })}
-          disabled={!canEdit}
-          style={{
-            ...selectStyle,
-            width: 130,
-            border: `1px solid ${sevColor}`,
-            color: sevColor,
-            fontWeight: 600,
-            textTransform: "capitalize",
-          }}
-        >
-          <option value="critical">Critical</option>
-          <option value="high">High</option>
-          <option value="medium">Medium</option>
-          <option value="low">Low</option>
-        </select>
-      </div>
-
-      {/* REQUIREMENT TEXT */}
-      <textarea
-        value={rule.requirement_text || ""}
-        onChange={(e) =>
-          onUpdate({ requirement_text: e.target.value })
-        }
-        disabled={!canEdit}
-        rows={2}
-        placeholder="Explain the logic of this requirement…"
-        style={{
-          width: "100%",
-          borderRadius: 10,
-          padding: "8px 10px",
-          border: "1px solid rgba(55,65,81,0.9)",
-          background: "rgba(15,23,42,0.96)",
-          color: "#e5e7eb",
-          fontSize: 12,
-          marginBottom: 10,
-        }}
-      />
-
-      {/* INLINE CONFLICT WARNING */}
-      {isConflicted && (
-        <div
-          style={{
-            marginBottom: 8,
-            padding: "6px 10px",
-            borderRadius: 8,
-            background: "rgba(127,29,29,0.45)",
-            border: "1px solid rgba(248,113,113,0.8)",
-            color: "#fecaca",
-            fontSize: 11,
-          }}
-        >
-          ⚠ This rule is involved in a conflict. Use “Scan for Conflicts (AI)”
-          to review details.
-        </div>
-      )}
-
-      {/* FOOTER */}
-      <div
-        style={{
-          display: "flex",
-          justifyContent: "space-between",
-          alignItems: "center",
-          fontSize: 12,
-          color: "#9ca3af",
-        }}
-      >
-        <label style={{ display: "flex", gap: 6, alignItems: "center" }}>
-          <input
-            type="checkbox"
-            checked={rule.is_active ?? true}
-            onChange={(e) =>
-              onUpdate({ is_active: e.target.checked })
-            }
-            disabled={!canEdit}
-          />
-          Active
-        </label>
-
-        <div style={{ display: "flex", gap: 8 }}>
-          <button
-            onClick={() => onExplain && onExplain(rule)}
-            style={{
-              padding: "4px 8px",
-              borderRadius: 999,
-              border: "1px solid rgba(59,130,246,0.8)",
-              background: "rgba(15,23,42,0.9)",
-              color: "#bfdbfe",
-              cursor: "pointer",
-              fontSize: 11,
-            }}
-          >
-            Explain
-          </button>
-
-          <button
-            onClick={onDelete}
-            disabled={!canEdit}
-            style={{
-              padding: "4px 8px",
-              borderRadius: 999,
-              border: "1px solid rgba(248,113,113,0.8)",
-              background: "rgba(127,29,29,0.8)",
-              color: "#fecaca",
-              cursor: !canEdit ? "not-allowed" : "pointer",
-              fontSize: 11,
-            }}
-          >
-            Delete
-          </button>
-        </div>
-      </div>
-    </div>
-  );
-}
 // ==========================================================
 // SHARED STYLE OBJECTS
 // ==========================================================
@@ -2379,13 +1620,14 @@ function operatorLabel(op) {
 // ==========================================================
 function getConflictedRuleIds(conflicts) {
   const ids = new Set();
+
   for (const c of conflicts || []) {
     if (Array.isArray(c.rules)) {
       c.rules.forEach((id) => ids.add(id));
     }
   }
 
-  // Expose to window for RuleCard inline conflict (simple hack)
+  // Expose to window for inline conflict indicators
   if (typeof window !== "undefined") {
     window.__CONFLICTED_RULE_IDS = ids;
   }
@@ -2405,17 +1647,21 @@ function evaluateRule(rule, policyObj) {
   switch (rule.operator) {
     case "equals":
       return String(rawVal) === String(expected);
+
     case "not_equals":
       return String(rawVal) !== String(expected);
+
     case "contains":
       return String(rawVal ?? "")
-        .toString()
         .toLowerCase()
         .includes(String(expected).toLowerCase());
+
     case "gte":
       return Number(rawVal) >= Number(expected);
+
     case "lte":
       return Number(rawVal) <= Number(expected);
+
     default:
       return false;
   }
