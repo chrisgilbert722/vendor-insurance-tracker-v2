@@ -1,6 +1,7 @@
 // pages/admin/coverage-intel.js
 // ==========================================================
-// PHASE 6+7 — COVERAGE INTEL + MULTI-PDF RECON (AI Insurance Brain)
+// PHASE 6+7 — COVERAGE INTEL + MULTI-PDF RECON (AI INSURANCE BRAIN)
+// Analyze → Summarize → Recon PDFs → Build RulePlan → Apply-to-V5
 // ==========================================================
 
 import { useState, useCallback } from "react";
@@ -26,22 +27,23 @@ export default function CoverageIntelPage() {
     type: "success",
   });
 
-  // TEXT INTEL STATE
+  // TEXT MODE STATE
   const [sourceText, setSourceText] = useState("");
   const [coverageSummary, setCoverageSummary] = useState(null);
   const [rulePreview, setRulePreview] = useState(null);
 
-  // MULTI-PDF RECON STATE
+  // PDF RECON STATE
   const [pdfFiles, setPdfFiles] = useState([]);
-  const [reconLoading, setReconLoading] = useState(false);
   const [reconProfile, setReconProfile] = useState(null);
 
   // LOADING STATES
   const [intelLoading, setIntelLoading] = useState(false);
   const [rulePreviewLoading, setRulePreviewLoading] = useState(false);
   const [applyLoading, setApplyLoading] = useState(false);
+  const [reconLoading, setReconLoading] = useState(false);
+
   // ==========================================================
-  // ANALYZE COVERAGE (TEXT → AI SUMMARY)
+  // ANALYZE COVERAGE TEXT → AI SUMMARY
   // ==========================================================
   async function handleAnalyzeCoverage() {
     if (!sourceText.trim()) {
@@ -64,11 +66,15 @@ export default function CoverageIntelPage() {
       });
 
       const json = await res.json();
-      if (!json.ok) throw new Error(json.error || "Coverage analysis failed.");
+      if (!json.ok) throw new Error(json.error);
 
       setCoverageSummary(json.summary);
-      setToast({ open: true, type: "success", message: "Coverage analyzed!" });
 
+      setToast({
+        open: true,
+        type: "success",
+        message: "Coverage analyzed!",
+      });
     } catch (err) {
       setToast({ open: true, type: "error", message: err.message });
     } finally {
@@ -77,7 +83,7 @@ export default function CoverageIntelPage() {
   }
 
   // ==========================================================
-  // BUILD RULE PREVIEW (SUMMARY → rulePlan)
+  // BUILD RULE PREVIEW → rulePlan (V5 Compatible)
   // ==========================================================
   async function handleGenerateRulePreview() {
     if (!coverageSummary) {
@@ -99,23 +105,27 @@ export default function CoverageIntelPage() {
       });
 
       const json = await res.json();
-      if (!json.ok)
-        throw new Error(json.error || "Failed to generate rule preview.");
+      if (!json.ok) throw new Error(json.error);
 
       setRulePreview(json.rulePlan);
-      setToast({ open: true, type: "success", message: "Rule preview ready!" });
 
+      setToast({
+        open: true,
+        type: "success",
+        message: "Rule preview generated!",
+      });
     } catch (err) {
       setToast({ open: true, type: "error", message: err.message });
     } finally {
       setRulePreviewLoading(false);
     }
   }
+
   // ==========================================================
   // MULTI-PDF UPLOAD
   // ==========================================================
-  const handlePdfUpload = useCallback((event) => {
-    const files = Array.from(event.target.files || []);
+  const handlePdfUpload = useCallback((e) => {
+    const files = Array.from(e.target.files || []);
     const pdfs = files.filter((f) => f.type === "application/pdf");
     setPdfFiles((prev) => [...prev, ...pdfs]);
   }, []);
@@ -125,10 +135,10 @@ export default function CoverageIntelPage() {
   }
 
   // ==========================================================
-  // RUN AI RECON ENGINE (PDFs → unified coverage profile)
+  // RUN MULTI-PDF RECON ENGINE (AI)
   // ==========================================================
   async function handleRunRecon() {
-    if (!pdfFiles.length) {
+    if (pdfFiles.length === 0) {
       return setToast({
         open: true,
         type: "error",
@@ -149,19 +159,24 @@ export default function CoverageIntelPage() {
       });
 
       const json = await res.json();
-      if (!json.ok) throw new Error(json.error || "Recon failed.");
+      if (!json.ok) throw new Error(json.error);
 
       setReconProfile(json.reconProfile);
-      setToast({ open: true, type: "success", message: "AI recon complete!" });
 
+      setToast({
+        open: true,
+        type: "success",
+        message: "AI Recon complete!",
+      });
     } catch (err) {
       setToast({ open: true, type: "error", message: err.message });
     } finally {
       setReconLoading(false);
     }
   }
+
   // ==========================================================
-  // APPLY RULE PLAN TO V5 (UI stub)
+  // APPLY RULEPLAN TO V5 (Temporary Stub)
   // ==========================================================
   async function handleApplyToV5() {
     if (!rulePreview) {
@@ -174,19 +189,19 @@ export default function CoverageIntelPage() {
 
     try {
       setApplyLoading(true);
+
       setToast({
         open: true,
         type: "success",
-        message:
-          "Apply-to-V5 UI is ready. Next step: connect to the backend engine.",
+        message: "Apply-to-V5 is wired. Backend engine comes next.",
       });
-
     } finally {
       setApplyLoading(false);
     }
   }
+
   // ==========================================================
-  // RENDER — FULL PAGE UI
+  // RENDER — PAGE UI
   // ==========================================================
   return (
     <div
@@ -212,12 +227,12 @@ export default function CoverageIntelPage() {
       </h1>
 
       <p style={{ marginTop: 6, fontSize: 14, color: "#94a3b8" }}>
-        Paste coverage → Upload PDFs → AI Recon → RulePlan → Apply to V5.
+        Paste coverage → Upload PDFs → AI Recon → Build RulePlan → Apply to V5
       </p>
 
-      {/* ===================== */}
+      {/* =========================== */}
       {/* MULTI-PDF RECON PANEL */}
-      {/* ===================== */}
+      {/* =========================== */}
       <div
         style={{
           marginTop: 20,
@@ -226,82 +241,63 @@ export default function CoverageIntelPage() {
           borderRadius: 22,
           background: "rgba(15,23,42,0.8)",
           border: "1px solid rgba(80,120,255,0.35)",
-          boxShadow: "0 0 25px rgba(64,106,255,0.25)",
         }}
       >
-        <div
-          style={{
-            fontSize: 15,
-            fontWeight: 600,
-            marginBottom: 10,
-            color: "#e5e7eb",
-          }}
-        >
+        <div style={{ fontSize: 15, fontWeight: 600, marginBottom: 10 }}>
           Multi-PDF Coverage Recon (AI)
         </div>
 
-        {/* FILE INPUT */}
         <input
           type="file"
-          accept="application/pdf"
           multiple
+          accept="application/pdf"
           onChange={handlePdfUpload}
           style={{
-            padding: 10,
-            background: "rgba(255,255,255,0.04)",
-            border: "1px solid rgba(148,163,184,0.25)",
-            borderRadius: 12,
             width: "100%",
-            marginBottom: 15,
+            padding: 10,
+            borderRadius: 12,
+            background: "rgba(30,41,59,0.6)",
+            border: "1px solid rgba(148,163,184,0.3)",
+            color: "#e5e7eb",
           }}
         />
 
         {/* FILE LIST */}
-        {pdfFiles.length === 0 ? (
-          <div style={{ color: "#64748b", fontSize: 13 }}>
-            No PDFs uploaded yet.
+        {pdfFiles.map((f, i) => (
+          <div
+            key={i}
+            style={{
+              marginTop: 10,
+              padding: "8px 12px",
+              background: "rgba(255,255,255,0.05)",
+              borderRadius: 10,
+              display: "flex",
+              justifyContent: "space-between",
+            }}
+          >
+            <span>{f.name}</span>
+            <button
+              onClick={() => handleRemovePdf(i)}
+              style={{
+                color: "#f87171",
+                background: "none",
+                border: "none",
+                cursor: "pointer",
+              }}
+            >
+              ✕
+            </button>
           </div>
-        ) : (
-          <div style={{ marginBottom: 14 }}>
-            {pdfFiles.map((f, i) => (
-              <div
-                key={i}
-                style={{
-                  display: "flex",
-                  justifyContent: "space-between",
-                  background: "rgba(255,255,255,0.05)",
-                  padding: "8px 12px",
-                  borderRadius: 10,
-                  marginBottom: 6,
-                  fontSize: 13,
-                }}
-              >
-                <span>{f.name}</span>
-                <button
-                  onClick={() => handleRemovePdf(i)}
-                  style={{
-                    color: "#f87171",
-                    border: "none",
-                    background: "transparent",
-                    cursor: "pointer",
-                    fontSize: 12,
-                  }}
-                >
-                  ✕
-                </button>
-              </div>
-            ))}
-          </div>
-        )}
+        ))}
 
-        {/* RUN RECON BUTTON */}
         <button
           onClick={handleRunRecon}
           disabled={reconLoading || pdfFiles.length === 0}
           style={{
-            padding: "10px 14px",
-            borderRadius: 12,
+            marginTop: 14,
             width: "100%",
+            padding: "10px",
+            borderRadius: 12,
             background:
               pdfFiles.length === 0
                 ? "rgba(56,189,248,0.25)"
@@ -312,39 +308,28 @@ export default function CoverageIntelPage() {
             cursor: pdfFiles.length === 0 ? "not-allowed" : "pointer",
           }}
         >
-          {reconLoading ? "Analyzing PDFs…" : "Analyze All PDFs (AI Recon)"}
+          {reconLoading ? "Analyzing PDFs…" : "Run Multi-PDF Recon (AI)"}
         </button>
 
         {reconProfile && (
-          <div
+          <pre
             style={{
-              marginTop: 20,
-              padding: "16px 18px",
-              background: "rgba(15,23,42,0.7)",
-              borderRadius: 14,
-              border: "1px solid rgba(80,120,255,0.3)",
+              marginTop: 18,
+              padding: 16,
+              background: "rgba(15,23,42,0.6)",
+              borderRadius: 12,
+              border: "1px solid rgba(80,120,255,0.35)",
+              whiteSpace: "pre-wrap",
             }}
           >
-            <div style={{ fontSize: 14, marginBottom: 8 }}>
-              Recon Results (Unified Coverage Profile)
-            </div>
-
-            <pre
-              style={{
-                whiteSpace: "pre-wrap",
-                fontSize: 13,
-                color: "#cbd5f5",
-              }}
-            >
-              {JSON.stringify(reconProfile, null, 2)}
-            </pre>
-          </div>
+            {JSON.stringify(reconProfile, null, 2)}
+          </pre>
         )}
       </div>
 
-      {/* ============================= */}
+      {/* =========================== */}
       {/* TEXT INTEL + SUMMARY + PREVIEW */}
-      {/* ============================= */}
+      {/* =========================== */}
       <div
         style={{
           marginTop: 20,
@@ -353,7 +338,7 @@ export default function CoverageIntelPage() {
           gap: 20,
         }}
       >
-        {/* LEFT PANEL — TEXT INPUT */}
+        {/* LEFT — TEXT INPUT */}
         <div
           style={{
             borderRadius: 20,
@@ -386,7 +371,7 @@ export default function CoverageIntelPage() {
             style={{
               marginTop: 12,
               width: "100%",
-              padding: "10px",
+              padding: 10,
               borderRadius: 12,
               background: intelLoading
                 ? "rgba(56,189,248,0.35)"
@@ -401,7 +386,7 @@ export default function CoverageIntelPage() {
           </button>
         </div>
 
-        {/* MIDDLE PANEL — SUMMARY */}
+        {/* MIDDLE — SUMMARY */}
         <div
           style={{
             borderRadius: 20,
@@ -432,7 +417,7 @@ export default function CoverageIntelPage() {
           )}
         </div>
 
-        {/* RIGHT PANEL — RULE PREVIEW + APPLY */}
+        {/* RIGHT — RULE PREVIEW + APPLY */}
         <div
           style={{
             borderRadius: 20,
@@ -470,7 +455,7 @@ export default function CoverageIntelPage() {
             style={{
               marginTop: 12,
               width: "100%",
-              padding: "10px",
+              padding: 10,
               borderRadius: 12,
               background:
                 !coverageSummary
@@ -491,7 +476,7 @@ export default function CoverageIntelPage() {
             style={{
               marginTop: 12,
               width: "100%",
-              padding: "10px",
+              padding: 10,
               borderRadius: 12,
               background:
                 !rulePreview
@@ -503,7 +488,7 @@ export default function CoverageIntelPage() {
               cursor: !rulePreview ? "not-allowed" : "pointer",
             }}
           >
-            {applyLoading ? "Applying…" : "Apply Rule Plan to V5 (UI Stub)"}
+            {applyLoading ? "Applying…" : "Apply Rule Plan to V5"}
           </button>
         </div>
       </div>
@@ -523,8 +508,8 @@ export default function CoverageIntelPage() {
           }
         }
       `}</style>
-    </div>  {/* END MAIN WRAPPER */}
-  ); // END RETURN
+    </div> // END MAIN WRAPPER
+  );
 } // END COMPONENT
 
 // END OF FILE
