@@ -163,7 +163,7 @@ export default function CoverageIntelPage() {
       setSummaryOpen(false);
       setSummaryStats(null);
 
-      const res = await fetch("/api/coverage/intel/apply", {
+      const res = await fetch("/api/coverage/apply", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -492,8 +492,8 @@ export default function CoverageIntelPage() {
                 marginBottom: 14,
               }}
             >
-              All changes were applied using Smart Merge logic to avoid duplicates
-              and reuse existing groups where possible.
+              All changes were applied using Smart Merge logic to avoid
+              duplicates and reuse existing groups where possible.
             </p>
 
             <div
@@ -523,9 +523,7 @@ export default function CoverageIntelPage() {
                 Open V5 Engine
               </button>
               <button
-                onClick={() => {
-                  setSummaryOpen(false);
-                }}
+                onClick={() => setSummaryOpen(false)}
                 style={{
                   padding: "10px 12px",
                   borderRadius: 12,
