@@ -1,21 +1,30 @@
 // pages/api/alerts/get.js
-import { supabase } from "../../../lib/supabaseClient";
+// Backwards-compatible wrapper that reads from Alerts V2
+
+import { listAlertsV2 } from "../../../lib/alertsV2Engine";
 
 export default async function handler(req, res) {
-  const { orgId } = req.query;
+  if (req.method !== "GET") {
+    return res.status(405).json({ ok: false, error: "Method not allowed" });
+  }
 
   try {
-    const { data, error } = await supabase
-      .from("alerts")
-      .select("*")
-      .eq("org_id", orgId)
-      .order("created_at", { ascending: false })
-      .limit(50);
+    const { orgId } = req.query;
+    if (!orgId) {
+      return res.status(400).json({ ok: false, error: "Missing orgId" });
+    }
 
-    if (error) throw error;
+    const alerts = await listAlertsV2({
+      orgId: Number(orgId),
+      vendorId: null,
+      limit: 100,
+    });
 
-    return res.status(200).json({ ok: true, alerts: data });
+    return res.status(200).json({ ok: true, alerts });
   } catch (err) {
-    return res.status(500).json({ ok: false, error: err.message });
+    console.error("[alerts/get wrapper] error:", err);
+    return res
+      .status(500)
+      .json({ ok: false, error: err.message || "Internal error" });
   }
 }
