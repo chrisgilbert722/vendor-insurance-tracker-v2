@@ -26,7 +26,7 @@ export default function CoverageIntelPage() {
     type: "success",
   });
 
-  // SINGLE-TEXT INTEL STATE
+  // TEXT INTEL STATE
   const [sourceText, setSourceText] = useState("");
   const [coverageSummary, setCoverageSummary] = useState(null);
   const [rulePreview, setRulePreview] = useState(null);
@@ -36,12 +36,12 @@ export default function CoverageIntelPage() {
   const [reconLoading, setReconLoading] = useState(false);
   const [reconProfile, setReconProfile] = useState(null);
 
-  // UI Loading State
+  // LOADING STATES
   const [intelLoading, setIntelLoading] = useState(false);
   const [rulePreviewLoading, setRulePreviewLoading] = useState(false);
   const [applyLoading, setApplyLoading] = useState(false);
   // ==========================================================
-  // HANDLER 1 — Analyze Coverage (Text → AI Summary)
+  // ANALYZE COVERAGE (TEXT → AI SUMMARY)
   // ==========================================================
   async function handleAnalyzeCoverage() {
     if (!sourceText.trim()) {
@@ -67,32 +67,24 @@ export default function CoverageIntelPage() {
       if (!json.ok) throw new Error(json.error || "Coverage analysis failed.");
 
       setCoverageSummary(json.summary);
+      setToast({ open: true, type: "success", message: "Coverage analyzed!" });
 
-      setToast({
-        open: true,
-        type: "success",
-        message: "Coverage analyzed successfully!",
-      });
     } catch (err) {
-      setToast({
-        open: true,
-        type: "error",
-        message: err.message || "Failed to analyze coverage.",
-      });
+      setToast({ open: true, type: "error", message: err.message });
     } finally {
       setIntelLoading(false);
     }
   }
 
   // ==========================================================
-  // HANDLER 2 — Build Rule Preview (Summary → rulePlan)
+  // BUILD RULE PREVIEW (SUMMARY → rulePlan)
   // ==========================================================
   async function handleGenerateRulePreview() {
     if (!coverageSummary) {
       return setToast({
         open: true,
         type: "error",
-        message: "Run Analyze Coverage first.",
+        message: "Analyze coverage first.",
       });
     }
 
@@ -108,51 +100,39 @@ export default function CoverageIntelPage() {
 
       const json = await res.json();
       if (!json.ok)
-        throw new Error(json.error || "Rule preview generation failed.");
+        throw new Error(json.error || "Failed to generate rule preview.");
 
       setRulePreview(json.rulePlan);
+      setToast({ open: true, type: "success", message: "Rule preview ready!" });
 
-      setToast({
-        open: true,
-        type: "success",
-        message: "Rule preview generated!",
-      });
     } catch (err) {
-      setToast({
-        open: true,
-        type: "error",
-        message: err.message || "Failed to generate rule preview.",
-      });
+      setToast({ open: true, type: "error", message: err.message });
     } finally {
       setRulePreviewLoading(false);
     }
   }
   // ==========================================================
-  // MULTI-PDF UPLOAD HANDLER
+  // MULTI-PDF UPLOAD
   // ==========================================================
   const handlePdfUpload = useCallback((event) => {
     const files = Array.from(event.target.files || []);
-    const pdfOnly = files.filter((f) => f.type === "application/pdf");
-
-    setPdfFiles((prev) => [...prev, ...pdfOnly]);
+    const pdfs = files.filter((f) => f.type === "application/pdf");
+    setPdfFiles((prev) => [...prev, ...pdfs]);
   }, []);
 
-  // ==========================================================
-  // REMOVE PDF FROM LIST
-  // ==========================================================
   function handleRemovePdf(index) {
     setPdfFiles((prev) => prev.filter((_, i) => i !== index));
   }
 
   // ==========================================================
-  // RUN MULTI-PDF RECON (PDFs → unified reconProfile)
+  // RUN AI RECON ENGINE (PDFs → unified coverage profile)
   // ==========================================================
   async function handleRunRecon() {
     if (!pdfFiles.length) {
       return setToast({
         open: true,
         type: "error",
-        message: "Upload at least one PDF to run AI Recon.",
+        message: "Upload PDFs first.",
       });
     }
 
@@ -161,7 +141,7 @@ export default function CoverageIntelPage() {
       setReconProfile(null);
 
       const form = new FormData();
-      pdfFiles.forEach((file) => form.append("files", file));
+      pdfFiles.forEach((f) => form.append("files", f));
 
       const res = await fetch("/api/coverage/recon", {
         method: "POST",
@@ -172,25 +152,16 @@ export default function CoverageIntelPage() {
       if (!json.ok) throw new Error(json.error || "Recon failed.");
 
       setReconProfile(json.reconProfile);
+      setToast({ open: true, type: "success", message: "AI recon complete!" });
 
-      setToast({
-        open: true,
-        type: "success",
-        message: "AI Recon completed successfully!",
-      });
     } catch (err) {
-      setToast({
-        open: true,
-        type: "error",
-        message: err.message || "Recon failed.",
-      });
+      setToast({ open: true, type: "error", message: err.message });
     } finally {
       setReconLoading(false);
     }
   }
   // ==========================================================
-  // HANDLER 3 — Apply to V5 (UI stub for now)
-  // Backend will be connected to /api/coverage/intel/apply next.
+  // APPLY RULE PLAN TO V5 (UI stub)
   // ==========================================================
   async function handleApplyToV5() {
     if (!rulePreview) {
@@ -201,21 +172,21 @@ export default function CoverageIntelPage() {
       });
     }
 
-    setApplyLoading(true);
-
     try {
+      setApplyLoading(true);
       setToast({
         open: true,
         type: "success",
         message:
-          "Apply-to-V5 UI is wired. Next: connect backend API to auto-write rules.",
+          "Apply-to-V5 UI is ready. Next step: connect to the backend engine.",
       });
+
     } finally {
       setApplyLoading(false);
     }
   }
   // ==========================================================
-  // RENDER — MULTI-PDF RECON PANEL
+  // RENDER — FULL PAGE UI
   // ==========================================================
   return (
     <div
@@ -244,9 +215,9 @@ export default function CoverageIntelPage() {
         Paste coverage → Upload PDFs → AI Recon → RulePlan → Apply to V5.
       </p>
 
-      {/* ====================================================== */}
+      {/* ===================== */}
       {/* MULTI-PDF RECON PANEL */}
-      {/* ====================================================== */}
+      {/* ===================== */}
       <div
         style={{
           marginTop: 20,
@@ -306,7 +277,6 @@ export default function CoverageIntelPage() {
                 }}
               >
                 <span>{f.name}</span>
-
                 <button
                   onClick={() => handleRemovePdf(i)}
                   style={{
@@ -345,7 +315,6 @@ export default function CoverageIntelPage() {
           {reconLoading ? "Analyzing PDFs…" : "Analyze All PDFs (AI Recon)"}
         </button>
 
-        {/* RECON RESULTS */}
         {reconProfile && (
           <div
             style={{
@@ -372,9 +341,10 @@ export default function CoverageIntelPage() {
           </div>
         )}
       </div>
-      {/* ====================================================== */}
-      {/* ORIGINAL TEXT INTEL + RULE PREVIEW + APPLY PANEL */}
-      {/* ====================================================== */}
+
+      {/* ============================= */}
+      {/* TEXT INTEL + SUMMARY + PREVIEW */}
+      {/* ============================= */}
       <div
         style={{
           marginTop: 20,
@@ -383,7 +353,7 @@ export default function CoverageIntelPage() {
           gap: 20,
         }}
       >
-        {/* LEFT — TEXT INPUT PANEL */}
+        {/* LEFT PANEL — TEXT INPUT */}
         <div
           style={{
             borderRadius: 20,
@@ -431,7 +401,7 @@ export default function CoverageIntelPage() {
           </button>
         </div>
 
-        {/* MIDDLE — COVERAGE SUMMARY PANEL */}
+        {/* MIDDLE PANEL — SUMMARY */}
         <div
           style={{
             borderRadius: 20,
@@ -462,7 +432,7 @@ export default function CoverageIntelPage() {
           )}
         </div>
 
-        {/* RIGHT — RULE PREVIEW + APPLY BUTTONS */}
+        {/* RIGHT PANEL — RULE PREVIEW + APPLY */}
         <div
           style={{
             borderRadius: 20,
@@ -537,9 +507,8 @@ export default function CoverageIntelPage() {
           </button>
         </div>
       </div>
-      {/* ====================================================== */}
-      {/* TOAST NOTIFICATIONS */}
-      {/* ====================================================== */}
+
+      {/* TOAST */}
       <ToastV2
         open={toast.open}
         message={toast.message}
@@ -547,9 +516,6 @@ export default function CoverageIntelPage() {
         onClose={() => setToast((p) => ({ ...p, open: false }))}
       />
 
-      {/* ====================================================== */}
-      {/* GLOBAL ANIMATIONS */}
-      {/* ====================================================== */}
       <style jsx global>{`
         @keyframes spin {
           to {
@@ -559,59 +525,6 @@ export default function CoverageIntelPage() {
       `}</style>
     </div>  {/* END MAIN WRAPPER */}
   ); // END RETURN
-} // END PAGE COMPONENT
-// ==========================================================
-// HELPER — Label formatting for UI
-// ==========================================================
-function formatKeyLabel(key) {
-  if (!key) return "";
+} // END COMPONENT
 
-  return key
-    .replace(/policy\./g, "")
-    .replace(/_/g, " ")
-    .replace(/([a-z])([A-Z])/g, "$1 $2")
-    .toUpperCase();
-}
-
-// ==========================================================
-// HELPER — Format coverage summary block
-// ==========================================================
-function prettyJson(obj) {
-  try {
-    return JSON.stringify(obj, null, 2);
-  } catch (e) {
-    return String(obj);
-  }
-}
-
-// ==========================================================
-// HELPER — Validate Coverage Summary Before RulePlan
-// ==========================================================
-function validateCoverageSummary(summary) {
-  if (!summary) return false;
-  if (typeof summary !== "object") return false;
-  if (!summary.coverages || !Array.isArray(summary.coverages)) return false;
-
-  return summary.coverages.length > 0;
-}
-
-// ==========================================================
-// HELPER — Convert AI Recon Result to Display-Friendly Format
-// ==========================================================
-function flattenRecon(recon) {
-  if (!recon) return {};
-
-  return {
-    coverages: recon.coverages || [],
-    conflicts: recon.globalConflicts || [],
-    endorsements: recon.endorsements || [],
-    notes: recon.notes || "",
-  };
-}
-// ==========================================================
-// END OF COVERAGE INTEL (AI INSURANCE BRAIN)
-// ==========================================================
-
-// No more code below this line.
-// File closes cleanly with no dangling braces or JSX.
-// If adding new UI panels or engines later, create them ABOVE Section 8.
+// END OF FILE
