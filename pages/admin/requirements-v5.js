@@ -2,7 +2,7 @@
 // ==========================================================
 // PHASE 5 — V5 ENGINE
 // Cinematic Lanes + DnD + CRUD + Engine
-// + AI Suggest + AI Builder V2 + AI Explain Rule
+// + AI Suggest + AI Builder V2 + AI Explain Rule + Conflict AI
 // ==========================================================
 
 // ----------------------------
@@ -94,19 +94,29 @@ export default function RequirementsV5Page() {
   const [aiThinking, setAiThinking] = useState(false);
   const [aiSuggestion, setAiSuggestion] = useState("");
 
-  // 🔥 PHASE 4: AI BUILDER INPUT STATE
+  // PHASE 4: AI BUILDER INPUT STATE
   const [aiInput, setAiInput] = useState("");
 
-  // 🔥 PHASE 5: EXPLAIN RULE STATE
+  // PHASE 5: EXPLAIN RULE STATE
   const [explainOpen, setExplainOpen] = useState(false);
   const [explainLoading, setExplainLoading] = useState(false);
   const [explainText, setExplainText] = useState("");
   const [explainRule, setExplainRule] = useState(null);
 
-  // Active group memo
+  // PHASE 5: CONFLICT AI STATE
+  const [conflicts, setConflicts] = useState([]);
+  const [conflictOpen, setConflictOpen] = useState(false);
+  const [conflictLoading, setConflictLoading] = useState(false);
+
+  // Active group + conflict map
   const activeGroup = useMemo(
     () => groups.find((g) => g.id === activeGroupId) || null,
     [groups, activeGroupId]
+  );
+
+  const conflictedRuleIds = useMemo(
+    () => getConflictedRuleIds(conflicts),
+    [conflicts]
   );
   // ==========================================================
   // LOAD GROUPS
@@ -167,8 +177,6 @@ export default function RequirementsV5Page() {
   // GROUP CRUD
   // ==========================================================
   async function handleCreateGroup() {
-    console.log("DEBUG — orgId = ", orgId);
-
     if (!canEdit) {
       return setToast({
         open: true,
@@ -192,8 +200,6 @@ export default function RequirementsV5Page() {
       setSaving(true);
 
       const url = `/api/requirements-v2/groups?orgId=${orgId}`;
-      console.log("POST to:", url);
-
       const res = await fetch(url, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -201,7 +207,6 @@ export default function RequirementsV5Page() {
       });
 
       const json = await res.json();
-      console.log("CREATE GROUP response:", json);
 
       if (!res.ok || !json.ok) {
         throw new Error(json.error || "Group creation failed");
@@ -216,7 +221,6 @@ export default function RequirementsV5Page() {
         message: "Group created successfully!",
       });
     } catch (err) {
-      console.error("CREATE GROUP ERROR:", err);
       setToast({ open: true, type: "error", message: err.message });
     } finally {
       setSaving(false);
@@ -228,7 +232,6 @@ export default function RequirementsV5Page() {
 
     const updated = { ...activeGroup, ...patch };
 
-    // optimistic update
     setGroups((prev) =>
       prev.map((g) => (g.id === activeGroup.id ? updated : g))
     );
@@ -332,7 +335,6 @@ export default function RequirementsV5Page() {
 
     const updated = { ...current, ...patch };
 
-    // Optimistic update
     setRules((prev) => prev.map((r) => (r.id === ruleId ? updated : r)));
 
     try {
@@ -481,7 +483,7 @@ export default function RequirementsV5Page() {
   }
 
   // ==========================================================
-  // AI RULE SUGGESTION (FRONT-END ASSISTANT)
+  // AI RULE SUGGESTION
   // ==========================================================
   function handleOpenAiSuggest() {
     if (!activeGroup) {
@@ -583,6 +585,47 @@ export default function RequirementsV5Page() {
       );
     } finally {
       setExplainLoading(false);
+    }
+  }
+
+  // ==========================================================
+  // PHASE 5 — CONFLICT AI HANDLER
+  // ==========================================================
+  async function handleScanConflicts() {
+    try {
+      setConflictLoading(true);
+      setConflictOpen(true);
+
+      const res = await fetch("/api/rules/conflicts", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          groups,
+          rules,
+        }),
+      });
+
+      const json = await res.json();
+
+      if (!res.ok || !json.ok) {
+        throw new Error(json.error || "Conflict scan failed.");
+      }
+
+      setConflicts(json.conflicts || []);
+
+      setToast({
+        open: true,
+        type: "success",
+        message: "AI conflict scan completed.",
+      });
+    } catch (err) {
+      setToast({
+        open: true,
+        type: "error",
+        message: err.message || "Conflict scan failed.",
+      });
+    } finally {
+      setConflictLoading(false);
     }
   }
 
@@ -747,7 +790,7 @@ export default function RequirementsV5Page() {
                 textTransform: "uppercase",
               }}
             >
-              AI Builder • AI Explain • Coverage Intelligence
+              AI Builder • AI Explain • Conflict Intelligence
             </span>
           </div>
 
@@ -769,7 +812,7 @@ export default function RequirementsV5Page() {
             >
               coverage rules
             </span>{" "}
-            that power alerts and AI intelligence.
+            that power alerts and AI decisions.
           </h1>
 
           <p
@@ -781,7 +824,7 @@ export default function RequirementsV5Page() {
             }}
           >
             This is your AI-enhanced insurance brain — automatically building,
-            explaining, validating, and evolving all coverage requirements.
+            explaining, and auditing all coverage requirements.
           </p>
 
           <div
@@ -887,9 +930,7 @@ Must include Additional Insured and Waiver of Subrogation."`}
           </button>
         </div>
 
-        {/* ====================================================== */}
-        {/* GRID WRAPPER — GROUP LIST • LANES • RIGHT PANEL */}
-        {/* ====================================================== */}
+        {/* GRID WRAPPER — LEFT / MIDDLE / RIGHT */}
         <div
           style={{
             display: "grid",
@@ -990,6 +1031,15 @@ Must include Additional Insured and Waiver of Subrogation."`}
               ) : (
                 groups.map((g) => {
                   const isActive = g.id === activeGroupId;
+
+                  const groupHasConflict = conflicts.some((c) =>
+                    (c.rules || []).some((id) =>
+                      rules.some(
+                        (r) => r.id === id && r.group_id === g.id
+                      )
+                    )
+                  );
+
                   return (
                     <button
                       key={g.id}
@@ -1025,11 +1075,30 @@ Must include Additional Insured and Waiver of Subrogation."`}
                       </div>
                       <div
                         style={{
-                          fontSize: 11, color: "#9ca3af",
+                          fontSize: 11,
+                          color: "#9ca3af",
+                          display: "flex",
+                          alignItems: "center",
+                          gap: 6,
                         }}
                       >
                         {g.description || "No description"} ·{" "}
                         {g.rule_count || 0} rules
+                        {groupHasConflict && (
+                          <span
+                            style={{
+                              padding: "2px 6px",
+                              borderRadius: 6,
+                              fontSize: 10,
+                              color: "#fecaca",
+                              background: "rgba(127,29,29,0.7)",
+                              border:
+                                "1px solid rgba(248,113,113,0.8)",
+                            }}
+                          >
+                            ⚠ Conflicts
+                          </span>
+                        )}
                       </div>
                     </button>
                   );
@@ -1039,19 +1108,647 @@ Must include Additional Insured and Waiver of Subrogation."`}
           </div>
 
           {/* MIDDLE PANEL — GROUP HEADER + LANES */}
-          {/* (LaneColumn + RuleRow + RuleCard are added in Block 4) */}
-          <div>
-            {/* MIDDLE CODE COMES IN NEXT BLOCK (Block 4) */}
+          <div
+            style={{
+              borderRadius: 22,
+              padding: 18,
+              background: "rgba(15,23,42,0.82)",
+              border: "1px solid rgba(80,120,255,0.3)",
+              boxShadow:
+                "0 0 25px rgba(64,106,255,0.28), inset 0 0 22px rgba(15,23,42,0.9)",
+              backdropFilter: "blur(12px)",
+              display: "flex",
+              flexDirection: "column",
+            }}
+          >
+            {activeGroup ? (
+              <div
+                style={{
+                  display: "flex",
+                  gap: 12,
+                  marginBottom: 12,
+                  alignItems: "flex-start",
+                }}
+              >
+                <div style={{ flex: 1 }}>
+                  <input
+                    value={activeGroup?.name || ""}
+                    onChange={(e) =>
+                      handleUpdateGroup({ name: e.target.value })
+                    }
+                    disabled={!canEdit}
+                    style={{
+                      width: "100%",
+                      borderRadius: 12,
+                      padding: "8px 10px",
+                      border: "1px solid rgba(51,65,85,0.9)",
+                      background: "rgba(15,23,42,0.96)",
+                      color: "#e5e7eb",
+                      fontSize: 14,
+                    }}
+                  />
+
+                  <textarea
+                    value={activeGroup?.description || ""}
+                    onChange={(e) =>
+                      handleUpdateGroup({
+                        description: e.target.value,
+                      })
+                    }
+                    disabled={!canEdit}
+                    rows={2}
+                    placeholder="Describe what this group enforces…"
+                    style={{
+                      marginTop: 6,
+                      width: "100%",
+                      borderRadius: 12,
+                      padding: "8px 10px",
+                      border: "1px solid rgba(51,65,85,0.9)",
+                      background: "rgba(15,23,42,0.96)",
+                      color: "#cbd5f5",
+                      fontSize: 13,
+                      resize: "vertical",
+                    }}
+                  />
+                </div>
+
+                <div
+                  style={{
+                    width: 140,
+                    display: "flex",
+                    flexDirection: "column",
+                    gap: 8,
+                  }}
+                >
+                  <label
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: 6,
+                      fontSize: 12,
+                      color: "#9ca3af",
+                    }}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={activeGroup?.is_active ?? true}
+                      onChange={(e) =>
+                        handleUpdateGroup({
+                          is_active: e.target.checked,
+                        })
+                      }
+                      disabled={!canEdit}
+                    />
+                    Active
+                  </label>
+
+                  <button
+                    onClick={handleCreateRule}
+                    disabled={!canEdit}
+                    style={{
+                      padding: "7px 10px",
+                      borderRadius: 999,
+                      border: "1px solid rgba(56,189,248,0.8)",
+                      background:
+                        "radial-gradient(circle at top,#0ea5e9,#0f172a)",
+                      color: "white",
+                      fontSize: 12,
+                      fontWeight: 500,
+                      cursor: !canEdit ? "not-allowed" : "pointer",
+                    }}
+                  >
+                    + New Rule
+                  </button>
+
+                  <button
+                    onClick={() => handleDeleteGroup(activeGroup.id)}
+                    disabled={!canEdit}
+                    style={{
+                      padding: "7px 10px",
+                      borderRadius: 999,
+                      border: "1px solid rgba(248,113,113,0.85)",
+                      background:
+                        "radial-gradient(circle at top,#b91c1c,#111827)",
+                      color: "#fecaca",
+                      fontSize: 12,
+                      fontWeight: 500,
+                      cursor: !canEdit ? "not-allowed" : "pointer",
+                    }}
+                  >
+                    Delete group
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <div
+                style={{
+                  fontSize: 13,
+                  color: "#9ca3af",
+                  marginBottom: 12,
+                }}
+              >
+                Select a group on the left to edit its rules.
+              </div>
+            )}
+
+            <DndProvider backend={HTML5Backend}>
+              <div
+                style={{
+                  display: "grid",
+                  gridTemplateColumns: "1fr 1fr 1fr",
+                  gap: 18,
+                  minHeight: 420,
+                }}
+              >
+                {["critical", "required", "recommended"].map((laneKey) => {
+                  const laneLabel =
+                    laneKey === "critical"
+                      ? "Critical / Must-Have"
+                      : laneKey === "required"
+                      ? "Required"
+                      : "Recommended";
+
+                  const laneColor =
+                    laneKey === "critical"
+                      ? "rgba(248,113,113,0.35)"
+                      : laneKey === "required"
+                      ? "rgba(59,130,246,0.35)"
+                      : "rgba(168,85,247,0.35)";
+
+                  const laneRules = rules.filter(
+                    (r) => r.severity === laneKey
+                  );
+
+                  return (
+                    <LaneColumn
+                      key={laneKey}
+                      laneKey={laneKey}
+                      label={laneLabel}
+                      color={laneColor}
+                      rules={laneRules}
+                      onMoveRule={handleMoveRule}
+                      onUpdateRule={handleUpdateRule}
+                      onDeleteRule={handleDeleteRule}
+                      onExplain={handleExplainRule}
+                      canEdit={canEdit}
+                    />
+                  );
+                })}
+              </div>
+            </DndProvider>
           </div>
 
-          {/* RIGHT PANEL — ENGINE + EVAL + AI SUGGEST */}
-          {/* (Right panel added in Block 4 as well) */}
+          {/* RIGHT PANEL — ENGINE + EVAL + AI SUGGEST + CONFLICT AI */}
+          <div
+            style={{
+              borderRadius: 22,
+              padding: 20,
+              background: "rgba(15,23,42,0.78)",
+              border: "1px solid rgba(80,120,255,0.25)",
+              boxShadow:
+                "0 0 25px rgba(64,106,255,0.25), inset 0 0 20px rgba(20,30,60,0.45)",
+              backdropFilter: "blur(12px)",
+              display: "flex",
+              flexDirection: "column",
+              gap: 18,
+            }}
+          >
+            {/* ENGINE CONTROL */}
+            <div>
+              <div
+                style={{
+                  fontSize: 12,
+                  textTransform: "uppercase",
+                  letterSpacing: 1.4,
+                  color: "#9ca3af",
+                  marginBottom: 4,
+                }}
+              >
+                Live Rule Preview
+              </div>
+
+              <div
+                style={{
+                  fontSize: 13,
+                  color: "#cbd5f5",
+                  marginBottom: 8,
+                }}
+              >
+                Run the engine across all vendors using the current rule
+                definitions.
+              </div>
+
+              {/* ENGINE RUN BUTTON */}
+              <button
+                onClick={handleRunEngine}
+                disabled={runningEngine}
+                style={{
+                  padding: "9px 14px",
+                  borderRadius: 12,
+                  border: "1px solid #10b981",
+                  background: runningEngine
+                    ? "rgba(16,185,129,0.25)"
+                    : "linear-gradient(90deg,#10b981,#059669)",
+                  color: "white",
+                  fontWeight: 500,
+                  fontSize: 13,
+                  cursor: runningEngine ? "not-allowed" : "pointer",
+                  marginBottom: 6,
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: 8,
+                }}
+              >
+                {runningEngine ? (
+                  <>
+                    <span
+                      style={{
+                        width: 12,
+                        height: 12,
+                        borderRadius: "999px",
+                        border:
+                          "2px solid rgba(187,247,208,0.9)",
+                        borderTopColor: "transparent",
+                        animation: "spin 0.9s linear infinite",
+                      }}
+                    />
+                    Running engine…
+                  </>
+                ) : (
+                  <>
+                    <span>⚡</span>
+                    Run engine now
+                  </>
+                )}
+              </button>
+
+              {/* PHASE 5 — CONFLICT AI BUTTON */}
+              <button
+                onClick={handleScanConflicts}
+                disabled={conflictLoading}
+                style={{
+                  padding: "9px 14px",
+                  borderRadius: 12,
+                  border: "1px solid rgba(239,68,68,0.9)",
+                  background: conflictLoading
+                    ? "rgba(239,68,68,0.25)"
+                    : "linear-gradient(90deg,#ef4444,#dc2626)",
+                  color: "white",
+                  fontWeight: 500,
+                  fontSize: 13,
+                  cursor: conflictLoading ? "not-allowed" : "pointer",
+                  marginBottom: 10,
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: 8,
+                  boxShadow: "0 0 12px rgba(239,68,68,0.4)",
+                }}
+              >
+                {conflictLoading ? (
+                  <>
+                    <span
+                      style={{
+                        width: 12,
+                        height: 12,
+                        borderRadius: "999px",
+                        border:
+                          "2px solid rgba(254,202,202,0.9)",
+                        borderTopColor: "transparent",
+                        animation: "spin 0.9s linear infinite",
+                      }}
+                    />
+                    Scanning conflicts…
+                  </>
+                ) : (
+                  <>
+                    <span>🧠</span>
+                    Scan for Conflicts (AI)
+                  </>
+                )}
+              </button>
+
+              {/* LAST RUN TIME */}
+              <div
+                style={{
+                  fontSize: 11,
+                  color: "#9ca3af",
+                  marginBottom: 8,
+                }}
+              >
+                {lastRunAt ? (
+                  <>
+                    Last run:{" "}
+                    <span style={{ color: "#e5e7eb" }}>
+                      {new Date(lastRunAt).toLocaleString()}
+                    </span>
+                  </>
+                ) : (
+                  "Engine has not been run in this session."
+                )}
+              </div>
+
+              {/* RULE PREVIEW LIST */}
+              <div
+                style={{
+                  borderRadius: 12,
+                  border: "1px solid rgba(51,65,85,0.9)",
+                  background: "rgba(15,23,42,0.96)",
+                  padding: 8,
+                  maxHeight: 150,
+                  overflowY: "auto",
+                  fontSize: 12,
+                  marginBottom: 8,
+                }}
+              >
+                {activeGroup && rules.length > 0 ? (
+                  rules.map((r) => (
+                    <div
+                      key={r.id}
+                      style={{
+                        padding: "4px 0",
+                        borderBottom:
+                          "1px solid rgba(31,41,55,0.8)",
+                      }}
+                    >
+                      IF{" "}
+                      <span style={{ color: "#93c5fd" }}>
+                        {r.field_key}
+                      </span>{" "}
+                      {operatorLabel(r.operator)}{" "}
+                      <span style={{ color: "#a5b4fc" }}>
+                        {r.expected_value}
+                      </span>{" "}
+                      →{" "}
+                      <span
+                        style={{
+                          color:
+                            SEVERITY_COLORS[r.severity] ||
+                            SEVERITY_COLORS.medium,
+                        }}
+                      >
+                        {String(r.severity || "medium").toUpperCase()} ALERT
+                      </span>
+                    </div>
+                  ))
+                ) : (
+                  <div style={{ color: "#6b7280" }}>
+                    Add rules in the lanes to preview logic.
+                  </div>
+                )}
+              </div>
+
+              {/* ENGINE ACTIVITY LOG */}
+              <div
+                style={{
+                  borderRadius: 12,
+                  border: "1px solid rgba(55,65,81,0.9)",
+                  background:
+                    "repeating-linear-gradient(135deg,rgba(15,23,42,1),rgba(15,23,42,1) 6px,rgba(17,24,39,1) 6px,rgba(17,24,39,1) 12px)",
+                  padding: 8,
+                  maxHeight: 130,
+                  overflowY: "auto",
+                  fontSize: 11,
+                }}
+              >
+                {engineLog.length === 0 ? (
+                  <div style={{ color: "#6b7280" }}>
+                    No engine runs yet. Click{" "}
+                    <span style={{ color: "#e5e7eb" }}>
+                      Run engine now
+                    </span>{" "}
+                    to evaluate all vendors.
+                  </div>
+                ) : (
+                  engineLog.map((entry, idx) => {
+                    const color =
+                      entry.level === "error"
+                        ? "#fecaca"
+                        : entry.level === "success"
+                        ? "#bbf7d0"
+                        : "#e5e7eb";
+
+                    const dotColor =
+                      entry.level === "error"
+                        ? "#f97373"
+                        : entry.level === "success"
+                        ? "#4ade80"
+                        : "#38bdf8";
+
+                    return (
+                      <div
+                        key={`${entry.at}-${idx}`}
+                        style={{
+                          display: "flex",
+                          gap: 6,
+                          alignItems: "flex-start",
+                          marginBottom: 4,
+                          color,
+                        }}
+                      >
+                        <span
+                          style={{
+                            width: 6,
+                            height: 6,
+                            marginTop: 4,
+                            borderRadius: "999px",
+                            background: dotColor,
+                            boxShadow: `0 0 10px ${dotColor}`,
+                          }}
+                        />
+                        <div>
+                          <div
+                            style={{
+                              color: "#9ca3af",
+                              marginBottom: 1,
+                            }}
+                          >
+                            {new Date(
+                              entry.at
+                            ).toLocaleTimeString()}
+                          </div>
+                          <div>{entry.message}</div>
+                        </div>
+                      </div>
+                    );
+                  })
+                )}
+              </div>
+            </div>
+
+            {/* SAMPLE POLICY EVALUATION */}
+            <div
+              style={{
+                borderTop: "1px solid rgba(51,65,85,0.9)",
+                paddingTop: 10,
+              }}
+            >
+              <div
+                style={{
+                  fontSize: 12,
+                  textTransform: "uppercase",
+                  letterSpacing: 1.4,
+                  color: "#9ca3af",
+                  marginBottom: 6,
+                }}
+              >
+                Sample Policy Evaluation
+              </div>
+
+              <textarea
+                value={samplePolicyText}
+                onChange={(e) => setSamplePolicyText(e.target.value)}
+                rows={7}
+                style={{
+                  width: "100%",
+                  borderRadius: 12,
+                  padding: 10,
+                  border: "1px solid rgba(51,65,85,0.9)",
+                  background: "rgba(15,23,42,0.96)",
+                  color: "#e5e7eb",
+                  fontFamily: "monospace",
+                  fontSize: 12,
+                  marginBottom: 8,
+                  resize: "vertical",
+                }}
+              />
+
+              <button
+                onClick={handleEvaluateSamplePolicy}
+                disabled={!rules.length}
+                style={{
+                  width: "100%",
+                  padding: "8px 14px",
+                  borderRadius: 12,
+                  border: "1px solid rgba(129,140,248,0.9)",
+                  background: rules.length
+                    ? "linear-gradient(90deg,#6366f1,#4f46e5)"
+                    : "rgba(129,140,248,0.15)",
+                  color: "white",
+                  fontSize: 13,
+                  fontWeight: 500,
+                  cursor: rules.length ? "pointer" : "not-allowed",
+                }}
+              >
+                Evaluate sample policy
+              </button>
+
+              {evaluation.ok && (
+                <div
+                  style={{
+                    marginTop: 8,
+                    fontSize: 11,
+                    color: "#9ca3af",
+                  }}
+                >
+                  Sample evaluation complete (
+                  {Object.keys(evaluation.results).length} rules scanned).
+                </div>
+              )}
+            </div>
+
+            {/* AI SUGGESTION BUTTON */}
+            <div style={{ marginTop: 10 }}>
+              <button
+                onClick={handleOpenAiSuggest}
+                style={{
+                  padding: "10px 14px",
+                  width: "100%",
+                  borderRadius: 12,
+                  border: "1px solid rgba(168,85,247,0.8)",
+                  background:
+                    "linear-gradient(120deg,rgba(168,85,247,0.3),rgba(88,28,135,0.4))",
+                  color: "#e9d5ff",
+                  fontSize: 13,
+                  fontWeight: 500,
+                  cursor: "pointer",
+                }}
+              >
+                ✨ AI Suggest a Rule
+              </button>
+            </div>
+
+            {/* AI SUGGEST MODAL */}
+            {aiOpen && (
+              <div
+                style={{
+                  marginTop: 14,
+                  padding: 14,
+                  borderRadius: 16,
+                  border: "1px solid rgba(168,85,247,0.4)",
+                  background: "rgba(15,23,42,0.9)",
+                }}
+              >
+                {aiThinking ? (
+                  <div style={{ fontSize: 12, color: "#c4b5fd" }}>
+                    AI analyzing your rules…
+                  </div>
+                ) : (
+                  <>
+                    <div
+                      style={{
+                        fontSize: 13,
+                        color: "#e9d5ff",
+                        marginBottom: 10,
+                      }}
+                    >
+                      Suggested Rule:
+                    </div>
+
+                    <div
+                      style={{
+                        padding: 10,
+                        borderRadius: 8,
+                        border: "1px solid rgba(88,28,135,0.6)",
+                        background: "rgba(15,23,42,0.95)",
+                        color: "#ddd6fe",
+                        marginBottom: 12,
+                        fontSize: 12,
+                      }}
+                    >
+                      {aiSuggestion}
+                    </div>
+
+                    <button
+                      onClick={handleApplyAiSuggestion}
+                      style={{
+                        width: "100%",
+                        padding: "8px 14px",
+                        borderRadius: 12,
+                        background:
+                          "linear-gradient(90deg,#a855f7,#7e22ce)",
+                        color: "white",
+                        fontWeight: 500,
+                        border: "none",
+                        cursor: "pointer",
+                      }}
+                    >
+                      ✔ Add Rule to Current Group
+                    </button>
+
+                    <button
+                      onClick={() => setAiOpen(false)}
+                      style={{
+                        marginTop: 8,
+                        width: "100%",
+                        padding: "8px 14px",
+                        borderRadius: 12,
+                        border: "1px solid #4b5563",
+                        color: "#9ca3af",
+                        background: "rgba(15,23,42,0.8)",
+                        cursor: "pointer",
+                      }}
+                    >
+                      Cancel
+                    </button>
+                  </>
+                )}
+              </div>
+            )}
+          </div>
         </div>
       </div>
 
-      {/* ====================================================== */}
-      {/* PHASE 5 — EXPLAIN DRAWER (right side slide-in) */}
-      {/* ====================================================== */}
+      {/* EXPLAIN RULE DRAWER */}
       {explainOpen && (
         <div
           style={{
@@ -1119,9 +1816,125 @@ Must include Additional Insured and Waiver of Subrogation."`}
           >
             {explainLoading
               ? "AI is analyzing this rule..."
-              : explainText ||
-                "No explanation available for this rule."}
+              : explainText || "No explanation available for this rule."}
           </div>
+        </div>
+      )}
+
+      {/* CONFLICT DRAWER */}
+      {conflictOpen && (
+        <div
+          style={{
+            position: "fixed",
+            top: 0,
+            right: 0,
+            width: "400px",
+            height: "100vh",
+            background:
+              "linear-gradient(145deg,rgba(15,23,42,0.98),rgba(15,23,42,0.96))",
+            borderLeft: "1px solid rgba(148,163,184,0.4)",
+            boxShadow: "-20px 0 40px rgba(0,0,0,0.6)",
+            padding: "22px",
+            zIndex: 1000,
+            overflowY: "auto",
+            display: "flex",
+            flexDirection: "column",
+            gap: 16,
+          }}
+        >
+          <div
+            style={{
+              display: "flex",
+              justifyContent: "space-between",
+              alignItems: "center",
+            }}
+          >
+            <div
+              style={{
+                fontSize: 16,
+                fontWeight: 700,
+                color: "#e5e7eb",
+              }}
+            >
+              Conflict Analysis
+            </div>
+
+            <button
+              onClick={() => setConflictOpen(false)}
+              style={{
+                borderRadius: 999,
+                padding: "4px 8px",
+                fontSize: 12,
+                background: "rgba(15,23,42,0.8)",
+                border: "1px solid rgba(148,163,184,0.6)",
+                color: "#9ca3af",
+                cursor: "pointer",
+              }}
+            >
+              Close
+            </button>
+          </div>
+
+          {conflictLoading && (
+            <div style={{ color: "#cbd5f5", fontSize: 13 }}>
+              AI is analyzing all rules for conflicts…
+            </div>
+          )}
+
+          {!conflictLoading && conflicts.length === 0 && (
+            <div
+              style={{
+                fontSize: 13,
+                color: "#9ca3af",
+                padding: 12,
+                borderRadius: 12,
+                border: "1px solid rgba(55,65,81,0.6)",
+                background: "rgba(15,23,42,0.8)",
+              }}
+            >
+              ✅ No conflicts detected.
+            </div>
+          )}
+
+          {!conflictLoading &&
+            conflicts.length > 0 &&
+            conflicts.map((c, idx) => (
+              <div
+                key={idx}
+                style={{
+                  padding: 14,
+                  borderRadius: 14,
+                  marginBottom: 12,
+                  background:
+                    "linear-gradient(145deg,rgba(31,41,55,0.8),rgba(17,24,39,0.9))",
+                  border: "1px solid rgba(239,68,68,0.6)",
+                }}
+              >
+                <div
+                  style={{
+                    color: "#fca5a5",
+                    fontWeight: 600,
+                    marginBottom: 6,
+                    fontSize: 14,
+                  }}
+                >
+                  ⚠ Conflict #{idx + 1}
+                </div>
+                <div style={{ color: "#e5e7eb", fontSize: 13 }}>
+                  {c.summary}
+                </div>
+                <div
+                  style={{
+                    color: "#fcd34d",
+                    fontSize: 12,
+                    marginTop: 8,
+                    fontStyle: "italic",
+                  }}
+                >
+                  Suggestion: {c.suggestion}
+                </div>
+              </div>
+            ))}
         </div>
       )}
 
@@ -1151,7 +1964,10 @@ Must include Additional Insured and Waiver of Subrogation."`}
         message={toast.message}
         type={toast.type}
         onClose={() =>
-          setToast((p) => ({ ...p, open: false }))
+          setToast((p) => ({
+            ...p,
+            open: false,
+          }))
         }
       />
 
@@ -1164,6 +1980,7 @@ Must include Additional Insured and Waiver of Subrogation."`}
       `}</style>
     </div>
   );
+}
 // ==========================================================
 // LANE COLUMN — CINEMATIC DROP ZONE
 // ==========================================================
@@ -1316,11 +2133,17 @@ function RuleRow({
 }
 
 // ==========================================================
-// RULE CARD — FULL EDITOR UI + AI EXPLAIN
+// RULE CARD — FULL EDITOR UI + AI EXPLAIN + INLINE CONFLICT
 // ==========================================================
 function RuleCard({ rule, onUpdate, onDelete, onExplain, canEdit }) {
   const sevColor =
     SEVERITY_COLORS[rule.severity] || SEVERITY_COLORS.medium;
+
+  const isConflicted =
+    typeof window !== "undefined" &&
+    window.__CONFLICTED_RULE_IDS &&
+    window.__CONFLICTED_RULE_IDS.has &&
+    window.__CONFLICTED_RULE_IDS.has(rule.id);
 
   return (
     <div
@@ -1388,7 +2211,9 @@ function RuleCard({ rule, onUpdate, onDelete, onExplain, canEdit }) {
       <div style={{ display: "flex", gap: 10, marginBottom: 10 }}>
         <input
           value={rule.expected_value}
-          onChange={(e) => onUpdate({ expected_value: e.target.value })}
+          onChange={(e) =>
+            onUpdate({ expected_value: e.target.value })
+          }
           disabled={!canEdit}
           style={inputStyle}
         />
@@ -1416,7 +2241,9 @@ function RuleCard({ rule, onUpdate, onDelete, onExplain, canEdit }) {
       {/* REQUIREMENT TEXT */}
       <textarea
         value={rule.requirement_text || ""}
-        onChange={(e) => onUpdate({ requirement_text: e.target.value })}
+        onChange={(e) =>
+          onUpdate({ requirement_text: e.target.value })
+        }
         disabled={!canEdit}
         rows={2}
         placeholder="Explain the logic of this requirement…"
@@ -1432,6 +2259,24 @@ function RuleCard({ rule, onUpdate, onDelete, onExplain, canEdit }) {
         }}
       />
 
+      {/* INLINE CONFLICT WARNING */}
+      {isConflicted && (
+        <div
+          style={{
+            marginBottom: 8,
+            padding: "6px 10px",
+            borderRadius: 8,
+            background: "rgba(127,29,29,0.45)",
+            border: "1px solid rgba(248,113,113,0.8)",
+            color: "#fecaca",
+            fontSize: 11,
+          }}
+        >
+          ⚠ This rule is involved in a conflict. Use “Scan for Conflicts (AI)”
+          to review details.
+        </div>
+      )}
+
       {/* FOOTER */}
       <div
         style={{
@@ -1442,18 +2287,18 @@ function RuleCard({ rule, onUpdate, onDelete, onExplain, canEdit }) {
           color: "#9ca3af",
         }}
       >
-        {/* ACTIVE TOGGLE */}
         <label style={{ display: "flex", gap: 6, alignItems: "center" }}>
           <input
             type="checkbox"
             checked={rule.is_active ?? true}
-            onChange={(e) => onUpdate({ is_active: e.target.checked })}
+            onChange={(e) =>
+              onUpdate({ is_active: e.target.checked })
+            }
             disabled={!canEdit}
           />
           Active
         </label>
 
-        {/* BUTTONS */}
         <div style={{ display: "flex", gap: 8 }}>
           <button
             onClick={() => onExplain && onExplain(rule)}
@@ -1530,6 +2375,25 @@ function operatorLabel(op) {
 }
 
 // ==========================================================
+// HELPERS — CONFLICT RULE ID MAP
+// ==========================================================
+function getConflictedRuleIds(conflicts) {
+  const ids = new Set();
+  for (const c of conflicts || []) {
+    if (Array.isArray(c.rules)) {
+      c.rules.forEach((id) => ids.add(id));
+    }
+  }
+
+  // Expose to window for RuleCard inline conflict (simple hack)
+  if (typeof window !== "undefined") {
+    window.__CONFLICTED_RULE_IDS = ids;
+  }
+
+  return ids;
+}
+
+// ==========================================================
 // HELPERS — RULE EVALUATION LOGIC
 // ==========================================================
 function evaluateRule(rule, policyObj) {
@@ -1541,29 +2405,18 @@ function evaluateRule(rule, policyObj) {
   switch (rule.operator) {
     case "equals":
       return String(rawVal) === String(expected);
-
     case "not_equals":
       return String(rawVal) !== String(expected);
-
     case "contains":
       return String(rawVal ?? "")
         .toString()
         .toLowerCase()
         .includes(String(expected).toLowerCase());
-
     case "gte":
       return Number(rawVal) >= Number(expected);
-
     case "lte":
       return Number(rawVal) <= Number(expected);
-
-        default:
+    default:
       return false;
   }
 }
-
-// 👇👇👇 ADD THIS — FINAL CLOSING BRACE FOR THE PAGE COMPONENT
-}  // <-- this closes: export default function RequirementsV5Page()
-
-// END OF FILE
-
