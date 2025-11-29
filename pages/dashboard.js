@@ -232,7 +232,6 @@ function renderComplianceBadge(vendorId, complianceMap) {
     </span>
   );
 }
-
 /* ===========================
    MAIN DASHBOARD
 =========================== */
@@ -262,7 +261,9 @@ export default function Dashboard() {
   const [drawerVendor, setDrawerVendor] = useState(null);
   const [drawerPolicies, setDrawerPolicies] = useState([]);
 
-  /* LOAD REAL DASHBOARD OVERVIEW (V3) */
+  /* ===========================
+      LOAD DASHBOARD OVERVIEW (V3)
+  ============================ */
   useEffect(() => {
     if (!activeOrgId) return;
 
@@ -284,7 +285,9 @@ export default function Dashboard() {
     loadDashboard();
   }, [activeOrgId]);
 
-  /* LOAD POLICIES */
+  /* ===========================
+      LOAD POLICIES
+  ============================ */
   useEffect(() => {
     async function load() {
       const res = await fetch("/api/get-policies");
@@ -295,7 +298,9 @@ export default function Dashboard() {
     load();
   }, []);
 
-  /* LOAD COMPLIANCE */
+  /* ===========================
+      LOAD COMPLIANCE
+  ============================ */
   useEffect(() => {
     if (!policies.length || !activeOrgId) return;
 
@@ -335,7 +340,9 @@ export default function Dashboard() {
     });
   }, [policies, activeOrgId, complianceMap]);
 
-  /* LOAD ELITE */
+  /* ===========================
+      LOAD ELITE ENGINE RESULTS
+  ============================ */
   useEffect(() => {
     if (!policies.length) return;
 
@@ -381,7 +388,9 @@ export default function Dashboard() {
     });
   }, [policies, eliteMap]);
 
-  /* ELITE SUMMARY */
+  /* ===========================
+      ELITE SUMMARY COUNTS
+  ============================ */
   useEffect(() => {
     let pass = 0,
       warn = 0,
@@ -397,7 +406,10 @@ export default function Dashboard() {
     setEliteSummary({ pass, warn, fail });
   }, [eliteMap]);
 
-  /* LOG ALERT */
+  /* ===========================
+      V1 ALERT LOGGER (TEMP)
+      Will be replaced by Alerts V2 auto-generation
+  ============================ */
   async function logAlert(vendorId, type, message) {
     if (!activeOrgId) return;
     await fetch("/api/alerts/log", {
@@ -407,7 +419,10 @@ export default function Dashboard() {
     });
   }
 
-  /* TRIGGER ALERTS */
+  /* ===========================
+      TRIGGER BASIC ALERTS (TEMP)
+      This stays until Alerts V2 cron replaces it fully
+  ============================ */
   useEffect(() => {
     if (!policies.length || !activeOrgId) return;
 
@@ -448,7 +463,9 @@ export default function Dashboard() {
     });
   }, [policies, eliteMap, complianceMap, activeOrgId]);
 
-  /* FETCH ALERTS */
+  /* ===========================
+      FETCH ALERTS (V1 -> V2 wrapper)
+  ============================ */
   useEffect(() => {
     if (!activeOrgId) return;
 
@@ -462,45 +479,6 @@ export default function Dashboard() {
     const interval = setInterval(loadAlerts, 7000);
     return () => clearInterval(interval);
   }, [activeOrgId]);
-
-  const filtered = policies.filter((p) => {
-    const t = filterText.toLowerCase();
-    return (
-      !t ||
-      p.vendor_name?.toLowerCase().includes(t) ||
-      p.policy_number?.toLowerCase().includes(t) ||
-      p.carrier?.toLowerCase().includes(t) ||
-      p.coverage_type?.toLowerCase().includes(t)
-    );
-  });
-
-  async function openDrawer(vendorId) {
-    try {
-      const res = await fetch(`/api/vendors/${vendorId}`);
-      const data = await res.json();
-      if (!res.ok || !data.ok) throw new Error(data.error);
-      setDrawerVendor(data.vendor);
-      setDrawerPolicies(data.policies);
-      setDrawerOpen(true);
-    } catch (err) {
-      console.error("Drawer Load Error:", err);
-    }
-  }
-
-  function closeDrawer() {
-    setDrawerOpen(false);
-    setDrawerVendor(null);
-    setDrawerPolicies([]);
-  }
-
-  const avgScore = dashboard?.globalScore ?? 0;
-  const totalVendors = dashboard?.vendorCount ?? 0;
-  const alertsCount =
-    (dashboard?.alerts?.expired ?? 0) +
-    (dashboard?.alerts?.critical30d ?? 0) +
-    (dashboard?.alerts?.warning90d ?? 0) +
-    (dashboard?.alerts?.eliteFails ?? 0);
-
   return (
     <div
       style={{
@@ -512,7 +490,7 @@ export default function Dashboard() {
       }}
     >
       {/* =======================================
-          HERO COMMAND PANEL
+          HERO COMMAND PANEL — cockpit-hero
       ======================================= */}
       <div
         className="cockpit-hero cockpit-pulse"
@@ -549,7 +527,7 @@ export default function Dashboard() {
           DASHBOARD V3 • GLOBAL COMPLIANCE ENGINE
         </div>
 
-        {/* LEFT SIDE */}
+        {/* LEFT SIDE — Title + Summary */}
         <div style={{ paddingTop: 22 }}>
           <h1
             style={{
@@ -575,8 +553,8 @@ export default function Dashboard() {
               lineHeight: 1.5,
             }}
           >
-            Live AI-powered oversight across all vendors, policies,
-            expirations, and risk engines. This is your command center.
+            Live AI-powered oversight across all vendors, policies, expirations,
+            and risk engines. This is your command center.
           </p>
 
           {/* AI SNAPSHOT BAR */}
@@ -608,19 +586,17 @@ export default function Dashboard() {
                       : GP.neonRed,
                 }}
               >
-                {dashboardLoading
-                  ? "—"
-                  : Number(avgScore).toFixed(0)}
+                {dashboardLoading ? "—" : Number(avgScore).toFixed(0)}
               </strong>
               /100 across{" "}
               <strong style={{ color: GP.neonBlue }}>
                 {dashboardLoading ? "—" : totalVendors}
-              </strong>{" "}
-              vendors, {dashboardLoading ? "—" : alertsCount} active alerts.
+              </strong>
+              , {dashboardLoading ? "—" : alertsCount} active alerts.
             </span>
           </div>
 
-          {/* ACTIONS */}
+          {/* PRIMARY ACTIONS */}
           <div
             style={{
               marginTop: 16,
@@ -676,8 +652,7 @@ export default function Dashboard() {
             style={{
               marginTop: 20,
               display: "grid",
-              gridTemplateColumns:
-                "repeat(auto-fit,minmax(160px,1fr))",
+              gridTemplateColumns: "repeat(auto-fit,minmax(160px,1fr))",
               gap: 12,
             }}
           >
@@ -707,7 +682,67 @@ export default function Dashboard() {
             />
           </div>
 
-          {/* ALERT DROPDOWN */}
+          {/* =======================================
+              🔥 NEW — SEVERITY BREAKDOWN WIDGET
+          ======================================= */}
+          <div
+            style={{
+              marginTop: 22,
+              padding: 16,
+              borderRadius: 18,
+              background: "rgba(15,23,42,0.85)",
+              border: "1px solid rgba(51,65,85,0.9)",
+              boxShadow: "0 12px 35px rgba(0,0,0,0.55)",
+              maxWidth: 440,
+            }}
+          >
+            <div
+              style={{
+                fontSize: 12,
+                color: GP.textSoft,
+                marginBottom: 8,
+                letterSpacing: "0.12em",
+                textTransform: "uppercase",
+              }}
+            >
+              Alert Severity Breakdown
+            </div>
+
+            {!dashboardLoading && dashboard?.severityBreakdown ? (
+              <div
+                style={{
+                  display: "grid",
+                  gridTemplateColumns: "repeat(4, 1fr)",
+                  gap: 12,
+                }}
+              >
+                <SeverityBox
+                  label="Critical"
+                  count={dashboard.severityBreakdown.critical}
+                  color="#fb7185"
+                />
+                <SeverityBox
+                  label="High"
+                  count={dashboard.severityBreakdown.high}
+                  color="#facc15"
+                />
+                <SeverityBox
+                  label="Medium"
+                  count={dashboard.severityBreakdown.medium}
+                  color="#38bdf8"
+                />
+                <SeverityBox
+                  label="Low"
+                  count={dashboard.severityBreakdown.low}
+                  color="#22c55e"
+                />
+              </div>
+            ) : (
+              <div style={{ fontSize: 12, color: GP.textMuted }}>Loading…</div>
+            )}
+          </div>
+
+          {/* ALERT DROPDOWN (unchanged) */}
           {showAlerts && (
             <div
               style={{
@@ -728,18 +763,14 @@ export default function Dashboard() {
               }}
             >
               {alerts.length === 0 ? (
-                <div style={{ fontSize: 12, color: GP.textMuted }}>
-                  No alerts yet.
-                </div>
+                <div style={{ fontSize: 12, color: GP.textMuted }}>No alerts yet.</div>
               ) : (
                 alerts.map((a) => (
                   <div
                     key={a.id}
                     style={{
-                      paddingBottom: 8,
-                      marginBottom: 8,
-                      borderBottom:
-                        "1px solid rgba(55,65,81,0.8)",
+                      paddingBottom: 8, marginBottom: 8,
+                      borderBottom: "1px solid rgba(55,65,81,0.8)",
                     }}
                   >
                     <div
@@ -753,21 +784,8 @@ export default function Dashboard() {
                     >
                       {a.type.replace(/_/g, " ")}
                     </div>
-                    <div
-                      style={{
-                        fontSize: 12,
-                        color: "#e5e7eb",
-                      }}
-                    >
-                      {a.message}
-                    </div>
-                    <div
-                      style={{
-                        fontSize: 10,
-                        color: GP.textMuted,
-                        marginTop: 2,
-                      }}
-                    >
+                    <div style={{ fontSize: 12, color: "#e5e7eb" }}>{a.message}</div>
+                    <div style={{ fontSize: 10, color: GP.textMuted, marginTop: 2 }}>
                       {new Date(a.created_at).toLocaleString()}
                     </div>
                   </div>
@@ -787,6 +805,7 @@ export default function Dashboard() {
             paddingTop: 28,
           }}
         >
+          {/* GLOBAL SCORE DONUT */}
           <div
             style={{
               position: "relative",
@@ -809,6 +828,7 @@ export default function Dashboard() {
                   "radial-gradient(circle at 30% 0,#020617,#020617 60%,#000)",
               }}
             />
+
             <div
               style={{
                 position: "relative",
@@ -841,21 +861,13 @@ export default function Dashboard() {
                   color: "transparent",
                 }}
               >
-                {dashboardLoading
-                  ? "—"
-                  : Number(avgScore).toFixed(0)}
+                {dashboardLoading ? "—" : Number(avgScore).toFixed(0)}
               </div>
-              <div
-                style={{
-                  fontSize: 10,
-                  color: GP.textMuted,
-                }}
-              >
-                /100
-              </div>
+              <div style={{ fontSize: 10, color: GP.textMuted }}>/100</div>
             </div>
           </div>
 
+          {/* ELITE SNAPSHOT */}
           <div
             style={{
               borderRadius: 18,
@@ -865,13 +877,7 @@ export default function Dashboard() {
               minWidth: 220,
             }}
           >
-            <div
-              style={{
-                fontSize: 12,
-                color: GP.textSoft,
-                marginBottom: 6,
-              }}
-            >
+            <div style={{ fontSize: 12, color: GP.textSoft, marginBottom: 6 }}>
               Elite Engine Snapshot
             </div>
             <div
@@ -910,7 +916,6 @@ export default function Dashboard() {
           </div>
         </div>
       </div>
-
       {/* =======================================
           CHART ROW — cockpit-telemetry
       ======================================= */}
@@ -924,15 +929,25 @@ export default function Dashboard() {
           gap: 24,
         }}
       >
+        {/* TRAJECTORY — compliance score over time */}
         <ComplianceTrajectoryChart />
+
+        {/* PASS / WARN / FAIL donut */}
         <PassFailDonutChart />
       </div>
 
-      {/* OTHER CHARTS */}
-      <ExpiringCertsHeatmap policies={policies} />
-      <SeverityDistributionChart policies={policies} />
-      <RiskTimelineChart policies={policies} />
+      {/* =======================================
+          SECONDARY CHARTS — Heatmap + Severity Dist + Risk Timeline
+      ======================================= */}
 
+      {/* EXPIRING CERTIFICATES HEATMAP */}
+      <ExpiringCertsHeatmap policies={policies} />
+
+      {/* SEVERITY DISTRIBUTION CHART */}
+      <SeverityDistributionChart policies={policies} />
+
+      {/* RISK TIMELINE */}
+      <RiskTimelineChart policies={policies} />
       {/* =======================================
           POLICIES TABLE
       ======================================= */}
@@ -980,6 +995,7 @@ export default function Dashboard() {
 
       {!loading && filtered.length > 0 && (
         <>
+          {/* TABLE SHELL */}
           <div
             className="cockpit-table-shell"
             style={{
@@ -1014,6 +1030,7 @@ export default function Dashboard() {
                   <th style={th}>Flags</th>
                 </tr>
               </thead>
+
               <tbody>
                 {filtered.map((p) => {
                   const risk = computeRisk(p);
@@ -1032,13 +1049,25 @@ export default function Dashboard() {
                           "linear-gradient(90deg,rgba(15,23,42,0.98),rgba(15,23,42,0.92))",
                       }}
                     >
+                      {/* Vendor */}
                       <td style={td}>{p.vendor_name || "—"}</td>
+
+                      {/* Policy */}
                       <td style={td}>{p.policy_number}</td>
+
+                      {/* Carrier */}
                       <td style={td}>{p.carrier}</td>
+
+                      {/* Coverage */}
                       <td style={td}>{p.coverage_type}</td>
+
+                      {/* Expires */}
                       <td style={td}>{p.expiration_date || "—"}</td>
+
+                      {/* Days Left */}
                       <td style={td}>{risk.daysLeft ?? "—"}</td>
 
+                      {/* Status (Expired / Critical / Warning / OK) */}
                       <td
                         style={{
                           ...td,
@@ -1052,6 +1081,7 @@ export default function Dashboard() {
                             risk.severity.slice(1)}
                       </td>
 
+                      {/* Risk Tier */}
                       <td style={{ ...td, textAlign: "center" }}>
                         <span
                           style={{
@@ -1068,6 +1098,7 @@ export default function Dashboard() {
                         </span>
                       </td>
 
+                      {/* AI Risk */}
                       <td
                         style={{
                           ...td,
@@ -1082,6 +1113,8 @@ export default function Dashboard() {
                         }}
                       >
                         <div>{ai.score}</div>
+
+                        {/* AI Score Bar */}
                         <div
                           style={{
                             marginTop: 4,
@@ -1109,10 +1142,12 @@ export default function Dashboard() {
                         </div>
                       </td>
 
+                      {/* Compliance */}
                       <td style={{ ...td, textAlign: "center" }}>
                         {renderComplianceBadge(p.vendor_id, complianceMap)}
                       </td>
 
+                      {/* Elite */}
                       <td style={{ ...td, textAlign: "center" }}>
                         {elite && !elite.loading && !elite.error ? (
                           <EliteStatusPill status={elite.overall} />
@@ -1127,6 +1162,7 @@ export default function Dashboard() {
                         )}
                       </td>
 
+                      {/* Flags */}
                       <td style={{ ...td, textAlign: "center" }}>
                         {flags.length > 0 ? (
                           <span
@@ -1146,6 +1182,7 @@ export default function Dashboard() {
             </table>
           </div>
 
+          {/* DRAWER */}
           {drawerOpen && drawerVendor && (
             <VendorDrawer
               vendor={drawerVendor}
@@ -1158,8 +1195,47 @@ export default function Dashboard() {
     </div>
   );
 }
+/* =======================================
+   SEVERITY BOX COMPONENT (NEW)
+======================================= */
+function SeverityBox({ label, count, color }) {
+  return (
+    <div
+      style={{
+        border: `1px solid ${color}55`,
+        borderRadius: 12,
+        padding: "10px 8px",
+        background: "rgba(15,23,42,0.9)",
+        textAlign: "center",
+      }}
+    >
+      <div
+        style={{
+          fontSize: 11,
+          color: color,
+          marginBottom: 2,
+          fontWeight: 600,
+        }}
+      >
+        {label}
+      </div>
 
-/* MINI KPI INSIDE HERO */
+      <div
+        style={{
+          fontSize: 18,
+          fontWeight: 700,
+          color: color,
+        }}
+      >
+        {count}
+      </div>
+    </div>
+  );
+}
+
+/* =======================================
+   MINI KPI COMPONENT (existing)
+======================================= */
 function MiniKpi({ label, value, color, icon }) {
   return (
     <div
@@ -1175,17 +1251,21 @@ function MiniKpi({ label, value, color, icon }) {
       }}
     >
       <div style={{ fontSize: 18 }}>{icon}</div>
+
       <div>
         <div style={{ fontSize: 12, color: GP.textSoft, marginBottom: 2 }}>
           {label}
         </div>
+
         <div style={{ fontSize: 16, fontWeight: 600, color }}>{value}</div>
       </div>
     </div>
   );
 }
 
-/* TABLE STYLES */
+/* =======================================
+   TABLE HEADER + CELL STYLES
+======================================= */
 const th = {
   padding: "10px 12px",
   background: "rgba(15,23,42,0.98)",
