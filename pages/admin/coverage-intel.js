@@ -1,7 +1,7 @@
 // pages/admin/coverage-intel.js
 // ==========================================================
 // PHASE 6 — COVERAGE INTEL (AI Insurance Brain)
-// Analyze Coverage → Summarize → Build Rule Plan for V5
+// Analyze → Summarize → Build Rule Plan for V5
 // ==========================================================
 
 import { useState } from "react";
@@ -37,6 +37,7 @@ export default function CoverageIntelPage() {
   // Loading states
   const [intelLoading, setIntelLoading] = useState(false);
   const [rulePreviewLoading, setRulePreviewLoading] = useState(false);
+  const [applyLoading, setApplyLoading] = useState(false);
 
   // ==========================================================
   // HANDLER 1 — Analyze Coverage (AI → Summary)
@@ -83,8 +84,8 @@ export default function CoverageIntelPage() {
   }
 
   // ==========================================================
-  // HANDLER 2 — Build Rule Preview (AI → V5)
-  // ==========================================================
+  // HANDLER 2 — Build Rule Preview (AI → V5 rulePlan)
+// ==========================================================
   async function handleGenerateRulePreview() {
     if (!coverageSummary) {
       return setToast({
@@ -123,6 +124,33 @@ export default function CoverageIntelPage() {
       });
     } finally {
       setRulePreviewLoading(false);
+    }
+  }
+
+  // ==========================================================
+  // HANDLER 3 — Apply Rule Plan to V5 (UI stub for now)
+// ==========================================================
+  async function handleApplyToV5() {
+    if (!rulePreview) {
+      return setToast({
+        open: true,
+        type: "error",
+        message: "Generate a rule preview first.",
+      });
+    }
+
+    // 🔥 Stub for now — does NOT hit the DB yet.
+    // In the next phase we’ll point this at /api/coverage/intel/apply.
+    setApplyLoading(true);
+    try {
+      setToast({
+        open: true,
+        type: "success",
+        message:
+          "Apply-to-V5 UI is wired. Next step: hook this to the V5 engine API.",
+      });
+    } finally {
+      setApplyLoading(false);
     }
   }
 
@@ -247,7 +275,7 @@ export default function CoverageIntelPage() {
           )}
         </div>
 
-        {/* RIGHT PANEL — RULE PREVIEW */}
+        {/* RIGHT PANEL — RULE PREVIEW + APPLY UI */}
         <div
           style={{
             borderRadius: 20,
@@ -299,6 +327,27 @@ export default function CoverageIntelPage() {
           >
             {rulePreviewLoading ? "Generating…" : "Generate Rule Preview"}
           </button>
+
+          <button
+            onClick={handleApplyToV5}
+            disabled={applyLoading || !rulePreview}
+            style={{
+              marginTop: 12,
+              width: "100%",
+              padding: "10px",
+              borderRadius: 12,
+              background:
+                !rulePreview
+                  ? "rgba(34,197,94,0.15)"
+                  : "linear-gradient(90deg,#22c55e,#16a34a)",
+              border: "1px solid #22c55e",
+              color: "white",
+              fontWeight: 600,
+              cursor: !rulePreview ? "not-allowed" : "pointer",
+            }}
+          >
+            {applyLoading ? "Applying…" : "Apply Rule Plan to V5 (UI Stub)"}
+          </button>
         </div>
       </div>
 
@@ -321,4 +370,3 @@ export default function CoverageIntelPage() {
   );
 }
 
-// END OF FILE
