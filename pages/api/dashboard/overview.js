@@ -1,7 +1,7 @@
 // pages/api/dashboard/overview.js
 // REAL production dashboard engine using live data from Neon
 
-import { sql } from "../../../src/lib/db";  // adjust path if needed
+import { sql } from "../../../lib/db";  // ✅ FIXED PATH
 
 export default async function handler(req, res) {
   try {
@@ -14,7 +14,9 @@ export default async function handler(req, res) {
     // 1. Vendors
     //
     const vendors = await sql`
-      SELECT id FROM vendors WHERE org_id = ${orgId};
+      SELECT id 
+      FROM vendors 
+      WHERE org_id = ${orgId};
     `;
     const vendorCount = vendors.length;
 
@@ -71,7 +73,6 @@ export default async function handler(req, res) {
     let pass = 0;
     let warn = 0;
     let fail = 0;
-
     let allFailures = [];
 
     compliance.forEach((c) => {
@@ -79,18 +80,18 @@ export default async function handler(req, res) {
       else if (c.status === "warn") warn++;
       else if (c.status === "fail") fail++;
 
-      // Collect failing rules for "top violations" chart
+      // Collect failing rules for "top violations"
       try {
         const fails = c.failing || [];
         fails.forEach((f) => {
-          if (f?.field_key) {
-            allFailures.push(f.field_key);
-          }
+          if (f?.field_key) allFailures.push(f.field_key);
         });
       } catch (_) {}
     });
 
-    // Compute top violations
+    //
+    // Top Violations
+    //
     const violationMap = {};
     allFailures.forEach((v) => {
       violationMap[v] = (violationMap[v] || 0) + 1;
@@ -118,7 +119,7 @@ export default async function handler(req, res) {
     }));
 
     //
-    // 6. Compute global score
+    // 6. Global score calculation
     //
     const globalScore =
       compliance.length > 0
@@ -145,14 +146,12 @@ export default async function handler(req, res) {
           eliteFails: eliteFailCount,
         },
 
-        engineSnapshot: {
-          pass,
-          warn,
-          fail,
-        },
+        engineSnapshot: { pass, warn, fail },
 
         trajectory,
+
         passWarnFail: { pass, warn, fail },
+
         topViolations,
       },
     });
