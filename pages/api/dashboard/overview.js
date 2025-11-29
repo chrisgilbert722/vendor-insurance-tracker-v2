@@ -10,7 +10,7 @@ export default async function handler(req, res) {
     }
 
     //
-    // 1. Vendors
+    // 1. Load vendors
     //
     const vendors = await sql`
       SELECT id FROM vendors WHERE org_id = ${orgId};
@@ -18,7 +18,7 @@ export default async function handler(req, res) {
     const vendorCount = vendors.length;
 
     //
-    // 2. Policies (expiration logic)
+    // 2. Policies for expiration logic
     //
     const policies = await sql`
       SELECT id, expiration_date
@@ -39,6 +39,7 @@ export default async function handler(req, res) {
 
     policies.forEach((p) => {
       if (!p.expiration_date) return;
+
       const exp = new Date(p.expiration_date);
 
       if (exp < today) expiredCount++;
@@ -47,7 +48,7 @@ export default async function handler(req, res) {
     });
 
     //
-    // 3. Elite fails (old system — keep for now)
+    // 3. Elite fails (old alert system)
     //
     const eliteFails = await sql`
       SELECT COUNT(*) 
@@ -58,7 +59,7 @@ export default async function handler(req, res) {
     const eliteFailCount = Number(eliteFails[0]?.count || 0);
 
     //
-    // 4. Vendor Compliance Cache
+    // 4. Compliance (vendor_compliance_cache)
     //
     const compliance = await sql`
       SELECT vendor_id, status, passing, failing, missing
@@ -69,6 +70,7 @@ export default async function handler(req, res) {
     let pass = 0;
     let warn = 0;
     let fail = 0;
+
     let allFailures = [];
 
     compliance.forEach((c) => {
@@ -96,7 +98,7 @@ export default async function handler(req, res) {
       .map(([label, count]) => ({ label, count }));
 
     //
-    // 6. Trajectory (dashboard_metrics)
+    // 6. Trajectory metrics
     //
     const metrics = await sql`
       SELECT snapshot_date, avg_score
@@ -112,13 +114,14 @@ export default async function handler(req, res) {
     }));
 
     //
-    // ⭐ 7. ALERTS V2 SEVERITY BREAKDOWN — THE NEW PART
+    // ⭐ 7. Severity breakdown — Alerts V2 integration
     //
-    const severity = await getAlertStatsV2(Number(orgId));
-    // { critical: X, high: Y, medium: Z, low: W }
+    const severityBreakdown = await getAlertStatsV2(Number(orgId));
+    // structure:
+    // { critical: n, high: n, medium: n, low: n }
 
     //
-    // 8. Compute global score
+    // 8. Global score
     //
     const globalScore =
       compliance.length > 0
@@ -128,7 +131,7 @@ export default async function handler(req, res) {
         : 0;
 
     //
-    // FINAL RESPONSE
+    // FINAL RETURN PAYLOAD
     //
     return res.status(200).json({
       ok: true,
@@ -150,15 +153,15 @@ export default async function handler(req, res) {
         passWarnFail: { pass, warn, fail },
         topViolations,
 
-        // ⭐ New part for Dashboard V3
-        severityBreakdown: severity, 
-        // { critical, high, medium, low }
+        // ⭐ THIS IS WHAT FEEDS YOUR NEW DASHBOARD WIDGET
+        severityBreakdown,
       },
     });
   } catch (err) {
     console.error("DASHBOARD OVERVIEW ERROR:", err);
-    return res
-      .status(500)
-      .json({ ok: false, error: err.message || "Internal error" });
+    return res.status(500).json({
+      ok: false,
+      error: err.message || "Internal error",
+    });
   }
 }
