@@ -1,642 +1,285 @@
 // pages/admin/coverage-intel.js
 // ==========================================================
-// COVERAGE INTEL — AI INSURANCE BRAIN
-// Cinematic Neo-Blue full-screen cockpit
+// PHASE 6 — COVERAGE INTEL (AI Insurance Brain)
 // ==========================================================
 
-import { useEffect, useMemo, useState } from "react";
-import { useRole } from "../../lib/useRole";
-import { useOrg } from "../../context/OrgContext";
+import { useState } from "react";
 import ToastV2 from "../../components/ToastV2";
 
-import { DndProvider } from "react-dnd";
-import { HTML5Backend } from "react-dnd-html5-backend";
+// No DnD here — this page is AI-driven (not lane-based)
 
 // ==========================================================
-// MAIN COMPONENT
+// CONSTANTS
 // ==========================================================
+const SAMPLE_PLACEHOLDER = `Paste insurance requirements or carrier policy text...
+
+Example:
+"Vendor must maintain GL 1M/2M, Auto 1M CSL,
+Workers Comp statutory, Employers Liability 1M,
+Additional Insured + Waiver of Subrogation required."`;
 export default function CoverageIntelPage() {
-  const { isAdmin, isManager } = useRole();
-  const { activeOrgId: orgId } = useOrg();
-  const canEdit = isAdmin || isManager;
-
-  // Raw text the user pastes from policies or requirements
-  const [rawInput, setRawInput] = useState("");
-
-  // AI extracted structure
-  const [aiSummary, setAiSummary] = useState(null); // coverages/limits/etc.
-
-  // Suggested V5 rule groups / rules
-  const [aiRulePlan, setAiRulePlan] = useState(null);
-
-  // Loading + error + toast
-  const [loadingAnalyze, setLoadingAnalyze] = useState(false);
-  const [loadingRules, setLoadingRules] = useState(false);
-
   const [toast, setToast] = useState({
     open: false,
     message: "",
     type: "success",
   });
 
-  const disabled = !rawInput.trim();
+  // Source text from user
+  const [sourceText, setSourceText] = useState("");
 
-  const orgLabel = useMemo(
-    () => (orgId ? `Org: ${orgId}` : "No active org selected"),
-    [orgId]
-  );
-  // ========================================================
-  // HANDLERS — CALL BACKEND AI (we'll wire endpoints next)
-  // ========================================================
+  // AI summary + rule preview data
+  const [coverageSummary, setCoverageSummary] = useState(null);
+  const [rulePreview, setRulePreview] = useState(null);
+
+  // Loading states
+  const [intelLoading, setIntelLoading] = useState(false);
+  const [rulePreviewLoading, setRulePreviewLoading] = useState(false);
+
+  // ==========================================================
+  // HANDLER 1 — Analyze Coverage (AI)
+  // ==========================================================
   async function handleAnalyzeCoverage() {
-    if (!rawInput.trim()) return;
+    if (!sourceText.trim()) {
+      return setToast({
+        open: true,
+        type: "error",
+        message: "Paste some coverage text first.",
+      });
+    }
 
     try {
-      setLoadingAnalyze(true);
-      setAiSummary(null);
-      setAiRulePlan(null);
+      setIntelLoading(true);
+      setCoverageSummary(null);
+      setRulePreview(null);
 
       const res = await fetch("/api/coverage/intel", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ text: rawInput }),
+        body: JSON.stringify({ text: sourceText }),
       });
 
       const json = await res.json();
+      if (!json.ok) throw new Error(json.error || "Coverage analysis failed.");
 
-      if (!res.ok || !json.ok) {
-        throw new Error(json.error || "Coverage analysis failed.");
-      }
-
-      setAiSummary(json.summary || null);
-      setAiRulePlan(json.rulePlan || null);
-
+      setCoverageSummary(json.summary);
       setToast({
         open: true,
         type: "success",
-        message: "AI coverage analysis complete.",
+        message: "Coverage analyzed successfully!",
       });
     } catch (err) {
       setToast({
         open: true,
         type: "error",
-        message: err.message || "Coverage analysis failed.",
+        message: err.message || "Failed to analyze coverage.",
       });
     } finally {
-      setLoadingAnalyze(false);
+      setIntelLoading(false);
     }
   }
 
-  async function handleGenerateRulesPreview() {
-    if (!aiSummary) {
+  // ==========================================================
+  // HANDLER 2 — Build Rule Preview (AI → V5)
+  // ==========================================================
+  async function handleGenerateRulePreview() {
+    if (!coverageSummary) {
       return setToast({
         open: true,
         type: "error",
-        message: "Run analysis first, then preview rules.",
+        message: "Run Analyze Coverage first.",
       });
     }
 
     try {
-      setLoadingRules(true);
+      setRulePreviewLoading(true);
+      setRulePreview(null);
 
       const res = await fetch("/api/coverage/intel/rules", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          orgId,
-          summary: aiSummary,
-        }),
+        body: JSON.stringify({ summary: coverageSummary }),
       });
 
       const json = await res.json();
+      if (!json.ok) throw new Error(json.error || "Rule preview generation failed.");
 
-      if (!res.ok || !json.ok) {
-        throw new Error(json.error || "Rule plan generation failed.");
-      }
-
-      setAiRulePlan(json.rulePlan || null);
-
+      setRulePreview(json.rulePlan);
       setToast({
         open: true,
         type: "success",
-        message: "AI rule plan generated.",
+        message: "Rule preview generated!",
       });
     } catch (err) {
       setToast({
         open: true,
         type: "error",
-        message: err.message || "Rule plan generation failed.",
+        message: err.message || "Failed to generate rule preview.",
       });
     } finally {
-      setLoadingRules(false);
+      setRulePreviewLoading(false);
     }
   }
-
-  // ========================================================
-  // RENDER — FULLSCREEN CINEMATIC LAYOUT
-  // ========================================================
+  // ==========================================================
+  // RENDER — FULL PAGE
+  // ==========================================================
   return (
     <div
       style={{
         minHeight: "100vh",
-        position: "relative",
-        background:
-          "radial-gradient(circle at top,#020617 0%,#020617 55%,#000 100%)",
-        padding: "32px 40px 40px",
+        padding: "32px 40px",
+        background: "radial-gradient(circle at top,#020617,#000)",
         color: "#e5e7eb",
-        overflow: "hidden",
       }}
     >
-      {/* BACKGROUND AURA */}
+      {/* HEADER */}
+      <h1
+        style={{
+          margin: 0,
+          fontSize: 28,
+          fontWeight: 600,
+          background: "linear-gradient(90deg,#38bdf8,#a5b4fc,#e5e7eb)",
+          WebkitBackgroundClip: "text",
+          color: "transparent",
+        }}
+      >
+        Coverage Intelligence (AI)
+      </h1>
+
+      <p style={{ marginTop: 6, fontSize: 14, color: "#94a3b8" }}>
+        Paste carrier requirements → extract coverages → generate rule plan for V5.
+      </p>
+
+      {/* MAIN GRID */}
       <div
         style={{
-          position: "absolute",
-          inset: 0,
-          background:
-            "radial-gradient(circle at 5% 0%,rgba(56,189,248,0.18),transparent 55%),radial-gradient(circle at 95% 10%,rgba(129,140,248,0.18),transparent 55%)",
-          pointerEvents: "none",
+          marginTop: 20,
+          display: "grid",
+          gridTemplateColumns: "1.2fr 1.8fr 1.4fr",
+          gap: 20,
         }}
-      />
-
-      {/* SCANLINES */}
-      <div
-        style={{
-          position: "absolute",
-          inset: 0,
-          background:
-            "linear-gradient(rgba(148,163,184,0.08) 1px, transparent 1px)",
-          backgroundSize: "100% 3px",
-          opacity: 0.2,
-          pointerEvents: "none",
-        }}
-      />
-
-      {/* MAIN CONTENT WRAPPER */}
-      <div style={{ position: "relative", zIndex: 1 }}>
-        {/* HEADER */}
-        <div style={{ marginBottom: 18 }}>
-          <div
-            style={{
-              display: "inline-flex",
-              gap: 8,
-              padding: "4px 10px",
-              borderRadius: 999,
-              border: "1px solid rgba(148,163,184,0.4)",
-              background:
-                "linear-gradient(120deg,rgba(15,23,42,0.94),rgba(15,23,42,0.7))",
-              marginBottom: 6,
-            }}
-          >
-            <span
-              style={{
-                fontSize: 10,
-                color: "#9ca3af",
-                letterSpacing: "0.12em",
-                textTransform: "uppercase",
-              }}
-            >
-              Coverage Intel
-            </span>
-            <span
-              style={{
-                fontSize: 10,
-                color: "#38bdf8",
-                letterSpacing: "0.08em",
-                textTransform: "uppercase",
-              }}
-            >
-              AI Insurance Brain
-            </span>
-          </div>
-
-          <h1
-            style={{
-              margin: 0,
-              fontSize: 26,
-              fontWeight: 600,
-            }}
-          >
-            Paste policies once.{" "}
-            <span
-              style={{
-                background:
-                  "linear-gradient(90deg,#38bdf8,#a5b4fc,#e5e7eb)",
-                WebkitBackgroundClip: "text",
-                color: "transparent",
-              }}
-            >
-              Let AI do the underwriting.
-            </span>
-          </h1>
-
-          <p
-            style={{
-              marginTop: 6,
-              maxWidth: 720,
-              fontSize: 13,
-              color: "#cbd5f5",
-            }}
-          >
-            Paste carrier requirements or policy text. AI will extract
-            coverages, limits, endorsements, and propose rules for your V5
-            engine.
-          </p>
-
-          <div
-            style={{
-              marginTop: 6,
-              fontSize: 12,
-              color: "#9ca3af",
-            }}
-          >
-            {orgLabel}
-          </div>
-        </div>
-
-        {/* 3-PANEL GRID */}
+      >
+        {/* LEFT PANEL — SOURCE TEXT */}
         <div
           style={{
-            display: "grid",
-            gridTemplateColumns: "minmax(0,1.3fr) minmax(0,1.4fr) minmax(0,1.3fr)",
-            gap: 18,
-            alignItems: "stretch",
+            borderRadius: 20,
+            padding: 18,
+            background: "rgba(15,23,42,0.75)",
+            border: "1px solid rgba(80,120,255,0.35)",
           }}
         >
-          {/* LEFT PANEL — RAW INPUT */}
-          <div
+          <div style={{ fontSize: 14, marginBottom: 10 }}>Coverage Text</div>
+
+          <textarea
+            value={sourceText}
+            onChange={(e) => setSourceText(e.target.value)}
+            placeholder={SAMPLE_PLACEHOLDER}
+            rows={16}
             style={{
-              borderRadius: 22,
-              padding: 18,
-              background: "rgba(15,23,42,0.78)",
-              border: "1px solid rgba(80,120,255,0.25)",
-              boxShadow:
-                "0 0 25px rgba(64,106,255,0.3), inset 0 0 20px rgba(15,23,42,0.9)",
-              backdropFilter: "blur(12px)",
-              display: "flex",
-              flexDirection: "column",
-              gap: 10,
+              width: "100%",
+              borderRadius: 12,
+              padding: 12,
+              background: "#0f172a",
+              color: "#e5e7eb",
+              border: "1px solid #334155",
+              fontSize: 13,
+            }}
+          />
+
+          <button
+            onClick={handleAnalyzeCoverage}
+            disabled={intelLoading}
+            style={{
+              marginTop: 12,
+              width: "100%",
+              padding: "10px",
+              borderRadius: 12,
+              background: intelLoading
+                ? "rgba(56,189,248,0.35)"
+                : "linear-gradient(90deg,#38bdf8,#0ea5e9)",
+              border: "1px solid #38bdf8",
+              color: "white",
+              fontWeight: 600,
+              cursor: intelLoading ? "not-allowed" : "pointer",
             }}
           >
-            <div
-              style={{
-                fontSize: 12,
-                textTransform: "uppercase",
-                letterSpacing: 1.4,
-                color: "#9ca3af",
-              }}
-            >
-              Source Text
-            </div>
-            <div
-              style={{
-                fontSize: 13,
-                color: "#cbd5f5",
-              }}
-            >
-              Paste insurance requirements, carrier instructions, or policy
-              language here. AI will parse and structure it.
-            </div>
+            {intelLoading ? "Analyzing…" : "Analyze Coverage (AI)"}
+          </button>
+        </div>
 
-            <textarea
-              value={rawInput}
-              onChange={(e) => setRawInput(e.target.value)}
-              rows={16}
-              style={{
-                marginTop: 4,
-                width: "100%",
-                borderRadius: 16,
-                padding: 14,
-                border: "1px solid rgba(51,65,85,0.9)",
-                background: "rgba(15,23,42,0.98)",
-                color: "#e5e7eb",
-                fontSize: 13,
-                fontFamily: "system-ui, -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Segoe UI', sans-serif",
-                resize: "vertical",
-              }}
-              placeholder={`Example:
-"Vendor must maintain:
-- General Liability $1,000,000 per occurrence / $2,000,000 aggregate
-- Auto Liability $1,000,000 CSL
-- Workers Compensation statutory with EL $1,000,000
-- Additional Insured and Waiver of Subrogation endorsements on GL and Auto
-- Carriers rated A- or better by AM Best."`}
-            />
+        {/* MIDDLE PANEL — COVERAGE SUMMARY */}
+        <div
+          style={{
+            borderRadius: 20,
+            padding: 18,
+            background: "rgba(15,23,42,0.75)",
+            border: "1px solid rgba(80,120,255,0.35)",
+            overflowY: "auto",
+          }}
+        >
+          <div style={{ fontSize: 14, marginBottom: 10 }}>AI Coverage Summary</div>
 
-            <button
-              onClick={handleAnalyzeCoverage}
-              disabled={disabled || loadingAnalyze}
-              style={{
-                marginTop: 8,
-                padding: "10px 16px",
-                borderRadius: 12,
-                border: "1px solid rgba(56,189,248,0.9)",
-                background: disabled
-                  ? "rgba(15,23,42,0.9)"
-                  : "linear-gradient(90deg,#38bdf8,#0ea5e9)",
-                color: disabled ? "#64748b" : "#e5f9ff",
-                fontSize: 13,
-                fontWeight: 600,
-                cursor: disabled ? "not-allowed" : "pointer",
-                display: "inline-flex",
-                alignItems: "center",
-                gap: 8,
-              }}
-            >
-              {loadingAnalyze ? (
-                <>
-                  <span
-                    style={{
-                      width: 12,
-                      height: 12,
-                      borderRadius: "999px",
-                      border: "2px solid rgba(125,211,252,0.9)",
-                      borderTopColor: "transparent",
-                      animation: "spin 0.9s linear infinite",
-                    }}
-                  />
-                  Analyzing coverage…
-                </>
-              ) : (
-                <>
-                  <span>🧠</span>
-                  Analyze coverage (AI)
-                </>
-              )}
-            </button>
-          </div>
-          {/* MIDDLE PANEL — AI SUMMARY */}
-          <div
+          {!coverageSummary ? (
+            <div style={{ color: "#667085", fontSize: 13 }}>
+              Run “Analyze Coverage” to populate this summary.
+            </div>
+          ) : (
+            <pre style={{ whiteSpace: "pre-wrap", fontSize: 13 }}>
+              {JSON.stringify(coverageSummary, null, 2)}
+            </pre>
+          )}
+        </div>
+
+        {/* RIGHT PANEL — RULE PREVIEW */}
+        <div
+          style={{
+            borderRadius: 20,
+            padding: 18,
+            background: "rgba(15,23,42,0.75)",
+            border: "1px solid rgba(80,120,255,0.35)",
+            overflowY: "auto",
+          }}
+        >
+          <div style={{ fontSize: 14, marginBottom: 10 }}>Rule Preview (V5)</div>
+
+          {!rulePreview ? (
+            <div style={{ color: "#667085", fontSize: 13 }}>
+              Analyze coverage → then generate rule preview.
+            </div>
+          ) : (
+            <pre style={{ whiteSpace: "pre-wrap", fontSize: 13 }}>
+              {JSON.stringify(rulePreview, null, 2)}
+            </pre>
+          )}
+
+          <button
+            onClick={handleGenerateRulePreview}
+            disabled={rulePreviewLoading || !coverageSummary}
             style={{
-              borderRadius: 22,
-              padding: 18,
-              background: "rgba(15,23,42,0.88)",
-              border: "1px solid rgba(80,120,255,0.35)",
-              boxShadow:
-                "0 0 25px rgba(56,189,248,0.25), inset 0 0 22px rgba(15,23,42,0.96)",
-              backdropFilter: "blur(16px)",
-              display: "flex",
-              flexDirection: "column",
-              gap: 12,
-            }}
-          >
-            <div
-              style={{
-                fontSize: 12,
-                textTransform: "uppercase",
-                letterSpacing: 1.4,
-                color: "#9ca3af",
-              }}
-            >
-              AI Coverage Summary
-            </div>
-
-            {!aiSummary && (
-              <div
-                style={{
-                  fontSize: 13,
-                  color: "#9ca3af",
-                  padding: 10,
-                  borderRadius: 12,
-                  border: "1px dashed rgba(51,65,85,0.9)",
-                  background: "rgba(15,23,42,0.9)",
-                }}
-              >
-                Run <strong>Analyze coverage (AI)</strong> to see extracted
-                coverages, limits, and endorsements.
-              </div>
-            )}
-
-            {aiSummary && (
-              <div
-                style={{
-                  display: "flex",
-                  flexDirection: "column",
-                  gap: 10,
-                  fontSize: 13,
-                }}
-              >
-                {aiSummary.coverages?.map((cov, idx) => (
-                  <div
-                    key={idx}
-                    style={{
-                      borderRadius: 12,
-                      padding: 10,
-                      border: "1px solid rgba(51,65,85,0.9)",
-                      background:
-                        "linear-gradient(145deg,rgba(15,23,42,0.96),rgba(15,23,42,0.9))",
-                    }}
-                  >
-                    <div
-                      style={{
-                        fontSize: 13,
-                        fontWeight: 600,
-                        marginBottom: 4,
-                        color: "#e5e7eb",
-                      }}
-                    >
-                      {cov.name || "Coverage"}
-                    </div>
-                    {cov.limits && (
-                      <div
-                        style={{
-                          fontSize: 12,
-                          color: "#cbd5f5",
-                        }}
-                      >
-                        Limits: {cov.limits}
-                      </div>
-                    )}
-                    {cov.endorsements && cov.endorsements.length > 0 && (
-                      <div
-                        style={{
-                          fontSize: 12,
-                          color: "#a5b4fc",
-                          marginTop: 4,
-                        }}
-                      >
-                        Endorsements: {cov.endorsements.join(", ")}
-                      </div>
-                    )}
-                  </div>
-                ))}
-
-                {aiSummary.notes && (
-                  <div
-                    style={{
-                      marginTop: 6,
-                      fontSize: 12,
-                      color: "#9ca3af",
-                      borderRadius: 10,
-                      border: "1px dashed rgba(148,163,184,0.6)",
-                      padding: 8,
-                    }}
-                  >
-                    <strong>AI Notes:</strong> {aiSummary.notes}
-                  </div>
-                )}
-              </div>
-            )}
-          </div>
-
-          {/* RIGHT PANEL — RULE PLAN + ACTIONS */}
-          <div
-            style={{
-              borderRadius: 22,
-              padding: 18,
-              background: "rgba(15,23,42,0.84)",
-              border: "1px solid rgba(80,120,255,0.3)",
-              boxShadow:
-                "0 0 25px rgba(56,189,248,0.25), inset 0 0 22px rgba(15,23,42,0.92)",
-              backdropFilter: "blur(14px)",
-              display: "flex",
-              flexDirection: "column",
-              gap: 12,
-            }}
-          >
-            <div
-              style={{
-                fontSize: 12,
-                textTransform: "uppercase",
-                letterSpacing: 1.4,
-                color: "#9ca3af",
-              }}
-            >
-              V5 Rule Plan (Preview)
-            </div>
-
-            <div
-              style={{
-                fontSize: 13,
-                color: "#cbd5f5",
-              }}
-            >
-              AI can turn this coverage set into rule groups for your Requirements
-              Engine V5. Review the preview below before applying.
-            </div>
-
-            <button
-              onClick={handleGenerateRulesPreview}
-              disabled={!aiSummary || loadingRules}
-              style={{
-                padding: "9px 14px",
-                borderRadius: 12,
-                border: "1px solid rgba(129,140,248,0.9)",
-                background: !aiSummary
-                  ? "rgba(30,64,175,0.6)"
+              marginTop: 12,
+              width: "100%",
+              padding: "10px",
+              borderRadius: 12,
+              background:
+                !coverageSummary
+                  ? "rgba(129,140,248,0.15)"
                   : "linear-gradient(90deg,#6366f1,#4f46e5)",
-                color: "#e5e7ff",
-                fontSize: 13,
-                fontWeight: 500,
-                cursor: !aiSummary ? "not-allowed" : "pointer",
-                marginBottom: 6,
-                display: "inline-flex",
-                alignItems: "center",
-                gap: 8,
-              }}
-            >
-              {loadingRules ? (
-                <>
-                  <span
-                    style={{
-                      width: 12,
-                      height: 12,
-                      borderRadius: "999px",
-                      border: "2px solid rgba(191,219,254,0.9)",
-                      borderTopColor: "transparent",
-                      animation: "spin 0.9s linear infinite",
-                    }}
-                  />
-                  Building V5 rule plan…
-                </>
-              ) : (
-                <>
-                  <span>📐</span>
-                  Generate rule preview for V5
-                </>
-              )}
-            </button>
-
-            {!aiRulePlan && (
-              <div
-                style={{
-                  fontSize: 12,
-                  color: "#9ca3af",
-                  padding: 10,
-                  borderRadius: 12,
-                  border: "1px dashed rgba(55,65,81,0.9)",
-                  background: "rgba(15,23,42,0.9)",
-                }}
-              >
-                No rule plan yet. Run{" "}
-                <strong>Generate rule preview for V5</strong> once coverage
-                analysis is complete.
-              </div>
-            )}
-
-            {aiRulePlan && (
-              <div
-                style={{
-                  fontSize: 12,
-                  color: "#e5e7eb",
-                  borderRadius: 12,
-                  border: "1px solid rgba(51,65,85,0.9)",
-                  background: "rgba(15,23,42,0.98)",
-                  padding: 10,
-                  maxHeight: 260,
-                  overflowY: "auto",
-                  fontFamily: "monospace",
-                }}
-              >
-                {JSON.stringify(aiRulePlan, null, 2)}
-              </div>
-            )}
-
-            <button
-              onClick={() =>
-                setToast({
-                  open: true,
-                  type: "error",
-                  message:
-                    "In v2, this will push rules directly into V5. For now, copy the preview into Requirements V5.",
-                })
-              }
-              disabled={!aiRulePlan}
-              style={{
-                marginTop: 6,
-                padding: "9px 14px",
-                borderRadius: 999,
-                border: "1px solid rgba(56,189,248,0.8)",
-                background: aiRulePlan
-                  ? "linear-gradient(90deg,#22c55e,#16a34a)"
-                  : "rgba(15,23,42,0.85)",
-                color: aiRulePlan ? "#ecfdf5" : "#64748b",
-                fontSize: 13,
-                fontWeight: 600,
-                cursor: aiRulePlan ? "pointer" : "not-allowed",
-              }}
-            >
-              🚀 Apply to Requirements V5 (coming soon)
-            </button>
-          </div>
+              border: "1px solid #6366f1",
+              color: "white",
+              fontWeight: 600,
+              cursor: !coverageSummary ? "not-allowed" : "pointer",
+            }}
+          >
+            {rulePreviewLoading ? "Generating…" : "Generate Rule Preview"}
+          </button>
         </div>
       </div>
-
-      {/* TOAST */}
+      {/* Toast */}
       <ToastV2
         open={toast.open}
         message={toast.message}
         type={toast.type}
-        onClose={() => setToast((p) => ({ ...p, open: false }))}
+        onClose={() => setToast({ ...toast, open: false })}
       />
-
-      {/* GLOBAL SPIN ANIM */}
-      <style jsx global>{`
-        @keyframes spin {
-          to {
-            transform: rotate(360deg);
-          }
-        }
-      `}</style>
     </div>
   );
 }
