@@ -1,7 +1,7 @@
 // pages/admin/coverage-intel.js
 // ==========================================================
-// PHASE 6 — COVERAGE INTEL (AI Insurance Brain)
-// Analyze → Summarize → Build Rule Plan for V5 → Apply (Smart Merge)
+// PHASE 6+7 — COVERAGE INTEL (AI Insurance Brain)
+// Text or PDF → Analyze → Summarize → Build Rule Plan → Apply (Smart Merge)
 // ==========================================================
 
 import { useState } from "react";
@@ -32,6 +32,7 @@ export default function CoverageIntelPage() {
 
   // User input text
   const [sourceText, setSourceText] = useState("");
+  const [pdfFile, setPdfFile] = useState(null);
 
   // AI results
   const [coverageSummary, setCoverageSummary] = useState(null);
@@ -39,6 +40,7 @@ export default function CoverageIntelPage() {
 
   // Loading states
   const [intelLoading, setIntelLoading] = useState(false);
+  const [pdfLoading, setPdfLoading] = useState(false);
   const [rulePreviewLoading, setRulePreviewLoading] = useState(false);
   const [applyLoading, setApplyLoading] = useState(false);
 
@@ -47,8 +49,8 @@ export default function CoverageIntelPage() {
   const [summaryStats, setSummaryStats] = useState(null);
 
   // ==========================================================
-  // HANDLER 1 — Analyze Coverage (AI → Summary)
-  // ==========================================================
+  // HANDLER 1 — Analyze Coverage (TEXT → Summary)
+// ==========================================================
   async function handleAnalyzeCoverage() {
     if (!sourceText.trim()) {
       return setToast({
@@ -79,7 +81,7 @@ export default function CoverageIntelPage() {
       setToast({
         open: true,
         type: "success",
-        message: "Coverage analyzed successfully!",
+        message: "Coverage analyzed successfully from text.",
       });
     } catch (err) {
       setToast({
@@ -93,14 +95,62 @@ export default function CoverageIntelPage() {
   }
 
   // ==========================================================
-  // HANDLER 2 — Build Rule Preview (AI → V5 rulePlan)
+  // HANDLER 1B — Analyze Coverage (PDF → Summary)
+// ==========================================================
+  async function handleAnalyzePdf() {
+    if (!pdfFile) {
+      return setToast({
+        open: true,
+        type: "error",
+        message: "Upload a PDF first.",
+      });
+    }
+
+    try {
+      setPdfLoading(true);
+      setCoverageSummary(null);
+      setRulePreview(null);
+      setSummaryOpen(false);
+      setSummaryStats(null);
+
+      const formData = new FormData();
+      formData.append("file", pdfFile);
+
+      const res = await fetch("/api/coverage/pdf-intel", {
+        method: "POST",
+        body: formData,
+      });
+
+      const json = await res.json();
+      if (!json.ok) throw new Error(json.error || "PDF analysis failed.");
+
+      setCoverageSummary(json.summary);
+
+      setToast({
+        open: true,
+        type: "success",
+        message: "Coverage analyzed successfully from PDF.",
+      });
+    } catch (err) {
+      setToast({
+        open: true,
+        type: "error",
+        message: err.message || "Failed to analyze PDF coverage.",
+      });
+    } finally {
+      setPdfLoading(false);
+    }
+  }
+
   // ==========================================================
+  // HANDLER 2 — Build Rule Preview (AI → V5 rulePlan)
+// ==========================================================
   async function handleGenerateRulePreview() {
     if (!coverageSummary) {
       return setToast({
         open: true,
         type: "error",
-        message: "Run Analyze Coverage first.",
+        message: "Run Analyze Coverage (text or PDF) first.",
       });
     }
 
@@ -125,7 +175,7 @@ export default function CoverageIntelPage() {
       setToast({
         open: true,
         type: "success",
-        message: "Rule preview generated!",
+        message: "Rule preview generated.",
       });
     } catch (err) {
       setToast({
@@ -140,7 +190,7 @@ export default function CoverageIntelPage() {
 
   // ==========================================================
   // HANDLER 3 — Apply Rule Plan to V5 (Smart Merge + Nuclear Modal)
-  // ==========================================================
+// ==========================================================
   async function handleApplyToV5() {
     if (!orgId) {
       return setToast({
@@ -226,8 +276,8 @@ export default function CoverageIntelPage() {
       </h1>
 
       <p style={{ marginTop: 6, fontSize: 14, color: "#94a3b8" }}>
-        Paste carrier requirements → extract coverages → generate rule plan for
-        V5.
+        Paste text or upload a carrier PDF → extract coverages → generate rule
+        plan for V5.
       </p>
 
       {/* MAIN 3-COLUMN GRID */}
@@ -235,28 +285,29 @@ export default function CoverageIntelPage() {
         style={{
           marginTop: 20,
           display: "grid",
-          gridTemplateColumns: "1.2fr 1.8fr 1.4fr",
+          gridTemplateColumns: "1.3fr 1.7fr 1.5fr",
           gap: 20,
         }}
       >
-        {/* LEFT PANEL — SOURCE TEXT */}
+        {/* LEFT PANEL — SOURCE TEXT + PDF UPLOAD */}
         <div
           style={{
             borderRadius: 20,
             padding: 18,
-            background: "rgba(15,23,42,0.75)",
+            background: "rgba(15,23,42,0.78)",
             border: "1px solid rgba(80,120,255,0.35)",
+            display: "flex",
+            flexDirection: "column",
+            gap: 10,
           }}
         >
-          <div style={{ fontSize: 14, marginBottom: 10 }}>
-            Coverage Text
-          </div>
+          <div style={{ fontSize: 14, marginBottom: 4 }}>Coverage Text</div>
 
           <textarea
             value={sourceText}
             onChange={(e) => setSourceText(e.target.value)}
             placeholder={SAMPLE_PLACEHOLDER}
-            rows={16}
+            rows={10}
             style={{
               width: "100%",
               borderRadius: 12,
@@ -272,7 +323,7 @@ export default function CoverageIntelPage() {
             onClick={handleAnalyzeCoverage}
             disabled={intelLoading}
             style={{
-              marginTop: 12,
+              marginTop: 4,
               width: "100%",
               padding: "10px",
               borderRadius: 12,
@@ -285,7 +336,54 @@ export default function CoverageIntelPage() {
               cursor: intelLoading ? "not-allowed" : "pointer",
             }}
           >
-            {intelLoading ? "Analyzing…" : "Analyze Coverage (AI)"}
+            {intelLoading ? "Analyzing text…" : "Analyze Coverage (Text)"}
+          </button>
+
+          {/* PDF UPLOAD */}
+          <div
+            style={{
+              marginTop: 12,
+              fontSize: 13,
+              color: "#cbd5f5",
+            }}
+          >
+            Or upload a carrier PDF:
+          </div>
+
+          <input
+            type="file"
+            accept="application/pdf"
+            onChange={(e) => {
+              const f = e.target.files?.[0] || null;
+              setPdfFile(f);
+            }}
+            style={{
+              marginTop: 4,
+              fontSize: 12,
+              color: "#e5e7eb",
+            }}
+          />
+
+          <button
+            onClick={handleAnalyzePdf}
+            disabled={pdfLoading || !pdfFile}
+            style={{
+              marginTop: 8,
+              width: "100%",
+              padding: "9px",
+              borderRadius: 12,
+              background:
+                !pdfFile || pdfLoading
+                  ? "rgba(56,189,248,0.25)"
+                  : "linear-gradient(90deg,#0ea5e9,#38bdf8)",
+              border: "1px solid #38bdf8",
+              color: "white",
+              fontWeight: 600,
+              fontSize: 13,
+              cursor: !pdfFile || pdfLoading ? "not-allowed" : "pointer",
+            }}
+          >
+            {pdfLoading ? "Analyzing PDF…" : "Analyze Coverage (PDF)"}
           </button>
         </div>
 
@@ -294,7 +392,7 @@ export default function CoverageIntelPage() {
           style={{
             borderRadius: 20,
             padding: 18,
-            background: "rgba(15,23,42,0.75)",
+            background: "rgba(15,23,42,0.78)",
             border: "1px solid rgba(80,120,255,0.35)",
             overflowY: "auto",
           }}
@@ -305,7 +403,8 @@ export default function CoverageIntelPage() {
 
           {!coverageSummary ? (
             <div style={{ color: "#667085", fontSize: 13 }}>
-              Run “Analyze Coverage” to populate this summary.
+              Run “Analyze Coverage (Text)” or “Analyze Coverage (PDF)” to
+              populate this summary.
             </div>
           ) : (
             <pre
@@ -325,7 +424,7 @@ export default function CoverageIntelPage() {
           style={{
             borderRadius: 20,
             padding: 18,
-            background: "rgba(15,23,42,0.75)",
+            background: "rgba(15,23,42,0.78)",
             border: "1px solid rgba(80,120,255,0.35)",
             overflowY: "auto",
             display: "flex",
