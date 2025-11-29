@@ -48,7 +48,7 @@ export default function CoverageIntelPage() {
 
   // ==========================================================
   // HANDLER 1 — Analyze Coverage (AI → Summary)
-// ==========================================================
+  // ==========================================================
   async function handleAnalyzeCoverage() {
     if (!sourceText.trim()) {
       return setToast({
@@ -94,7 +94,7 @@ export default function CoverageIntelPage() {
 
   // ==========================================================
   // HANDLER 2 — Build Rule Preview (AI → V5 rulePlan)
-// ==========================================================
+  // ==========================================================
   async function handleGenerateRulePreview() {
     if (!coverageSummary) {
       return setToast({
@@ -140,7 +140,7 @@ export default function CoverageIntelPage() {
 
   // ==========================================================
   // HANDLER 3 — Apply Rule Plan to V5 (Smart Merge + Nuclear Modal)
-// ==========================================================
+  // ==========================================================
   async function handleApplyToV5() {
     if (!orgId) {
       return setToast({
@@ -248,7 +248,9 @@ export default function CoverageIntelPage() {
             border: "1px solid rgba(80,120,255,0.35)",
           }}
         >
-          <div style={{ fontSize: 14, marginBottom: 10 }}>Coverage Text</div>
+          <div style={{ fontSize: 14, marginBottom: 10 }}>
+            Coverage Text
+          </div>
 
           <textarea
             value={sourceText}
