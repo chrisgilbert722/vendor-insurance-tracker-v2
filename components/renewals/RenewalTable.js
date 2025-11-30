@@ -5,10 +5,10 @@ import RenewalStageBadge from "./RenewalStageBadge";
 
 /**
  * Props:
- *  orgId          (required)
- *  search         (string)
- *  stageFilter    ("all" | "90" | "30" | "7" | "3" | "1" | "0")
- *  coverageFilter ("all" | coverage type)
+ *  orgId
+ *  search
+ *  stageFilter
+ *  coverageFilter
  */
 export default function RenewalTable({
   orgId,
@@ -18,6 +18,9 @@ export default function RenewalTable({
 }) {
   const [rows, setRows] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [escalateLoadingId, setEscalateLoadingId] = useState(null);
+  const [escalateError, setEscalateError] = useState("");
+
   useEffect(() => {
     if (!orgId) return;
 
@@ -33,6 +36,36 @@ export default function RenewalTable({
 
     load();
   }, [orgId]);
+
+  async function handleEscalate(row, actionType) {
+    try {
+      setEscalateLoadingId(`${row.id}-${actionType}`);
+      setEscalateError("");
+
+      const msgBase =
+        actionType === "broker"
+          ? `Request updated ${row.coverage_type} COI from broker.`
+          : actionType === "vendor"
+          ? `Remind vendor to upload renewed ${row.coverage_type} COI.`
+          : `Flag this renewal internally for follow-up.`;
+
+      await fetch("/api/renewals/escalate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          orgId,
+          vendorId: row.vendor_id,
+          policyId: row.policy_id,
+          actionType,
+          message: msgBase,
+        }),
+      });
+    } catch (err) {
+      setEscalateError(err.message || "Escalation failed.");
+    } finally {
+      setEscalateLoadingId(null);
+    }
+  }
   // Apply filters
   const filtered = rows
     .filter((r) => {
@@ -52,7 +85,9 @@ export default function RenewalTable({
       if (coverageFilter !== "all") {
         if (
           !r.coverage_type ||
-          !r.coverage_type.toLowerCase().includes(coverageFilter.toLowerCase())
+          !r.coverage_type
+            .toLowerCase()
+            .includes(coverageFilter.toLowerCase())
         ) {
           return false;
         }
@@ -60,8 +95,9 @@ export default function RenewalTable({
 
       return true;
     })
-    // Sort by expiration date / days left
+    // Sort by soonest days_left
     .sort((a, b) => a.days_left - b.days_left);
+
   if (loading) {
     return (
       <div style={{ fontSize: 12, color: "#9ca3af", padding: 10 }}>
@@ -93,6 +129,20 @@ export default function RenewalTable({
         overflow: "hidden",
       }}
     >
+      {escalateError && (
+        <div
+          style={{
+            padding: 8,
+            fontSize: 12,
+            color: "#fecaca",
+            background: "rgba(127,29,29,0.75)",
+            borderBottom: "1px solid rgba(248,113,113,0.9)",
+          }}
+        >
+          {escalateError}
+        </div>
+      )}
+
       <table
         style={{
           width: "100%",
@@ -103,23 +153,28 @@ export default function RenewalTable({
       >
         <thead>
           <tr>
-            {["Vendor", "Coverage", "Expires", "Stage", "Days Left"].map(
-              (h) => (
-                <th
-                  key={h}
-                  style={{
-                    textAlign: "left",
-                    padding: "10px 12px",
-                    background: "rgba(15,23,42,1)",
-                    color: "#9ca3af",
-                    borderBottom: "1px solid rgba(51,65,85,0.9)",
-                    fontWeight: 600,
-                  }}
-                >
-                  {h}
-                </th>
-              )
-            )}
+            {[
+              "Vendor",
+              "Coverage",
+              "Expires",
+              "Stage",
+              "Days Left",
+              "Actions",
+            ].map((h) => (
+              <th
+                key={h}
+                style={{
+                  textAlign: "left",
+                  padding: "10px 12px",
+                  background: "rgba(15,23,42,1)",
+                  color: "#9ca3af",
+                  borderBottom: "1px solid rgba(51,65,85,0.9)",
+                  fontWeight: 600,
+                }}
+              >
+                {h}
+              </th>
+            ))}
           </tr>
         </thead>
 
@@ -127,6 +182,16 @@ export default function RenewalTable({
           {filtered.map((r) => {
             const danger =
               r.days_left <= 3 || r.stage === 0 ? "#fb7185" : "#38bdf8";
+
+            const btnBase = {
+              borderRadius: 999,
+              border: "1px solid rgba(148,163,184,0.8)",
+              background: "rgba(15,23,42,0.9)",
+              color: "#e5e7eb",
+              fontSize: 10,
+              padding: "4px 8px",
+              cursor: "pointer",
+            };
 
             return (
               <tr
@@ -181,6 +246,50 @@ export default function RenewalTable({
                 >
                   {r.days_left}
                 </td>
+
+                {/* ACTIONS */}
+                <td
+                  style={{
+                    padding: "10px 12px",
+                    display: "flex",
+                    gap: 6,
+                    alignItems: "center",
+                  }}
+                >
+                  <button
+                    style={btnBase}
+                    disabled={
+                      escalateLoadingId === `${r.id}-broker`
+                    }
+                    onClick={() => handleEscalate(r, "broker")}
+                  >
+                    {escalateLoadingId === `${r.id}-broker`
+                      ? "Broker…"
+                      : "Broker"}
+                  </button>
+                  <button
+                    style={btnBase}
+                    disabled={
+                      escalateLoadingId === `${r.id}-vendor`
+                    }
+                    onClick={() => handleEscalate(r, "vendor")}
+                  >
+                    {escalateLoadingId === `${r.id}-vendor`
+                      ? "Vendor…"
+                      : "Vendor"}
+                  </button>
+                  <button
+                    style={btnBase}
+                    disabled={
+                      escalateLoadingId === `${r.id}-internal`
+                    }
+                    onClick={() => handleEscalate(r, "internal")}
+                  >
+                    {escalateLoadingId === `${r.id}-internal`
+                      ? "Internal…"
+                      : "Internal"}
+                  </button>
+                </td>
               </tr>
             );
           })}
@@ -189,4 +298,4 @@ export default function RenewalTable({
     </div>
   );
 }
-// END RenewalTable V4.5
+
