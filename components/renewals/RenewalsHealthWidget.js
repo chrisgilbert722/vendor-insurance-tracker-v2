@@ -1,3 +1,4 @@
+// components/renewals/RenewalsHealthWidget.js
 import { useEffect, useState } from "react";
 
 const card = {
@@ -84,7 +85,7 @@ function colors(health) {
 function healthText(h) {
   switch (h) {
     case "healthy": return "Healthy";
-    case "warning": return "Delayed";
+    case "warning": return "Backlog / Delayed";
     case "stale": return "Stale";
     case "error": return "Error";
     case "missing": return "No Signal";
@@ -113,32 +114,60 @@ export default function RenewalsHealthWidget() {
     return () => clearInterval(id);
   }, []);
 
-  const h = data?.health || "unknown";
-  const c = colors(h);
+  const health = data?.health || "unknown";
+  const c = colors(health);
+
+  const lastRunStr =
+    !loading && data?.lastRunAt
+      ? new Date(data.lastRunAt).toLocaleString(undefined, {
+          hour12: true,
+        })
+      : null;
+
+  const queuePending = data?.queuePending ?? 0;
+  const queueFailedLastHour = data?.queueFailedLastHour ?? 0;
+  const queueStalePending = data?.queueStalePending ?? 0;
 
   return (
     <div style={card}>
       <div>
         <div style={label}>Renewals Engine</div>
-        <div style={title}>CRON Heartbeat</div>
+        <div style={title}>CRON & Email Queue Health</div>
 
         <div style={{ marginTop: "6px", fontSize: "11px", color: "#94a3b8" }}>
           {loading && "Checking…"}
-          {!loading && data?.lastRunAt && (
+          {!loading && lastRunStr && (
             <>
-              Last run:{" "}
-              {new Date(data.lastRunAt).toLocaleString(undefined, {
-                hour12: true,
-              })}
-              {typeof data.diffMinutes === "number" && (
+              Last run: {lastRunStr}
+              {typeof data?.diffMinutes === "number" && (
                 <> · {data.diffMinutes} min ago</>
               )}
-              {typeof data.runCount === "number" && (
+              {typeof data?.runCount === "number" && (
                 <> · total: {data.runCount}</>
               )}
             </>
           )}
-          {!loading && !data?.lastRunAt && "No runs recorded yet."}
+          {!loading && !lastRunStr && "No runs recorded yet."}
+          {!loading && data?.error && (
+            <span style={{ color: "#fca5a5" }}> · {data.error}</span>
+          )}
+        </div>
+
+        <div
+          style={{
+            marginTop: "4px",
+            fontSize: "11px",
+            color: "#9ca3af",
+          }}
+        >
+          Queue: {queuePending} pending
+          {" · "}
+          fails (1h): {queueFailedLastHour}
+          {queueStalePending > 0 && (
+            <>
+              {" · "}SLA breaches: {queueStalePending}
+            </>
+          )}
         </div>
       </div>
 
@@ -156,8 +185,8 @@ export default function RenewalsHealthWidget() {
             background: c.dotBg,
             boxShadow: `0 0 6px ${c.dotBg}`,
           }}
-        ></div>
-        <span>{healthText(h)}</span>
+        />
+        <span>{healthText(health)}</span>
       </div>
     </div>
   );
