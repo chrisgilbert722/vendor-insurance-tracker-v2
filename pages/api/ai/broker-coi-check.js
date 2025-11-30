@@ -1,7 +1,5 @@
 // pages/api/ai/broker-coi-check.js
 // UACC — Broker COI Auto-Checker
-// Reads latest COI analysis + failing rules + alerts
-// and tells the broker EXACTLY what to fix.
 
 import OpenAI from "openai";
 import { sql } from "../../../lib/db";
@@ -27,9 +25,7 @@ export default async function handler(req, res) {
       });
     }
 
-    // ==========================================
-    // 1. Load latest COI document memory (from copilot_memory)
-    // ==========================================
+    // 1) Latest COI / document memory
     const docMem = await sql`
       SELECT memory
       FROM copilot_memory
@@ -48,13 +44,11 @@ export default async function handler(req, res) {
       return res.status(200).json({
         ok: false,
         error:
-          "No analyzed COI/document found for this vendor/policy. Upload a document via Copilot first.",
+          "No analyzed COI/document found for this vendor/policy. Upload a COI via the doc intake first.",
       });
     }
 
-    // ==========================================
-    // 2. Load failing rules from vendor_compliance_cache
-    // ==========================================
+    // 2) Compliance / failing rules
     const compRows = await sql`
       SELECT failing, passing, status, summary
       FROM vendor_compliance_cache
@@ -68,9 +62,7 @@ export default async function handler(req, res) {
     const complianceStatus = compliance?.status || "unknown";
     const complianceSummary = compliance?.summary || "";
 
-    // ==========================================
-    // 3. Load alerts related to this vendor/policy
-    // ==========================================
+    // 3) Alerts
     const alerts = await sql`
       SELECT *
       FROM alerts_v2
@@ -80,9 +72,7 @@ export default async function handler(req, res) {
       LIMIT 20;
     `;
 
-    // ==========================================
-    // 4. Load policy & vendor for more context
-    // ==========================================
+    // 4) Vendor & Policy context
     let policy = null;
     if (policyId) {
       const p = await sql`
@@ -102,9 +92,7 @@ export default async function handler(req, res) {
     `;
     const vendor = vRows[0] || null;
 
-    // ==========================================
-    // 5. Build AI Prompt for Broker COI Check
-    // ==========================================
+    // 5) AI prompt
     const systemPrompt = `
 You are "Broker COI Auto-Checker", an AI assistant for INSURANCE BROKERS.
 
@@ -123,7 +111,7 @@ Your job:
 6. Be precise but not over-technical. Use normal insurance language a broker understands.
 7. If something is unclear from the data, say so and recommend what to verify.
 
-Return JSON with this exact shape:
+Return JSON with this shape:
 
 {
   "summary": "...",
@@ -143,7 +131,7 @@ Return JSON with this exact shape:
   "sample_email": "..."
 }
 
-Then after the JSON, include a human-readable explanation.
+After the JSON, include a short human-readable explanation.
 `;
 
     const userPrompt = `
@@ -156,7 +144,7 @@ ${JSON.stringify(policy, null, 2)}
 EXTRACTED DOCUMENT:
 ${JSON.stringify(extracted, null, 2)}
 
-COMPLIANCE STATUS:
+COMPLIANCE:
 ${JSON.stringify(
       {
         status: complianceStatus,
@@ -177,7 +165,7 @@ ${JSON.stringify(alerts, null, 2)}
         { role: "system", content: systemPrompt },
         { role: "user", content: userPrompt },
       ],
-      temperature: 0.1,
+      temperature: 0.15,
     });
 
     const text = completion.choices[0].message.content || "";
@@ -187,7 +175,9 @@ ${JSON.stringify(alerts, null, 2)}
       const jsonStart = text.indexOf("{");
       const jsonEnd = text.lastIndexOf("}");
       const jsonChunk = text.slice(jsonStart, jsonEnd + 1);
-      parsed = JSON.parse(jsonChunk);
+      parsed = JSON.parse(
+        jsonChunk.replace(/```json/gi, "").replace(/```/g, "").trim()
+      );
     } catch (err) {
       console.error("[broker-coi-check] JSON parse error:", err);
       parsed = {
