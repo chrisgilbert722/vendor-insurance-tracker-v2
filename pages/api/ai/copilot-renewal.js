@@ -5,49 +5,63 @@ import { sql } from "../../../lib/db";
 const client = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
 /* ============================================================
+   MODEL ROUTING
+============================================================ */
+function selectModel(persona, message, context) {
+  const msgLower = message.toLowerCase();
+
+  // Document or deep coverage evaluation
+  if (
+    msgLower.includes("interpret") ||
+    msgLower.includes("analyze pdf") ||
+    msgLower.includes("explain this document") ||
+    msgLower.includes("endorsement") ||
+    msgLower.includes("coverage details") ||
+    msgLower.includes("read")
+  ) {
+    return "gpt-4o"; // or "gpt-5" if desired
+  }
+
+  // Broker: high reasoning
+  if (persona === "broker") return "gpt-4o";
+
+  // Admin: mid/high reasoning
+  if (persona === "admin") return "gpt-4o";
+
+  // Vendor: cheap + fast
+  if (persona === "vendor") return "gpt-4o-mini";
+
+  return "gpt-4o-mini";
+}
+
+/* ============================================================
    CONTEXT BUILDER
 ============================================================ */
 async function buildRenewalContext({ orgId, vendorId, policyId }) {
   const ctx = { orgId };
 
-  // POLICY
   if (policyId) {
     const policyRows = await sql`
-      SELECT *
-      FROM policies
-      WHERE id = ${policyId}
-      LIMIT 1;
+      SELECT * FROM policies WHERE id = ${policyId} LIMIT 1;
     `;
     ctx.policy = policyRows[0] || null;
   }
 
-  // VENDOR
   if (vendorId) {
     const vendorRows = await sql`
-      SELECT *
-      FROM vendors
-      WHERE id = ${vendorId}
-      LIMIT 1;
+      SELECT * FROM vendors WHERE id = ${vendorId} LIMIT 1;
     `;
     ctx.vendor = vendorRows[0] || null;
   }
 
-  // RENEWAL SCHEDULE
   if (policyId) {
     const scheduleRows = await sql`
-      SELECT *
-      FROM policy_renewal_schedule
-      WHERE policy_id = ${policyId}
-      LIMIT 1;
+      SELECT * FROM policy_renewal_schedule WHERE policy_id = ${policyId} LIMIT 1;
     `;
     ctx.schedule = scheduleRows[0] || null;
-  }
 
-  // RENEWAL EVENTS
-  if (policyId) {
     const events = await sql`
-      SELECT *
-      FROM policy_renewal_events
+      SELECT * FROM policy_renewal_events
       WHERE policy_id = ${policyId}
       ORDER BY created_at DESC
       LIMIT 20;
@@ -55,7 +69,6 @@ async function buildRenewalContext({ orgId, vendorId, policyId }) {
     ctx.events = events || [];
   }
 
-  // ALERTS (vendor-based)
   if (vendorId) {
     const alerts = await sql`
       SELECT *
@@ -67,39 +80,23 @@ async function buildRenewalContext({ orgId, vendorId, policyId }) {
     ctx.alerts = alerts || [];
   }
 
-  // COMPLIANCE SNAPSHOT
-  if (vendorId && orgId) {
-    const compRows = await sql`
-      SELECT *
-      FROM vendor_compliance_cache
-      WHERE org_id = ${orgId} AND vendor_id = ${vendorId}
-      LIMIT 1;
-    `;
-    ctx.compliance = compRows[0] || null;
-  }
-
   return ctx;
 }
 
 /* ============================================================
-   SYSTEM PROMPTS (AI Personas)
+   SYSTEM PROMPT BUILDER
 ============================================================ */
 function buildSystemPrompt(persona, ctx) {
   const base = `
-You are "Compliance Copilot" — an AI assistant expert in:
+You are "Compliance Copilot", an expert in:
 - insurance compliance
 - COI interpretation
-- policy renewals
-- construction & vendor risk
-- broker coordination
-- contractor onboarding
-- commercial insurance logic
-- missing coverage detection
-- renewal communication
+- renewal strategy
+- vendor risk
+- construction coverage
+- endorsements & commercial insurance
 
-Always speak clearly.
-Always provide exact action steps.
-Never use legal jargon unless explaining it.
+Your job is to give clean, simple, actionable answers.
 
 Context:
 ${JSON.stringify(ctx, null, 2)}
@@ -110,52 +107,28 @@ ${JSON.stringify(ctx, null, 2)}
       base +
       `
 You are helping an ADMIN.
-Your goals:
-- Explain why the vendor is failing
-- Identify missing coverage
-- Identify risk
-- Break down alerts clearly
-- Suggest renewal next steps
-- Suggest escalation (vendor/broker/internal)
-- Recommend what admin should do next
-Answer like a senior risk manager.
-      `
+Explain risk, compliance issues, renewal timing, and provide escalation steps.
+`
     );
   }
-
   if (persona === "vendor") {
     return (
       base +
       `
 You are helping a VENDOR.
-Your goals:
-- Explain why they are not compliant
-- Tell them EXACTLY what document is missing
-- Tell them EXACTLY what needs to be fixed in their COI
-- Provide step-by-step instructions
-- Provide sample broker emails
-- Keep the language VERY simple
-You are their friendly compliance coach.
-      `
+Give plain-language steps, explain what's missing, and generate broker email text.
+`
     );
   }
-
   if (persona === "broker") {
     return (
       base +
       `
-You are helping an INSURANCE BROKER.
-Your goals:
-- Identify missing limits / endorsements
-- Explain required coverage
-- Show exactly what must be updated in the COI
-- Provide precise insurance terminology
-- Help them generate corrected COIs
-Respond like a senior commercial insurance analyst.
-      `
+You are helping a BROKER.
+Explain exactly what to update in the COI, including limits and endorsements.
+`
     );
   }
-
   return base;
 }
 
@@ -174,15 +147,14 @@ export default async function handler(req, res) {
       return res.status(400).json({ ok: false, error: "Missing fields." });
     }
 
-    // 1. Build context
     const context = await buildRenewalContext({ orgId, vendorId, policyId });
-
-    // 2. Build system prompt
     const systemPrompt = buildSystemPrompt(persona, context);
 
-    // 3. AI Completion
+    // MODEL ROUTING
+    const model = selectModel(persona, message, context);
+
     const completion = await client.chat.completions.create({
-      model: "gpt-4o-mini",
+      model,
       messages: [
         { role: "system", content: systemPrompt },
         { role: "user", content: message },
@@ -196,9 +168,10 @@ export default async function handler(req, res) {
       ok: true,
       reply,
       context,
+      model,
     });
   } catch (err) {
-    console.error("[copilot-renewal] ERROR:", err);
+    console.error("[copilot-renewal] ERROR", err);
     return res.status(500).json({ ok: false, error: err.message });
   }
 }
