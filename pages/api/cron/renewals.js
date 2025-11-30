@@ -12,6 +12,7 @@ export default async function handler(req, res) {
 
   const jobName = "renewals-cron";
   const startedAt = new Date();
+
   let summary = {
     renewalEngine: null,
     queued: 0,
@@ -20,19 +21,19 @@ export default async function handler(req, res) {
   };
 
   try {
-    // 1. RUN RENEWAL ENGINE
+    // 1. RENEWAL ENGINE
     summary.renewalEngine = await runRenewalEngineAllOrgsV2();
 
-    // 2. CREATE QUEUE FROM AUTO EMAIL BRAIN
+    // 2. GENERATE + QUEUE AUTO EMAILS
     const queued = await autoEmailBrain();
     summary.queued = queued?.count || 0;
 
-    // 3. SEND EMAILS
+    // 3. SEND EMAILS IN QUEUE
     const results = await processRenewalEmailQueue(40);
     summary.sent = results.filter(r => r.status === "sent").length;
     summary.failed = results.filter(r => r.status === "failed").map(r => r.id);
 
-    // 4. HEARTBEAT SUCCESS
+    // 4. HEARTBEAT — SUCCESS
     await query(
       `
       INSERT INTO cron_renewals_heartbeat
@@ -60,7 +61,7 @@ export default async function handler(req, res) {
   } catch (err) {
     const msg = err?.message || "Unknown error";
 
-    // HEARTBEAT FAILURE
+    // HEARTBEAT — FAILURE
     await query(
       `
       INSERT INTO cron_renewals_heartbeat
