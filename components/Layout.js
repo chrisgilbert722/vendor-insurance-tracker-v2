@@ -12,6 +12,33 @@ export default function Layout({ children }) {
   const { isAdmin, isManager, isViewer } = useRole();
   useOrg(); // ensure org context mounts
 
+  // 🚨 BYPASS LAYOUT FOR ONBOARDING ROUTES
+  // This returns the onboarding wizard FULL SCREEN with no sidebar/header.
+  if (pathname.startsWith("/onboarding")) {
+    return (
+      <div
+        style={{
+          minHeight: "100vh",
+          width: "100vw",
+          overflow: "hidden",
+          background: `
+            radial-gradient(circle at 20% 0%, rgba(56,189,248,0.12), transparent 40%),
+            radial-gradient(circle at 80% 0%, rgba(168,85,247,0.10), transparent 35%),
+            radial-gradient(circle at 50% 90%, rgba(34,197,94,0.08), transparent 50%),
+            linear-gradient(180deg, #020617 0%, #000000 100%)
+          `,
+          display: "flex",
+          justifyContent: "center",
+          alignItems: "center",
+          padding: "30px",
+        }}
+      >
+        {children}
+      </div>
+    );
+  }
+
+  // 🔥 NORMAL LAYOUT FOR ALL OTHER ROUTES
   return (
     <div
       style={{
@@ -19,8 +46,6 @@ export default function Layout({ children }) {
         minHeight: "100vh",
         width: "100vw",
         overflow: "hidden",
-
-        // 🔥 FULLSCREEN COCKPIT BACKGROUND
         background: `
           radial-gradient(circle at 20% 0%, rgba(56,189,248,0.12), transparent 40%),
           radial-gradient(circle at 80% 0%, rgba(168,85,247,0.10), transparent 35%),
@@ -57,7 +82,7 @@ export default function Layout({ children }) {
         isViewer={isViewer}
       />
 
-      {/* 🔥 MAIN AREA */}
+      {/* 🔥 MAIN PANEL */}
       <div
         style={{
           flex: 1,
@@ -67,10 +92,10 @@ export default function Layout({ children }) {
           zIndex: 2,
         }}
       >
-        {/* 🔥 HUD HEADER BAR */}
+        {/* 🔥 GLOBAL HEADER */}
         <Header />
 
-        {/* 🔥 MAIN DASHBOARD CONTENT */}
+        {/* 🔥 PAGE CONTENT */}
         <main
           style={{
             padding: "30px 40px",
