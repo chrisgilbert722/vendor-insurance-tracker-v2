@@ -14,26 +14,30 @@ export default function CopilotBox({
       role: "assistant",
       content:
         persona === "vendor"
-          ? "Hi! I'm your Compliance Copilot. You can ask me anything — or upload a document and I’ll read it for you."
+          ? "Hi! I'm your Compliance Copilot. You can upload documents or ask me what to fix. You can also click **Fix My Compliance** and I’ll walk you step-by-step."
           : persona === "broker"
-          ? "Upload a COI or endorsement and I’ll tell you exactly what needs correcting."
-          : "I'm Compliance Copilot. Ask me anything — or upload a document for analysis.",
+          ? "Upload a COI or endorsement and I’ll tell you exactly what needs correcting — or ask me anything."
+          : "I'm Compliance Copilot. Ask me anything — or upload a document for instant analysis.",
     },
   ]);
 
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
   const [docLoading, setDocLoading] = useState(false);
+  const [fixLoading, setFixLoading] = useState(false);
 
   const bottomRef = useRef();
 
-  useEffect(() => {
+  const scrollToBottom = () =>
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages, loading, docLoading]);
 
-  /* ==========================================
+  useEffect(() => {
+    scrollToBottom();
+  }, [messages, loading, docLoading, fixLoading]);
+
+  /* =====================================================
      SEND TEXT MESSAGE
-  ========================================== */
+  ===================================================== */
   async function sendMessage() {
     if (!input.trim()) return;
 
@@ -57,16 +61,20 @@ export default function CopilotBox({
 
       const data = await res.json();
 
-      const botMsg = {
-        role: "assistant",
-        content: data.reply || "I couldn't process that.",
-      };
-
-      setMessages((prev) => [...prev, botMsg]);
+      setMessages((prev) => [
+        ...prev,
+        {
+          role: "assistant",
+          content: data.reply || "I couldn't process that.",
+        },
+      ]);
     } catch (err) {
       setMessages((prev) => [
         ...prev,
-        { role: "assistant", content: "Network error. Try again." },
+        {
+          role: "assistant",
+          content: "Network error. Try again.",
+        },
       ]);
     }
 
@@ -77,9 +85,9 @@ export default function CopilotBox({
     if (e.key === "Enter" && !loading) sendMessage();
   }
 
-  /* ==========================================
-     DOCUMENT UPLOAD → AI DOCUMENT ENGINE
-  ========================================== */
+  /* =====================================================
+     DOCUMENT UPLOAD → UACC DOC ENGINE
+  ===================================================== */
   async function handleDocumentUpload(e) {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -92,16 +100,12 @@ export default function CopilotBox({
     form.append("vendorId", vendorId || "");
     form.append("policyId", policyId || "");
 
-    // Show immediate placeholder in chat
     setMessages((prev) => [
       ...prev,
-      {
-        role: "user",
-        content: `Uploaded document: ${file.name}`,
-      },
+      { role: "user", content: `Uploaded: **${file.name}**` },
       {
         role: "assistant",
-        content: `Analyzing **${file.name}**… This may take a few seconds.`,
+        content: `Analyzing **${file.name}**… please wait.`,
       },
     ]);
 
@@ -110,36 +114,108 @@ export default function CopilotBox({
         method: "POST",
         body: form,
       });
+
       const data = await res.json();
 
-      if (!data.ok) {
-        setMessages((prev) => [
-          ...prev,
-          { role: "assistant", content: "Document analysis failed." },
-        ]);
-      } else {
-        // Show AI results
-        const docMsg = {
-          role: "assistant",
-          content:
-            "📄 **Document Analysis Result:**\n\n```json\n" +
-            JSON.stringify(data.extracted, null, 2) +
-            "\n```\n\n" +
-            data.raw,
-        };
+      const block =
+        "📄 **Document Analysis**\n\n```json\n" +
+        JSON.stringify(data.extracted, null, 2) +
+        "\n```\n\n" +
+        data.raw;
 
-        setMessages((prev) => [...prev, docMsg]);
-      }
+      setMessages((prev) => [...prev, { role: "assistant", content: block }]);
     } catch (err) {
       setMessages((prev) => [
         ...prev,
-        { role: "assistant", content: "Upload error. Try again." },
+        { role: "assistant", content: "Upload failed. Try again." },
       ]);
     }
 
     setDocLoading(false);
   }
 
+  /* =====================================================
+     VENDOR FIX MODE — THE BEAST
+  ===================================================== */
+  async function runFixMode() {
+    if (!vendorId) {
+      setMessages((prev) => [
+        ...prev,
+        {
+          role: "assistant",
+          content: "I need a vendor ID to run Fix Mode.",
+        },
+      ]);
+      return;
+    }
+
+    setFixLoading(true);
+
+    setMessages((prev) => [
+      ...prev,
+      {
+        role: "assistant",
+        content:
+          "🛠 **Checking what’s wrong…**\nExamining your documents, rules, alerts, and compliance history…",
+      },
+    ]);
+
+    try {
+      const res = await fetch("/api/ai/vendor-fix", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ orgId, vendorId, policyId }),
+      });
+
+      const data = await res.json();
+
+      if (!data.ok) {
+        setMessages((prev) => [
+          ...prev,
+          {
+            role: "assistant",
+            content: "I couldn’t generate fix steps. Try again.",
+          },
+        ]);
+      } else {
+        const { fixMode } = data;
+
+        const block =
+          "🛠 **Vendor Fix Plan**\n\n" +
+          "### Summary\n" +
+          fixMode.plain_english_summary +
+          "\n\n### Why You're Not Compliant\n" +
+          fixMode.why_non_compliant.map((x) => `- ${x}`).join("\n") +
+          "\n\n### Fix Steps\n" +
+          fixMode.fix_steps
+            .map(
+              (step) =>
+                `**${step.title}**\n${step.step_by_step
+                  .map((s) => `- ${s}`)
+                  .join("\n")}`
+            )
+            .join("\n\n") +
+          "\n\n### Upload Requirements\n" +
+          fixMode.upload_requirements.map((x) => `- ${x}`).join("\n") +
+          "\n\n### Broker Email\n```\n" +
+          fixMode.sample_broker_email +
+          "\n```\n";
+
+        setMessages((prev) => [...prev, { role: "assistant", content: block }]);
+      }
+    } catch (err) {
+      setMessages((prev) => [
+        ...prev,
+        { role: "assistant", content: "Fix Mode failed. Try again." },
+      ]);
+    }
+
+    setFixLoading(false);
+  }
+
+  /* =====================================================
+     MAIN UI
+  ===================================================== */
   return (
     <div
       style={{
@@ -230,7 +306,7 @@ export default function CopilotBox({
           </div>
         ))}
 
-        {(loading || docLoading) && (
+        {(loading || docLoading || fixLoading) && (
           <div style={{ color: "#94a3b8", fontSize: 12, marginTop: 10 }}>
             Copilot is thinking…
           </div>
@@ -249,7 +325,7 @@ export default function CopilotBox({
           gap: 6,
         }}
       >
-        {/* Document Input */}
+        {/* DOCUMENT UPLOAD */}
         <label
           style={{
             padding: "8px 12px",
@@ -272,7 +348,27 @@ export default function CopilotBox({
           />
         </label>
 
-        {/* Text Input */}
+        {/* FIX MY COMPLIANCE BUTTON */}
+        {persona === "vendor" && (
+          <button
+            onClick={runFixMode}
+            disabled={fixLoading}
+            style={{
+              padding: "8px 12px",
+              borderRadius: 12,
+              background: "rgba(34,197,94,0.3)",
+              border: "1px solid rgba(34,197,94,0.5)",
+              color: "#34d399",
+              fontWeight: 600,
+              fontSize: 12,
+              cursor: "pointer",
+            }}
+          >
+            🛠 Fix My Compliance
+          </button>
+        )}
+
+        {/* TEXT INPUT */}
         <input
           value={input}
           onChange={(e) => setInput(e.target.value)}
@@ -290,20 +386,22 @@ export default function CopilotBox({
           }}
         />
 
+        {/* SEND */}
         <button
           onClick={sendMessage}
-          disabled={loading || docLoading}
+          disabled={loading || docLoading || fixLoading}
           style={{
             padding: "8px 14px",
             borderRadius: 12,
             background:
-              loading || docLoading
+              loading || docLoading || fixLoading
                 ? "rgba(56,189,248,0.25)"
                 : "linear-gradient(90deg,#38bdf8,#0ea5e9)",
             color: "white",
             fontSize: 13,
             fontWeight: 600,
-            cursor: loading || docLoading ? "not-allowed" : "pointer",
+            cursor:
+              loading || docLoading || fixLoading ? "not-allowed" : "pointer",
             border: "1px solid rgba(56,189,248,0.6)",
           }}
         >
