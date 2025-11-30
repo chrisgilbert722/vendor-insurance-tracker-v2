@@ -4,6 +4,7 @@ import OpenAI from "openai";
 import { sql } from "../../../lib/db";
 import formidable from "formidable";
 import fs from "fs";
+import crypto from "crypto";
 import { runRulesOnExtractedDocument } from "../../../lib/ruleEngineV6";
 
 export const config = {
@@ -14,14 +15,22 @@ const client = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY,
 });
 
+/**
+ * Create a quick hash so Copilot can detect repeated/similar docs.
+ */
+function hashBuffer(buf) {
+  return crypto.createHash("sha256").update(buf).digest("hex");
+}
+
 /* ============================================================
    MAIN HANDLER — UACC Document Intake + Rule Engine V6
 ============================================================ */
 export default async function handler(req, res) {
   if (req.method !== "POST") {
-    return res
-      .status(405)
-      .json({ ok: false, error: "Method not allowed. Use POST." });
+    return res.status(405).json({
+      ok: false,
+      error: "Method not allowed. Use POST.",
+    });
   }
 
   try {
@@ -38,6 +47,7 @@ export default async function handler(req, res) {
 
     const uploaded = files.file[0];
     const buffer = fs.readFileSync(uploaded.filepath);
+    const hash = hashBuffer(buffer);
 
     /* ============================================================
        PHASE 1 — Document Understanding (AI)
@@ -49,39 +59,22 @@ export default async function handler(req, res) {
           role: "system",
           content: `
 You are the UACC Document Intelligence Engine.
+
 Your goals:
 
-1. Identify document type:
-   - COI (Acord 25)
+1. Identify EXACT document type:
+   - COI / Acord 25
+   - Endorsement (e.g., CG 20 10, CG 20 37, CG 24 04)
+   - Binder
+   - Auto policy / WC / Umbrella / Excess
    - W9
    - Business License
    - Contract / MSA
    - Safety Manual
-   - Insurance Endorsement (CG 20 10, CG 20 37, etc.)
-   - Workers Comp forms
-   - Auto policy
-   - Umbrella / Excess
-   - Invoices or irrelevant docs
+   - Insurance Schedule
+   - Invoices or irrelevant documents
 
-2. Extract structured information as JSON:
-   - coverage
-   - limits
-   - endorsements
-   - policy numbers
-   - carriers
-   - effective/expiration dates
-   - named insureds
-   - certificate holder
-   - additional insured status
-   - waiver of subrogation
-   - contract clauses
-   - obligations
-   - safety requirements
-   - missing items
-   - high-risk issues
-   - renewal implications
-
-3. Provide this exact shape:
+2. Extract JSON in this EXACT structure:
 
 {
   "document_type": "...",
@@ -91,7 +84,8 @@ Your goals:
   "entities": {
     "insured": "...",
     "carrier": "...",
-    "certificate_holder": "..."
+    "certificate_holder": "...",
+    "producer": "..."
   },
   "dates": {
     "effective": "...",
@@ -99,12 +93,21 @@ Your goals:
   },
   "contract_obligations": [ ... ],
   "safety_requirements": [ ... ],
+  "additional_insured": "...",
+  "waiver_of_subrogation": "...",
+  "compliance_findings": {
+    "good": [ ... ],
+    "bad": [ ... ],
+    "unknown": [ ... ]
+  },
   "missing": [ ... ],
   "risk_flags": [ ... ],
   "raw_text_excerpt": "..."
 }
 
-4. After JSON, provide a clear human explanation.
+3. After JSON, provide a human explanation of the key points.
+
+Be precise, avoid hallucination. If unknown, say unknown.
 `,
         },
         {
@@ -124,37 +127,59 @@ Your goals:
       temperature: 0.1,
     });
 
-    const resultText = completion.choices[0].message.content || "";
+    const rawText = completion.choices[0].message.content || "";
     let extracted;
 
+    // ============================================================
+    // JSON Extraction (Improved & Safer)
+    // ============================================================
     try {
-      const jsonStart = resultText.indexOf("{");
-      const jsonEnd = resultText.lastIndexOf("}");
-      const jsonChunk = resultText.slice(jsonStart, jsonEnd + 1);
-      extracted = JSON.parse(jsonChunk);
+      const jsonStart = rawText.indexOf("{");
+      const jsonEnd = rawText.lastIndexOf("}");
+      const jsonChunk = rawText.slice(jsonStart, jsonEnd + 1);
+
+      try {
+        extracted = JSON.parse(jsonChunk);
+      } catch (innerErr) {
+        // Attempt second-chance parse (strip backticks, weird formatting)
+        extracted = JSON.parse(
+          jsonChunk
+            .replace(/```json/gi, "")
+            .replace(/```/g, "")
+            .trim()
+        );
+      }
     } catch (err) {
-      console.error("JSON parse failed:", err);
+      console.error("JSON parse failed fully:", err);
       extracted = {
         document_type: "unknown",
         error: "JSON parse failed",
-        raw_output: resultText,
+        raw_output: rawText,
       };
     }
 
     /* ============================================================
-       PHASE 2 — Save into Memory (UACC)
+       PHASE 2 — Save Document Intelligence into Copilot Memory
     ============================================================= */
     if (orgId) {
       await sql`
-        INSERT INTO copilot_memory (org_id, vendor_id, policy_id, role, message, memory)
+        INSERT INTO copilot_memory (
+          org_id,
+          vendor_id,
+          policy_id,
+          role,
+          message,
+          memory
+        )
         VALUES (
           ${orgId},
           ${vendorId},
           ${policyId},
           'document',
-          ${"Document processed via doc-intake"},
+          ${"Document processed via UACC doc-intake"},
           ${{
             extracted,
+            doc_hash: hash,
             filename: uploaded.originalFilename,
             ts: new Date().toISOString(),
           }}
@@ -164,7 +189,7 @@ Your goals:
 
     /* ============================================================
        PHASE 3 — Rule Engine V6 Auto-Match
-       Docs → Rules → Compliance + Alerts
+       (Docs → Rules → Compliance + Alerts)
     ============================================================= */
     let ruleEngineResult = null;
 
@@ -178,16 +203,23 @@ Your goals:
     }
 
     /* ============================================================
-       RETURN RESULT
+       PHASE 4 — OPTIONAL: Broker COI Auto-Checker Trigger Hook
+       We simply return extracted + ruleEngineResult for UI decision.
     ============================================================= */
+
     return res.status(200).json({
       ok: true,
       extracted,
-      raw: resultText,
+      raw: rawText,
       ruleEngineResult,
+      docHash: hash,
+      filename: uploaded.originalFilename,
     });
   } catch (err) {
     console.error("UACC Document Intake ERROR:", err);
-    return res.status(500).json({ ok: false, error: err.message });
+    return res.status(500).json({
+      ok: false,
+      error: err.message,
+    });
   }
 }
