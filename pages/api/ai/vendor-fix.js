@@ -34,7 +34,7 @@ async function buildVendorFixContext({ orgId, vendorId, policyId }) {
     ctx.policy = policyRows[0] || null;
   }
 
-  // compliance cache (failing rules!)
+  // compliance (failing rules live here)
   const comp = await sql`
     SELECT *
     FROM vendor_compliance_cache
@@ -44,7 +44,7 @@ async function buildVendorFixContext({ orgId, vendorId, policyId }) {
   `;
   ctx.compliance = comp[0] || null;
 
-  // recent COI / doc memory
+  // latest analyzed document (COI or contract)
   const doc = await sql`
     SELECT memory
     FROM copilot_memory
@@ -56,7 +56,7 @@ async function buildVendorFixContext({ orgId, vendorId, policyId }) {
   `;
   ctx.document = doc[0]?.memory || null;
 
-  // alerts for vendor
+  // recent alerts
   const alerts = await sql`
     SELECT *
     FROM alerts_v2
@@ -71,7 +71,7 @@ async function buildVendorFixContext({ orgId, vendorId, policyId }) {
 }
 
 /* ============================================================
-   FORMAT FIX STEPS FOR UI
+   FORMAT FIX STEPS FOR UI (UPDATED WITH upload_action)
 ============================================================ */
 function createFixStepsStructure() {
   return `
@@ -79,22 +79,33 @@ Return your answer in this EXACT JSON format:
 
 {
   "plain_english_summary": "...",
-  "why_non_compliant": [ "..." ],
+
+  "why_non_compliant": [
+    "Reason 1...",
+    "Reason 2..."
+  ],
+
   "fix_steps": [
     {
-      "title": "...",
+      "title": "Fix Title...",
       "step_by_step": [
         "Step 1 ...",
         "Step 2 ...",
-        "Step 3 ... (upload new COI)"
+        "Step 3 ... (upload corrected document)"
       ]
     }
   ],
+
   "upload_requirements": [
     "Upload a COI with GL Each Occurrence >= 1,000,000",
     "Upload endorsement CG 20 10 04/13",
     "Add Waiver of Subrogation on WC"
   ],
+
+  "upload_action": "gl",
+  // MUST be one of:
+  // "gl", "wc", "auto", "umbrella", "generic"
+
   "sample_broker_email": "..."
 }
 
@@ -122,7 +133,7 @@ export default async function handler(req, res) {
       });
     }
 
-    // LOAD CONTEXT
+    // Load all context (policy, vendor, compliance, alerts, documents)
     const context = await buildVendorFixContext({
       orgId,
       vendorId,
@@ -137,47 +148,59 @@ You must:
 - Break everything down into VERY SIMPLE English.
 - Explain EXACTLY what is wrong.
 - Show EXACTLY how to fix it.
-- Generate a broker email they can copy/paste.
 - Tell them EXACTLY what to upload next.
-- Keep your tone friendly, patient, and clear.
+- Generate a broker email they can copy/paste.
+- Output the JSON EXACTLY as requested.
+- Keep your tone friendly, patient, and ultra-clear.
 
-Here is the context:
+===== CONTEXT =====
 ${JSON.stringify(context, null, 2)}
 
+===== FORMAT =====
 ${createFixStepsStructure()}
 `;
 
+    // AI COMPLETION
     const completion = await client.chat.completions.create({
-      model: "gpt-4o", // strong reasoning for vendor coaching
+      model: "gpt-4o", // Strong reasoning for vendor repair coaching
       messages: [
         { role: "system", content: systemPrompt },
-        { role: "user", content: "Please generate the vendor fix steps." },
+        { role: "user", content: "Generate the vendor fix steps now." },
       ],
       temperature: 0.15,
     });
 
     const text = completion.choices[0].message.content || "";
 
+    /* ============================================================
+       JSON EXTRACTION (very tolerant to AI formatting)
+    ============================================================= */
     let parsed;
+
     try {
       const jsonStart = text.indexOf("{");
       const jsonEnd = text.lastIndexOf("}");
       const jsonChunk = text.slice(jsonStart, jsonEnd + 1);
+
       parsed = JSON.parse(
-        jsonChunk.replace(/```json/gi, "").replace(/```/g, "")
+        jsonChunk.replace(/```json/gi, "").replace(/```/g, "").trim()
       );
     } catch (err) {
       console.error("Vendor Fix JSON parse failed:", err);
       parsed = {
         plain_english_summary:
-          "We could not parse the JSON correctly. See raw output.",
-        fix_steps: [],
+          "We could not parse the vendor fix JSON correctly. See raw output.",
         why_non_compliant: [],
+        fix_steps: [],
         upload_requirements: [],
+        upload_action: "generic",
         sample_broker_email: "",
       };
     }
 
+    /* ============================================================
+       RETURN FIX MODE RESPONSE
+    ============================================================= */
     return res.status(200).json({
       ok: true,
       fixMode: parsed,
