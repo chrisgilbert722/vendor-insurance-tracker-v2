@@ -22,6 +22,18 @@ const STEP_CONFIG = [
   { id: "done", label: "Complete" },
 ];
 
+// Map ?type= to pretty labels
+function getTypeLabel(type) {
+  if (!type) return null;
+  const t = String(type).toLowerCase();
+  if (t === "gl") return "General Liability COI";
+  if (t === "wc") return "Workers’ Compensation COI";
+  if (t === "auto") return "Auto Liability COI";
+  if (t === "umbrella") return "Umbrella / Excess COI";
+  if (t === "generic") return "Insurance document";
+  return null;
+}
+
 /* ===========================
    MAIN PAGE COMPONENT
 =========================== */
@@ -33,6 +45,8 @@ export default function UploadCOIPage() {
 
   const router = useRouter();
   const vendorId = router.query.vendorId; // /upload-coi?vendorId=2
+  const uploadType = router.query.type || null; // /upload-coi?type=gl
+  const expectedLabel = getTypeLabel(uploadType);
 
   const [file, setFile] = useState(null);
   const [isDragging, setIsDragging] = useState(false);
@@ -182,7 +196,7 @@ export default function UploadCOIPage() {
         }}
       />
 
-      {/* HEADER */}
+      {/* HEADER + EXPECTED DOCUMENT BANNER */}
       <div style={{ position: "relative", zIndex: 2 }}>
         <div
           style={{
@@ -287,6 +301,47 @@ export default function UploadCOIPage() {
                 {vendorId ? `vendorId=${vendorId}` : "none (append ?vendorId=123)"}
               </span>
             </div>
+
+            {/* MAGICALLY GUIDED DOCUMENT TYPE (Option D) */}
+            {expectedLabel && (
+              <div
+                style={{
+                  marginTop: 8,
+                  padding: "8px 12px",
+                  borderRadius: 12,
+                  border: "1px solid rgba(34,197,94,0.7)",
+                  background:
+                    "linear-gradient(120deg,rgba(22,163,74,0.2),rgba(5,46,22,0.7))",
+                  color: "#bbf7d0",
+                  fontSize: 12,
+                  display: "inline-flex",
+                  flexDirection: "column",
+                  gap: 4,
+                }}
+              >
+                <span
+                  style={{
+                    fontSize: 11,
+                    textTransform: "uppercase",
+                    letterSpacing: 1.1,
+                    color: "#86efac",
+                  }}
+                >
+                  Expected Document (from AI Fix Mode)
+                </span>
+                <span>
+                  Please upload a{" "}
+                  <strong style={{ color: "#f9fafb" }}>
+                    {expectedLabel}
+                  </strong>{" "}
+                  to continue your compliance fix.
+                </span>
+                <span style={{ fontSize: 11, color: "#bbf7d0" }}>
+                  If this doesn’t look right, you can still upload any COI —
+                  we’ll analyze it automatically.
+                </span>
+              </div>
+            )}
           </div>
         </div>
       </div>
@@ -641,4 +696,3 @@ export default function UploadCOIPage() {
     </div>
   );
 }
-
