@@ -5,135 +5,225 @@ import { sql } from "../../../lib/db";
 const client = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
 /* ============================================================
-   MODEL ROUTING
+   MODEL ROUTER — UACC INTELLIGENCE
 ============================================================ */
 function selectModel(persona, message, context) {
-  const msgLower = message.toLowerCase();
+  const msg = message.toLowerCase();
 
-  // Document or deep coverage evaluation
+  // Document-heavy / COI / Contract / Endorsements
   if (
-    msgLower.includes("interpret") ||
-    msgLower.includes("analyze pdf") ||
-    msgLower.includes("explain this document") ||
-    msgLower.includes("endorsement") ||
-    msgLower.includes("coverage details") ||
-    msgLower.includes("read")
+    msg.includes("interpret") ||
+    msg.includes("analyze") ||
+    msg.includes("explain this document") ||
+    msg.includes("endorsement") ||
+    msg.includes("coverage details") ||
+    msg.includes("read this") ||
+    msg.includes("contract") ||
+    msg.includes("pdf")
   ) {
-    return "gpt-4o"; // or "gpt-5" if desired
+    return "gpt-4o"; // upgrade to "gpt-5" any time
   }
 
-  // Broker: high reasoning
+  // Broker = higher reasoning needed
   if (persona === "broker") return "gpt-4o";
 
-  // Admin: mid/high reasoning
+  // Admin needs strategic/compliance reasoning
   if (persona === "admin") return "gpt-4o";
 
-  // Vendor: cheap + fast
+  // Vendor = simple, cost-efficient
   if (persona === "vendor") return "gpt-4o-mini";
 
   return "gpt-4o-mini";
 }
 
 /* ============================================================
-   CONTEXT BUILDER
+   MEMORY ENGINE — Persistent Vendor/Policy Memory
 ============================================================ */
-async function buildRenewalContext({ orgId, vendorId, policyId }) {
+async function saveMemory(orgId, vendorId, policyId, role, userMsg, aiReply) {
+  await sql`
+    INSERT INTO copilot_memory (org_id, vendor_id, policy_id, role, message, memory)
+    VALUES (
+      ${orgId},
+      ${vendorId},
+      ${policyId},
+      ${role},
+      ${userMsg},
+      ${{
+        aiReply,
+        ts: new Date().toISOString(),
+      }}
+    );
+  `;
+}
+
+async function loadMemory(orgId, vendorId, policyId, role) {
+  const rows = await sql`
+    SELECT memory
+    FROM copilot_memory
+    WHERE org_id = ${orgId}
+      AND (vendor_id = ${vendorId} OR vendor_id IS NULL)
+      AND (policy_id = ${policyId} OR policy_id IS NULL)
+      AND role = ${role}
+    ORDER BY created_at DESC
+    LIMIT 12;
+  `;
+
+  return rows.map((r) => r.memory);
+}
+
+/* ============================================================
+   CONTEXT ENGINE — UACC Core Data Loader
+============================================================ */
+async function buildUACCContext({ orgId, vendorId, policyId }) {
   const ctx = { orgId };
 
+  /* --- POLICY INFO --- */
   if (policyId) {
-    const policyRows = await sql`
+    const p = await sql`
       SELECT * FROM policies WHERE id = ${policyId} LIMIT 1;
     `;
-    ctx.policy = policyRows[0] || null;
+    ctx.policy = p[0] || null;
   }
 
+  /* --- VENDOR INFO --- */
   if (vendorId) {
-    const vendorRows = await sql`
+    const v = await sql`
       SELECT * FROM vendors WHERE id = ${vendorId} LIMIT 1;
     `;
-    ctx.vendor = vendorRows[0] || null;
+    ctx.vendor = v[0] || null;
   }
 
+  /* --- RENEWAL SCHEDULE --- */
   if (policyId) {
-    const scheduleRows = await sql`
-      SELECT * FROM policy_renewal_schedule WHERE policy_id = ${policyId} LIMIT 1;
+    const s = await sql`
+      SELECT * FROM policy_renewal_schedule
+      WHERE policy_id = ${policyId}
+      LIMIT 1;
     `;
-    ctx.schedule = scheduleRows[0] || null;
+    ctx.schedule = s[0] || null;
 
-    const events = await sql`
-      SELECT * FROM policy_renewal_events
+    const ev = await sql`
+      SELECT *
+      FROM policy_renewal_events
       WHERE policy_id = ${policyId}
       ORDER BY created_at DESC
       LIMIT 20;
     `;
-    ctx.events = events || [];
+    ctx.renewalEvents = ev || [];
   }
 
+  /* --- ALERTS (Renewal + Rule + Missing Coverage) --- */
   if (vendorId) {
-    const alerts = await sql`
+    const a = await sql`
       SELECT *
       FROM alerts_v2
       WHERE vendor_id = ${vendorId}
       ORDER BY created_at DESC
       LIMIT 20;
     `;
-    ctx.alerts = alerts || [];
+    ctx.alerts = a || [];
+  }
+
+  /* --- RULES CONTEXT (Rule Engine V5/V6) --- */
+  const rules = await sql`
+    SELECT *
+    FROM requirement_rules
+    WHERE org_id = ${orgId}
+    ORDER BY id ASC;
+  `;
+  ctx.rules = rules || [];
+
+  /* --- COMPLIANCE SNAPSHOT --- */
+  if (vendorId) {
+    const comp = await sql`
+      SELECT *
+      FROM vendor_compliance_cache
+      WHERE vendor_id = ${vendorId} AND org_id = ${orgId}
+      LIMIT 1;
+    `;
+    ctx.compliance = comp[0] || null;
   }
 
   return ctx;
 }
 
 /* ============================================================
-   SYSTEM PROMPT BUILDER
+   SYSTEM PROMPT — UACC Reasoning Brain
 ============================================================ */
-function buildSystemPrompt(persona, ctx) {
+function buildSystemPrompt(persona, ctx, memory) {
   const base = `
-You are "Compliance Copilot", an expert in:
+You are "Compliance Copilot", the Unified AI Compliance Core (UACC).
+
+You are an expert in:
 - insurance compliance
 - COI interpretation
+- document analysis (contracts, W9, safety manuals, licenses)
 - renewal strategy
-- vendor risk
-- construction coverage
-- endorsements & commercial insurance
+- endorsements (CG 20 10, CG 20 37, CG 24 04, etc.)
+- vendor risk scoring
+- alerts investigation
+- rule engine reasoning
+- coverage matching
+- policy expiration forecasting
+- broker communication
+- compliance remediation
+- administrative guidance
 
-Your job is to give clean, simple, actionable answers.
+You ALWAYS:
+- give clean, simple, actionable next steps
+- explain in human language (plain English)
+- offer optional deeper detail
+- generate sample messages as needed
+- avoid jargon for vendors
 
-Context:
+===== CONTEXT FROM UACC =====
 ${JSON.stringify(ctx, null, 2)}
+
+===== MEMORY =====
+${JSON.stringify(memory, null, 2)}
 `;
 
   if (persona === "admin") {
     return (
       base +
       `
-You are helping an ADMIN.
-Explain risk, compliance issues, renewal timing, and provide escalation steps.
+You are assisting an ADMIN.
+You explain risk, alerts, rules, renewals, vendor issues, and next steps.
+Provide insight, root causes, and escalation options.
 `
     );
   }
+
   if (persona === "vendor") {
     return (
       base +
       `
-You are helping a VENDOR.
-Give plain-language steps, explain what's missing, and generate broker email text.
+You are assisting a VENDOR.
+Explain things simply.
+Tell them exactly what is missing.
+Write emails they can send their broker.
+Walk them step-by-step.
 `
     );
   }
+
   if (persona === "broker") {
     return (
       base +
       `
-You are helping a BROKER.
-Explain exactly what to update in the COI, including limits and endorsements.
+You are assisting a BROKER.
+Explain missing endorsements, incorrect limits, required coverage.
+Reference common forms (ISO forms).
+Tell them exactly how to fix the COI.
 `
     );
   }
+
   return base;
 }
 
 /* ============================================================
-   MAIN HANDLER
+   MAIN HANDLER — UACC
 ============================================================ */
 export default async function handler(req, res) {
   if (req.method !== "POST") {
@@ -147,12 +237,19 @@ export default async function handler(req, res) {
       return res.status(400).json({ ok: false, error: "Missing fields." });
     }
 
-    const context = await buildRenewalContext({ orgId, vendorId, policyId });
-    const systemPrompt = buildSystemPrompt(persona, context);
+    /* --- LOAD CONTEXT --- */
+    const context = await buildUACCContext({ orgId, vendorId, policyId });
 
-    // MODEL ROUTING
+    /* --- LOAD MEMORY --- */
+    const memory = await loadMemory(orgId, vendorId, policyId, persona);
+
+    /* --- SYSTEM PROMPT --- */
+    const systemPrompt = buildSystemPrompt(persona, context, memory);
+
+    /* --- MODEL SELECTION --- */
     const model = selectModel(persona, message, context);
 
+    /* --- CALL LLM --- */
     const completion = await client.chat.completions.create({
       model,
       messages: [
@@ -164,14 +261,19 @@ export default async function handler(req, res) {
 
     const reply = completion.choices?.[0]?.message?.content || "";
 
+    /* --- SAVE MEMORY --- */
+    await saveMemory(orgId, vendorId, policyId, persona, message, reply);
+
+    /* --- RETURN --- */
     return res.status(200).json({
       ok: true,
       reply,
-      context,
       model,
+      context,
+      memoryUsed: memory,
     });
   } catch (err) {
-    console.error("[copilot-renewal] ERROR", err);
+    console.error("[UACC copilot-renewal ERROR]:", err);
     return res.status(500).json({ ok: false, error: err.message });
   }
 }
