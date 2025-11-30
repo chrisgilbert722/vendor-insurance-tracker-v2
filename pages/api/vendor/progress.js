@@ -1,7 +1,7 @@
 // pages/api/vendor/progress.js
 // Vendor Progress Tracker — UACC
 
-import { sql } from "../../lib/db";
+import { sql } from "../../../lib/db"; // ✅ FIXED PATH
 
 export default async function handler(req, res) {
   if (req.method !== "GET") {
@@ -51,7 +51,9 @@ export default async function handler(req, res) {
 
     const total_rules =
       failing.length + passing.length + missing.length || 0;
+
     const fixed_rules = passing.length;
+
     const remaining_rules = failing.length + missing.length;
 
     const progress_pct =
