@@ -507,19 +507,6 @@ export default function EmailQueueAdminPage() {
             </tbody>
           </table>
         </div>
-      {/* BUTTON STYLE HELPER */}
-      function buttonBase(color) {
-        return {
-          padding: "5px 10px",
-          borderRadius: 999,
-          border: `1px solid ${color}`,
-          background: "rgba(15,23,42,0.85)",
-          color,
-          fontSize: 11,
-          fontWeight: 600,
-          cursor: "pointer",
-        };
-      }
       {/* ===========================
           EMAIL PREVIEW MODAL
       ============================ */}
