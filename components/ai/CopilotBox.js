@@ -3,7 +3,7 @@
 import { useState, useRef, useEffect } from "react";
 
 export default function CopilotBox({
-  persona = "admin", // admin | vendor | broker
+  persona = "admin",
   orgId,
   vendorId = null,
   policyId = null,
@@ -14,22 +14,26 @@ export default function CopilotBox({
       role: "assistant",
       content:
         persona === "vendor"
-          ? "Hi! I'm your Compliance Copilot. I can guide you through exactly what’s missing or what needs to be fixed with your insurance. What do you need help with?"
+          ? "Hi! I'm your Compliance Copilot. You can ask me anything — or upload a document and I’ll read it for you."
           : persona === "broker"
-          ? "I'm the Compliance Copilot. I can explain required coverage, missing endorsements, or what needs updating on the COI. How can I help?"
-          : "I'm Compliance Copilot. I can help you analyze renewals, explain alerts, or summarize vendor compliance. What would you like to do?",
+          ? "Upload a COI or endorsement and I’ll tell you exactly what needs correcting."
+          : "I'm Compliance Copilot. Ask me anything — or upload a document for analysis.",
     },
   ]);
 
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
+  const [docLoading, setDocLoading] = useState(false);
 
   const bottomRef = useRef();
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages, loading]);
+  }, [messages, loading, docLoading]);
 
+  /* ==========================================
+     SEND TEXT MESSAGE
+  ========================================== */
   async function sendMessage() {
     if (!input.trim()) return;
 
@@ -53,15 +57,12 @@ export default function CopilotBox({
 
       const data = await res.json();
 
-      if (data.ok) {
-        const botMsg = { role: "assistant", content: data.reply };
-        setMessages((prev) => [...prev, botMsg]);
-      } else {
-        setMessages((prev) => [
-          ...prev,
-          { role: "assistant", content: "Error: " + data.error },
-        ]);
-      }
+      const botMsg = {
+        role: "assistant",
+        content: data.reply || "I couldn't process that.",
+      };
+
+      setMessages((prev) => [...prev, botMsg]);
     } catch (err) {
       setMessages((prev) => [
         ...prev,
@@ -74,6 +75,69 @@ export default function CopilotBox({
 
   function handleKey(e) {
     if (e.key === "Enter" && !loading) sendMessage();
+  }
+
+  /* ==========================================
+     DOCUMENT UPLOAD → AI DOCUMENT ENGINE
+  ========================================== */
+  async function handleDocumentUpload(e) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    setDocLoading(true);
+
+    const form = new FormData();
+    form.append("file", file);
+    form.append("orgId", orgId);
+    form.append("vendorId", vendorId || "");
+    form.append("policyId", policyId || "");
+
+    // Show immediate placeholder in chat
+    setMessages((prev) => [
+      ...prev,
+      {
+        role: "user",
+        content: `Uploaded document: ${file.name}`,
+      },
+      {
+        role: "assistant",
+        content: `Analyzing **${file.name}**… This may take a few seconds.`,
+      },
+    ]);
+
+    try {
+      const res = await fetch("/api/ai/copilot-doc-intake", {
+        method: "POST",
+        body: form,
+      });
+      const data = await res.json();
+
+      if (!data.ok) {
+        setMessages((prev) => [
+          ...prev,
+          { role: "assistant", content: "Document analysis failed." },
+        ]);
+      } else {
+        // Show AI results
+        const docMsg = {
+          role: "assistant",
+          content:
+            "📄 **Document Analysis Result:**\n\n```json\n" +
+            JSON.stringify(data.extracted, null, 2) +
+            "\n```\n\n" +
+            data.raw,
+        };
+
+        setMessages((prev) => [...prev, docMsg]);
+      }
+    } catch (err) {
+      setMessages((prev) => [
+        ...prev,
+        { role: "assistant", content: "Upload error. Try again." },
+      ]);
+    }
+
+    setDocLoading(false);
   }
 
   return (
@@ -159,10 +223,6 @@ export default function CopilotBox({
                     ? "1px solid rgba(56,189,248,0.35)"
                     : "none",
                 color: m.role === "user" ? "white" : "#e5e7eb",
-                boxShadow:
-                  m.role === "assistant"
-                    ? "0 0 12px rgba(56,189,248,0.15)"
-                    : "none",
               }}
             >
               {m.content}
@@ -170,14 +230,8 @@ export default function CopilotBox({
           </div>
         ))}
 
-        {loading && (
-          <div
-            style={{
-              color: "#94a3b8",
-              fontSize: 12,
-              marginTop: 10,
-            }}
-          >
+        {(loading || docLoading) && (
+          <div style={{ color: "#94a3b8", fontSize: 12, marginTop: 10 }}>
             Copilot is thinking…
           </div>
         )}
@@ -195,11 +249,35 @@ export default function CopilotBox({
           gap: 6,
         }}
       >
+        {/* Document Input */}
+        <label
+          style={{
+            padding: "8px 12px",
+            borderRadius: 12,
+            background: "rgba(56,189,248,0.25)",
+            color: "#38bdf8",
+            fontWeight: 600,
+            fontSize: 12,
+            cursor: "pointer",
+            border: "1px solid rgba(56,189,248,0.5)",
+            display: "flex",
+            alignItems: "center",
+          }}
+        >
+          📁 Upload
+          <input
+            type="file"
+            style={{ display: "none" }}
+            onChange={handleDocumentUpload}
+          />
+        </label>
+
+        {/* Text Input */}
         <input
           value={input}
-          onKeyDown={handleKey}
           onChange={(e) => setInput(e.target.value)}
-          placeholder="Ask a question…"
+          onKeyDown={handleKey}
+          placeholder="Ask something…"
           style={{
             flex: 1,
             padding: "10px 12px",
@@ -214,17 +292,18 @@ export default function CopilotBox({
 
         <button
           onClick={sendMessage}
-          disabled={loading}
+          disabled={loading || docLoading}
           style={{
             padding: "8px 14px",
             borderRadius: 12,
-            background: loading
-              ? "rgba(56,189,248,0.25)"
-              : "linear-gradient(90deg,#38bdf8,#0ea5e9)",
+            background:
+              loading || docLoading
+                ? "rgba(56,189,248,0.25)"
+                : "linear-gradient(90deg,#38bdf8,#0ea5e9)",
             color: "white",
             fontSize: 13,
             fontWeight: 600,
-            cursor: loading ? "not-allowed" : "pointer",
+            cursor: loading || docLoading ? "not-allowed" : "pointer",
             border: "1px solid rgba(56,189,248,0.6)",
           }}
         >
