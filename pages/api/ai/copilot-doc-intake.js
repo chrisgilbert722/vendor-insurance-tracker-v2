@@ -4,6 +4,7 @@ import OpenAI from "openai";
 import { sql } from "../../../lib/db";
 import formidable from "formidable";
 import fs from "fs";
+import { runRulesOnExtractedDocument } from "../../../lib/ruleEngineV6";
 
 export const config = {
   api: { bodyParser: false }, // required for file uploads
@@ -14,7 +15,7 @@ const client = new OpenAI({
 });
 
 /* ============================================================
-   MAIN HANDLER — UACC Document Intake
+   MAIN HANDLER — UACC Document Intake + Rule Engine V6
 ============================================================ */
 export default async function handler(req, res) {
   if (req.method !== "POST") {
@@ -24,13 +25,12 @@ export default async function handler(req, res) {
   }
 
   try {
-    // Parse form-data
     const form = formidable({ multiples: false });
     const [fields, files] = await form.parse(req);
 
     const orgId = Number(fields.orgId || 0);
-    const vendorId = Number(fields.vendorId || null);
-    const policyId = Number(fields.policyId || null);
+    const vendorId = fields.vendorId ? Number(fields.vendorId) : null;
+    const policyId = fields.policyId ? Number(fields.policyId) : null;
 
     if (!files.file) {
       return res.status(400).json({ ok: false, error: "No file uploaded." });
@@ -40,8 +40,8 @@ export default async function handler(req, res) {
     const buffer = fs.readFileSync(uploaded.filepath);
 
     /* ============================================================
-       PHASE 1 — Extract Raw Text + Meaning
-    ============================================================ */
+       PHASE 1 — Document Understanding (AI)
+    ============================================================= */
     const completion = await client.chat.completions.create({
       model: "gpt-4o",
       messages: [
@@ -81,11 +81,7 @@ Your goals:
    - high-risk issues
    - renewal implications
 
-3. Provide a natural-language explanation afterward.
-
-4. DO NOT hallucinate — if unsure, mark as "unknown."
-
-Return this exact shape:
+3. Provide this exact shape:
 
 {
   "document_type": "...",
@@ -108,7 +104,7 @@ Return this exact shape:
   "raw_text_excerpt": "..."
 }
 
-After JSON return a CLEAR explanation for humans.
+4. After JSON, provide a clear human explanation.
 `,
         },
         {
@@ -128,22 +124,26 @@ After JSON return a CLEAR explanation for humans.
       temperature: 0.1,
     });
 
-    const resultText = completion.choices[0].message.content;
+    const resultText = completion.choices[0].message.content || "";
     let extracted;
 
-    // Try to parse the JSON block
     try {
       const jsonStart = resultText.indexOf("{");
       const jsonEnd = resultText.lastIndexOf("}");
       const jsonChunk = resultText.slice(jsonStart, jsonEnd + 1);
       extracted = JSON.parse(jsonChunk);
     } catch (err) {
-      extracted = { document_type: "unknown", error: "JSON parse failed", raw: resultText };
+      console.error("JSON parse failed:", err);
+      extracted = {
+        document_type: "unknown",
+        error: "JSON parse failed",
+        raw_output: resultText,
+      };
     }
 
     /* ============================================================
-       PHASE 2 — Store in UACC Memory Engine
-    ============================================================ */
+       PHASE 2 — Save into Memory (UACC)
+    ============================================================= */
     if (orgId) {
       await sql`
         INSERT INTO copilot_memory (org_id, vendor_id, policy_id, role, message, memory)
@@ -152,7 +152,7 @@ After JSON return a CLEAR explanation for humans.
           ${vendorId},
           ${policyId},
           'document',
-          'Document processed via UACC Document Engine',
+          ${"Document processed via doc-intake"},
           ${{
             extracted,
             filename: uploaded.originalFilename,
@@ -163,12 +163,28 @@ After JSON return a CLEAR explanation for humans.
     }
 
     /* ============================================================
+       PHASE 3 — Rule Engine V6 Auto-Match
+       Docs → Rules → Compliance + Alerts
+    ============================================================= */
+    let ruleEngineResult = null;
+
+    if (orgId && vendorId) {
+      ruleEngineResult = await runRulesOnExtractedDocument({
+        orgId,
+        vendorId,
+        policyId,
+        extracted,
+      });
+    }
+
+    /* ============================================================
        RETURN RESULT
-    ============================================================ */
+    ============================================================= */
     return res.status(200).json({
       ok: true,
       extracted,
       raw: resultText,
+      ruleEngineResult,
     });
   } catch (err) {
     console.error("UACC Document Intake ERROR:", err);
