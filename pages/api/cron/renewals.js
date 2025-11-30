@@ -1,10 +1,9 @@
 // pages/api/cron/renewals.js
 // FULLY WIRED AUTOPILOT CRON — Renewals + Email Brain + Queue + Heartbeat
 
-import { query } from "../../../src/lib/db";
+import { query } from "../../../lib/db";
 import { runRenewalEngineAllOrgsV2 } from "../../../lib/renewalEngineV2";
-import { autoEmailBrain } from "../../../lib/autoEmailBrain";
-import { processRenewalEmailQueue } from "../../../lib/autoEmailBrain";
+import { autoEmailBrain, processRenewalEmailQueue } from "../../../lib/autoEmailBrain";
 
 export default async function handler(req, res) {
   if (req.method !== "GET") {
@@ -13,6 +12,7 @@ export default async function handler(req, res) {
 
   const jobName = "renewals-cron";
   const startedAt = new Date();
+
   let summary = {
     renewalEngine: null,
     queueCreated: 0,
@@ -21,42 +21,26 @@ export default async function handler(req, res) {
   };
 
   try {
-    /*
-    ============================================================
-    1. RUN RENEWAL ENGINE FOR ALL ORGS
-    ============================================================
-    */
+    // 1. RUN RENEWAL ENGINE
     const renewalOutput = await runRenewalEngineAllOrgsV2();
     summary.renewalEngine = renewalOutput;
 
-    /*
-    ============================================================
-    2. GENERATE + QUEUE AUTO EMAILS (AI)
-    ============================================================
-    */
+    // 2. CREATE EMAIL QUEUE
     const queued = await autoEmailBrain();
     summary.queueCreated = queued?.count || 0;
 
-    /*
-    ============================================================
-    3. SEND QUEUED EMAILS
-    ============================================================
-    */
+    // 3. SEND EMAILS
     const sendResults = await processRenewalEmailQueue(40);
     summary.queueSent = sendResults.filter(r => r.status === "sent").length;
     summary.failures = sendResults
       .filter(r => r.status === "failed")
       .map(f => f.id);
 
-    /*
-    ============================================================
-    4. HEARTBEAT — SUCCESS
-    ============================================================
-    */
+    // 4. HEARTBEAT SUCCESS
     await query(
       `
       INSERT INTO cron_renewals_heartbeat
-        (job_name, last_run_at, last_status, last_error, run_count)
+      (job_name, last_run_at, last_status, last_error, run_count)
       VALUES ($1, NOW(), 'ok', '', 1)
       ON CONFLICT (job_name)
       DO UPDATE SET
@@ -78,17 +62,13 @@ export default async function handler(req, res) {
     });
 
   } catch (err) {
-    /*
-    ============================================================
-    5. HEARTBEAT — FAILURE
-    ============================================================
-    */
     const msg = err?.message || "Unknown error";
 
+    // HEARTBEAT FAILURE
     await query(
       `
       INSERT INTO cron_renewals_heartbeat
-        (job_name, last_run_at, last_status, last_error, run_count)
+      (job_name, last_run_at, last_status, last_error, run_count)
       VALUES ($1, NOW(), 'error', $2, 1)
       ON CONFLICT (job_name)
       DO UPDATE SET
