@@ -1,7 +1,9 @@
 // pages/renewals/index.js
+
 import { useState, useEffect } from "react";
 import { useOrg } from "../../context/OrgContext";
 import RenewalTable from "../../components/renewals/RenewalTable";
+import RenewalTimelineChart from "../../components/renewals/RenewalTimelineChart";
 
 export default function RenewalPage() {
   const { activeOrgId: orgId } = useOrg();
@@ -291,6 +293,11 @@ export default function RenewalPage() {
             stageFilter={stageFilter}
             coverageFilter={coverageFilter}
           />
+
+          {/* TIMELINE MINI GRAPH */}
+          <div style={{ marginTop: 24 }}>
+            <RenewalTimelineChart orgId={orgId} />
+          </div>
         </div>
       </div> {/* END COCKPIT */}
       {/* FOOTER */}
@@ -307,4 +314,4 @@ export default function RenewalPage() {
     </div>
   );
 }
-// END — RenewalPage V4.5 (Enhanced Cockpit)
+// END — Renewals Index V4.5 with Chart Integration
