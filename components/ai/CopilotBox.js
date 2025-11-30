@@ -14,9 +14,9 @@ export default function CopilotBox({
       role: "assistant",
       content:
         persona === "vendor"
-          ? "Hi! I'm your Compliance Copilot. You can upload documents or ask me what to fix. You can also click **Fix My Compliance** and I’ll walk you step-by-step."
+          ? "Hi! I'm your Compliance Copilot. You can upload documents or ask me what to fix. You can also click **Fix My Compliance** and I’ll walk you through everything step-by-step."
           : persona === "broker"
-          ? "Upload a COI or endorsement and I’ll tell you exactly what needs correcting — or ask me anything."
+          ? "Upload a COI or endorsement and I’ll tell you exactly what needs correcting — or just ask me anything."
           : "I'm Compliance Copilot. Ask me anything — or upload a document for instant analysis.",
     },
   ]);
@@ -34,6 +34,22 @@ export default function CopilotBox({
   useEffect(() => {
     scrollToBottom();
   }, [messages, loading, docLoading, fixLoading]);
+
+  /* =====================================================
+     GLOBAL UPLOADER TRIGGER (FEATURE F)
+  ===================================================== */
+  function triggerUploader(action) {
+    const map = {
+      gl: "/upload-coi?type=gl",
+      wc: "/upload-coi?type=wc",
+      auto: "/upload-coi?type=auto",
+      umbrella: "/upload-coi?type=umbrella",
+      generic: "/upload-coi",
+    };
+
+    const url = map[action] || "/upload-coi";
+    window.location.href = url;
+  }
 
   /* =====================================================
      SEND TEXT MESSAGE
@@ -71,10 +87,7 @@ export default function CopilotBox({
     } catch (err) {
       setMessages((prev) => [
         ...prev,
-        {
-          role: "assistant",
-          content: "Network error. Try again.",
-        },
+        { role: "assistant", content: "Network error. Try again." },
       ]);
     }
 
@@ -135,16 +148,13 @@ export default function CopilotBox({
   }
 
   /* =====================================================
-     VENDOR FIX MODE — THE BEAST
+     VENDOR FIX MODE  — WITH AUTO-UPLOADER TRIGGER (F)
   ===================================================== */
   async function runFixMode() {
     if (!vendorId) {
       setMessages((prev) => [
         ...prev,
-        {
-          role: "assistant",
-          content: "I need a vendor ID to run Fix Mode.",
-        },
+        { role: "assistant", content: "I need a vendor ID to run Fix Mode." },
       ]);
       return;
     }
@@ -156,7 +166,7 @@ export default function CopilotBox({
       {
         role: "assistant",
         content:
-          "🛠 **Checking what’s wrong…**\nExamining your documents, rules, alerts, and compliance history…",
+          "🛠 **Checking what’s wrong…**\nReviewing your documents, rules, alerts, and compliance history…",
       },
     ]);
 
@@ -180,6 +190,7 @@ export default function CopilotBox({
       } else {
         const { fixMode } = data;
 
+        // Render fix steps block
         const block =
           "🛠 **Vendor Fix Plan**\n\n" +
           "### Summary\n" +
@@ -202,6 +213,19 @@ export default function CopilotBox({
           "\n```\n";
 
         setMessages((prev) => [...prev, { role: "assistant", content: block }]);
+
+        // 🔥 AUTO-UPLOADER TRIGGER (Feature F)
+        if (fixMode.upload_action) {
+          setMessages((prev) => [
+            ...prev,
+            {
+              role: "assistant",
+              content: `Opening upload screen for **${fixMode.upload_action.toUpperCase()}**…`,
+            },
+          ]);
+
+          setTimeout(() => triggerUploader(fixMode.upload_action), 1500);
+        }
       }
     } catch (err) {
       setMessages((prev) => [
@@ -283,7 +307,8 @@ export default function CopilotBox({
               flexDirection: "column",
               alignItems: m.role === "user" ? "flex-end" : "flex-start",
             }}
-          >
+          >  
+
             <div
               style={{
                 maxWidth: "85%",
@@ -348,7 +373,7 @@ export default function CopilotBox({
           />
         </label>
 
-        {/* FIX MY COMPLIANCE BUTTON */}
+        {/* FIX MY COMPLIANCE */}
         {persona === "vendor" && (
           <button
             onClick={runFixMode}
