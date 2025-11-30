@@ -13,9 +13,13 @@ export default function RenewalPage() {
   const [stageFilter, setStageFilter] = useState("all");
   const [coverageFilter, setCoverageFilter] = useState("all");
 
-  // AI insights
+  // AI insights (renewal insights summary)
   const [insights, setInsights] = useState(null);
   const [loadingInsights, setLoadingInsights] = useState(false);
+
+  // Risk ML forecast
+  const [forecast, setForecast] = useState([]);
+  const [loadingForecast, setLoadingForecast] = useState(false);
 
   async function loadInsights() {
     if (!orgId) return;
@@ -24,13 +28,41 @@ export default function RenewalPage() {
       const res = await fetch(`/api/ai/renewal-insights?orgId=${orgId}`);
       const data = await res.json();
       if (data.ok) setInsights(data.insights);
-    } catch (_) {}
+    } catch (_) {
+      // ignore
+    }
     setLoadingInsights(false);
+  }
+
+  async function loadForecast() {
+    if (!orgId) return;
+    try {
+      setLoadingForecast(true);
+      const res = await fetch(`/api/renewals/forecast?orgId=${orgId}`);
+      const data = await res.json();
+      if (data.ok) {
+        setForecast(data.forecast || []);
+      }
+    } catch (_) {
+      // ignore
+    }
+    setLoadingForecast(false);
   }
 
   useEffect(() => {
     loadInsights();
+    loadForecast();
   }, [orgId]);
+
+  // Derived Risk ML stats
+  const highRisk = forecast.filter((f) => f.risk_bucket === "high_risk_fail");
+  const atRisk = forecast.filter((f) => f.risk_bucket === "at_risk");
+  const watch = forecast.filter((f) => f.risk_bucket === "watch");
+
+  const topRiskVendors = [...forecast]
+    .sort((a, b) => b.risk_score - a.risk_score)
+    .slice(0, 3);
+
   return (
     <div
       style={{
@@ -128,7 +160,7 @@ export default function RenewalPage() {
                   textTransform: "uppercase",
                 }}
               >
-                AI Insights
+                AI Insights + Risk ML
               </span>
             </div>
 
@@ -161,10 +193,11 @@ export default function RenewalPage() {
               }}
             >
               View upcoming expirations, filter by stage, find high-risk vendors,
-              and let AI summarize renewal priorities.
+              and let AI + Risk ML prioritize who to chase first.
             </p>
           </div>
         </div>
+
         {/* AI INSIGHTS PANEL */}
         <div
           style={{
@@ -172,7 +205,7 @@ export default function RenewalPage() {
             padding: 16,
             background: "rgba(15,23,42,0.92)",
             border: "1px solid rgba(56,189,248,0.4)",
-            marginBottom: 22,
+            marginBottom: 16,
             boxShadow: "0 0 25px rgba(56,189,248,0.25)",
           }}
         >
@@ -211,6 +244,184 @@ export default function RenewalPage() {
             </>
           )}
         </div>
+
+        {/* RISK ML FORECAST STRIP */}
+        <div
+          style={{
+            borderRadius: 18,
+            padding: 14,
+            marginBottom: 22,
+            background: "rgba(15,23,42,0.96)",
+            border: "1px solid rgba(148,163,184,0.4)",
+            display: "grid",
+            gridTemplateColumns: "1.4fr 1.6fr",
+            gap: 14,
+            alignItems: "flex-start",
+          }}
+        >
+          <div>
+            <div
+              style={{
+                fontSize: 11,
+                textTransform: "uppercase",
+                letterSpacing: 1.2,
+                color: "#9ca3af",
+                marginBottom: 6,
+              }}
+            >
+              Risk ML Forecast
+            </div>
+
+            {loadingForecast ? (
+              <div style={{ fontSize: 12, color: "#94a3b8" }}>
+                Loading risk forecast…
+              </div>
+            ) : forecast.length === 0 ? (
+              <div style={{ fontSize: 12, color: "#94a3b8" }}>
+                No active renewals to score yet.
+              </div>
+            ) : (
+              <div
+                style={{
+                  display: "flex",
+                  gap: 10,
+                  fontSize: 12,
+                  color: "#e5e7eb",
+                }}
+              >
+                <div
+                  style={{
+                    padding: "6px 10px",
+                    borderRadius: 10,
+                    background: "rgba(248,113,113,0.12)",
+                    border: "1px solid rgba(248,113,113,0.8)",
+                    flex: 1,
+                  }}
+                >
+                  <div style={{ fontSize: 11, color: "#fecaca" }}>
+                    High Risk (likely to fail)
+                  </div>
+                  <div
+                    style={{
+                      fontSize: 18,
+                      fontWeight: 700,
+                      marginTop: 2,
+                      color: "#fecaca",
+                    }}
+                  >
+                    {highRisk.length}
+                  </div>
+                </div>
+
+                <div
+                  style={{
+                    padding: "6px 10px",
+                    borderRadius: 10,
+                    background: "rgba(250,204,21,0.12)",
+                    border: "1px solid rgba(250,204,21,0.8)",
+                    flex: 1,
+                  }}
+                >
+                  <div style={{ fontSize: 11, color: "#fcd34d" }}>
+                    At Risk (needs attention)
+                  </div>
+                  <div
+                    style={{
+                      fontSize: 18,
+                      fontWeight: 700,
+                      marginTop: 2,
+                      color: "#facc15",
+                    }}
+                  >
+                    {atRisk.length}
+                  </div>
+                </div>
+
+                <div
+                  style={{
+                    padding: "6px 10px",
+                    borderRadius: 10,
+                    background: "rgba(56,189,248,0.08)",
+                    border: "1px solid rgba(56,189,248,0.7)",
+                    flex: 1,
+                  }}
+                >
+                  <div style={{ fontSize: 11, color: "#bae6fd" }}>
+                    Watch / Monitoring
+                  </div>
+                  <div
+                    style={{
+                      fontSize: 18,
+                      fontWeight: 700,
+                      marginTop: 2,
+                      color: "#38bdf8",
+                    }}
+                  >
+                    {watch.length}
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* Top 3 Highest Risk Vendors */}
+          <div>
+            <div
+              style={{
+                fontSize: 11,
+                textTransform: "uppercase",
+                letterSpacing: 1.2,
+                color: "#9ca3af",
+                marginBottom: 6,
+              }}
+            >
+              Top Risky Renewals
+            </div>
+
+            {loadingForecast ? (
+              <div style={{ fontSize: 12, color: "#94a3b8" }}>
+                Calculating…
+              </div>
+            ) : topRiskVendors.length === 0 ? (
+              <div style={{ fontSize: 12, color: "#94a3b8" }}>
+                All vendors currently look stable.
+              </div>
+            ) : (
+              <ul
+                style={{
+                  listStyle: "none",
+                  padding: 0,
+                  margin: 0,
+                  fontSize: 12,
+                }}
+              >
+                {topRiskVendors.map((f) => (
+                  <li
+                    key={`${f.vendor_id}-${f.policy_id}`}
+                    style={{
+                      padding: "4px 0",
+                      borderBottom: "1px solid rgba(30,64,175,0.5)",
+                    }}
+                  >
+                    <span
+                      style={{
+                        color: "#e5e7eb",
+                        fontWeight: 600,
+                      }}
+                    >
+                      {f.vendor_name}
+                    </span>{" "}
+                    <span style={{ color: "#9ca3af" }}>
+                      — {f.coverage_type || "Unknown"} ·{" "}
+                      {f.days_left}d · Risk {f.risk_score}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+        </div>
+
         {/* FILTER BAR */}
         <div
           style={{
@@ -277,7 +488,8 @@ export default function RenewalPage() {
             <option value="Property">Property</option>
           </select>
         </div>
-        {/* RENEWAL TABLE */}
+
+        {/* RENEWAL TABLE + TIMELINE */}
         <div
           style={{
             borderRadius: 24,
@@ -299,7 +511,8 @@ export default function RenewalPage() {
             <RenewalTimelineChart orgId={orgId} />
           </div>
         </div>
-      </div> {/* END COCKPIT */}
+      </div>{" "}
+      {/* END COCKPIT */}
       {/* FOOTER */}
       <div
         style={{
@@ -314,4 +527,3 @@ export default function RenewalPage() {
     </div>
   );
 }
-// END — Renewals Index V4.5 with Chart Integration
