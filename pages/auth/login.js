@@ -26,7 +26,9 @@ export default function LoginPage() {
     }
   }, [initializing, isLoggedIn, redirect, router]);
 
-  // Send Magic Link
+  // ==========================================
+  // SEND MAGIC LINK (FIXED VERSION WITH REDIRECT)
+  // ==========================================
   async function sendMagicLink(e) {
     e.preventDefault();
     setError("");
@@ -39,11 +41,18 @@ export default function LoginPage() {
     try {
       setLoading(true);
 
+      const finalRedirect =
+        typeof router.query.redirect === "string"
+          ? router.query.redirect
+          : "/dashboard";
+
       const { error: linkError } = await supabase.auth.signInWithOtp({
         email: email.trim(),
         options: {
-          // Supabase v2 magic link must redirect to /auth/callback (NO token_hash!)
-          emailRedirectTo: `${window.location.origin}/auth/callback`,
+          // 🔥 IMPORTANT: preserve redirect param into callback
+          emailRedirectTo: `${window.location.origin}/auth/callback?redirect=${encodeURIComponent(
+            finalRedirect
+          )}`,
           shouldCreateUser: true,
         },
       });
@@ -109,7 +118,14 @@ export default function LoginPage() {
         }}
       >
         {/* HEADER */}
-        <div style={{ display: "flex", gap: 10, alignItems: "center", marginBottom: 14 }}>
+        <div
+          style={{
+            display: "flex",
+            gap: 10,
+            alignItems: "center",
+            marginBottom: 14,
+          }}
+        >
           <div
             style={{
               padding: 10,
@@ -165,7 +181,9 @@ export default function LoginPage() {
         {/* IF SENT: SHOW CONFIRMATION */}
         {sent ? (
           <div style={{ marginTop: 20, fontSize: 14, textAlign: "center" }}>
-            <p style={{ color: "#93c5fd" }}>✔ Magic link sent! Check your inbox.</p>
+            <p style={{ color: "#93c5fd" }}>
+              ✔ Magic link sent! Check your inbox.
+            </p>
             <p style={{ color: "#9ca3af", fontSize: 12 }}>
               (It may take 5–10 seconds to arrive.)
             </p>
