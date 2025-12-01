@@ -1,4 +1,4 @@
-// components/Sidebar.js — Tactical Neon Rail V8 (V5 + Coverage Intel Corrected)
+// components/Sidebar.js — Tactical Neon Rail V9 (Added Onboarding Route)
 import React from "react";
 
 export default function Sidebar({ pathname, isAdmin, isManager, isViewer }) {
@@ -78,7 +78,7 @@ export default function Sidebar({ pathname, isAdmin, isManager, isViewer }) {
         />
       )}
 
-      {/* ⭐ NEW: COVERAGE INTEL (AI Insurance Brain) ⭐ */}
+      {/* ⭐ COVERAGE INTEL ⭐ */}
       {isAdmin && (
         <RailLink
           href="/admin/coverage-intel"
@@ -88,7 +88,7 @@ export default function Sidebar({ pathname, isAdmin, isManager, isViewer }) {
         />
       )}
 
-      {/* ⭐ NEW: REQUIREMENTS ENGINE V5 (FINAL ENGINE) ⭐ */}
+      {/* ⭐ REQUIREMENTS ENGINE V5 ⭐ */}
       {isAdmin && (
         <RailLink
           href="/admin/requirements-v5"
@@ -97,6 +97,14 @@ export default function Sidebar({ pathname, isAdmin, isManager, isViewer }) {
           active={pathname === "/admin/requirements-v5"}
         />
       )}
+
+      {/* ⭐ NEW: ONBOARDING ⭐ */}
+      <RailLink
+        href="/onboarding"
+        label="Onboard"
+        icon="🎉"
+        active={pathname.startsWith("/onboarding")}
+      />
 
       {/* ===== LOGOUT ===== */}
       <div style={{ marginTop: "auto" }}>
