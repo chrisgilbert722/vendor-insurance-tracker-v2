@@ -1,3 +1,4 @@
+console.log("🔥🔥🔥 ONBOARDING PAGE LOADED!!!! 🔥🔥🔥");
 // pages/onboarding/index.js
 // AI Onboarding Wizard — fullscreen cinematic wizard (hybrid layout).
 // Steps:
