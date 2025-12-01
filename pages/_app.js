@@ -15,6 +15,7 @@ const PUBLIC_ROUTES = [
   "/billing/start",
   "/billing/success",
   "/billing/upgrade",
+  "/onboarding",           // 🔥 added onboarding wizard as public
 ];
 
 function AppShell({ Component, pageProps }) {
@@ -23,30 +24,33 @@ function AppShell({ Component, pageProps }) {
 
   const path = router.pathname;
   const isPublic = PUBLIC_ROUTES.includes(path);
+  const isOnboarding = path.startsWith("/onboarding"); // 🔥 detect wizard pages
 
   useEffect(() => {
-    // 🚫 DO NOTHING until Supabase initializes
     if (initializing) return;
 
-    // 🟦 Public routes are always allowed
+    // 🟦 Onboarding wizard should NOT require login
+    if (isOnboarding) return;
+
+    // 🟦 Public routes allowed
     if (isPublic) return;
 
-    // 🔥 If no session yet → go to login
+    // 🔥 Protected routes → must be logged in
     if (!isLoggedIn) {
       router.replace(`/auth/login?redirect=${encodeURIComponent(router.asPath)}`);
       return;
     }
 
-    // 🔥 Billing logic (later)
+    // 🔥 Billing rules go here later
     // const meta = user?.user_metadata || {};
     // if (!meta.subscription_active) {
     //   router.replace("/billing/upgrade");
     //   return;
     // }
 
-  }, [initializing, isLoggedIn, isPublic, user, router]);
+  }, [initializing, isLoggedIn, isPublic, isOnboarding, user, router]);
 
-  // 🚫 While initializing, show NOTHING (prevents loops)
+  // Still initializing → show loading
   if (initializing) {
     return (
       <div
@@ -65,16 +69,21 @@ function AppShell({ Component, pageProps }) {
     );
   }
 
-  // 🚫 If not logged in & not public route → avoid flashing protected content
-  if (!isLoggedIn && !isPublic) {
+  // If not logged in & not public & not onboarding → block
+  if (!isLoggedIn && !isPublic && !isOnboarding) {
     return null;
   }
 
   return (
     <OrgProvider>
-      <Layout>
+      {/* 🔥 BYPASS LAYOUT FOR ONBOARDING WIZARD */}
+      {isOnboarding ? (
         <Component {...pageProps} />
-      </Layout>
+      ) : (
+        <Layout>
+          <Component {...pageProps} />
+        </Layout>
+      )}
     </OrgProvider>
   );
 }
