@@ -1,4 +1,3 @@
-// force vercel build 2
 // pages/index.js
 import Head from "next/head";
 import { useRouter } from "next/router";
