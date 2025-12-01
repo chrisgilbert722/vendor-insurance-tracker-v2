@@ -15,7 +15,7 @@ const PUBLIC_ROUTES = [
   "/billing/start",
   "/billing/success",
   "/billing/upgrade",
-  "/onboarding",           // 🔥 added onboarding wizard as public
+  "/onboarding",          // 🔥 FULLSCREEN WIZARD ALLOWED
 ];
 
 function AppShell({ Component, pageProps }) {
@@ -23,34 +23,32 @@ function AppShell({ Component, pageProps }) {
   const { isLoggedIn, initializing, user } = useUser();
 
   const path = router.pathname;
-  const isPublic = PUBLIC_ROUTES.includes(path);
-  const isOnboarding = path.startsWith("/onboarding"); // 🔥 detect wizard pages
+
+  // 🔥 Detect wizard route: ANYTHING under /onboarding
+  const isOnboarding = path.startsWith("/onboarding");
+
+  // 🔥 Public routes (login, callbacks, and onboarding)
+  const isPublic = PUBLIC_ROUTES.includes(path) || isOnboarding;
 
   useEffect(() => {
     if (initializing) return;
 
-    // 🟦 Onboarding wizard should NOT require login
+    // 🔥 Wizard is PUBLIC — NEVER redirect
     if (isOnboarding) return;
 
-    // 🟦 Public routes allowed
+    // 🟦 Public routes are always allowed
     if (isPublic) return;
 
-    // 🔥 Protected routes → must be logged in
+    // 🔒 Protected routes require login
     if (!isLoggedIn) {
       router.replace(`/auth/login?redirect=${encodeURIComponent(router.asPath)}`);
       return;
     }
 
-    // 🔥 Billing rules go here later
-    // const meta = user?.user_metadata || {};
-    // if (!meta.subscription_active) {
-    //   router.replace("/billing/upgrade");
-    //   return;
-    // }
+    // Billing checks added later
+  }, [initializing, isLoggedIn, isOnboarding, isPublic, user, router]);
 
-  }, [initializing, isLoggedIn, isPublic, isOnboarding, user, router]);
-
-  // Still initializing → show loading
+  // ⏳ Still initializing? Show loading screen
   if (initializing) {
     return (
       <div
@@ -69,14 +67,14 @@ function AppShell({ Component, pageProps }) {
     );
   }
 
-  // If not logged in & not public & not onboarding → block
-  if (!isLoggedIn && !isPublic && !isOnboarding) {
+  // 🔒 If not logged in & not public → block render
+  if (!isLoggedIn && !isPublic) {
     return null;
   }
 
   return (
     <OrgProvider>
-      {/* 🔥 BYPASS LAYOUT FOR ONBOARDING WIZARD */}
+      {/* 🔥 BYPASS LAYOUT COMPLETELY FOR THE ONBOARDING WIZARD */}
       {isOnboarding ? (
         <Component {...pageProps} />
       ) : (
