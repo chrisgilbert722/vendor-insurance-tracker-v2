@@ -1,4 +1,4 @@
-// pages/_app.js
+// pages/_app.js — Unified Auth Shell V7 (Onboarding Normalized)
 import "../public/cockpit.css";
 import { useEffect } from "react";
 import { useRouter } from "next/router";
@@ -6,7 +6,7 @@ import { OrgProvider } from "../context/OrgContext";
 import Layout from "../components/Layout";
 import { UserProvider, useUser } from "../context/UserContext";
 
-// Routes that never require authentication
+// Routes that NEVER require authentication
 const PUBLIC_ROUTES = [
   "/auth/login",
   "/auth/callback",
@@ -15,40 +15,33 @@ const PUBLIC_ROUTES = [
   "/billing/start",
   "/billing/success",
   "/billing/upgrade",
-  "/onboarding",          // 🔥 FULLSCREEN WIZARD ALLOWED
 ];
 
 function AppShell({ Component, pageProps }) {
   const router = useRouter();
-  const { isLoggedIn, initializing, user } = useUser();
+  const { isLoggedIn, initializing } = useUser();
 
   const path = router.pathname;
 
-  // 🔥 Detect wizard route: ANYTHING under /onboarding
-  const isOnboarding = path.startsWith("/onboarding");
-
-  // 🔥 Public routes (login, callbacks, and onboarding)
-  const isPublic = PUBLIC_ROUTES.includes(path) || isOnboarding;
+  // Determine if the route is public
+  const isPublic = PUBLIC_ROUTES.includes(path);
 
   useEffect(() => {
     if (initializing) return;
 
-    // 🔥 Wizard is PUBLIC — NEVER redirect
-    if (isOnboarding) return;
-
-    // 🟦 Public routes are always allowed
+    // Public routes always allowed
     if (isPublic) return;
 
-    // 🔒 Protected routes require login
+    // Protected routes require login
     if (!isLoggedIn) {
-      router.replace(`/auth/login?redirect=${encodeURIComponent(router.asPath)}`);
+      router.replace(
+        `/auth/login?redirect=${encodeURIComponent(router.asPath)}`
+      );
       return;
     }
+  }, [initializing, isLoggedIn, isPublic, router]);
 
-    // Billing checks added later
-  }, [initializing, isLoggedIn, isOnboarding, isPublic, user, router]);
-
-  // ⏳ Still initializing? Show loading screen
+  // Loading screen during auth bootstrap
   if (initializing) {
     return (
       <div
@@ -67,21 +60,16 @@ function AppShell({ Component, pageProps }) {
     );
   }
 
-  // 🔒 If not logged in & not public → block render
+  // If not logged in & route is protected → delay render
   if (!isLoggedIn && !isPublic) {
     return null;
   }
 
   return (
     <OrgProvider>
-      {/* 🔥 BYPASS LAYOUT COMPLETELY FOR THE ONBOARDING WIZARD */}
-      {isOnboarding ? (
+      <Layout>
         <Component {...pageProps} />
-      ) : (
-        <Layout>
-          <Component {...pageProps} />
-        </Layout>
-      )}
+      </Layout>
     </OrgProvider>
   );
 }
