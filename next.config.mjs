@@ -2,13 +2,12 @@
 const nextConfig = {
   reactStrictMode: true,
 
-  // 🔥 IMPORTANT: Force Next.js to run in server mode,
-  // not static export. This is what enables /onboarding to actually exist.
-  output: "standalone",
+  // Disable static export mode
+  output: 'standalone',
 
-  // Optional but recommended for dynamic apps
+  // Ensures Next.js runs server functions normally
   experimental: {
-    typedRoutes: false,
+    optimizePackageImports: false,
   },
 };
 
