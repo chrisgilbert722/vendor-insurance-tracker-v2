@@ -2,12 +2,11 @@
 const nextConfig = {
   reactStrictMode: true,
 
-  // Disable static export mode
-  output: 'standalone',
+  output: "standalone",
 
-  // Ensures Next.js runs server functions normally
+  // Must be an array or removed completely.
   experimental: {
-    optimizePackageImports: false,
+    optimizePackageImports: [],
   },
 };
 
