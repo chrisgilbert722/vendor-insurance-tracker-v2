@@ -1,5 +1,5 @@
 // pages/onboarding/vendors.js
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useRouter } from "next/router";
 import OnboardingLayout from "../../components/onboarding/OnboardingLayout";
 
@@ -12,6 +12,42 @@ export default function OnboardingVendors() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
 
+  /* ==========================================================
+     SECTION 1 — LOAD AI VENDOR SUGGESTIONS FROM LOCAL STORAGE
+  ========================================================== */
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem("onboarding_ai_intel");
+      if (!raw) return;
+
+      const intel = JSON.parse(raw);
+
+      // AI vendor suggestion structure
+      // Example:
+      // intel.vendorSuggestion = {
+      //   name: "Acme Roofing LLC",
+      //   email: "owner@acmeroofing.com"
+      // }
+
+      if (intel?.vendorSuggestion) {
+        if (intel.vendorSuggestion.name) {
+          setVendorName(intel.vendorSuggestion.name);
+        }
+
+        if (intel.vendorSuggestion.email) {
+          setVendorEmail(intel.vendorSuggestion.email);
+        }
+
+        console.log("AI Vendor Suggestion Applied:", intel.vendorSuggestion);
+      }
+    } catch (err) {
+      console.warn("Could not load AI vendor suggestion:", err);
+    }
+  }, []);
+
+  /* ==========================================================
+     Submit Handler
+  ========================================================== */
   async function handleSubmit(e) {
     e.preventDefault();
     setError("");
