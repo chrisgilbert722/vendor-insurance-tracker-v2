@@ -26,7 +26,6 @@ export default function VendorPortal() {
   const [uploading, setUploading] = useState(false);
   const [uploadError, setUploadError] = useState("");
   const [uploadSuccess, setUploadSuccess] = useState("");
-
   const [selectedFile, setSelectedFile] = useState(null);
 
   /* ============================================================
@@ -54,7 +53,7 @@ export default function VendorPortal() {
   }, [token]);
 
   /* ============================================================
-     HANDLE FILE INPUT
+     FILE HANDLING
   ============================================================ */
   function handleFileInput(e) {
     const f = e.target.files?.[0];
@@ -84,7 +83,7 @@ export default function VendorPortal() {
   }
 
   /* ============================================================
-     UPLOAD + PARSE COI
+     UPLOAD + AI PARSE FLOW
   ============================================================ */
   async function handleUpload() {
     if (!selectedFile) {
@@ -97,7 +96,7 @@ export default function VendorPortal() {
       setUploadError("");
       setUploadSuccess("");
 
-      // 1) Upload to /api/vendor/upload-coi
+      // 1) Upload
       const formData = new FormData();
       formData.append("file", selectedFile);
       formData.append("token", token);
@@ -112,18 +111,18 @@ export default function VendorPortal() {
 
       setUploadSuccess("Uploaded! Parsing your COI…");
 
-      // 2) Update UI with new AI data
+      // 2) Merge returned AI data into vendorData UI
       setVendorData((prev) => ({
         ...prev,
-        ai: json.ai,
-        alerts: json.alerts,
-        status: { state: json.status, label: json.status.toUpperCase() },
+        ai: json.ai || prev?.ai,
+        alerts: json.alerts || prev?.alerts,
+        status: {
+          state: json.status || prev?.status?.state,
+          label: (json.status || prev?.status?.state || "pending").toUpperCase(),
+        },
       }));
 
-      setTimeout(() => {
-        setUploadSuccess("COI analyzed successfully!");
-      }, 600);
-
+      setTimeout(() => setUploadSuccess("COI analyzed successfully!"), 600);
     } catch (err) {
       setUploadError(err.message || "Upload failed.");
     } finally {
@@ -139,11 +138,10 @@ export default function VendorPortal() {
       <div
         style={{
           minHeight: "100vh",
-          background:
-            "radial-gradient(circle at top left,#020617 0,#020617 45%,#000)",
+          background: "radial-gradient(circle at top,#020617,#000)",
           display: "flex",
-          alignItems: "center",
           justifyContent: "center",
+          alignItems: "center",
           color: GP.textSoft,
         }}
       >
@@ -157,11 +155,10 @@ export default function VendorPortal() {
       <div
         style={{
           minHeight: "100vh",
-          background:
-            "radial-gradient(circle at top,#020617 0,#020617 45%,#000)",
+          background: "radial-gradient(circle at top,#020617,#000)",
           display: "flex",
-          alignItems: "center",
           justifyContent: "center",
+          alignItems: "center",
           color: GP.text,
           textAlign: "center",
         }}
@@ -183,8 +180,7 @@ export default function VendorPortal() {
     <div
       style={{
         minHeight: "100vh",
-        background:
-          "radial-gradient(circle at top,#020617 0,#020617 45%,#000)",
+        background: "radial-gradient(circle at top,#020617,#000)",
         padding: "32px 24px",
         color: GP.text,
       }}
@@ -199,7 +195,7 @@ export default function VendorPortal() {
         }}
       >
         <div>
-          <div style={{ fontSize: 12, color: GP.textSoft, textTransform: "uppercase" }}>
+          <div style={{ fontSize: 12, textTransform: "uppercase", color: GP.textSoft }}>
             Vendor Compliance Portal
           </div>
 
@@ -220,14 +216,13 @@ export default function VendorPortal() {
           </div>
         </div>
 
-        {/* STATUS */}
+        {/* STATUS PILL */}
         <div
           style={{
             padding: "6px 14px",
             borderRadius: 999,
             border: `1px solid ${GP.border}`,
             background: "rgba(15,23,42,0.9)",
-            textAlign: "right",
           }}
         >
           <div style={{ fontSize: 11, color: GP.textSoft }}>Status</div>
@@ -243,7 +238,7 @@ export default function VendorPortal() {
                   : GP.neonRed,
             }}
           >
-            {status?.label || "Pending"}
+            {status?.label}
           </div>
         </div>
       </div>
@@ -258,8 +253,9 @@ export default function VendorPortal() {
           gap: 24,
         }}
       >
-        {/* LEFT SIDE — UPLOAD */}
+        {/* LEFT SIDE */}
         <div>
+          {/* UPLOAD PANEL */}
           <div
             style={{
               borderRadius: 20,
@@ -270,7 +266,7 @@ export default function VendorPortal() {
             onDrop={handleDrop}
             onDragOver={handleDragOver}
           >
-            <h3 style={{ marginTop: 0, color: GP.text }}>Upload COI PDF</h3>
+            <h3 style={{ marginTop: 0 }}>Upload COI PDF</h3>
 
             <input
               id="coiUpload"
@@ -279,7 +275,6 @@ export default function VendorPortal() {
               style={{ display: "none" }}
               onChange={handleFileInput}
             />
-
             <label htmlFor="coiUpload">
               <div
                 style={{
@@ -347,7 +342,9 @@ export default function VendorPortal() {
             </button>
           </div>
 
-          {/* AI EXTRACTED POLICIES */}
+          {/* ===================================================
+              🔥 AI SUMMARY PANEL (NEW CINEMATIC BLOCK)
+          =================================================== */}
           {ai && (
             <div
               style={{
@@ -356,26 +353,135 @@ export default function VendorPortal() {
                 padding: 20,
                 border: `1px solid ${GP.border}`,
                 background: "rgba(15,23,42,0.92)",
+                boxShadow: "0 0 35px rgba(56,189,248,0.15)",
               }}
             >
-              <h3 style={{ marginTop: 0 }}>Extracted Policies</h3>
-              <pre
-                style={{
-                  background: "rgba(2,6,23,0.6)",
-                  padding: 12,
-                  borderRadius: 12,
-                  fontSize: 12,
-                  overflowX: "auto",
-                }}
-              >
-                {JSON.stringify(ai.policies, null, 2)}
-              </pre>
+              <h3 style={{ marginTop: 0, color: GP.text }}>AI COI Summary</h3>
+
+              {/* Broker formatting */}
+              {ai.brokerStyle && (
+                <div style={{ marginBottom: 14 }}>
+                  <strong style={{ color: GP.neonBlue }}>Broker Style:</strong>
+                  <div style={{ fontSize: 13, color: GP.textSoft }}>
+                    {ai.brokerStyle}
+                  </div>
+                </div>
+              )}
+
+              {/* Policy types */}
+              <div style={{ marginBottom: 14 }}>
+                <strong style={{ color: GP.neonBlue }}>Detected Policies:</strong>
+                <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginTop: 6 }}>
+                  {ai.policyTypes?.map((p, i) => (
+                    <span
+                      key={i}
+                      style={{
+                        padding: "4px 10px",
+                        borderRadius: 999,
+                        fontSize: 11,
+                        color: GP.neonBlue,
+                        border: `1px solid ${GP.neonBlue}80`,
+                        background: "rgba(15,23,42,0.85)",
+                      }}
+                    >
+                      {p}
+                    </span>
+                  ))}
+                </div>
+              </div>
+
+              {/* Limits */}
+              {ai.limits && (
+                <div style={{ marginBottom: 14 }}>
+                  <strong style={{ color: GP.neonBlue }}>Extracted Limits:</strong>
+                  {Object.entries(ai.limits).map(([policy, vals], idx) => (
+                    <div key={idx} style={{ marginBottom: 12 }}>
+                      <div
+                        style={{
+                          fontSize: 13,
+                          color: "#e5e7eb",
+                          fontWeight: 600,
+                          marginBottom: 4,
+                        }}
+                      >
+                        {policy}
+                      </div>
+                      <div
+                        style={{
+                          background: "rgba(2,6,23,0.6)",
+                          padding: "10px 12px",
+                          borderRadius: 12,
+                          fontSize: 12,
+                        }}
+                      >
+                        {Object.entries(vals).map(([k, v]) => (
+                          <div key={k} style={{ color: GP.textSoft }}>
+                            {k}:{" "}
+                            <span style={{ color: GP.neonGold }}>{v}</span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {/* Endorsements */}
+              {ai.endorsements?.length > 0 && (
+                <div style={{ marginBottom: 14 }}>
+                  <strong style={{ color: GP.neonBlue }}>Endorsements:</strong>
+                  <div style={{ marginTop: 6, display: "flex", flexWrap: "wrap", gap: 6 }}>
+                    {ai.endorsements.map((e, i) => (
+                      <span
+                        key={i}
+                        style={{
+                          padding: "4px 10px",
+                          borderRadius: 999,
+                          fontSize: 11,
+                          color: "#a855f7",
+                          border: "1px solid rgba(168,85,247,0.5)",
+                          background: "rgba(15,23,42,0.85)",
+                        }}
+                      >
+                        {e}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Observations */}
+              {ai.observations && (
+                <div style={{ marginBottom: 12 }}>
+                  <strong style={{ color: GP.neonBlue }}>AI Notes:</strong>
+                  <p style={{ fontSize: 13, color: GP.textSoft }}>{ai.observations}</p>
+                </div>
+              )}
+
+              {/* Recommended rules */}
+              {ai.recommendedRules && (
+                <div>
+                  <strong style={{ color: GP.neonBlue }}>Rule Suggestions:</strong>
+                  <pre
+                    style={{
+                      background: "rgba(2,6,23,0.6)",
+                      padding: 14,
+                      borderRadius: 12,
+                      fontSize: 12,
+                      marginTop: 6,
+                    }}
+                  >
+                    {JSON.stringify(ai.recommendedRules, null, 2)}
+                  </pre>
+                </div>
+              )}
             </div>
           )}
         </div>
 
-        {/* RIGHT SIDE — Alerts + Requirements */}
+        {/* RIGHT SIDE */}
         <div>
+          {/* Alerts */}
           <div
             style={{
               borderRadius: 20,
@@ -411,6 +517,7 @@ export default function VendorPortal() {
             )}
           </div>
 
+          {/* Requirements */}
           <div
             style={{
               borderRadius: 20,
@@ -423,7 +530,7 @@ export default function VendorPortal() {
             <ul style={{ paddingLeft: 18 }}>
               {(requirements?.coverages || []).map((c, i) => (
                 <li key={i}>
-                  <strong style={{ color: "#e5e7eb" }}>{c.name}</strong>{" "}
+                  <strong>{c.name}</strong>{" "}
                   {c.limit && `— ${c.limit}`}
                 </li>
               ))}
