@@ -1,18 +1,18 @@
-// pages/dashboard.js
+// pages/dashboard.js — Dashboard V4 (Fully Live Data)
 import { useEffect, useState } from "react";
 import VendorDrawer from "../components/VendorDrawer";
 import { useRole } from "../lib/useRole";
 import { useOrg } from "../context/OrgContext";
 import EliteStatusPill from "../components/elite/EliteStatusPill";
 
-// BASE CHARTS
+// LIVE CHARTS (now using real metrics data)
 import ComplianceTrajectoryChart from "../components/charts/ComplianceTrajectoryChart";
 import PassFailDonutChart from "../components/charts/PassFailDonutChart";
 import ExpiringCertsHeatmap from "../components/charts/ExpiringCertsHeatmap";
 import SeverityDistributionChart from "../components/charts/SeverityDistributionChart";
 import RiskTimelineChart from "../components/charts/RiskTimelineChart";
 
-// WEAPON PACK COMPONENTS
+// WEAPON PACK COMPONENTS (all live)
 import AlertTimelineChart from "../components/charts/AlertTimelineChart";
 import TopAlertTypes from "../components/charts/TopAlertTypes";
 import AlertAgingKpis from "../components/kpis/AlertAgingKpis";
@@ -41,7 +41,7 @@ const GP = {
 };
 
 /* ===========================
-   RISK / HELPER FUNCTIONS
+   RISK & BADGE HELPERS
 =========================== */
 function parseExpiration(dateStr) {
   if (!dateStr) return null;
@@ -52,7 +52,7 @@ function parseExpiration(dateStr) {
 
 function computeDaysLeft(dateStr) {
   const d = parseExpiration(dateStr);
-  return d ? Math.floor((d - new Date()) / (1000 * 60 * 60 * 24)) : null;
+  return d ? Math.floor((d - new Date()) / 86400000) : null;
 }
 
 function computeRisk(p) {
@@ -97,7 +97,6 @@ function computeRisk(p) {
 
   return { daysLeft, severity, score, flags, tier };
 }
-
 function badgeStyle(level) {
   switch (level) {
     case "expired":
@@ -241,6 +240,7 @@ function renderComplianceBadge(vendorId, complianceMap) {
     </span>
   );
 }
+
 /* ===========================
    MAIN DASHBOARD COMPONENT
 =========================== */
@@ -248,21 +248,25 @@ export default function Dashboard() {
   const { isAdmin, isManager } = useRole();
   const { activeOrgId } = useOrg();
 
-  // Dashboard V3 overview
+  // Metrics overview (from /api/dashboard/metrics)
   const [dashboard, setDashboard] = useState(null);
   const [dashboardLoading, setDashboardLoading] = useState(true);
 
-  // Policies
+  // Policies (still live from /api/get-policies)
   const [policies, setPolicies] = useState([]);
-  const [loading, setLoading] = useState(true);
+  const [loadingPolicies, setLoadingPolicies] = useState(true);
 
   // Filters
   const [filterText, setFilterText] = useState("");
 
-  // Compliance / Elite
+  // Compliance / Elite maps
   const [complianceMap, setComplianceMap] = useState({});
   const [eliteMap, setEliteMap] = useState({});
-  const [eliteSummary, setEliteSummary] = useState({ pass: 0, warn: 0, fail: 0 });
+  const [eliteSummary, setEliteSummary] = useState({
+    pass: 0,
+    warn: 0,
+    fail: 0,
+  });
 
   // Alerts
   const [alerts, setAlerts] = useState([]);
@@ -274,7 +278,7 @@ export default function Dashboard() {
   const [drawerPolicies, setDrawerPolicies] = useState([]);
 
   /* ===========================
-      LOAD DASHBOARD OVERVIEW
+      LOAD DASHBOARD METRICS (LIVE)
   ============================ */
   useEffect(() => {
     if (!activeOrgId) return;
@@ -282,9 +286,11 @@ export default function Dashboard() {
     async function loadDashboard() {
       try {
         setDashboardLoading(true);
-        const res = await fetch(`/api/dashboard/overview?orgId=${activeOrgId}`);
+        const res = await fetch(`/api/dashboard/metrics?orgId=${activeOrgId}`);
         const data = await res.json();
         if (data.ok) setDashboard(data.overview);
+      } catch (err) {
+        console.error("[dashboard] metrics error:", err);
       } finally {
         setDashboardLoading(false);
       }
@@ -294,20 +300,25 @@ export default function Dashboard() {
   }, [activeOrgId]);
 
   /* ===========================
-      LOAD POLICIES
+      LOAD POLICIES (LIVE)
   ============================ */
   useEffect(() => {
     async function load() {
-      const res = await fetch("/api/get-policies");
-      const data = await res.json();
-      if (data.ok) setPolicies(data.policies);
-      setLoading(false);
+      try {
+        const res = await fetch("/api/get-policies");
+        const data = await res.json();
+        if (data.ok) setPolicies(data.policies);
+      } catch (err) {
+        console.error("[dashboard] policies error:", err);
+      } finally {
+        setLoadingPolicies(false);
+      }
     }
     load();
   }, []);
 
   /* ===========================
-      LOAD COMPLIANCE
+      LOAD COMPLIANCE (LIVE)
   ============================ */
   useEffect(() => {
     if (!policies.length || !activeOrgId) return;
@@ -345,7 +356,7 @@ export default function Dashboard() {
   }, [policies, activeOrgId, complianceMap]);
 
   /* ===========================
-      LOAD ELITE ENGINE RESULTS
+      LOAD ELITE ENGINE RESULTS (LIVE)
   ============================ */
   useEffect(() => {
     if (!policies.length) return;
@@ -410,23 +421,45 @@ export default function Dashboard() {
     setEliteSummary({ pass, warn, fail });
   }, [eliteMap]);
 
-
   /* ===========================
-      LOAD V2 ALERTS
+      LOAD V2 ALERTS (LIVE)
   ============================ */
   useEffect(() => {
     if (!activeOrgId) return;
 
     async function loadAlerts() {
-      const res = await fetch(`/api/alerts/get?orgId=${activeOrgId}`);
-      const data = await res.json();
-      if (data.ok) setAlerts(data.alerts);
+      try {
+        const res = await fetch(`/api/alerts/get?orgId=${activeOrgId}`);
+        const data = await res.json();
+        if (data.ok) setAlerts(data.alerts);
+      } catch (err) {
+        console.error("[dashboard] alerts error:", err);
+      }
     }
 
     loadAlerts();
     const interval = setInterval(loadAlerts, 7000);
     return () => clearInterval(interval);
   }, [activeOrgId]);
+
+  /* ===========================
+      DRAWER HANDLERS
+  ============================ */
+  const openDrawer = (vendorId) => {
+    const vp = policies.filter((p) => p.vendor_id === vendorId);
+    setDrawerVendor({
+      id: vendorId,
+      name: vp[0]?.vendor_name || "Vendor",
+    });
+    setDrawerPolicies(vp);
+    setDrawerOpen(true);
+  };
+
+  const closeDrawer = () => {
+    setDrawerOpen(false);
+    setDrawerVendor(null);
+    setDrawerPolicies([]);
+  };
 
   /* ===========================
       COMPUTED KPI VALUES
@@ -453,6 +486,7 @@ export default function Dashboard() {
       p.coverage_type?.toLowerCase().includes(t)
     );
   });
+
   return (
     <div
       style={{
@@ -771,7 +805,6 @@ export default function Dashboard() {
                       {new Date(a.created_at).toLocaleString()}
                     </div>
 
-                    {/* RESOLVE BUTTON */}
                     <button
                       onClick={async (e) => {
                         e.stopPropagation();
@@ -785,15 +818,13 @@ export default function Dashboard() {
                           }),
                         });
 
-                        // Refresh alerts
                         const refreshed = await fetch(
                           `/api/alerts/get?orgId=${activeOrgId}`
                         ).then((r) => r.json());
                         if (refreshed.ok) setAlerts(refreshed.alerts);
 
-                        // Refresh dashboard overview
                         const dash = await fetch(
-                          `/api/dashboard/overview?orgId=${activeOrgId}`
+                          `/api/dashboard/metrics?orgId=${activeOrgId}`
                         ).then((r) => r.json());
                         if (dash.ok) setDashboard(dash.overview);
                       }}
@@ -838,7 +869,8 @@ export default function Dashboard() {
               background:
                 "conic-gradient(from 220deg,#22c55e,#a3e635,#facc15,#fb7185,#0f172a)",
               padding: 5,
-              boxShadow: "0 0 50px rgba(34,197,94,0.45),0 0 80px rgba(148,163,184,0.3)",
+              boxShadow:
+                "0 0 50px rgba(34,197,94,0.45),0 0 80px rgba(148,163,184,0.3)",
             }}
           >
             <div
@@ -941,6 +973,7 @@ export default function Dashboard() {
           </div>
         </div>
       </div>
+
       {/* =======================================
           CHART ROW — cockpit-telemetry
       ======================================= */}
@@ -954,15 +987,15 @@ export default function Dashboard() {
           gap: 24,
         }}
       >
-        <ComplianceTrajectoryChart />
-        <PassFailDonutChart />
+        <ComplianceTrajectoryChart data={dashboard?.complianceTrajectory} />
+        <PassFailDonutChart overview={dashboard} />
       </div>
 
       {/* =======================================
           SECONDARY BASE CHARTS
       ======================================= */}
       <ExpiringCertsHeatmap policies={policies} />
-      <SeverityDistributionChart policies={policies} />
+      <SeverityDistributionChart overview={dashboard} />
       <RiskTimelineChart policies={policies} />
 
       {/* =======================================
@@ -1008,19 +1041,19 @@ export default function Dashboard() {
         }}
       />
 
-      {loading && (
+      {loadingPolicies && (
         <div style={{ fontSize: 13, color: GP.textSoft }}>
           Loading policies…
         </div>
       )}
 
-      {!loading && filtered.length === 0 && (
+      {!loadingPolicies && filtered.length === 0 && (
         <div style={{ fontSize: 13, color: GP.textSoft }}>
           No matching policies.
         </div>
       )}
 
-      {!loading && filtered.length > 0 && (
+      {!loadingPolicies && filtered.length > 0 && (
         <>
           <div
             className="cockpit-table-shell"
@@ -1269,6 +1302,7 @@ function MiniKpi({ label, value, color, icon }) {
     </div>
   );
 }
+
 /* =======================================
    TABLE HEADER + CELL STYLES
 ======================================= */
@@ -1288,8 +1322,3 @@ const td = {
   fontSize: 12,
   color: "#e5e7eb",
 };
-
-/* =======================================
-   EOF — PREVENT ISOLATED MODULE ERRORS
-======================================= */
-
