@@ -22,10 +22,14 @@ export default function VendorPortal() {
   const [vendorData, setVendorData] = useState(null);
   const [error, setError] = useState("");
 
+  // Upload state
   const [uploading, setUploading] = useState(false);
   const [uploadError, setUploadError] = useState("");
   const [uploadSuccess, setUploadSuccess] = useState("");
   const [selectedFile, setSelectedFile] = useState(null);
+
+  // Fix Mode state
+  const [resolvedCodes, setResolvedCodes] = useState([]);
 
   /* ============================================================
      LOAD PORTAL DATA
@@ -41,6 +45,17 @@ export default function VendorPortal() {
         if (!json.ok) throw new Error(json.error || "Invalid link");
 
         setVendorData(json);
+
+        // Load fix progress from localStorage
+        try {
+          const raw = localStorage.getItem(`vendor_fix_${token}`);
+          if (raw) {
+            const decoded = JSON.parse(raw);
+            setResolvedCodes(decoded);
+          }
+        } catch (e) {
+          console.warn("Could not load fix progress:", e);
+        }
       } catch (err) {
         setError(err.message);
       } finally {
@@ -128,7 +143,28 @@ export default function VendorPortal() {
   }
 
   /* ============================================================
-     BASIC LOADING STATES
+     FIX MODE HELPERS
+  ============================================================ */
+  function toggleResolved(codeOrId) {
+    setResolvedCodes((prev) => {
+      let next;
+      if (prev.includes(codeOrId)) {
+        next = prev.filter((c) => c !== codeOrId);
+      } else {
+        next = [...prev, codeOrId];
+      }
+      // Persist to localStorage keyed by token
+      try {
+        localStorage.setItem(`vendor_fix_${token}`, JSON.stringify(next));
+      } catch (e) {
+        console.warn("Could not save fix progress:", e);
+      }
+      return next;
+    });
+  }
+
+  /* ============================================================
+     BASIC LOADING + ERROR UI
   ============================================================ */
   if (loading) {
     return (
@@ -168,44 +204,40 @@ export default function VendorPortal() {
     );
   }
 
-  const { vendor, org, requirements, alerts, status, ai } = vendorData;
+  const { vendor, org, requirements, alerts = [], status, ai } = vendorData;
 
-  /* ============================================================
-     DERIVED FIX ITEMS (for Fix Mode)
-  ============================================================ */
-  const fixItems = [];
+  // Convert alerts into fixable items
+  const fixItems = alerts.map((a) => {
+    const severityLabel =
+      a.severity === "critical"
+        ? "Critical"
+        : a.severity === "high"
+        ? "High"
+        : a.severity === "medium"
+        ? "Medium"
+        : "Info";
 
-  if (ai?.compliance) {
-    (ai.compliance.missingCoverages || []).forEach((c) => {
-      fixItems.push({
-        type: "missingCoverage",
-        label: `Missing Coverage: ${c}`,
-        explanation: `You do not have the "${c}" policy shown on your COI, but it is required by ${org?.name}.`,
-        suggestion:
-          `Ask your insurance broker to add "${c}" coverage with the required limits and re-issue the COI.`,
-      });
-    });
+    const code = a.code || `alert_${a.id || a.message}`;
+    const explanation = a.message || "Review this item with your broker.";
+    const suggestion = (() => {
+      if (a.code?.includes("missing_policy")) {
+        return "Ask your broker to add this coverage and issue an updated COI.";
+      }
+      if (a.code?.includes("low_limit")) {
+        return "Discuss increasing this policy limit to meet the requested requirement.";
+      }
+      if (a.code?.includes("endorsement")) {
+        return "Request the endorsement be added/listed on your COI.";
+      }
+      return "Contact your broker and share this message; they will know how to fix it.";
+    })();
 
-    (ai.compliance.failedEndorsements || []).forEach((e) => {
-      fixItems.push({
-        type: "endorsement",
-        label: `Missing Endorsement: ${e}`,
-        explanation: `Your COI is missing the "${e}" endorsement that ${org?.name} requires.`,
-        suggestion:
-          `Ask your broker to add endorsement "${e}" to your policy and issue an updated COI listing ${org?.name} where required.`,
-      });
-    });
+    return { code, severity: a.severity, label: a.label || a.code, explanation, suggestion, severityLabel };
+  });
 
-    (ai.compliance.limitsTooLow || []).forEach((l) => {
-      fixItems.push({
-        type: "limit",
-        label: `Limit Too Low: ${l.policy}`,
-        explanation: `Your ${l.policy} limit is ${l.actual}, but the requirement is ${l.required}.`,
-        suggestion:
-          `Ask your broker about increasing ${l.policy} limits to at least ${l.required} and issuing a new COI.`,
-      });
-    });
-  }
+  const totalIssues = fixItems.length;
+  const resolvedCount = fixItems.filter((i) => resolvedCodes.includes(i.code)).length;
+  const progressPercent = totalIssues === 0 ? 100 : Math.round((resolvedCount / totalIssues) * 100);
 
   /* ============================================================
      UI
@@ -250,6 +282,7 @@ export default function VendorPortal() {
           </div>
         </div>
 
+        {/* STATUS PILL */}
         <div
           style={{
             padding: "6px 14px",
@@ -276,7 +309,7 @@ export default function VendorPortal() {
         </div>
       </div>
 
-      {/* GRID */}
+      {/* MAIN GRID */}
       <div
         style={{
           maxWidth: 1150,
@@ -286,9 +319,9 @@ export default function VendorPortal() {
           gap: 24,
         }}
       >
-        {/* LEFT SIDE — UPLOAD + AI SUMMARY */}
+        {/* LEFT SIDE — Upload + AI Summary */}
         <div>
-          {/* UPLOAD */}
+          {/* UPLOAD PANEL */}
           <div
             style={{
               borderRadius: 20,
@@ -392,9 +425,7 @@ export default function VendorPortal() {
               {ai.brokerStyle && (
                 <div style={{ marginBottom: 14 }}>
                   <strong style={{ color: GP.neonBlue }}>Broker Style:</strong>
-                  <div style={{ fontSize: 13, color: GP.textSoft }}>
-                    {ai.brokerStyle}
-                  </div>
+                  <div style={{ fontSize: 13, color: GP.textSoft }}>{ai.brokerStyle}</div>
                 </div>
               )}
 
@@ -504,16 +535,16 @@ export default function VendorPortal() {
           )}
         </div>
 
-        {/* RIGHT SIDE — Alerts + Requirements + Download */}
+        {/* RIGHT SIDE — Alerts + Fix Mode + Requirements + Download */}
         <div>
-          {/* Alerts */}
+          {/* ALERTS PANEL */}
           <div
             style={{
               borderRadius: 20,
               padding: 18,
               border: `1px solid ${GP.border}`,
               background: "rgba(15,23,42,0.92)",
-              marginBottom: 24,
+              marginBottom: 16,
             }}
           >
             <h3 style={{ marginTop: 0 }}>Issues to Fix</h3>
@@ -542,6 +573,139 @@ export default function VendorPortal() {
             )}
           </div>
 
+          {/* FIX MODE PANEL */}
+          {fixItems.length > 0 && (
+            <div
+              style={{
+                borderRadius: 20,
+                padding: 18,
+                border: `1px solid ${GP.border}`,
+                background: "rgba(15,23,42,0.95)",
+                marginBottom: 16,
+              }}
+            >
+              <h3 style={{ marginTop: 0, marginBottom: 10 }}>Fix My COI (AI Guidance)</h3>
+
+              {/* Progress */}
+              <div
+                style={{
+                  marginBottom: 12,
+                  fontSize: 12,
+                  color: GP.textSoft,
+                }}
+              >
+                Fix Progress:{" "}
+                <strong style={{ color: GP.neonGreen }}>
+                  {resolvedCount} of {totalIssues} issues
+                </strong>{" "}
+                ({progressPercent}%)
+                <div
+                  style={{
+                    marginTop: 6,
+                    width: "100%",
+                    height: 6,
+                    borderRadius: 999,
+                    background: "rgba(15,23,42,0.85)",
+                    overflow: "hidden",
+                    border: "1px solid rgba(55,65,81,0.9)",
+                  }}
+                >
+                  <div
+                    style={{
+                      width: `${progressPercent}%`,
+                      height: "100%",
+                      background:
+                        progressPercent >= 100
+                          ? GP.neonGreen
+                          : progressPercent >= 50
+                          ? GP.neonGold
+                          : GP.neonRed,
+                      transition: "width 0.25s ease",
+                    }}
+                  />
+                </div>
+              </div>
+
+              {/* Fix items list */}
+              <div style={{ maxHeight: 260, overflowY: "auto", paddingRight: 6 }}>
+                {fixItems.map((item) => {
+                  const resolved = resolvedCodes.includes(item.code);
+                  return (
+                    <div
+                      key={item.code}
+                      style={{
+                        borderRadius: 14,
+                        border: `1px solid ${
+                          item.severity === "critical"
+                            ? "rgba(248,113,113,0.9)"
+                            : item.severity === "high"
+                            ? "rgba(250,204,21,0.9)"
+                            : "rgba(56,189,248,0.9)"
+                        }`,
+                        background: resolved
+                          ? "rgba(22,163,74,0.12)"
+                          : "rgba(15,23,42,0.9)",
+                        padding: 10,
+                        marginBottom: 10,
+                      }}
+                    >
+                      <div
+                        style={{
+                          display: "flex",
+                          justifyContent: "space-between",
+                          alignItems: "center",
+                          marginBottom: 6,
+                        }}
+                      >
+                        <div
+                          style={{
+                            fontSize: 12,
+                            color:
+                              item.severity === "critical"
+                                ? GP.neonRed
+                                : item.severity === "high"
+                                ? GP.neonGold
+                                : GP.neonBlue,
+                            fontWeight: 600,
+                          }}
+                        >
+                          {item.label}
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => toggleResolved(item.code)}
+                          style={{
+                            fontSize: 11,
+                            borderRadius: 999,
+                            padding: "4px 10px",
+                            border: "1px solid rgba(148,163,184,0.7)",
+                            background: resolved
+                              ? "rgba(22,163,74,0.2)"
+                              : "rgba(15,23,42,0.8)",
+                            color: resolved ? GP.neonGreen : GP.textSoft,
+                            cursor: "pointer",
+                          }}
+                        >
+                          {resolved ? "Marked Fixed ✓" : "Mark as Fixed"}
+                        </button>
+                      </div>
+
+                      <div style={{ fontSize: 12, color: GP.textSoft }}>
+                        <div style={{ marginBottom: 4 }}>
+                          <strong>Why this matters:</strong>{" "}
+                          {item.explanation}
+                        </div>
+                        <div>
+                          <strong>How to fix:</strong> {item.suggestion}
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
           {/* Requirements */}
           <div
             style={{
@@ -561,7 +725,7 @@ export default function VendorPortal() {
             </ul>
           </div>
 
-          {/* DOWNLOAD SUMMARY PDF */}
+          {/* Download PDF */}
           <div
             style={{
               marginTop: 24,
