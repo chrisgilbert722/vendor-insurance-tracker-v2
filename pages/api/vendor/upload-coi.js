@@ -3,18 +3,16 @@ import formidable from "formidable";
 import fs from "fs";
 import { sql } from "../../../lib/db";
 import { supabase } from "../../../lib/supabaseClient";
-import { openai } from "../../../lib/openaiClient"; // <-- add your OpenAI client
+import { openai } from "../../../lib/openaiClient";
+import { logVendorActivity } from "../../../lib/vendorActivity";
 
 export const config = {
-  api: {
-    bodyParser: false,
-  },
+  api: { bodyParser: false },
 };
 
 export default async function handler(req, res) {
   try {
     const form = formidable({ multiples: false });
-
     const [fields, files] = await form.parse(req);
 
     const token = fields.token?.[0];
@@ -46,38 +44,44 @@ export default async function handler(req, res) {
 
     const vendor = rows[0];
 
+    // ⭐ LOG: vendor accessed upload endpoint
+    await logVendorActivity(vendor.id, "access_upload", "Vendor accessed upload endpoint");
+
     /* -----------------------------------------
        2. Upload PDF → Supabase storage
     ----------------------------------------- */
-    const fileBuffer = fs.readFileSync(file.filepath);
+    const buffer = fs.readFileSync(file.filepath);
     const fileName = `vendor-coi-${vendor.id}-${Date.now()}.pdf`;
 
     const { error: uploadErr } = await supabase.storage
       .from("uploads")
-      .upload(fileName, fileBuffer, {
-        contentType: "application/pdf",
-      });
+      .upload(fileName, buffer, { contentType: "application/pdf" });
 
     if (uploadErr) throw uploadErr;
 
-    const { data: urlData } = supabase.storage
-      .from("uploads")
-      .getPublicUrl(fileName);
-
+    const { data: urlData } = supabase.storage.from("uploads").getPublicUrl(fileName);
     const fileUrl = urlData.publicUrl;
+
+    // ⭐ LOG
+    await logVendorActivity(
+      vendor.id,
+      "uploaded_coi",
+      `Vendor uploaded COI: ${fileName}`,
+      "info"
+    );
 
     /* -----------------------------------------
        3. AI EXTRACT COI → real parsing
     ----------------------------------------- */
-    const ai = await openai.responses.parseCOI(fileUrl);  
-    // Structure example:
-    // {
-    //   policies: [...],
-    //   missing: [...],
-    //   endorsements: [...],
-    //   summary: "string",
-    //   limits: {...}
-    // }
+    const ai = await openai.responses.parseCOI(fileUrl);
+
+    // ⭐ LOG
+    await logVendorActivity(
+      vendor.id,
+      "parsed_ai",
+      "AI successfully parsed COI data",
+      "info"
+    );
 
     /* -----------------------------------------
        4. Load org coverage requirements
@@ -126,6 +130,16 @@ export default async function handler(req, res) {
       }
     }
 
+    // ⭐ LOG every issue detected
+    if (alerts.length > 0) {
+      await logVendorActivity(
+        vendor.id,
+        "issues_detected",
+        `${alerts.length} compliance issues detected`,
+        "warning"
+      );
+    }
+
     const hasCritical = alerts.some((a) => a.severity === "critical");
     const hasMissing = alerts.some((a) => a.code === "missing_policy");
 
@@ -134,6 +148,14 @@ export default async function handler(req, res) {
       : hasMissing
       ? "pending"
       : "compliant";
+
+    // ⭐ LOG status update
+    await logVendorActivity(
+      vendor.id,
+      "status_update",
+      `Vendor status updated: ${status}`,
+      status === "compliant" ? "info" : "warning"
+    );
 
     /* -----------------------------------------
        6. Save parsed AI + status to DB
@@ -175,6 +197,12 @@ export default async function handler(req, res) {
     });
   } catch (err) {
     console.error("[vendor/upload-coi] ERROR:", err);
+
+    // ⭐ LOG error event
+    try {
+      await logVendorActivity(null, "error", `Upload failed: ${err.message}`, "critical");
+    } catch (_) {}
+
     return res.status(500).json({ ok: false, error: err.message });
   }
 }
