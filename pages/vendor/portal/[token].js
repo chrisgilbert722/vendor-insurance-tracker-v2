@@ -772,9 +772,14 @@ export default function VendorPortal() {
                 No events match this filter yet. Try another filter.
               </div>
             ) : (
-              groupedTimeline.map((group) => (
-                <div key={group.label} style={{ marginBottom: 18 }}>
+              groupedTimeline.map((group, groupIndex) => (
+                <div
+                  key={group.label}
+                  className="vendor-timeline-group"
+                  style={{ marginBottom: 18 }}
+                >
                   <div
+                    className="vendor-timeline-divider"
                     style={{
                       fontSize: 11,
                       textTransform: "uppercase",
@@ -784,6 +789,7 @@ export default function VendorPortal() {
                       display: "flex",
                       alignItems: "center",
                       gap: 8,
+                      animationDelay: `${groupIndex * 80}ms`,
                     }}
                   >
                     <span
@@ -806,66 +812,80 @@ export default function VendorPortal() {
                   </div>
 
                   <ul style={{ paddingLeft: 0, listStyle: "none", margin: 0 }}>
-                    {group.items.map((item, i) => (
-                      <li
-                        key={i}
-                        style={{
-                          marginBottom: 14,
-                          padding: 12,
-                          borderRadius: 14,
-                          background: "rgba(2,6,23,0.6)",
-                          border: "1px solid rgba(148,163,184,0.28)",
-                          display: "flex",
-                          gap: 10,
-                        }}
-                      >
-                        {/* ICON COLUMN */}
-                        <div
+                    {group.items.map((item, i) => {
+                      const critical = item.severity === "critical";
+                      const warning = item.severity === "warning";
+                      const itemClassNames = [
+                        "vendor-timeline-item",
+                        critical ? "vendor-timeline-critical" : "",
+                        warning ? "vendor-timeline-warning" : "",
+                      ]
+                        .filter(Boolean)
+                        .join(" ");
+
+                      return (
+                        <li
+                          key={i}
+                          className={itemClassNames}
                           style={{
-                            fontSize: 18,
+                            marginBottom: 14,
+                            padding: 12,
+                            borderRadius: 14,
+                            background: "rgba(2,6,23,0.6)",
+                            border: "1px solid rgba(148,163,184,0.28)",
                             display: "flex",
-                            alignItems: "flex-start",
-                            paddingTop: 2,
+                            gap: 10,
+                            animationDelay: `${(groupIndex * 80) + i * 40}ms`,
                           }}
                         >
-                          {getTimelineIcon(item)}
-                        </div>
+                          {/* ICON COLUMN */}
+                          <div
+                            style={{
+                              fontSize: 18,
+                              display: "flex",
+                              alignItems: "flex-start",
+                              paddingTop: 2,
+                            }}
+                          >
+                            {getTimelineIcon(item)}
+                          </div>
 
-                        {/* TEXT COLUMN */}
-                        <div style={{ flex: 1 }}>
-                          <div
-                            style={{
-                              fontSize: 12,
-                              textTransform: "uppercase",
-                              color:
-                                item.severity === "critical"
-                                  ? GP.neonRed
-                                  : item.severity === "warning"
-                                  ? GP.neonGold
-                                  : GP.neonBlue,
-                              fontWeight: 600,
-                              marginBottom: 4,
-                              letterSpacing: 0.4,
-                            }}
-                          >
-                            {item.action?.replace(/_/g, " ")}
+                          {/* TEXT COLUMN */}
+                          <div style={{ flex: 1 }}>
+                            <div
+                              style={{
+                                fontSize: 12,
+                                textTransform: "uppercase",
+                                color:
+                                  item.severity === "critical"
+                                    ? GP.neonRed
+                                    : item.severity === "warning"
+                                    ? GP.neonGold
+                                    : GP.neonBlue,
+                                fontWeight: 600,
+                                marginBottom: 4,
+                                letterSpacing: 0.4,
+                              }}
+                            >
+                              {item.action?.replace(/_/g, " ")}
+                            </div>
+                            <div style={{ fontSize: 13, color: GP.textSoft }}>
+                              {item.message}
+                            </div>
+                            <div
+                              style={{
+                                marginTop: 6,
+                                fontSize: 11,
+                                color: GP.textSoft,
+                                opacity: 0.6,
+                              }}
+                            >
+                              {new Date(item.createdAt).toLocaleString()}
+                            </div>
                           </div>
-                          <div style={{ fontSize: 13, color: GP.textSoft }}>
-                            {item.message}
-                          </div>
-                          <div
-                            style={{
-                              marginTop: 6,
-                              fontSize: 11,
-                              color: GP.textSoft,
-                              opacity: 0.6,
-                            }}
-                          >
-                            {new Date(item.createdAt).toLocaleString()}
-                          </div>
-                        </div>
-                      </li>
-                    ))}
+                        </li>
+                      );
+                    })}
                   </ul>
                 </div>
               ))
@@ -873,6 +893,88 @@ export default function VendorPortal() {
           </div>
         </div>
       </div>
+
+      <style jsx global>{`
+        @keyframes vpFadeSlideIn {
+          0% {
+            opacity: 0;
+            transform: translateY(6px);
+          }
+          100% {
+            opacity: 1;
+            transform: translateY(0);
+          }
+        }
+
+        @keyframes vpDividerReveal {
+          0% {
+            opacity: 0;
+            transform: translateY(4px);
+          }
+          100% {
+            opacity: 1;
+            transform: translateY(0);
+          }
+        }
+
+        @keyframes vpNeonPulseRed {
+          0% {
+            box-shadow: 0 0 0 rgba(248, 113, 113, 0.0);
+          }
+          50% {
+            box-shadow: 0 0 16px rgba(248, 113, 113, 0.4);
+          }
+          100% {
+            box-shadow: 0 0 0 rgba(248, 113, 113, 0.0);
+          }
+        }
+
+        @keyframes vpNeonPulseGold {
+          0% {
+            box-shadow: 0 0 0 rgba(250, 204, 21, 0.0);
+          }
+          50% {
+            box-shadow: 0 0 14px rgba(250, 204, 21, 0.35);
+          }
+          100% {
+            box-shadow: 0 0 0 rgba(250, 204, 21, 0.0);
+          }
+        }
+
+        .vendor-timeline-divider {
+          opacity: 0;
+          transform: translateY(4px);
+          animation-name: vpDividerReveal;
+          animation-duration: 0.4s;
+          animation-timing-function: ease-out;
+          animation-fill-mode: forwards;
+        }
+
+        .vendor-timeline-item {
+          opacity: 0;
+          transform: translateY(6px);
+          animation-name: vpFadeSlideIn;
+          animation-duration: 0.45s;
+          animation-timing-function: ease-out;
+          animation-fill-mode: forwards;
+        }
+
+        .vendor-timeline-critical {
+          animation-name: vpFadeSlideIn, vpNeonPulseRed;
+          animation-duration: 0.45s, 1.6s;
+          animation-timing-function: ease-out, ease-out;
+          animation-iteration-count: 1, 2;
+          animation-fill-mode: forwards, none;
+        }
+
+        .vendor-timeline-warning {
+          animation-name: vpFadeSlideIn, vpNeonPulseGold;
+          animation-duration: 0.45s, 1.6s;
+          animation-timing-function: ease-out, ease-out;
+          animation-iteration-count: 1, 1;
+          animation-fill-mode: forwards, none;
+        }
+      `}</style>
     </div>
   );
 }
