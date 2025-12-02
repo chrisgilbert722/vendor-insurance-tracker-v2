@@ -30,6 +30,10 @@ export default function VendorPortal() {
 
   // Fix Mode
   const [resolvedCodes, setResolvedCodes] = useState([]);
+
+  // ⭐⭐⭐ SECTION 1 — TIMELINE STATE ⭐⭐⭐
+  const [timeline, setTimeline] = useState([]);
+  const [loadingTimeline, setLoadingTimeline] = useState(true);
   /* ============================================================
      LOAD PORTAL DATA
   ============================================================ */
@@ -46,12 +50,11 @@ export default function VendorPortal() {
 
         setVendorData(json);
 
+        // Fix Mode restore
         const saved = localStorage.getItem(`vendor_fix_${token}`);
-        if (saved) {
-          setResolvedCodes(JSON.parse(saved));
-        }
+        if (saved) setResolvedCodes(JSON.parse(saved));
       } catch (err) {
-        setError(err.message || "Unable to load vendor portal.");
+        setError(err.message || "Could not load vendor portal.");
       } finally {
         setLoading(false);
       }
@@ -61,125 +64,42 @@ export default function VendorPortal() {
   }, [token]);
 
   /* ============================================================
-     FIX MODE — Persist Fixes to DB
+     ⭐⭐⭐ SECTION 2 — LOAD ACTIVITY TIMELINE (D3) ⭐⭐⭐
   ============================================================ */
-  async function toggleResolved(code) {
-    const updated = resolvedCodes.includes(code)
-      ? resolvedCodes.filter((c) => c !== code)
-      : [...resolvedCodes, code];
+  useEffect(() => {
+    if (!token) return;
 
-    setResolvedCodes(updated);
-    localStorage.setItem(`vendor_fix_${token}`, JSON.stringify(updated));
-
-    try {
-      await fetch("/api/vendor/fix-issue", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          vendorId: vendorData.vendor.id,
-          orgId: vendorData.org.id,
-          code,
-        }),
-      });
-
-      const res = await fetch(`/api/vendor/portal?token=${token}`);
-      const json = await res.json();
-      if (json.ok) setVendorData(json);
-    } catch (err) {
-      console.error("Fix issue failed:", err);
+    async function loadTimeline() {
+      try {
+        setLoadingTimeline(true);
+        const res = await fetch(`/api/vendor/timeline?token=${token}`);
+        const json = await res.json();
+        if (json.ok) setTimeline(json.timeline);
+      } catch (err) {
+        console.error("[timeline] failed:", err);
+      } finally {
+        setLoadingTimeline(false);
+      }
     }
-  }
 
+    loadTimeline();
+  }, [token]);
   /* ============================================================
-     FILE HANDLING
-  ============================================================ */
-  function handleFileInput(e) {
-    const f = e.target.files?.[0];
-    if (!f) return;
-    if (!f.name.toLowerCase().endsWith(".pdf")) {
-      setUploadError("Only PDF files allowed.");
-      return;
-    }
-    setSelectedFile(f);
-    setUploadError("");
-  }
-
-  function handleDrop(e) {
-    e.preventDefault();
-    const f = e.dataTransfer.files?.[0];
-    if (f && f.name.toLowerCase().endsWith(".pdf")) {
-      setSelectedFile(f);
-      setUploadError("");
-    } else {
-      setUploadError("Only PDF files allowed.");
-    }
-  }
-
-  function handleDragOver(e) {
-    e.preventDefault();
-  }
-
-  /* ============================================================
-     UPLOAD + AI ANALYSIS
-  ============================================================ */
-  async function handleUpload() {
-    if (!selectedFile) {
-      setUploadError("Please choose a PDF first.");
-      return;
-    }
-
-    try {
-      setUploading(true);
-      setUploadError("");
-      setUploadSuccess("");
-
-      const fd = new FormData();
-      fd.append("file", selectedFile);
-      fd.append("token", token);
-
-      const res = await fetch("/api/vendor/upload-coi", {
-        method: "POST",
-        body: fd,
-      });
-
-      const json = await res.json();
-      if (!json.ok) throw new Error(json.error || "Upload failed");
-
-      setUploadSuccess("Uploaded! Parsing your COI…");
-
-      setVendorData((prev) => ({
-        ...prev,
-        ai: json.ai ?? prev.ai,
-        alerts: json.alerts ?? prev.alerts,
-        status: {
-          state: json.status ?? prev.status?.state,
-          label: (json.status ?? prev.status?.state ?? "pending").toUpperCase(),
-        },
-      }));
-
-      setTimeout(() => setUploadSuccess("COI analyzed successfully!"), 600);
-    } catch (err) {
-      setUploadError(err.message || "Upload failed.");
-    } finally {
-      setUploading(false);
-    }
-  }
-  /* ============================================================
-     LOADING + ERROR UI
+     UI START
   ============================================================ */
   if (loading) {
     return (
       <div
         style={{
           minHeight: "100vh",
-          background: GP.bg,
+          background: "radial-gradient(circle at top,#020617,#000)",
           display: "flex",
           justifyContent: "center",
           alignItems: "center",
           color: GP.textSoft,
         }}
       >
-        Loading vendor portal…
+        Loading vendor portal...
       </div>
     );
   }
@@ -189,16 +109,17 @@ export default function VendorPortal() {
       <div
         style={{
           minHeight: "100vh",
-          background: GP.bg,
+          background: "radial-gradient(circle at top,#020617,#000)",
           display: "flex",
           justifyContent: "center",
           alignItems: "center",
           color: GP.text,
+          textAlign: "center",
         }}
       >
         <div>
           <div style={{ fontSize: 50 }}>⚠️</div>
-          <div style={{ fontSize: 18 }}>{error || "Invalid vendor link."}</div>
+          <div style={{ fontSize: 18 }}>Invalid or expired vendor link.</div>
         </div>
       </div>
     );
@@ -206,11 +127,15 @@ export default function VendorPortal() {
 
   const { vendor, org, requirements, alerts, status, ai } = vendorData;
 
-  /* ============================================================
-     UI START
-  ============================================================ */
   return (
-    <div style={{ minHeight: "100vh", background: GP.bg, padding: "32px 24px", color: GP.text }}>
+    <div
+      style={{
+        minHeight: "100vh",
+        background: GP.bg,
+        padding: "32px 24px",
+        color: GP.text,
+      }}
+    >
       {/* HEADER */}
       <div
         style={{
@@ -237,7 +162,9 @@ export default function VendorPortal() {
             {vendor?.name}
           </h1>
 
-          <div style={{ fontSize: 13, color: GP.textSoft }}>For {org?.name}</div>
+          <div style={{ fontSize: 13, color: GP.textSoft }}>
+            For {org?.name}
+          </div>
         </div>
 
         {/* STATUS PILL */}
@@ -247,7 +174,6 @@ export default function VendorPortal() {
             borderRadius: 999,
             border: `1px solid ${GP.border}`,
             background: "rgba(15,23,42,0.9)",
-            textAlign: "right",
           }}
         >
           <div style={{ fontSize: 11, color: GP.textSoft }}>Status</div>
@@ -267,126 +193,9 @@ export default function VendorPortal() {
           </div>
         </div>
       </div>
-      {/* MAIN GRID */}
-      <div
-        style={{
-          maxWidth: 1150,
-          margin: "0 auto",
-          display: "grid",
-          gridTemplateColumns: "minmax(0,1.7fr) minmax(0,1.1fr)",
-          gap: 24,
-        }}
-      >
-        {/* LEFT SIDE — Upload + AI Summary */}
+        {/* RIGHT SIDE — Fix Issues + Requirements + Timeline */}
         <div>
-          {/* UPLOAD PANEL */}
-          <div
-            style={{
-              borderRadius: 20,
-              padding: 20,
-              border: `1px dashed ${GP.border}`,
-              background: "rgba(15,23,42,0.92)",
-            }}
-            onDrop={handleDrop}
-            onDragOver={handleDragOver}
-          >
-            <h3 style={{ marginTop: 0 }}>Upload COI PDF</h3>
-
-            <input
-              id="coiUpload"
-              type="file"
-              accept="application/pdf"
-              style={{ display: "none" }}
-              onChange={handleFileInput}
-            />
-
-            <label htmlFor="coiUpload">
-              <div
-                style={{
-                  padding: "8px 16px",
-                  borderRadius: 999,
-                  background: "linear-gradient(90deg,#38bdf8,#0ea5e9)",
-                  cursor: "pointer",
-                }}
-              >
-                Choose File
-              </div>
-            </label>
-
-            {selectedFile && (
-              <div style={{ marginTop: 10, fontSize: 12, color: GP.neonBlue }}>
-                Selected: {selectedFile.name}
-              </div>
-            )}
-
-            {uploadError && (
-              <div
-                style={{
-                  marginTop: 10,
-                  padding: 10,
-                  borderRadius: 8,
-                  background: "rgba(127,29,29,0.8)",
-                  border: "1px solid #f87171",
-                  color: "#fecaca",
-                }}
-              >
-                {uploadError}
-              </div>
-            )}
-
-            {uploadSuccess && (
-              <div
-                style={{
-                  marginTop: 10,
-                  padding: 10,
-                  borderRadius: 8,
-                  background: "rgba(16,185,129,0.2)",
-                  border: "1px solid #4ade80",
-                  color: "#bbf7d0",
-                }}
-              >
-                {uploadSuccess}
-              </div>
-            )}
-
-            <button
-              onClick={handleUpload}
-              disabled={uploading}
-              style={{
-                marginTop: 18,
-                padding: "10px 20px",
-                borderRadius: 999,
-                border: `1px solid ${GP.neonBlue}`,
-                background: "linear-gradient(90deg,#38bdf8,#0ea5e9)",
-                color: "#e5f2ff",
-                cursor: uploading ? "not-allowed" : "pointer",
-              }}
-            >
-              {uploading ? "Uploading & Analyzing…" : "Upload & Analyze COI →"}
-            </button>
-          </div>
-
-          {/* AI SUMMARY PANEL */}
-          {ai && (
-            <div
-              style={{
-                marginTop: 24,
-                padding: 20,
-                borderRadius: 20,
-                border: `1px solid ${GP.border}`,
-                background: "rgba(15,23,42,0.92)",
-                boxShadow: "0 0 35px rgba(56,189,248,0.15)",
-              }}
-            >
-              <h3 style={{ color: GP.text, marginTop: 0 }}>AI COI Summary</h3>
-              {/* ...AI summary unchanged... */}
-            </div>
-          )}
-        </div>
-
-        {/* RIGHT SIDE — Fix Mode + Requirements */}
-        <div>
-          {/* FIX MODE */}
+          {/* FIX MODE BLOCK */}
           <div
             style={{
               borderRadius: 20,
@@ -397,20 +206,19 @@ export default function VendorPortal() {
             }}
           >
             <h3 style={{ marginTop: 0 }}>Fix Issues</h3>
-
             {alerts?.length ? (
-              alerts.map((item, idx) => {
+              alerts.map((item, i) => {
                 const resolved = resolvedCodes.includes(item.code);
 
                 return (
                   <div
-                    key={idx}
+                    key={i}
                     style={{
                       marginBottom: 14,
                       padding: 12,
                       borderRadius: 14,
-                      border: "1px solid rgba(148,163,184,0.3)",
                       background: "rgba(2,6,23,0.6)",
+                      border: "1px solid rgba(148,163,184,0.3)",
                     }}
                   >
                     <div
@@ -449,7 +257,6 @@ export default function VendorPortal() {
                         background: resolved
                           ? "rgba(34,197,94,0.15)"
                           : "rgba(15,23,42,0.85)",
-                        transition: "0.2s ease",
                       }}
                     >
                       {resolved ? "✓ Marked Fixed" : "Resolve Issue"}
@@ -462,24 +269,93 @@ export default function VendorPortal() {
             )}
           </div>
 
-          {/* REQUIREMENTS */}
+          {/* REQUIREMENTS BLOCK */}
           <div
             style={{
               borderRadius: 20,
               padding: 18,
               border: `1px solid ${GP.border}`,
               background: "rgba(15,23,42,0.92)",
+              marginBottom: 24,
             }}
           >
             <h3 style={{ marginTop: 0 }}>Coverage Requirements</h3>
             <ul style={{ paddingLeft: 18 }}>
               {(requirements?.coverages || []).map((c, i) => (
                 <li key={i}>
-                  <strong style={{ color: "#e5e7eb" }}>{c.name}</strong>{" "}
+                  <strong>{c.name}</strong>{" "}
                   {c.limit && `— ${c.limit}`}
                 </li>
               ))}
             </ul>
+          </div>
+
+          {/* ⭐⭐⭐ SECTION 3 — ACTIVITY TIMELINE PANEL ⭐⭐⭐ */}
+          <div
+            style={{
+              borderRadius: 20,
+              padding: 18,
+              border: `1px solid ${GP.border}`,
+              background: "rgba(15,23,42,0.92)",
+              marginTop: 24,
+            }}
+          >
+            <h3 style={{ marginTop: 0 }}>Recent Activity</h3>
+
+            {loadingTimeline ? (
+              <div style={{ color: GP.textSoft, fontSize: 13 }}>Loading activity…</div>
+            ) : timeline?.length === 0 ? (
+              <div style={{ color: GP.textSoft, fontSize: 13 }}>
+                No recent activity logged.
+              </div>
+            ) : (
+              <ul style={{ paddingLeft: 0, listStyle: "none", margin: 0 }}>
+                {timeline.map((item, i) => (
+                  <li
+                    key={i}
+                    style={{
+                      marginBottom: 14,
+                      padding: 12,
+                      borderRadius: 14,
+                      background: "rgba(2,6,23,0.6)",
+                      border: "1px solid rgba(148,163,184,0.28)",
+                    }}
+                  >
+                    <div
+                      style={{
+                        fontSize: 12,
+                        textTransform: "uppercase",
+                        color:
+                          item.severity === "critical"
+                            ? GP.neonRed
+                            : item.severity === "warn"
+                            ? GP.neonGold
+                            : GP.neonBlue,
+                        fontWeight: 600,
+                        marginBottom: 4,
+                      }}
+                    >
+                      {item.action.replace(/_/g, " ")}
+                    </div>
+
+                    <div style={{ fontSize: 13, color: GP.textSoft }}>
+                      {item.message}
+                    </div>
+
+                    <div
+                      style={{
+                        marginTop: 6,
+                        fontSize: 11,
+                        color: GP.textSoft,
+                        opacity: 0.6,
+                      }}
+                    >
+                      {new Date(item.created_at).toLocaleString()}
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            )}
           </div>
         </div>
       </div>
