@@ -22,7 +22,6 @@ export default function VendorPortal() {
   const [vendorData, setVendorData] = useState(null);
   const [error, setError] = useState("");
 
-  // Upload state
   const [uploading, setUploading] = useState(false);
   const [uploadError, setUploadError] = useState("");
   const [uploadSuccess, setUploadSuccess] = useState("");
@@ -96,7 +95,6 @@ export default function VendorPortal() {
       setUploadError("");
       setUploadSuccess("");
 
-      // 1) Upload
       const formData = new FormData();
       formData.append("file", selectedFile);
       formData.append("token", token);
@@ -111,7 +109,6 @@ export default function VendorPortal() {
 
       setUploadSuccess("Uploaded! Parsing your COI…");
 
-      // 2) Update local view
       setVendorData((prev) => ({
         ...prev,
         ai: json.ai || prev?.ai,
@@ -131,7 +128,7 @@ export default function VendorPortal() {
   }
 
   /* ============================================================
-     BASIC LOADING + ERROR UI
+     BASIC LOADING STATES
   ============================================================ */
   if (loading) {
     return (
@@ -174,7 +171,44 @@ export default function VendorPortal() {
   const { vendor, org, requirements, alerts, status, ai } = vendorData;
 
   /* ============================================================
-     UI START
+     DERIVED FIX ITEMS (for Fix Mode)
+  ============================================================ */
+  const fixItems = [];
+
+  if (ai?.compliance) {
+    (ai.compliance.missingCoverages || []).forEach((c) => {
+      fixItems.push({
+        type: "missingCoverage",
+        label: `Missing Coverage: ${c}`,
+        explanation: `You do not have the "${c}" policy shown on your COI, but it is required by ${org?.name}.`,
+        suggestion:
+          `Ask your insurance broker to add "${c}" coverage with the required limits and re-issue the COI.`,
+      });
+    });
+
+    (ai.compliance.failedEndorsements || []).forEach((e) => {
+      fixItems.push({
+        type: "endorsement",
+        label: `Missing Endorsement: ${e}`,
+        explanation: `Your COI is missing the "${e}" endorsement that ${org?.name} requires.`,
+        suggestion:
+          `Ask your broker to add endorsement "${e}" to your policy and issue an updated COI listing ${org?.name} where required.`,
+      });
+    });
+
+    (ai.compliance.limitsTooLow || []).forEach((l) => {
+      fixItems.push({
+        type: "limit",
+        label: `Limit Too Low: ${l.policy}`,
+        explanation: `Your ${l.policy} limit is ${l.actual}, but the requirement is ${l.required}.`,
+        suggestion:
+          `Ask your broker about increasing ${l.policy} limits to at least ${l.required} and issuing a new COI.`,
+      });
+    });
+  }
+
+  /* ============================================================
+     UI
   ============================================================ */
   return (
     <div
@@ -194,7 +228,6 @@ export default function VendorPortal() {
           justifyContent: "space-between",
         }}
       >
-        {/* Title */}
         <div>
           <div style={{ fontSize: 12, textTransform: "uppercase", color: GP.textSoft }}>
             Vendor Compliance Portal
@@ -217,7 +250,6 @@ export default function VendorPortal() {
           </div>
         </div>
 
-        {/* STATUS PILL */}
         <div
           style={{
             padding: "6px 14px",
@@ -244,7 +276,7 @@ export default function VendorPortal() {
         </div>
       </div>
 
-      {/* MAIN GRID */}
+      {/* GRID */}
       <div
         style={{
           maxWidth: 1150,
@@ -254,11 +286,9 @@ export default function VendorPortal() {
           gap: 24,
         }}
       >
-        {/* =======================================================================
-            LEFT SIDE — UPLOAD + AI SUMMARY
-        ======================================================================= */}
+        {/* LEFT SIDE — UPLOAD + AI SUMMARY */}
         <div>
-          {/* UPLOAD PANEL */}
+          {/* UPLOAD */}
           <div
             style={{
               borderRadius: 20,
@@ -345,9 +375,7 @@ export default function VendorPortal() {
             </button>
           </div>
 
-          {/* ===================================================
-              🔥 AI SUMMARY PANEL (CINEMATIC BLOCK)
-          =================================================== */}
+          {/* AI SUMMARY PANEL */}
           {ai && (
             <div
               style={{
@@ -364,11 +392,12 @@ export default function VendorPortal() {
               {ai.brokerStyle && (
                 <div style={{ marginBottom: 14 }}>
                   <strong style={{ color: GP.neonBlue }}>Broker Style:</strong>
-                  <div style={{ fontSize: 13, color: GP.textSoft }}>{ai.brokerStyle}</div>
+                  <div style={{ fontSize: 13, color: GP.textSoft }}>
+                    {ai.brokerStyle}
+                  </div>
                 </div>
               )}
 
-              {/* Policies */}
               <div style={{ marginBottom: 14 }}>
                 <strong style={{ color: GP.neonBlue }}>Detected Policies:</strong>
                 <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginTop: 6 }}>
@@ -390,7 +419,6 @@ export default function VendorPortal() {
                 </div>
               </div>
 
-              {/* Limits */}
               {ai.limits && (
                 <div style={{ marginBottom: 14 }}>
                   <strong style={{ color: GP.neonBlue }}>Extracted Limits:</strong>
@@ -426,7 +454,6 @@ export default function VendorPortal() {
                 </div>
               )}
 
-              {/* Endorsements */}
               {ai.endorsements?.length > 0 && (
                 <div style={{ marginBottom: 14 }}>
                   <strong style={{ color: GP.neonBlue }}>Endorsements:</strong>
@@ -477,9 +504,7 @@ export default function VendorPortal() {
           )}
         </div>
 
-        {/* =======================================================================
-            RIGHT SIDE — Alerts + Requirements + PDF Download
-        ======================================================================= */}
+        {/* RIGHT SIDE — Alerts + Requirements + Download */}
         <div>
           {/* Alerts */}
           <div
@@ -536,9 +561,7 @@ export default function VendorPortal() {
             </ul>
           </div>
 
-          {/* ===================================================
-              DOWNLOAD SUMMARY PDF  (NEW)
-          =================================================== */}
+          {/* DOWNLOAD SUMMARY PDF */}
           <div
             style={{
               marginTop: 24,
