@@ -3,266 +3,292 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/router";
 import OnboardingLayout from "../../components/onboarding/OnboardingLayout";
 
-export default function SampleCOISummary() {
+const GP = {
+  bg: "#020617",
+  panel: "rgba(15,23,42,0.98)",
+  border: "rgba(51,65,85,0.7)",
+  neonBlue: "#38bdf8",
+  neonPurple: "#a855f7",
+  neonGold: "#facc15",
+  neonGreen: "#22c55e",
+  neonRed: "#fb7185",
+  text: "#e5e7eb",
+  textSoft: "#9ca3af",
+};
+
+export default function SampleSummaryPage() {
   const router = useRouter();
 
-  const [ai, setAi] = useState(null);
+  const [aiSample, setAiSample] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
-  const [loading, setLoading] = useState(false);
 
-  /* Load stored AI sample */
+  /* ==========================================================
+     LOAD AI SAMPLE FROM LOCAL STORAGE
+  ========================================================== */
   useEffect(() => {
     try {
       const raw = localStorage.getItem("onboarding_ai_sample");
-      if (!raw) return setError("Missing AI sample.");
-      setAi(JSON.parse(raw));
+      if (raw) {
+        setAiSample(JSON.parse(raw));
+      }
     } catch (err) {
-      setError("Failed to load AI calibration.");
+      console.error(err);
+    } finally {
+      setLoading(false);
     }
   }, []);
 
-  async function handleConfirm() {
+  /* ==========================================================
+     SAVE + CONTINUE → Rules Calibration
+  ========================================================== */
+  async function handleContinue() {
     try {
-      setLoading(true);
+      setSaving(true);
+      setError("");
 
-      const res = await fetch("/api/onboarding/sample-summary", {
+      const orgId = localStorage.getItem("active_org_id") || null;
+
+      const res = await fetch("/api/onboarding/ai/calibrate-rules", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ aiSample: ai }),
+        body: JSON.stringify({
+          aiSample,
+          orgId,
+        }),
       });
 
       const json = await res.json();
       if (!json.ok) throw new Error(json.error);
 
+      // Continue to vendor onboarding
       router.push("/onboarding/vendors");
     } catch (err) {
-      setError(err.message || "Something went wrong.");
+      setError(err.message);
     } finally {
-      setLoading(false);
+      setSaving(false);
     }
   }
 
-  if (!ai) {
+  if (loading) {
     return (
       <OnboardingLayout
-        currentKey="sample-coi"
-        title="Analyzing Sample COI…"
-        subtitle="Please wait while the AI prepares your summary."
+        currentKey="sample-summary"
+        title="Analyzing COI…"
+        subtitle="Loading calibration results."
       >
-        <div style={{ color: "#9ca3af", fontSize: 14 }}>Loading…</div>
+        <div
+          style={{
+            padding: 20,
+            fontSize: 16,
+            color: GP.textSoft,
+          }}
+        >
+          Loading AI summary…
+        </div>
       </OnboardingLayout>
     );
   }
-/* Neon label chip */
-function Chip({ text, color = "#38bdf8" }) {
-  return (
-    <span
-      style={{
-        display: "inline-flex",
-        padding: "4px 10px",
-        borderRadius: 999,
-        fontSize: 11,
-        color,
-        border: `1px solid ${color}80`,
-        background: "rgba(15,23,42,0.85)",
-        textShadow: `0 0 6px ${color}88`,
-        marginRight: 6,
-        marginBottom: 6,
-      }}
-    >
-      {text}
-    </span>
-  );
-}
 
-/* Cinematic Block Container */
-function Block({ title, children }) {
-  return (
-    <div
-      style={{
-        marginBottom: 20,
-        padding: 20,
-        borderRadius: 20,
-        border: "1px solid rgba(148,163,184,0.35)",
-        background:
-          "radial-gradient(circle at top,rgba(15,23,42,0.9),rgba(15,23,42,0.7))",
-        boxShadow:
-          "0 0 25px rgba(0,0,0,0.5), inset 0 0 20px rgba(0,0,0,0.4), 0 0 16px rgba(56,189,248,0.25)",
-        backdropFilter: "blur(6px)",
-        transition: "transform 0.25s ease, box-shadow 0.25s ease",
-      }}
-      onMouseEnter={(e) => {
-        e.currentTarget.style.transform = "translateY(-4px)";
-        e.currentTarget.style.boxShadow =
-          "0 0 35px rgba(56,189,248,0.4), inset 0 0 20px rgba(0,0,0,0.4)";
-      }}
-      onMouseLeave={(e) => {
-        e.currentTarget.style.transform = "translateY(0px)";
-        e.currentTarget.style.boxShadow =
-          "0 0 25px rgba(0,0,0,0.5), inset 0 0 20px rgba(0,0,0,0.4), 0 0 16px rgba(56,189,248,0.25)";
-      }}
-    >
-      <h3
-        style={{
-          marginTop: 0,
-          marginBottom: 12,
-          fontSize: 16,
-          color: "#e5e7eb",
-          textShadow: "0 0 8px rgba(56,189,248,0.45)",
-          letterSpacing: "0.04em",
-        }}
+  if (!aiSample) {
+    return (
+      <OnboardingLayout
+        currentKey="sample-summary"
+        title="No AI Summary Found"
+        subtitle="Please upload a sample COI first."
       >
-        {title}
-      </h3>
-      {children}
-    </div>
-  );
-}
+        <div style={{ color: GP.neonRed }}>
+          No AI sample detected. Return to the previous step.
+        </div>
+      </OnboardingLayout>
+    );
+  }
+
   const {
+    policyTypes = [],
+    limits = {},
+    endorsements = [],
+    recommendedRules = {},
     brokerStyle,
-    policyTypes,
-    limits,
-    endorsements,
-    recommendedRules,
-    observations,
-  } = ai;
+    observations = [],
+  } = aiSample;
 
   return (
     <OnboardingLayout
-      currentKey="sample-coi"
-      title="AI COI Summary"
-      subtitle="Your sample COI has been analyzed. Here’s what the AI learned about your formatting, patterns, and endorsement logic."
+      currentKey="sample-summary"
+      title="AI Sample COI Summary"
+      subtitle="Here is what the AI learned from the sample certificate you provided."
     >
       <div
         style={{
           display: "grid",
-          gridTemplateColumns: "minmax(0,1.8fr) minmax(0,1fr)",
-          gap: 28,
+          gridTemplateColumns: "minmax(0,1.7fr) minmax(0,1fr)",
+          gap: 22,
         }}
       >
-        {/* LEFT SIDE */}
+        {/* LEFT SIDE — MAIN AI SUMMARY */}
         <div>
-          <Block title="Broker Formatting Style">
-            <p style={{ fontSize: 14, color: "#9ca3af" }}>{brokerStyle}</p>
-          </Block>
+          {/* Broker Style */}
+          <div style={panel}>
+            <h3 style={panelTitle}>Broker Style Profile</h3>
+            <p style={panelText}>{brokerStyle || "No broker style detected."}</p>
+          </div>
 
-          <Block title="Detected Policy Types">
-            {policyTypes?.map((p, i) => (
-              <Chip key={i} text={p} />
-            ))}
-          </Block>
+          {/* Policy Types */}
+          <div style={panel}>
+            <h3 style={panelTitle}>Detected Policy Types</h3>
+            <ul style={ul}>
+              {policyTypes.length
+                ? policyTypes.map((p, i) => (
+                    <li key={i} style={li}>
+                      ✓ {p}
+                    </li>
+                  ))
+                : "None detected."}
+            </ul>
+          </div>
 
-          <Block title="Limits Extracted">
-            {Object.entries(limits || {}).map(([policy, vals], i) => (
-              <div key={i} style={{ marginBottom: 12 }}>
-                <strong style={{ color: "#e5e7eb" }}>{policy}</strong>
-                <pre
-                  style={{
-                    background: "rgba(2,6,23,0.6)",
-                    padding: "10px 12px",
-                    borderRadius: 12,
-                    fontSize: 12,
-                    marginTop: 6,
-                    overflowX: "auto",
-                  }}
-                >
-                  {JSON.stringify(vals, null, 2)}
-                </pre>
-              </div>
-            ))}
-          </Block>
+          {/* Limits */}
+          <div style={panel}>
+            <h3 style={panelTitle}>Detected Coverage Limits</h3>
+            <ul style={ul}>
+              {Object.keys(limits).length
+                ? Object.entries(limits).map(([key, value]) => (
+                    <li key={key} style={li}>
+                      <strong style={{ color: GP.neonBlue }}>{key}</strong>:{" "}
+                      {value}
+                    </li>
+                  ))
+                : "No limits detected."}
+            </ul>
+          </div>
 
-          <Block title="Endorsements Detected">
-            {endorsements?.map((e, i) => (
-              <Chip key={i} text={e} color="#a855f7" />
-            ))}
-          </Block>
+          {/* Endorsements */}
+          <div style={panel}>
+            <h3 style={panelTitle}>Detected Endorsements</h3>
+            <ul style={ul}>
+              {endorsements.length
+                ? endorsements.map((e, i) => (
+                    <li key={i} style={li}>
+                      ● {e}
+                    </li>
+                  ))
+                : "No endorsements detected."}
+            </ul>
+          </div>
+        </div>
 
-          <Block title="AI Recommended Rule Defaults">
-            <pre
-              style={{
-                background: "rgba(2,6,23,0.6)",
-                padding: 14,
-                borderRadius: 12,
-                fontSize: 12,
-              }}
-            >
-              {JSON.stringify(recommendedRules, null, 2)}
-            </pre>
-          </Block>
+        {/* RIGHT SIDE — RULES + OBSERVATIONS */}
+        <div>
+          {/* Recommended Rules */}
+          <div style={panel}>
+            <h3 style={panelTitle}>AI Recommended Rule Settings</h3>
+            <ul style={ul}>
+              <li style={li}>
+                Expiration Warning:{" "}
+                <strong>{recommendedRules.expirationWarningDays || 30} days</strong>
+              </li>
+              <li style={li}>
+                Missing Coverage Severity:{" "}
+                <strong>{recommendedRules.defaultMissingSeverity || "high"}</strong>
+              </li>
+            </ul>
+          </div>
 
-          <Block title="AI Observations">
-            <p style={{ fontSize: 14, color: "#9ca3af" }}>{observations}</p>
-          </Block>
+          {/* Observations */}
+          <div style={panel}>
+            <h3 style={panelTitle}>Document Observations</h3>
+            <ul style={ul}>
+              {observations.length
+                ? observations.map((o, i) => (
+                    <li key={i} style={li}>
+                      {o}
+                    </li>
+                  ))
+                : "No observations found."}
+            </ul>
+          </div>
 
-          {/* CONFIRM BUTTON */}
-          <button
-            onClick={handleConfirm}
-            disabled={loading}
-            style={{
-              marginTop: 20,
-              padding: "12px 28px",
-              borderRadius: 999,
-              cursor: loading ? "not-allowed" : "pointer",
-              opacity: loading ? 0.6 : 1,
-              border: "1px solid rgba(56,189,248,0.9)",
-              background:
-                "linear-gradient(90deg,#38bdf8,#0ea5e9,#0f172a)",
-              color: "#e5f2ff",
-              fontSize: 15,
-              fontWeight: 600,
-              boxShadow:
-                "0 0 25px rgba(56,189,248,0.55), 0 0 50px rgba(88,28,135,0.35)",
-              transition: "0.3s",
-            }}
-          >
-            {loading ? "Saving…" : "Confirm & Continue →"}
-          </button>
-
+          {/* Error */}
           {error && (
             <div
               style={{
-                marginTop: 12,
-                padding: 12,
+                marginTop: 10,
+                padding: "10px 12px",
                 borderRadius: 10,
-                background: "rgba(127,29,29,0.8)",
+                background: "rgba(127,29,29,0.85)",
                 border: "1px solid rgba(248,113,113,0.8)",
                 color: "#fecaca",
+                fontSize: 13,
               }}
             >
               {error}
             </div>
           )}
-        </div>
 
-        {/* RIGHT SIDE — INFO PANEL */}
-        <div
-          style={{
-            borderRadius: 20,
-            padding: 18,
-            border: "1px solid rgba(148,163,184,0.45)",
-            background:
-              "radial-gradient(circle at 20% 0%,rgba(15,23,42,0.98),rgba(15,23,42,0.94))",
-            boxShadow: "0 0 25px rgba(0,0,0,0.45)",
-            fontSize: 14,
-            color: "#9ca3af",
-            lineHeight: 1.6,
-          }}
-        >
-          <h3 style={{ color: "#e5e7eb", marginTop: 0 }}>Why this matters</h3>
-          <p>
-            This analysis lets the platform auto-tune how it reads your vendors’
-            future COIs with extremely high accuracy.
-          </p>
-          <ul style={{ paddingLeft: 20 }}>
-            <li>Better endorsement detection</li>
-            <li>Fewer manual corrections</li>
-            <li>Improved renewal alerts</li>
-            <li>Accurate rule matching</li>
-            <li>Reduced false positives</li>
-          </ul>
+          {/* Continue */}
+          <button
+            onClick={handleContinue}
+            disabled={saving}
+            style={{
+              marginTop: 20,
+              width: "100%",
+              padding: "12px 18px",
+              borderRadius: 999,
+              cursor: saving ? "not-allowed" : "pointer",
+              opacity: saving ? 0.6 : 1,
+              background:
+                "linear-gradient(90deg,#38bdf8,#a855f7,#22c55e,#facc15)",
+              border: "1px solid rgba(148,163,184,0.55)",
+              color: "#e5f2ff",
+              fontSize: 15,
+              fontWeight: 600,
+              boxShadow:
+                "0 0 22px rgba(56,189,248,0.75),0 0 40px rgba(88,28,135,0.4)",
+            }}
+          >
+            {saving ? "Saving…" : "Looks Good — Continue →"}
+          </button>
         </div>
       </div>
     </OnboardingLayout>
   );
 }
+
+/* ============================
+   STYLE OBJECTS
+============================ */
+const panel = {
+  borderRadius: 18,
+  padding: 18,
+  border: "1px solid rgba(148,163,184,0.35)",
+  background:
+    "radial-gradient(circle at top,rgba(15,23,42,0.98),rgba(15,23,42,0.96))",
+  marginBottom: 18,
+};
+
+const panelTitle = {
+  marginTop: 0,
+  marginBottom: 10,
+  fontSize: 15,
+  color: GP.text,
+};
+
+const panelText = {
+  fontSize: 13,
+  color: GP.textSoft,
+  lineHeight: 1.5,
+};
+
+const ul = {
+  margin: 0,
+  paddingLeft: 18,
+  fontSize: 13,
+  color: GP.textSoft,
+  lineHeight: 1.6,
+};
+
+const li = {
+  marginBottom: 4,
+};
