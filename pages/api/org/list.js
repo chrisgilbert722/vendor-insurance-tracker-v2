@@ -15,19 +15,18 @@ export default async function handler(req, res) {
 
     const userId = session.user.id;
 
-    // FIXED: relationship name
     const { data, error } = await supabase
-      .from("organization_members")
+      .from("org_members") // ✅ FIXED TABLE NAME
       .select(`
         org_id,
-        organizations:organizations(*)
+        organization:organization(*)   // ✅ FIXED RELATIONSHIP NAME
       `)
       .eq("user_id", userId);
 
     if (error) throw error;
 
-    // Return ONLY org rows
-    const orgs = data.map((row) => row.organizations);
+    // Return ONLY the organization rows
+    const orgs = data.map((row) => row.organization);
 
     return res.status(200).json({ ok: true, orgs });
   } catch (err) {
