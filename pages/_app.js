@@ -3,17 +3,18 @@ import "../public/cockpit.css";
 import { useEffect, useState } from "react";
 import { useRouter } from "next/router";
 import { OrgProvider } from "../context/OrgContext";
-import { UserProvider, useUser } from "../context/UserContext";
 import Layout from "../components/Layout";
+import { UserProvider, useUser } from "../context/UserContext";
 
-// Routes allowed without auth
+// Routes that never require auth
 const PUBLIC_ROUTES = [
   "/auth/login",
   "/auth/callback",
   "/auth/confirm",
-  "/auth/verify"
+  "/auth/verify",
 ];
 
+// All onboarding routes
 const ONBOARDING_STEPS = [
   "/onboarding/start",
   "/onboarding/company",
@@ -26,85 +27,86 @@ const ONBOARDING_STEPS = [
 
 function AppShell({ Component, pageProps }) {
   const router = useRouter();
+  const path = router.pathname;
+
   const { isLoggedIn, initializing, user, org } = useUser();
 
-  // Safe flags
+  // onboarding step state
   const [onboardingStep, setOnboardingStep] = useState(null);
-  const [checkingOnboarding, setCheckingOnboarding] = useState(true);
+  const [loadingOnboarding, setLoadingOnboarding] = useState(true);
 
-  const path = router.pathname;
-  const isPublic = PUBLIC_ROUTES.includes(path);
-  const isOnboardingPage = path.startsWith("/onboarding");
-
-  // 1️⃣ While loading user, render nothing (no crash)
-  if (initializing) return null;
-
-  // 2️⃣ If not logged in and not already on a public route → go to login
+  // Load org onboarding info
   useEffect(() => {
-    if (!isLoggedIn && !isPublic) {
-      router.replace(`/auth/login?redirect=${encodeURIComponent(router.asPath)}`);
+    if (!isLoggedIn || !org?.id) {
+      setLoadingOnboarding(false);
+      return;
     }
-  }, [isLoggedIn, isPublic, router, path]);
 
-  // 3️⃣ If user logged in but org not ready yet → render a gentle loading
-  if (isLoggedIn && !org) {
+    async function load() {
+      try {
+        const res = await fetch(`/api/organization/status?orgId=${org.id}`);
+        const data = await res.json();
+        if (data.ok) {
+          setOnboardingStep(data.onboarding_step);
+        }
+      } catch (err) {
+        console.error("Failed loading onboarding status", err);
+      }
+
+      setLoadingOnboarding(false);
+    }
+
+    load();
+  }, [isLoggedIn, org]);
+
+  const isOnboardingPage = ONBOARDING_STEPS.some((r) =>
+    path.startsWith(r.replace("/complete", ""))
+  );
+
+  // Global loading guard
+  if (initializing || loadingOnboarding) {
     return (
-      <div style={{
-        minHeight: "100vh",
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "center",
-        color: "#e5e7eb",
-      }}>
-        Loading organization…
+      <div
+        style={{
+          minHeight: "100vh",
+          color: "#e5e7eb",
+          display: "flex",
+          justifyContent: "center",
+          alignItems: "center",
+          background:
+            "radial-gradient(circle at top left,#020617 0%, #020617 40%, #000)",
+        }}
+      >
+        <div style={{ fontSize: 22 }}>Loading…</div>
       </div>
     );
   }
 
-  // 4️⃣ Load onboarding step ONLY after org is ready
-  useEffect(() => {
-    async function loadStep() {
-      if (!isLoggedIn || !org?.id) {
-        setCheckingOnboarding(false);
-        return;
-      }
+  // Logged out redirect
+  if (!isLoggedIn && !PUBLIC_ROUTES.includes(path)) {
+    router.replace(`/auth/login?redirect=${encodeURIComponent(router.asPath)}`);
+    return null;
+  }
 
-      try {
-        const res = await fetch(`/api/organization/status?orgId=${org.id}`);
-        const json = await res.json();
-        if (json.ok) {
-          setOnboardingStep(json.onboarding_step);
-        } else {
-          console.error("Onboarding API error:", json.error);
-        }
-      } catch (err) {
-        console.error("Onboarding fetch error:", err);
-      } finally {
-        setCheckingOnboarding(false);
+  // ❗ DO NOT REDIRECT UNTIL onboardingStep is LOADED
+  if (isLoggedIn && onboardingStep !== null) {
+    // If still onboarding
+    if (onboardingStep < 6) {
+      const required = ONBOARDING_STEPS[onboardingStep];
+      if (!path.startsWith(required)) {
+        router.replace(required);
+        return null;
       }
     }
 
-    loadStep();
-  }, [isLoggedIn, org]);
-
-  // 5️⃣ While checking onboarding, do not redirect yet
-  if (isLoggedIn && checkingOnboarding) return null;
-
-  // 6️⃣ Enforce onboarding AFTER everything is loaded
-  useEffect(() => {
-    if (!isLoggedIn || onboardingStep == null) return;
-
-    const step = Number(onboardingStep);
-
-    if (step < 6 && !isOnboardingPage) {
-      router.replace(ONBOARDING_STEPS[step]);
-    }
-
-    if (step >= 6 && isOnboardingPage) {
+    // If onboarding complete, block onboarding pages
+    if (onboardingStep >= 6 && isOnboardingPage) {
       router.replace("/dashboard");
+      return null;
     }
-  }, [isLoggedIn, onboardingStep, isOnboardingPage, router, path]);
+  }
 
+  // Render layout
   return (
     <OrgProvider>
       <Layout>
