@@ -1,5 +1,6 @@
 // pages/api/vendor/portal.js
 import { sql } from "../../../lib/db";
+import { logVendorActivity } from "../../../lib/vendorActivity";
 
 export default async function handler(req, res) {
   try {
@@ -37,6 +38,16 @@ export default async function handler(req, res) {
     const v = vendorRows[0];
 
     /* ==========================================================
+       ⭐⭐⭐ D4 — LOG PORTAL OPEN EVENT ⭐⭐⭐
+    ========================================================== */
+    await logVendorActivity(
+      v.id,
+      "portal_open",
+      `Vendor opened portal link.`,
+      "info"
+    );
+
+    /* ==========================================================
        2) Load requirements (coverage requirements for this org)
     ========================================================== */
 
@@ -45,7 +56,6 @@ export default async function handler(req, res) {
     };
 
     try {
-      // You can adapt this to your real requirements table
       const reqRows = await sql`
         SELECT coverage_type, min_limit, severity
         FROM requirements_v5
@@ -88,7 +98,7 @@ export default async function handler(req, res) {
     }
 
     /* ==========================================================
-       4) Compute status label/description from compliance_status
+       4) Compute status label/description
     ========================================================== */
     let statusState = v.compliance_status || "pending";
     let statusLabel = "Pending Review";
@@ -116,22 +126,21 @@ export default async function handler(req, res) {
     /* ==========================================================
        5) Extract last AI parse for this vendor, if exists
     ========================================================== */
-
     let ai = null;
     try {
       if (v.last_coi_json) {
-        ai = typeof v.last_coi_json === "string"
-          ? JSON.parse(v.last_coi_json)
-          : v.last_coi_json;
+        ai =
+          typeof v.last_coi_json === "string"
+            ? JSON.parse(v.last_coi_json)
+            : v.last_coi_json;
       }
     } catch (err) {
       console.warn("[vendor/portal] Failed to parse last_coi_json:", err);
     }
 
     /* ==========================================================
-       6) Build response object
+       6) Build final response
     ========================================================== */
-
     return res.status(200).json({
       ok: true,
       vendor: {
