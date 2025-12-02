@@ -531,6 +531,7 @@ export default function VendorPortal() {
                       background: "rgba(2,6,23,0.6)",
                     }}
                   >
+                    {/* Issue title */}
                     <div
                       style={{
                         fontSize: 14,
@@ -546,17 +547,63 @@ export default function VendorPortal() {
                       {item.label || item.code}
                     </div>
 
+                    {/* Issue message */}
                     <div style={{ fontSize: 12, color: GP.textSoft, marginTop: 4 }}>
                       {item.message}
                     </div>
 
+                    {/* Toggle Fix Button */}
                     <button
                       type="button"
                       onClick={() => toggleResolved(item.code)}
                       style={{
                         marginTop: 10,
-                        padding: "4px 10px",
+                        padding: "6px 14px",
                         borderRadius: 999,
+                        cursor: "pointer",
+                        fontSize: 12,
+                        fontWeight: 600,
+                        color: resolved ? GP.neonGreen : GP.text,
                         border: resolved
                           ? "1px solid rgba(34,197,94,0.8)"
-                          : "1px solid rgba(148
+                          : "1px solid rgba(148,163,184,0.4)",
+                        background: resolved
+                          ? "rgba(34,197,94,0.15)"
+                          : "rgba(15,23,42,0.85)",
+                        transition: "0.2s ease",
+                      }}
+                    >
+                      {resolved ? "✓ Marked Fixed" : "Resolve Issue"}
+                    </button>
+                  </div>
+                );
+              })
+            ) : (
+              <div style={{ color: GP.textSoft }}>No issues detected.</div>
+            )}
+          </div>
+
+          {/* Requirements */}
+          <div
+            style={{
+              borderRadius: 20,
+              padding: 18,
+              border: `1px solid ${GP.border}`,
+              background: "rgba(15,23,42,0.92)",
+            }}
+          >
+            <h3 style={{ marginTop: 0 }}>Coverage Requirements</h3>
+            <ul style={{ paddingLeft: 18 }}>
+              {(requirements?.coverages || []).map((c, i) => (
+                <li key={i}>
+                  <strong style={{ color: "#e5e7eb" }}>{c.name}</strong>{" "}
+                  {c.limit && `— ${c.limit}`}
+                </li>
+              ))}
+            </ul>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
