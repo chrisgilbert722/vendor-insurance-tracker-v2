@@ -1,4 +1,4 @@
-// context/UserContext.js — FINAL STABLE VERSION
+// context/UserContext.js
 import { createContext, useContext, useEffect, useState } from "react";
 import { supabase } from "../lib/supabaseClient";
 
@@ -8,26 +8,21 @@ export function UserProvider({ children }) {
   const [session, setSession] = useState(null);
   const [user, setUser] = useState(null);
 
-  const [org, setOrg] = useState(null);
+  const [org, setOrg] = useState(null); // active org
   const [initializing, setInitializing] = useState(true);
 
-  /* ============================================
-     1) LOAD SUPABASE SESSION
-  ============================================ */
+  // ---------------------------
+  // LOAD SUPABASE SESSION
+  // ---------------------------
   useEffect(() => {
     let ignore = false;
 
     async function loadSession() {
-      try {
-        const { data, error } = await supabase.auth.getSession();
+      const { data } = await supabase.auth.getSession();
+      if (ignore) return;
 
-        if (!ignore) {
-          setSession(data?.session ?? null);
-          setUser(data?.session?.user ?? null);
-        }
-      } catch (err) {
-        console.error("[UserProvider] getSession error:", err);
-      }
+      setSession(data?.session ?? null);
+      setUser(data?.session?.user ?? null);
     }
 
     loadSession();
@@ -45,9 +40,9 @@ export function UserProvider({ children }) {
     };
   }, []);
 
-  /* ============================================
-     2) LOAD ORGANIZATION FOR USER
-  ============================================ */
+  // ---------------------------
+  // LOAD USER'S ORGANIZATION
+  // ---------------------------
   useEffect(() => {
     if (!user) {
       setOrg(null);
@@ -58,22 +53,18 @@ export function UserProvider({ children }) {
     async function loadOrg() {
       try {
         const { data, error } = await supabase
-          .from("organization_members")       // ✅ correct table name
+          .from("org_members") // ✅ FIXED TABLE NAME
           .select("org_id")
           .eq("user_id", user.id)
-          .limit(1);
+          .single();
 
         if (error) {
           console.error("[UserProvider] org lookup error:", error);
-          setOrg(null);
-        } else if (data?.length > 0) {
-          setOrg({ id: data[0].org_id });
-        } else {
-          setOrg(null);
+        } else if (data?.org_id) {
+          setOrg({ id: data.org_id });
         }
       } catch (err) {
         console.error("[UserProvider] org load throw:", err);
-        setOrg(null);
       } finally {
         setInitializing(false);
       }
@@ -82,9 +73,9 @@ export function UserProvider({ children }) {
     loadOrg();
   }, [user]);
 
-  /* ============================================
-     3) ROLE SYSTEM
-  ============================================ */
+  // ---------------------------
+  // ROLE SYSTEM
+  // ---------------------------
   const role =
     user?.app_metadata?.role ||
     user?.user_metadata?.role ||
@@ -94,18 +85,18 @@ export function UserProvider({ children }) {
   const isManager = role === "manager" || role === "admin";
   const isViewer = !isAdmin && !isManager;
 
-  /* ============================================
-     CONTEXT VALUE
-  ============================================ */
+  // ---------------------------
+  // PROVIDER VALUE
+  // ---------------------------
   const value = {
     session,
     user,
-    org,               // ⭐ now loaded safely
-    initializing,
+    org,
     isLoggedIn: !!user,
     isAdmin,
     isManager,
     isViewer,
+    initializing,
   };
 
   return <UserContext.Provider value={value}>{children}</UserContext.Provider>;
