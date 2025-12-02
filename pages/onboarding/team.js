@@ -1,5 +1,5 @@
 // pages/onboarding/team.js
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useRouter } from "next/router";
 import OnboardingLayout from "../../components/onboarding/OnboardingLayout";
 
@@ -10,6 +10,30 @@ export default function OnboardingTeam() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
 
+  /* ==========================================================
+     SECTION 1 — LOAD AI-RECOMMENDED TEAM SUGGESTIONS
+     ========================================================== */
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem("onboarding_ai_intel");
+      if (!raw) return;
+
+      const intel = JSON.parse(raw);
+
+      // If AI provided team suggestions, load them into textarea
+      if (intel?.teamSuggestions?.length > 0) {
+        const suggested = intel.teamSuggestions.join(", ");
+        setEmails(suggested);
+        console.log("AI Team Suggestions Applied:", suggested);
+      }
+    } catch (err) {
+      console.warn("Could not load AI intel:", err);
+    }
+  }, []);
+
+  /* ==========================================================
+     PARSE EMAILS
+     ========================================================== */
   function parseEmails(raw) {
     return raw
       .split(",")
@@ -17,6 +41,9 @@ export default function OnboardingTeam() {
       .filter((e) => e.length > 3 && e.includes("@"));
   }
 
+  /* ==========================================================
+     SUBMIT HANDLER
+     ========================================================== */
   async function handleSubmit(e) {
     e.preventDefault();
     setError("");
@@ -138,7 +165,7 @@ export default function OnboardingTeam() {
             </button>
           </div>
 
-          {/* RIGHT SIDE — CONTEXT / INFO */}
+          {/* RIGHT SIDE — INFO PANEL */}
           <div
             style={{
               borderRadius: 18,
@@ -165,7 +192,7 @@ export default function OnboardingTeam() {
             <ul style={{ margin: 0, paddingLeft: 18 }}>
               <li>Risk & Compliance leadership.</li>
               <li>Operations managers responsible for vendor compliance.</li>
-              <li>Anyone chasing vendors for updated COIs.</li>
+              <li>Anyone who chases vendors for updated COIs.</li>
             </ul>
 
             <p style={{ marginTop: 14, fontSize: 12, color: "#a5b4fc" }}>
