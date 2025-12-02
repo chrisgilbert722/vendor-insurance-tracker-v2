@@ -7,7 +7,9 @@ export default async function handler(req, res) {
     const { token } = req.query;
 
     if (!token) {
-      return res.status(400).json({ ok: false, error: "Missing token" });
+      return res
+        .status(400)
+        .json({ ok: false, error: "Missing token" });
     }
 
     /* ==========================================================
@@ -38,22 +40,23 @@ export default async function handler(req, res) {
     const v = vendorRows[0];
 
     /* ==========================================================
-       ⭐⭐⭐ D4 — LOG PORTAL OPEN EVENT ⭐⭐⭐
+       ⭐⭐⭐ D4 LOG: Vendor opened portal
     ========================================================== */
-    await logVendorActivity(
-      v.id,
-      "portal_open",
-      `Vendor opened portal link.`,
-      "info"
-    );
+    try {
+      await logVendorActivity(
+        v.id,
+        "portal_open",
+        `Vendor opened portal for org ${v.org_id}`,
+        "info"
+      );
+    } catch (err) {
+      console.warn("[portal] failed to log portal_open:", err);
+    }
 
     /* ==========================================================
-       2) Load requirements (coverage requirements for this org)
+       2) Load coverage requirements
     ========================================================== */
-
-    let requirements = {
-      coverages: [],
-    };
+    let requirements = { coverages: [] };
 
     try {
       const reqRows = await sql`
@@ -68,14 +71,14 @@ export default async function handler(req, res) {
         severity: r.severity || "medium",
       }));
     } catch (err) {
-      console.warn("[vendor/portal] No requirements_v5 table or query failed:", err);
+      console.warn("[vendor/portal] requirements_v5 query failed:", err);
     }
 
     /* ==========================================================
-       3) Load vendor alerts (issues to fix)
+       3) Load vendor alerts (issues)
     ========================================================== */
-
     let alerts = [];
+
     try {
       const alertRows = await sql`
         SELECT id, severity, code, message, created_at
@@ -94,20 +97,20 @@ export default async function handler(req, res) {
         label: a.code?.replace(/_/g, " ").toUpperCase(),
       }));
     } catch (err) {
-      console.warn("[vendor/portal] No vendor_alerts table or query failed:", err);
+      console.warn("[vendor/portal] vendor_alerts query failed:", err);
     }
 
     /* ==========================================================
-       4) Compute status label/description
+       4) Compute status description
     ========================================================== */
     let statusState = v.compliance_status || "pending";
+
     let statusLabel = "Pending Review";
-    let statusDescription =
-      "We have not yet completed review of your uploaded certificate.";
+    let statusDescription = "We have not yet reviewed your COI.";
 
     if (statusState === "compliant") {
       statusLabel = "Compliant";
-      statusDescription = "Your COI meets the current requirements.";
+      statusDescription = "Your coverage meets all active requirements.";
     } else if (statusState === "non_compliant") {
       statusLabel = "Non-Compliant";
       statusDescription =
@@ -124,9 +127,10 @@ export default async function handler(req, res) {
     };
 
     /* ==========================================================
-       5) Extract last AI parse for this vendor, if exists
+       5) Extract last AI parse
     ========================================================== */
     let ai = null;
+
     try {
       if (v.last_coi_json) {
         ai =
@@ -135,11 +139,31 @@ export default async function handler(req, res) {
             : v.last_coi_json;
       }
     } catch (err) {
-      console.warn("[vendor/portal] Failed to parse last_coi_json:", err);
+      console.warn("[vendor/portal] Parse last_coi_json failed:", err);
     }
 
     /* ==========================================================
-       6) Build final response
+       ⭐⭐⭐ D4 LOG: policy snapshot viewed
+       Triggered when AI exists (first portal render after upload)
+    ========================================================== */
+    if (ai) {
+      try {
+        await logVendorActivity(
+          v.id,
+          "policy_snapshot_viewed",
+          "Vendor viewed extracted policy snapshot",
+          "info"
+        );
+      } catch (err) {
+        console.warn(
+          "[vendor/portal] failed to log policy_snapshot_viewed:",
+          err
+        );
+      }
+    }
+
+    /* ==========================================================
+       6) Build + return payload
     ========================================================== */
     return res.status(200).json({
       ok: true,
@@ -160,6 +184,17 @@ export default async function handler(req, res) {
     });
   } catch (err) {
     console.error("[vendor/portal] ERROR:", err);
+
+    // Log catastrophic fail
+    try {
+      await logVendorActivity(
+        null,
+        "error",
+        `Portal load failed: ${err.message}`,
+        "critical"
+      );
+    } catch (_) {}
+
     return res.status(500).json({ ok: false, error: err.message });
   }
 }
