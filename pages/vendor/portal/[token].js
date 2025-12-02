@@ -22,15 +22,25 @@ export default function VendorPortal() {
   const [vendorData, setVendorData] = useState(null);
   const [error, setError] = useState("");
 
+  // Upload state
+  const [coiError, setCoiError] = useState("");
+  const [uploading, setUploading] = useState(false);
+  const [uploadSuccess, setUploadSuccess] = useState(false);
+  const [parsedResult, setParsedResult] = useState(null);
+
+  /* ==========================================================
+     LOAD PORTAL DATA (Vendor + Org + Requirements)
+  ========================================================== */
   useEffect(() => {
     if (!token) return;
 
     async function load() {
       try {
         setLoading(true);
+
         const res = await fetch(`/api/vendor/portal?token=${token}`);
         const json = await res.json();
-        if (!json.ok) throw new Error(json.error || "Invalid link");
+        if (!json.ok) throw new Error(json.error || "Invalid vendor link");
 
         setVendorData(json);
       } catch (err) {
@@ -44,20 +54,101 @@ export default function VendorPortal() {
     load();
   }, [token]);
 
+  /* ==========================================================
+     FILE HANDLERS
+  ========================================================== */
+  async function handleFileChange(e) {
+    const f = e.target.files?.[0];
+    if (!f) return;
+    await startUpload(f);
+  }
+
+  async function handleDrop(e) {
+    e.preventDefault();
+    const f = e.dataTransfer.files?.[0];
+    if (!f) return;
+    await startUpload(f);
+  }
+
+  /* ==========================================================
+     UPLOAD + AI PARSE PIPELINE
+  ========================================================== */
+  async function startUpload(file) {
+    try {
+      setCoiError("");
+      setUploadSuccess(false);
+
+      if (!file.name.toLowerCase().endsWith(".pdf")) {
+        setCoiError("Only PDF files allowed.");
+        return;
+      }
+
+      setUploading(true);
+
+      // ------------------------------
+      // 1) Upload PDF → Supabase
+      // ------------------------------
+      const form = new FormData();
+      form.append("file", file);
+      form.append("token", token);
+
+      const uploadRes = await fetch("/api/vendor/upload-coi", {
+        method: "POST",
+        body: form,
+      });
+
+      const uploadJson = await uploadRes.json();
+      if (!uploadJson.ok) throw new Error(uploadJson.error);
+
+      const fileUrl = uploadJson.fileUrl;
+      setUploadSuccess(true);
+
+      // ------------------------------
+      // 2) AI PARSE PDF → extract policies
+      // ------------------------------
+      const aiRes = await fetch("/api/vendor/ai/parse-coi", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ token, fileUrl }),
+      });
+
+      const aiJson = await aiRes.json();
+      if (!aiJson.ok) throw new Error(aiJson.error);
+
+      setParsedResult(aiJson.result);
+
+      // ------------------------------
+      // 3) OPTIONAL: refresh portal status
+      // ------------------------------
+      const refresh = await fetch(`/api/vendor/portal?token=${token}`);
+      const refreshed = await refresh.json();
+      if (refreshed.ok) setVendorData(refreshed);
+
+    } catch (err) {
+      console.error(err);
+      setCoiError(err.message);
+    } finally {
+      setUploading(false);
+    }
+  }
+
+  /* ==========================================================
+    LOADING / ERROR
+  ========================================================== */
   if (loading) {
     return (
       <div
         style={{
           minHeight: "100vh",
-          background:
-            "radial-gradient(circle at top left,#020617 0,#020617 45%,#000000 100%)",
+          background: "radial-gradient(circle at top left,#020617,#000)",
           display: "flex",
-          alignItems: "center",
           justifyContent: "center",
+          alignItems: "center",
           color: GP.textSoft,
+          fontSize: 18,
         }}
       >
-        <div style={{ fontSize: 18 }}>Loading vendor portal…</div>
+        Loading vendor portal…
       </div>
     );
   }
@@ -67,23 +158,21 @@ export default function VendorPortal() {
       <div
         style={{
           minHeight: "100vh",
-          background:
-            "radial-gradient(circle at top left,#020617 0,#020617 45%,#000000 100%)",
+          background: "radial-gradient(circle at top left,#020617,#000)",
           display: "flex",
-          alignItems: "center",
           justifyContent: "center",
+          alignItems: "center",
           color: GP.text,
           padding: 24,
-          textAlign: "center",
         }}
       >
-        <div>
-          <div style={{ fontSize: 50, marginBottom: 10 }}>⚠️</div>
-          <div style={{ fontSize: 18, marginBottom: 6 }}>
-            This vendor link is not valid.
+        <div style={{ textAlign: "center" }}>
+          <div style={{ fontSize: 50 }}>⚠️</div>
+          <div style={{ fontSize: 18, marginTop: 8 }}>
+            Invalid or expired vendor link.
           </div>
-          <div style={{ fontSize: 13, color: GP.textSoft }}>
-            Please contact the requesting organization for a new link.
+          <div style={{ marginTop: 6, fontSize: 13, color: GP.textSoft }}>
+            Please contact the requesting organization for a new onboarding link.
           </div>
         </div>
       </div>
@@ -92,13 +181,15 @@ export default function VendorPortal() {
 
   const { vendor, org, requirements, status, alerts } = vendorData;
 
+  /* ==========================================================
+    MAIN UI
+  ========================================================== */
   return (
     <div
       style={{
         minHeight: "100vh",
-        background:
-          "radial-gradient(circle at top left,#020617 0,#020617 45%,#000000 100%)",
-        padding: "32px 24px 40px",
+        background: "radial-gradient(circle at top left,#020617,#000)",
+        padding: "32px 24px",
         color: GP.text,
       }}
     >
@@ -106,11 +197,9 @@ export default function VendorPortal() {
       <div
         style={{
           maxWidth: 1150,
-          margin: "0 auto",
+          margin: "0 auto 24px",
           display: "flex",
           justifyContent: "space-between",
-          alignItems: "center",
-          marginBottom: 24,
         }}
       >
         <div>
@@ -120,263 +209,246 @@ export default function VendorPortal() {
               letterSpacing: "0.2em",
               textTransform: "uppercase",
               color: GP.textSoft,
-              marginBottom: 6,
             }}
           >
             Vendor Compliance Portal
           </div>
+
           <h1
             style={{
               margin: 0,
-              fontSize: 26,
               background:
                 "linear-gradient(90deg,#38bdf8,#a855f7,#22c55e,#facc15)",
               WebkitBackgroundClip: "text",
               color: "transparent",
+              fontSize: 28,
             }}
           >
-            {vendor?.name || "Vendor"}
+            {vendor?.name}
           </h1>
+
           <div style={{ fontSize: 13, color: GP.textSoft }}>
-            For {org?.name || "Requesting Organization"}
+            For {org?.name}
           </div>
         </div>
 
-        {/* Status pill */}
+        {/* STATUS pill */}
         <div
           style={{
             padding: "8px 14px",
             borderRadius: 999,
             border: "1px solid rgba(148,163,184,0.6)",
             background: "rgba(15,23,42,0.96)",
-            fontSize: 12,
-            color: GP.textSoft,
             textAlign: "right",
           }}
         >
-          <div style={{ fontSize: 11, textTransform: "uppercase" }}>
+          <div style={{ fontSize: 10, textTransform: "uppercase" }}>
             Compliance Status
           </div>
           <div
             style={{
-              fontSize: 14,
-              fontWeight: 600,
               color:
                 status?.state === "compliant"
                   ? GP.neonGreen
                   : status?.state === "pending"
                   ? GP.neonGold
                   : GP.neonRed,
+              fontWeight: 600,
             }}
           >
-            {status?.label || "Pending"}
+            {status?.label}
           </div>
         </div>
       </div>
 
-      {/* MAIN GRID */}
+      {/* GRID */}
       <div
         style={{
           maxWidth: 1150,
           margin: "0 auto",
           display: "grid",
-          gridTemplateColumns: "minmax(0,1.7fr) minmax(0,1.1fr)",
+          gridTemplateColumns: "2fr 1fr",
           gap: 24,
         }}
       >
-        {/* LEFT SIDE — UPLOAD + REQUIREMENTS */}
+        {/* LEFT SIDE — Upload + Requirements */}
         <div>
-          {/* Upload Panel */}
+          {/* UPLOAD PANEL */}
           <div
+            onDrop={handleDrop}
+            onDragOver={(e) => e.preventDefault()}
             style={{
               borderRadius: 22,
-              border: `1px solid ${GP.border}`,
-              background:
-                "radial-gradient(circle at top left,rgba(15,23,42,0.98),rgba(15,23,42,0.94))",
-              padding: 20,
-              marginBottom: 18,
-              boxShadow:
-                "0 0 40px rgba(0,0,0,0.7),0 0 30px rgba(56,189,248,0.25)",
+              padding: 22,
+              background: GP.panel,
+              border: `1px dashed ${GP.textSoft}55`,
+              textAlign: "center",
+              marginBottom: 22,
             }}
           >
-            <h3
-              style={{
-                marginTop: 0,
-                marginBottom: 8,
-                fontSize: 15,
-                color: "#e5e7eb",
-              }}
-            >
-              Upload Your Certificate of Insurance
+            <h3 style={{ margin: 0, marginBottom: 8, color: GP.text }}>
+              Upload Your COI
             </h3>
-            <p style={{ fontSize: 13, color: GP.textSoft, marginBottom: 14 }}>
-              Upload a PDF of your latest COI so we can verify your coverage
-              against the requirements below.
+
+            <p style={{ fontSize: 13, color: GP.textSoft, marginBottom: 12 }}>
+              Drag & drop a PDF or use the button below.
             </p>
 
-            {/* Placeholder — will wire actual upload next */}
-            <div
-              style={{
-                borderRadius: 14,
-                border: "1px dashed rgba(148,163,184,0.8)",
-                padding: 24,
-                textAlign: "center",
-                background: "rgba(15,23,42,0.96)",
-              }}
-            >
-              <div style={{ fontSize: 26, marginBottom: 8 }}>📄</div>
-              <div style={{ fontSize: 13, color: GP.text }}>
-                Drag & drop your COI PDF here
-              </div>
+            <label htmlFor="vendorCoi">
               <div
                 style={{
-                  fontSize: 11,
-                  color: GP.textSoft,
-                  marginBottom: 14,
-                }}
-              >
-                Or click the button below to select a file.
-              </div>
-              <button
-                type="button"
-                style={{
-                  padding: "8px 16px",
+                  padding: "8px 18px",
                   borderRadius: 999,
-                  border: "1px solid rgba(56,189,248,0.9)",
                   background:
                     "linear-gradient(90deg,#38bdf8,#0ea5e9,#0f172a)",
+                  boxShadow: "0 0 12px #38bdf8aa",
+                  border: "1px solid rgba(56,189,248,0.7)",
+                  display: "inline-block",
+                  cursor: "pointer",
                   color: "#e5f2ff",
                   fontSize: 13,
-                  cursor: "pointer",
                 }}
               >
-                Choose File (Coming Soon)
-              </button>
-            </div>
+                Choose COI File
+              </div>
+            </label>
+
+            <input
+              id="vendorCoi"
+              type="file"
+              accept="application/pdf"
+              style={{ display: "none" }}
+              onChange={handleFileChange}
+            />
+
+            {uploading && (
+              <div style={{ marginTop: 12, color: GP.neonBlue }}>
+                Uploading & analyzing…
+              </div>
+            )}
+
+            {uploadSuccess && (
+              <div
+                style={{
+                  marginTop: 12,
+                  color: GP.neonGreen,
+                  fontWeight: 600,
+                }}
+              >
+                COI uploaded ✓
+              </div>
+            )}
+
+            {coiError && (
+              <div
+                style={{
+                  marginTop: 12,
+                  padding: 10,
+                  borderRadius: 10,
+                  background: "rgba(127,29,29,0.8)",
+                  color: "#fecaca",
+                }}
+              >
+                {coiError}
+              </div>
+            )}
           </div>
 
-          {/* Requirements Panel */}
+          {/* REQUIREMENTS PANEL */}
           <div
             style={{
               borderRadius: 22,
-              border: `1px solid ${GP.border}`,
-              background:
-                "radial-gradient(circle at top left,rgba(15,23,42,0.98),rgba(15,23,42,0.94))",
-              padding: 18,
+              padding: 22,
+              background: GP.panel,
+              border: `1px solid ${GP.textSoft}35`,
             }}
           >
-            <h3
-              style={{
-                marginTop: 0,
-                marginBottom: 8,
-                fontSize: 15,
-                color: "#e5e7eb",
-              }}
-            >
-              Coverage Requirements
-            </h3>
-            <p style={{ fontSize: 13, color: GP.textSoft, marginBottom: 10 }}>
-              These are the minimum coverage types required by{" "}
-              <strong style={{ color: GP.neonBlue }}>
-                {org?.name || "this organization"}
-              </strong>
-              .
-            </p>
+            <h3 style={{ marginTop: 0, color: GP.text }}>Required Coverage</h3>
+
             <ul
               style={{
-                margin: 0,
+                marginTop: 12,
                 paddingLeft: 18,
-                fontSize: 13,
+                lineHeight: 1.7,
                 color: GP.textSoft,
               }}
             >
-              {(requirements?.coverages || []).map((c, i) => (
-                <li key={i}>
-                  <strong style={{ color: "#e5e7eb" }}>{c.name}</strong>{" "}
-                  {c.limit && `— ${c.limit}`}
-                </li>
-              ))}
-              {(!requirements?.coverages ||
-                requirements.coverages.length === 0) && (
-                <li>No specific coverage profile loaded yet.</li>
-              )}
+              {requirements?.coverages?.length
+                ? requirements.coverages.map((c, i) => (
+                    <li key={i}>
+                      <strong style={{ color: GP.text }}>{c.name}</strong>{" "}
+                      {c.limit && `— ${c.limit}`}
+                    </li>
+                  ))
+                : "No coverage requirements found."}
             </ul>
           </div>
         </div>
 
-        {/* RIGHT SIDE — STATUS + ALERTS */}
+        {/* RIGHT SIDE — Status + Alerts + AI parse */}
         <div>
-          {/* Status Block */}
+          {/* STATUS */}
           <div
             style={{
               borderRadius: 22,
-              border: `1px solid ${GP.border}`,
-              background:
-                "radial-gradient(circle at top right,rgba(15,23,42,0.98),rgba(15,23,42,0.94))",
               padding: 18,
-              marginBottom: 18,
+              background: GP.panel,
+              border: `1px solid ${GP.textSoft}35`,
+              marginBottom: 22,
             }}
           >
-            <h3
-              style={{
-                marginTop: 0,
-                marginBottom: 8,
-                fontSize: 15,
-                color: "#e5e7eb",
-              }}
-            >
+            <h3 style={{ margin: 0, marginBottom: 8, color: GP.text }}>
               Your Current Status
             </h3>
-            <p style={{ fontSize: 13, color: GP.textSoft, marginBottom: 6 }}>
-              {status?.description || "COI not yet uploaded or under review."}
+            <p style={{ fontSize: 13, color: GP.textSoft }}>
+              {status?.description ||
+                "Upload your COI to generate a compliance review."}
             </p>
           </div>
 
-          {/* Alerts Block */}
+          {/* ALERTS */}
           <div
             style={{
               borderRadius: 22,
-              border: `1px solid ${GP.border}`,
-              background:
-                "radial-gradient(circle at 10% 0%,rgba(15,23,42,0.98),rgba(15,23,42,0.94))",
               padding: 18,
+              background: GP.panel,
+              border: `1px solid ${GP.textSoft}35`,
             }}
           >
-            <h3
-              style={{
-                marginTop: 0,
-                marginBottom: 8,
-                fontSize: 15,
-                color: "#e5e7eb",
-              }}
-            >
-              Issues to Fix
+            <h3 style={{ marginTop: 0, marginBottom: 8, color: GP.text }}>
+              Issues Detected
             </h3>
-            {alerts?.length ? (
-              <ul
-                style={{
-                  margin: 0,
-                  paddingLeft: 18,
-                  fontSize: 13,
-                  color: GP.textSoft,
-                }}
-              >
-                {alerts.map((a) => (
-                  <li key={a.id || a.code}>
-                    <strong
-                      style={{
-                        color:
-                          a.severity === "critical"
-                            ? GP.neonRed
-                            : a.severity === "high"
-                            ? GP.neonGold
-                            : GP.neonBlue,
-                      }}
-                    >
-                      {a.label || a.code}
-                    </strong>
-                    : {a.message}
+
+            {parsedResult?.compliance ? (
+              <ul style={{ paddingLeft: 18, color: GP.textSoft, fontSize: 13 }}>
+                {parsedResult.compliance.missingCoverages?.map((m, i) => (
+                  <li key={i} style={{ color: GP.neonRed }}>
+                    Missing — {m}
                   </li>
+                ))}
+
+                {parsedResult.compliance.failedEndorsements?.map((m, i) => (
+                  <li key={i} style={{ color: GP.neonGold }}>
+                    Endorsement Missing — {m}
+                  </li>
+                ))}
+
+                {parsedResult.compliance.expiringSoon?.length > 0 && (
+                  <li style={{ color: GP.neonGold }}>
+                    Expiring Soon — {parsedResult.compliance.expiringSoon.join(", ")}
+                  </li>
+                )}
+
+                {parsedResult.compliance.overall === "pass" && (
+                  <div style={{ color: GP.neonGreen }}>
+                    ✓ All requirements satisfied
+                  </div>
+                )}
+              </ul>
+            ) : alerts?.length ? (
+              <ul style={{ paddingLeft: 18, color: GP.textSoft }}>
+                {alerts.map((a, i) => (
+                  <li key={i}>{a.message}</li>
                 ))}
               </ul>
             ) : (
