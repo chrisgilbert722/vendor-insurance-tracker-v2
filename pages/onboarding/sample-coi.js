@@ -53,7 +53,7 @@ export default function OnboardingSampleCOI() {
       setSuccessMsg("");
 
       /* --------------------------------------------
-         1) Upload PDF to your existing upload system
+         1) Upload PDF to Supabase Storage
       --------------------------------------------- */
       const formData = new FormData();
       formData.append("file", file);
@@ -64,12 +64,13 @@ export default function OnboardingSampleCOI() {
       });
 
       const uploadJson = await uploadRes.json();
-      if (!uploadJson.ok) throw new Error(uploadJson.error || "Upload failed");
+      if (!uploadJson.ok)
+        throw new Error(uploadJson.error || "Upload failed");
 
       const fileUrl = uploadJson.fileUrl;
 
       /* --------------------------------------------
-         2) Send file URL to AI parser for calibration
+         2) Send PDF URL to AI parser for calibration
       --------------------------------------------- */
       const aiRes = await fetch("/api/onboarding/ai/parse-sample-coi", {
         method: "POST",
@@ -78,10 +79,11 @@ export default function OnboardingSampleCOI() {
       });
 
       const aiJson = await aiRes.json();
-      if (!aiJson.ok) throw new Error(aiJson.error || "AI parsing failed");
+      if (!aiJson.ok)
+        throw new Error(aiJson.error || "AI parsing failed");
 
       /* --------------------------------------------
-         3) Store AI calibration for Rules + Dashboard
+         3) Store AI calibration locally
       --------------------------------------------- */
       localStorage.setItem(
         "onboarding_ai_sample",
@@ -91,11 +93,12 @@ export default function OnboardingSampleCOI() {
       setSuccessMsg("COI analyzed successfully! AI calibration loaded.");
 
       /* --------------------------------------------
-         4) Navigate to next onboarding step
+         4) Navigate to NEW summary step
       --------------------------------------------- */
       setTimeout(() => {
-        window.location.href = "/onboarding/vendors";
+        window.location.href = "/onboarding/sample-summary";
       }, 900);
+
     } catch (err) {
       console.error(err);
       setError(err.message || "Something went wrong analyzing the COI.");
@@ -141,7 +144,13 @@ export default function OnboardingSampleCOI() {
             >
               Drag & drop a recent COI PDF
             </div>
-            <div style={{ fontSize: 12, color: "#9ca3af", marginBottom: 16 }}>
+            <div
+              style={{
+                fontSize: 12,
+                color: "#9ca3af",
+                marginBottom: 16,
+              }}
+            >
               Or click below to select a file.
             </div>
 
@@ -275,8 +284,8 @@ export default function OnboardingSampleCOI() {
           </ul>
 
           <p style={{ marginTop: 12, fontSize: 12, color: "#a5b4fc" }}>
-            This sample COI is not stored permanently — it is used only to calibrate
-            your automation engines.
+            This sample COI is not stored permanently — it is used only to
+            calibrate your automation engines.
           </p>
         </div>
       </div>
