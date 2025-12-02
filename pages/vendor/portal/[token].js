@@ -28,6 +28,40 @@ function getTimelineIcon(item) {
   return "📌";
 }
 
+function getTimelineBucket(createdAtStr) {
+  if (!createdAtStr) return "Older";
+  const d = new Date(createdAtStr);
+  if (isNaN(d.getTime())) return "Older";
+
+  const now = new Date();
+
+  function startOfDay(date) {
+    const x = new Date(date);
+    x.setHours(0, 0, 0, 0);
+    return x;
+  }
+
+  const todayStart = startOfDay(now);
+  const yesterdayStart = new Date(todayStart);
+  yesterdayStart.setDate(yesterdayStart.getDate() - 1);
+
+  const weekStart = new Date(todayStart);
+  const dayOfWeek = weekStart.getDay(); // 0 = Sunday
+  weekStart.setDate(weekStart.getDate() - dayOfWeek);
+
+  const lastWeekStart = new Date(weekStart);
+  lastWeekStart.setDate(lastWeekStart.getDate() - 7);
+
+  const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+
+  if (d >= todayStart) return "Today";
+  if (d >= yesterdayStart && d < todayStart) return "Yesterday";
+  if (d >= weekStart) return "This Week";
+  if (d >= lastWeekStart && d < weekStart) return "Last Week";
+  if (d >= monthStart) return "This Month";
+  return "Older";
+}
+
 export default function VendorPortal() {
   const router = useRouter();
   const { token } = router.query;
@@ -117,6 +151,17 @@ export default function VendorPortal() {
         return true;
     }
   });
+
+  const bucketOrder = ["Today", "Yesterday", "This Week", "Last Week", "This Month", "Older"];
+
+  const groupedTimeline = bucketOrder
+    .map((label) => ({
+      label,
+      items: filteredTimeline.filter(
+        (item) => getTimelineBucket(item.createdAt) === label
+      ),
+    }))
+    .filter((group) => group.items.length > 0);
 
   /* ============================================================
      FIX MODE — PERSIST RESOLUTION
@@ -727,68 +772,103 @@ export default function VendorPortal() {
                 No events match this filter yet. Try another filter.
               </div>
             ) : (
-              <ul style={{ paddingLeft: 0, listStyle: "none", margin: 0 }}>
-                {filteredTimeline.map((item, i) => (
-                  <li
-                    key={i}
+              groupedTimeline.map((group) => (
+                <div key={group.label} style={{ marginBottom: 18 }}>
+                  <div
                     style={{
-                      marginBottom: 14,
-                      padding: 12,
-                      borderRadius: 14,
-                      background: "rgba(2,6,23,0.6)",
-                      border: "1px solid rgba(148,163,184,0.28)",
+                      fontSize: 11,
+                      textTransform: "uppercase",
+                      letterSpacing: 1.2,
+                      color: GP.textSoft,
+                      marginBottom: 8,
                       display: "flex",
-                      gap: 10,
+                      alignItems: "center",
+                      gap: 8,
                     }}
                   >
-                    {/* ICON COLUMN */}
-                    <div
+                    <span
                       style={{
-                        fontSize: 18,
-                        display: "flex",
-                        alignItems: "flex-start",
-                        paddingTop: 2,
+                        height: 1,
+                        flex: 1,
+                        background:
+                          "linear-gradient(90deg,rgba(148,163,184,0.1),rgba(148,163,184,0.6))",
                       }}
-                    >
-                      {getTimelineIcon(item)}
-                    </div>
+                    />
+                    <span>{group.label}</span>
+                    <span
+                      style={{
+                        height: 1,
+                        flex: 1,
+                        background:
+                          "linear-gradient(90deg,rgba(148,163,184,0.6),rgba(148,163,184,0.1))",
+                      }}
+                    />
+                  </div>
 
-                    {/* TEXT COLUMN */}
-                    <div style={{ flex: 1 }}>
-                      <div
+                  <ul style={{ paddingLeft: 0, listStyle: "none", margin: 0 }}>
+                    {group.items.map((item, i) => (
+                      <li
+                        key={i}
                         style={{
-                          fontSize: 12,
-                          textTransform: "uppercase",
-                          color:
-                            item.severity === "critical"
-                              ? GP.neonRed
-                              : item.severity === "warning"
-                              ? GP.neonGold
-                              : GP.neonBlue,
-                          fontWeight: 600,
-                          marginBottom: 4,
-                          letterSpacing: 0.4,
+                          marginBottom: 14,
+                          padding: 12,
+                          borderRadius: 14,
+                          background: "rgba(2,6,23,0.6)",
+                          border: "1px solid rgba(148,163,184,0.28)",
+                          display: "flex",
+                          gap: 10,
                         }}
                       >
-                        {item.action?.replace(/_/g, " ")}
-                      </div>
-                      <div style={{ fontSize: 13, color: GP.textSoft }}>
-                        {item.message}
-                      </div>
-                      <div
-                        style={{
-                          marginTop: 6,
-                          fontSize: 11,
-                          color: GP.textSoft,
-                          opacity: 0.6,
-                        }}
-                      >
-                        {new Date(item.createdAt).toLocaleString()}
-                      </div>
-                    </div>
-                  </li>
-                ))}
-              </ul>
+                        {/* ICON COLUMN */}
+                        <div
+                          style={{
+                            fontSize: 18,
+                            display: "flex",
+                            alignItems: "flex-start",
+                            paddingTop: 2,
+                          }}
+                        >
+                          {getTimelineIcon(item)}
+                        </div>
+
+                        {/* TEXT COLUMN */}
+                        <div style={{ flex: 1 }}>
+                          <div
+                            style={{
+                              fontSize: 12,
+                              textTransform: "uppercase",
+                              color:
+                                item.severity === "critical"
+                                  ? GP.neonRed
+                                  : item.severity === "warning"
+                                  ? GP.neonGold
+                                  : GP.neonBlue,
+                              fontWeight: 600,
+                              marginBottom: 4,
+                              letterSpacing: 0.4,
+                            }}
+                          >
+                            {item.action?.replace(/_/g, " ")}
+                          </div>
+                          <div style={{ fontSize: 13, color: GP.textSoft }}>
+                            {item.message}
+                          </div>
+                          <div
+                            style={{
+                              marginTop: 6,
+                              fontSize: 11,
+                              color: GP.textSoft,
+                              opacity: 0.6,
+                            }}
+                          >
+                            {new Date(item.createdAt).toLocaleString()}
+                          </div>
+                        </div>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              ))
             )}
           </div>
         </div>
