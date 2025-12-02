@@ -7,28 +7,21 @@ export default function SampleCOISummary() {
   const router = useRouter();
 
   const [ai, setAi] = useState(null);
-  const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const [loading, setLoading] = useState(false);
 
-  /* ==========================================================
-     LOAD AI SAMPLE CALIBRATION FROM LOCAL STORAGE
-  ========================================================== */
+  /* Load stored AI sample */
   useEffect(() => {
     try {
       const raw = localStorage.getItem("onboarding_ai_sample");
-      if (!raw) {
-        setError("No AI sample calibration found.");
-        return;
-      }
+      if (!raw) return setError("Missing AI sample.");
       setAi(JSON.parse(raw));
     } catch (err) {
-      setError("Failed to load AI sample calibration.");
+      setError("Failed to load AI calibration.");
     }
   }, []);
 
   async function handleConfirm() {
-    if (!ai) return;
-
     try {
       setLoading(true);
 
@@ -39,7 +32,7 @@ export default function SampleCOISummary() {
       });
 
       const json = await res.json();
-      if (!json.ok) throw new Error(json.error || "Failed to save.");
+      if (!json.ok) throw new Error(json.error);
 
       router.push("/onboarding/vendors");
     } catch (err) {
@@ -53,14 +46,78 @@ export default function SampleCOISummary() {
     return (
       <OnboardingLayout
         currentKey="sample-coi"
-        title="Sample COI Summary"
-        subtitle="Loading AI analysis…"
+        title="Analyzing Sample COI…"
+        subtitle="Please wait while the AI prepares your summary."
       >
         <div style={{ color: "#9ca3af", fontSize: 14 }}>Loading…</div>
       </OnboardingLayout>
     );
   }
+/* Neon label chip */
+function Chip({ text, color = "#38bdf8" }) {
+  return (
+    <span
+      style={{
+        display: "inline-flex",
+        padding: "4px 10px",
+        borderRadius: 999,
+        fontSize: 11,
+        color,
+        border: `1px solid ${color}80`,
+        background: "rgba(15,23,42,0.85)",
+        textShadow: `0 0 6px ${color}88`,
+        marginRight: 6,
+        marginBottom: 6,
+      }}
+    >
+      {text}
+    </span>
+  );
+}
 
+/* Cinematic Block Container */
+function Block({ title, children }) {
+  return (
+    <div
+      style={{
+        marginBottom: 20,
+        padding: 20,
+        borderRadius: 20,
+        border: "1px solid rgba(148,163,184,0.35)",
+        background:
+          "radial-gradient(circle at top,rgba(15,23,42,0.9),rgba(15,23,42,0.7))",
+        boxShadow:
+          "0 0 25px rgba(0,0,0,0.5), inset 0 0 20px rgba(0,0,0,0.4), 0 0 16px rgba(56,189,248,0.25)",
+        backdropFilter: "blur(6px)",
+        transition: "transform 0.25s ease, box-shadow 0.25s ease",
+      }}
+      onMouseEnter={(e) => {
+        e.currentTarget.style.transform = "translateY(-4px)";
+        e.currentTarget.style.boxShadow =
+          "0 0 35px rgba(56,189,248,0.4), inset 0 0 20px rgba(0,0,0,0.4)";
+      }}
+      onMouseLeave={(e) => {
+        e.currentTarget.style.transform = "translateY(0px)";
+        e.currentTarget.style.boxShadow =
+          "0 0 25px rgba(0,0,0,0.5), inset 0 0 20px rgba(0,0,0,0.4), 0 0 16px rgba(56,189,248,0.25)";
+      }}
+    >
+      <h3
+        style={{
+          marginTop: 0,
+          marginBottom: 12,
+          fontSize: 16,
+          color: "#e5e7eb",
+          textShadow: "0 0 8px rgba(56,189,248,0.45)",
+          letterSpacing: "0.04em",
+        }}
+      >
+        {title}
+      </h3>
+      {children}
+    </div>
+  );
+}
   const {
     brokerStyle,
     policyTypes,
@@ -73,70 +130,60 @@ export default function SampleCOISummary() {
   return (
     <OnboardingLayout
       currentKey="sample-coi"
-      title="COI Analysis Summary"
-      subtitle="Here is what the AI detected from your sample certificate."
+      title="AI COI Summary"
+      subtitle="Your sample COI has been analyzed. Here’s what the AI learned about your formatting, patterns, and endorsement logic."
     >
       <div
         style={{
           display: "grid",
-          gridTemplateColumns: "minmax(0,1.7fr) minmax(0,1fr)",
-          gap: 24,
+          gridTemplateColumns: "minmax(0,1.8fr) minmax(0,1fr)",
+          gap: 28,
         }}
       >
-        {/* LEFT SIDE — AI RESULTS */}
+        {/* LEFT SIDE */}
         <div>
-          {/* Broker Style */}
           <Block title="Broker Formatting Style">
-            <p style={p}>{brokerStyle || "Unknown"}</p>
+            <p style={{ fontSize: 14, color: "#9ca3af" }}>{brokerStyle}</p>
           </Block>
 
-          {/* Policy Types */}
           <Block title="Detected Policy Types">
-            <ul style={ul}>
-              {policyTypes?.map((p, i) => (
-                <li key={i}>{p}</li>
-              ))}
-            </ul>
+            {policyTypes?.map((p, i) => (
+              <Chip key={i} text={p} />
+            ))}
           </Block>
 
-          {/* Limits */}
           <Block title="Limits Extracted">
-            <div style={{ fontSize: 13 }}>
-              {Object.entries(limits || {}).map(([cov, vals]) => (
-                <div key={cov} style={{ marginBottom: 8 }}>
-                  <strong style={{ color: "#e5e7eb" }}>{cov}</strong>
-                  <pre
-                    style={{
-                      background: "rgba(2,6,23,0.6)",
-                      padding: 8,
-                      borderRadius: 8,
-                      marginTop: 4,
-                      fontSize: 12,
-                    }}
-                  >
-                    {JSON.stringify(vals, null, 2)}
-                  </pre>
-                </div>
-              ))}
-            </div>
+            {Object.entries(limits || {}).map(([policy, vals], i) => (
+              <div key={i} style={{ marginBottom: 12 }}>
+                <strong style={{ color: "#e5e7eb" }}>{policy}</strong>
+                <pre
+                  style={{
+                    background: "rgba(2,6,23,0.6)",
+                    padding: "10px 12px",
+                    borderRadius: 12,
+                    fontSize: 12,
+                    marginTop: 6,
+                    overflowX: "auto",
+                  }}
+                >
+                  {JSON.stringify(vals, null, 2)}
+                </pre>
+              </div>
+            ))}
           </Block>
 
-          {/* Endorsements */}
           <Block title="Endorsements Detected">
-            <ul style={ul}>
-              {endorsements?.map((e, i) => (
-                <li key={i}>{e}</li>
-              ))}
-            </ul>
+            {endorsements?.map((e, i) => (
+              <Chip key={i} text={e} color="#a855f7" />
+            ))}
           </Block>
 
-          {/* Recommended Rules */}
-          <Block title="AI Recommended Defaults">
+          <Block title="AI Recommended Rule Defaults">
             <pre
               style={{
                 background: "rgba(2,6,23,0.6)",
-                padding: 10,
-                borderRadius: 10,
+                padding: 14,
+                borderRadius: 12,
                 fontSize: 12,
               }}
             >
@@ -144,17 +191,16 @@ export default function SampleCOISummary() {
             </pre>
           </Block>
 
-          {/* Observations */}
-          <Block title="Additional Observations">
-            <p style={p}>{observations || "None"}</p>
+          <Block title="AI Observations">
+            <p style={{ fontSize: 14, color: "#9ca3af" }}>{observations}</p>
           </Block>
 
-          {/* Confirm Button */}
+          {/* CONFIRM BUTTON */}
           <button
             onClick={handleConfirm}
             disabled={loading}
             style={{
-              marginTop: 22,
+              marginTop: 20,
               padding: "12px 28px",
               borderRadius: 999,
               cursor: loading ? "not-allowed" : "pointer",
@@ -166,7 +212,8 @@ export default function SampleCOISummary() {
               fontSize: 15,
               fontWeight: 600,
               boxShadow:
-                "0 0 22px rgba(56,189,248,0.75),0 0 40px rgba(88,28,135,0.4)",
+                "0 0 25px rgba(56,189,248,0.55), 0 0 50px rgba(88,28,135,0.35)",
+              transition: "0.3s",
             }}
           >
             {loading ? "Saving…" : "Confirm & Continue →"}
@@ -188,65 +235,34 @@ export default function SampleCOISummary() {
           )}
         </div>
 
-        {/* RIGHT SIDE — INFO */}
+        {/* RIGHT SIDE — INFO PANEL */}
         <div
           style={{
-            borderRadius: 18,
-            padding: 16,
-            border: "1px solid rgba(148,163,184,0.55)",
+            borderRadius: 20,
+            padding: 18,
+            border: "1px solid rgba(148,163,184,0.45)",
             background:
-              "radial-gradient(circle at top,rgba(15,23,42,0.98),rgba(15,23,42,0.96))",
-            fontSize: 13,
+              "radial-gradient(circle at 20% 0%,rgba(15,23,42,0.98),rgba(15,23,42,0.94))",
+            boxShadow: "0 0 25px rgba(0,0,0,0.45)",
+            fontSize: 14,
             color: "#9ca3af",
             lineHeight: 1.6,
           }}
         >
-          <h3 style={{ marginTop: 0, color: "#e5e7eb" }}>What this means</h3>
-          <p style={p}>
-            The platform now understands how your brokers format certificates,
-            including limits, layout quirks, wording patterns, and endorsements.
+          <h3 style={{ color: "#e5e7eb", marginTop: 0 }}>Why this matters</h3>
+          <p>
+            This analysis lets the platform auto-tune how it reads your vendors’
+            future COIs with extremely high accuracy.
           </p>
-          <p style={p}>
-            These patterns will improve future:
-          </p>
-          <ul style={ul}>
-            <li>AI extraction accuracy</li>
-            <li>Auto-rule matching</li>
-            <li>Exception handling</li>
-            <li>Renewal detection</li>
+          <ul style={{ paddingLeft: 20 }}>
+            <li>Better endorsement detection</li>
+            <li>Fewer manual corrections</li>
+            <li>Improved renewal alerts</li>
+            <li>Accurate rule matching</li>
+            <li>Reduced false positives</li>
           </ul>
         </div>
       </div>
     </OnboardingLayout>
   );
 }
-
-/* ---------- Reusable block styles ---------- */
-function Block({ title, children }) {
-  return (
-    <div
-      style={{
-        marginBottom: 18,
-        padding: 16,
-        borderRadius: 16,
-        border: "1px solid rgba(148,163,184,0.45)",
-        background: "rgba(15,23,42,0.6)",
-      }}
-    >
-      <h3
-        style={{
-          marginTop: 0,
-          marginBottom: 10,
-          fontSize: 15,
-          color: "#e5e7eb",
-        }}
-      >
-        {title}
-      </h3>
-      {children}
-    </div>
-  );
-}
-
-const p = { fontSize: 13, color: "#9ca3af" };
-const ul = { margin: 0, paddingLeft: 18, fontSize: 13, color: "#9ca3af" };
