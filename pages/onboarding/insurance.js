@@ -1,5 +1,5 @@
 // pages/onboarding/insurance.js
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useRouter } from "next/router";
 import OnboardingLayout from "../../components/onboarding/OnboardingLayout";
 
@@ -16,13 +16,47 @@ const COVERAGES = [
 export default function OnboardingInsurance() {
   const router = useRouter();
 
+  // Default values
   const [selected, setSelected] = useState([
     "General Liability",
     "Workers' Compensation",
   ]);
+
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
 
+  /* ==========================================================
+     SECTION 1 — LOAD AI INTEL FROM LOCAL STORAGE
+     ========================================================== */
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem("onboarding_ai_intel");
+      if (!raw) return;
+
+      const intel = JSON.parse(raw);
+
+      // AI intel provides coverages in recommendedCoverages[]
+      if (intel?.coverages?.length > 0) {
+        const aiRecommended = intel.coverages.map((c) => c.name);
+
+        // Only auto-select coverages that exist in your COVERAGES list
+        const valid = aiRecommended.filter((cov) =>
+          COVERAGES.includes(cov)
+        );
+
+        if (valid.length > 0) {
+          setSelected(valid);
+          console.log("AI default coverages applied:", valid);
+        }
+      }
+    } catch (err) {
+      console.warn("Could not load AI intel:", err);
+    }
+  }, []);
+
+  /* ==========================================================
+     Toggle selection
+     ========================================================== */
   function toggleCoverage(name) {
     setSelected((prev) =>
       prev.includes(name)
@@ -31,6 +65,9 @@ export default function OnboardingInsurance() {
     );
   }
 
+  /* ==========================================================
+     Submit handler
+     ========================================================== */
   async function handleSubmit(e) {
     e.preventDefault();
     setError("");
@@ -41,7 +78,9 @@ export default function OnboardingInsurance() {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          Authorization: `Bearer ${localStorage.getItem("supabase_token") || ""}`,
+          Authorization: `Bearer ${
+            localStorage.getItem("supabase_token") || ""
+          }`,
         },
         body: JSON.stringify({ coverages: selected }),
       });
@@ -129,8 +168,8 @@ export default function OnboardingInsurance() {
             </h3>
             <p style={{ marginTop: 0 }}>
               These baseline coverage types help pre-configure your AI rules engine,
-              default requirements and compliance scoring. You can refine the limits,
-              endorsements and exceptions per vendor after onboarding.
+              default requirements, and compliance scoring. You can refine limits,
+              endorsements, and exceptions per vendor later.
             </p>
           </div>
         </div>
