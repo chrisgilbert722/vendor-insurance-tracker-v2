@@ -1,9 +1,10 @@
 // pages/api/vendor/fix-issue.js
 import { sql } from "../../../lib/db";
+import { logVendorActivity } from "../../../lib/vendorActivity";
 
 export default async function handler(req, res) {
   if (req.method !== "POST") {
-    return res.status(405).json({ ok: false, error: "Use POST" });
+    return res.status(405).json({ ok: false, error: "POST only" });
   }
 
   try {
@@ -12,25 +13,77 @@ export default async function handler(req, res) {
     if (!vendorId || !orgId || !code) {
       return res.status(400).json({
         ok: false,
-        error: "vendorId, orgId, and code are required",
+        error: "Missing vendorId, orgId or code",
       });
     }
 
-    // Mark matching unresolved alert as resolved
+    /* ============================================================
+       1) Log vendor fix action
+    ============================================================ */
+    await logVendorActivity(
+      vendorId,
+      "fix_issue",
+      `Vendor marked issue resolved: ${code}`,
+      "info"
+    );
+
+    /* ============================================================
+       2) Remove alert from vendor_alerts
+    ============================================================ */
     await sql`
-      UPDATE alerts_v2
-      SET 
-        resolved = TRUE,
-        resolved_at = NOW()
-      WHERE vendor_id = ${vendorId}
-        AND org_id = ${orgId}
-        AND code = ${code}
-        AND resolved = FALSE;
+      DELETE FROM vendor_alerts
+      WHERE vendor_id = ${vendorId} AND code = ${code};
     `;
 
-    return res.status(200).json({ ok: true });
+    /* ============================================================
+       3) Reload remaining alerts
+    ============================================================ */
+    const remaining = await sql`
+      SELECT severity FROM vendor_alerts
+      WHERE vendor_id = ${vendorId};
+    `;
+
+    let newStatus = "compliant";
+
+    const hasCritical = remaining.some((a) => a.severity === "critical");
+    const hasMedium = remaining.some((a) => a.severity === "medium");
+    const hasHigh = remaining.some((a) => a.severity === "high");
+
+    if (hasCritical) newStatus = "non_compliant";
+    else if (hasHigh || hasMedium) newStatus = "pending";
+
+    /* ============================================================
+       4) Update vendor status
+    ============================================================ */
+    await sql`
+      UPDATE vendors
+      SET compliance_status = ${newStatus}, updated_at = NOW()
+      WHERE id = ${vendorId};
+    `;
+
+    /* ============================================================
+       5) Log status change
+    ============================================================ */
+    await logVendorActivity(
+      vendorId,
+      "status_update",
+      `Vendor status updated to ${newStatus}`,
+      newStatus === "compliant" ? "info" : "warning"
+    );
+
+    return res.json({ ok: true, status: newStatus });
   } catch (err) {
-    console.error("[fix-issue]", err);
+    console.error("[fix-issue] ERROR:", err);
+
+    try {
+      await logVendorActivity(
+        null,
+        "error",
+        `fix-issue failed: ${err.message}`,
+        "critical"
+      );
+    } catch (_) {}
+
     return res.status(500).json({ ok: false, error: err.message });
   }
 }
