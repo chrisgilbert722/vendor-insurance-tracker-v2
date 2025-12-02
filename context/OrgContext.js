@@ -1,7 +1,14 @@
+// context/OrgContext.js — STABLE DEFAULT (Fixes React 310)
 import { createContext, useContext, useState, useEffect } from "react";
 import { supabase } from "../lib/supabaseClient";
 
-const OrgContext = createContext(null);
+// 🚨 Provide a FULL default shape, never null
+const OrgContext = createContext({
+  orgs: [],
+  activeOrgId: null,
+  loadingOrgs: true,
+  switchOrg: () => {}
+});
 
 export function OrgProvider({ children }) {
   const [orgs, setOrgs] = useState([]);
@@ -10,47 +17,40 @@ export function OrgProvider({ children }) {
 
   useEffect(() => {
     async function load() {
-      // 1️⃣ Try to get session normally
-      let {
-        data: { session },
-      } = await supabase.auth.getSession();
+      try {
+        let {
+          data: { session },
+        } = await supabase.auth.getSession();
 
-      // 2️⃣ If session is STILL NULL, fallback to getUser()
-      if (!session) {
-        const {
-          data: { user },
-        } = await supabase.auth.getUser();
-
-        if (user) {
-          session = { user };
+        if (!session) {
+          const {
+            data: { user },
+          } = await supabase.auth.getUser();
+          if (user) session = { user };
         }
-      }
 
-      // 3️⃣ If STILL no user → stop
-      if (!session?.user?.id) {
-        console.warn("No Supabase user found");
+        if (!session?.user?.id) {
+          setLoadingOrgs(false);
+          return;
+        }
+
+        const res = await fetch("/api/org/list", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ userId: session.user.id }),
+        });
+
+        const data = await res.json();
+
+        if (data.ok) {
+          setOrgs(data.orgs);
+          setActiveOrgId(data.orgs[0]?.id || null);
+        }
+      } catch (err) {
+        console.error("[OrgContext] Error loading orgs", err);
+      } finally {
         setLoadingOrgs(false);
-        return;
       }
-
-      // 4️⃣ Load orgs from your Neon API
-      const res = await fetch("/api/org/list", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ userId: session.user.id }),
-      });
-
-      const data = await res.json();
-
-      if (data.ok) {
-        setOrgs(data.orgs);
-
-        // 5️⃣ ALWAYS use the first org from DB
-        const newActiveOrgId = data.orgs[0]?.id || null;
-        setActiveOrgId(newActiveOrgId);
-      }
-
-      setLoadingOrgs(false);
     }
 
     load();
@@ -59,16 +59,25 @@ export function OrgProvider({ children }) {
   async function switchOrg(id) {
     setActiveOrgId(id);
 
-    await fetch("/api/org/switch", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ orgId: id }),
-    });
+    try {
+      await fetch("/api/org/switch", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ orgId: id }),
+      });
+    } catch (err) {
+      console.error("[OrgContext] switchOrg failed", err);
+    }
   }
 
   return (
     <OrgContext.Provider
-      value={{ orgs, activeOrgId, switchOrg, loadingOrgs }}
+      value={{
+        orgs,
+        activeOrgId,
+        loadingOrgs,
+        switchOrg,
+      }}
     >
       {children}
     </OrgContext.Provider>
