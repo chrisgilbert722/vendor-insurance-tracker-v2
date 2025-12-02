@@ -1,5 +1,5 @@
 // pages/api/onboarding/ai/org-intel.js
-// AI Organization Intelligence for Onboarding Wizard
+// AI Organization Intelligence for Onboarding Wizard (NOW WITH vendorSuggestion)
 import { sql } from "../../../../lib/db";
 import OpenAI from "openai";
 
@@ -22,19 +22,37 @@ export default async function handler(req, res) {
       });
     }
 
-    // Build AI prompt
+    const cleanCompany =
+      companyName.toLowerCase().replace(/[^a-z0-9]/g, "") || "company";
+
+    /* ==========================================================
+       AI PROMPT — includes vendorSuggestion block
+    ========================================================== */
     const prompt = `
-You are an expert in vendor insurance, compliance, and risk management.
-Your job: Configure recommended insurance coverages, rule defaults, AND internal team recommendations
-for a new organization onboarding to a vendor compliance platform.
+You are an expert in vendor insurance, compliance, and onboarding.
+
+Generate:
+
+1. Recommended coverages + endorsement bundles
+2. Default rule strictness + expiration window
+3. Organization risk score
+4. Internal team suggestion emails
+5. FIRST vendor suggestion (VERY important)
 
 Organization:
 - Name: ${companyName}
 - Industry: ${industry}
-- HQ Location: ${hqLocation || "Unknown"}
-- Approx Vendor Count: ${vendorCount || "Unknown"}
+- HQ: ${hqLocation || "Unknown"}
+- Vendor Count: ${vendorCount || "Unknown"}
 
-Return STRICT JSON ONLY with:
+Pick a realistic FIRST vendor based on industry:
+Examples:
+- Construction → Roofing, Electrical, HVAC, Framing
+- Property Management → Janitorial, Security, Landscaping
+- Manufacturing → Industrial Supply, Machine Repair
+- Hospitality → Cleaning, Security, Kitchen Maintenance
+
+Return STRICT JSON ONLY:
 
 {
   "coverages": [
@@ -43,34 +61,44 @@ Return STRICT JSON ONLY with:
       "required": true,
       "recommendedLimitEachOccurrence": 1000000,
       "recommendedAggregate": 2000000,
-      "endorsements": ["Additional Insured", "Primary & Non-Contributory", "Waiver of Subrogation"]
+      "endorsements": ["Additional Insured","Primary & Non-Contributory","Waiver of Subrogation"]
     }
   ],
+
   "rulesDefaults": {
     "strictness": "lenient | balanced | strict",
     "expirationWarningDays": 30,
     "defaultMissingSeverity": "low | medium | high"
   },
+
   "riskScore": 0-100,
 
   "teamSuggestions": [
-    "risk.manager@${companyName.toLowerCase().replace(/[^a-z0-9]/g, "")}.com",
-    "ops.director@${companyName.toLowerCase().replace(/[^a-z0-9]/g, "")}.com"
+    "risk.manager@${cleanCompany}.com",
+    "ops.director@${cleanCompany}.com"
   ],
 
   "teamRoles": {
-    "risk.manager": "Oversees compliance, renewal follow-ups, and rule management",
-    "ops.director": "Oversees day-to-day vendor operations and exception approvals"
+    "risk.manager": "Oversees compliance, renewals, and rule calibration.",
+    "ops.director": "Handles day-to-day vendor operations and exception approvals."
   },
 
-  "teamNotes": "Short explanation of why these roles matter in vendor insurance compliance."
+  "teamNotes": "Roles recommended based on typical risk & compliance structure.",
 
+  "vendorSuggestion": {
+    "name": "Sample Vendor LLC",
+    "email": "owner@samplevendor.com",
+    "type": "Roofing",
+    "notes": "Chosen as a typical high-risk vendor category for this industry."
+  }
 }
 
-Return ONLY valid JSON, nothing else.
-`;
+STRICT JSON ONLY.
+    `;
 
-    // AI call
+    /* ==========================================================
+       AI CALL
+    ========================================================== */
     const completion = await client.chat.completions.create({
       model: "gpt-4o-mini",
       temperature: 0.25,
@@ -79,19 +107,22 @@ Return ONLY valid JSON, nothing else.
 
     const text = completion.choices?.[0]?.message?.content || "{}";
 
-    // Attempt to parse JSON from AI output
     let ai;
     try {
-      const jsonStart = text.indexOf("{");
-      const jsonEnd = text.lastIndexOf("}") + 1;
-      ai = JSON.parse(text.slice(jsonStart, jsonEnd));
+      // Strip extra text and isolate JSON
+      const start = text.indexOf("{");
+      const end = text.lastIndexOf("}") + 1;
+      ai = JSON.parse(text.slice(start, end));
     } catch (err) {
       console.error("[org-intel] JSON parse error:", err, text);
       return res.status(500).json({ ok: false, error: "AI JSON parse error" });
     }
 
-    // Rule defaults sanity
+    /* ==========================================================
+       SANITIZE + DEFAULTS
+    ========================================================== */
     const rulesDefaults = ai.rulesDefaults || {};
+
     const strictness = rulesDefaults.strictness || "balanced";
     const expirationWarningDays = rulesDefaults.expirationWarningDays || 30;
     const defaultMissingSeverity =
@@ -99,7 +130,17 @@ Return ONLY valid JSON, nothing else.
 
     const riskScore = typeof ai.riskScore === "number" ? ai.riskScore : 80;
 
-    // OPTIONAL: Persist org defaults
+    // Vendor suggestion block
+    const vendorSuggestion = ai.vendorSuggestion || {
+      name: "Example Vendor LLC",
+      email: "owner@examplevendor.com",
+      type: "General Contractor",
+      notes: "AI fallback example vendor.",
+    };
+
+    /* ==========================================================
+       UPDATE ORG RECORD (optional but useful)
+    ========================================================== */
     await sql`
       UPDATE organizations
       SET
@@ -113,6 +154,9 @@ Return ONLY valid JSON, nothing else.
       WHERE id = ${orgId};
     `;
 
+    /* ==========================================================
+       RETURN AI PACKAGE
+    ========================================================== */
     return res.status(200).json({
       ok: true,
       ai: {
@@ -126,6 +170,12 @@ Return ONLY valid JSON, nothing else.
         teamSuggestions: ai.teamSuggestions || [],
         teamRoles: ai.teamRoles || {},
         teamNotes: ai.teamNotes || "",
+        vendorSuggestion: {
+          name: vendorSuggestion.name,
+          email: vendorSuggestion.email,
+          type: vendorSuggestion.type,
+          notes: vendorSuggestion.notes,
+        },
       },
     });
   } catch (err) {
