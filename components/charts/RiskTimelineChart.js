@@ -1,4 +1,4 @@
-// components/charts/RiskTimelineChart.js — Cinematic V2
+// components/charts/RiskTimelineChart.js — Cinematic V2 (FIXED)
 import React, { useMemo } from "react";
 import {
   LineChart,
@@ -66,20 +66,18 @@ function TimelineTooltip({ active, payload, label }) {
 }
 
 /* ===========================
-   RISK HISTORY (TEMP FAKE)
+   FIXED RISK HISTORY GENERATOR
 =========================== */
 const generateRiskHistory = (policies) => {
-  if (!policies?.length) {
-    return [
-      { month: "Jan", score: 58 },
-      { month: "Feb", score: 62 },
-      { month: "Mar", score: 67 },
-      { month: "Apr", score: 71 },
-      { month: "May", score: 75 },
-      { month: "Jun", score: 82 },
-    ];
-  }
-  return generateRiskHistory([]); // same placeholder for now
+  // Always return static placeholder until real backend implemented
+  return [
+    { month: "Jan", score: 58 },
+    { month: "Feb", score: 62 },
+    { month: "Mar", score: 67 },
+    { month: "Apr", score: 71 },
+    { month: "May", score: 75 },
+    { month: "Jun", score: 82 },
+  ];
 };
 
 /* ===========================
@@ -148,14 +146,12 @@ export default function RiskTimelineChart({ policies }) {
         <ResponsiveContainer>
           <LineChart data={data}>
             <defs>
-              {/* Neon line blend */}
               <linearGradient id="riskTimelineGradient" x1="0" y1="0" x2="1" y2="0">
                 <stop offset="0%" stopColor={GP.neonBlue} stopOpacity={0.8} />
                 <stop offset="50%" stopColor={GP.neonPurple} stopOpacity={0.9} />
                 <stop offset="100%" stopColor={GP.neonGreen} stopOpacity={1} />
               </linearGradient>
 
-              {/* Active dot glow */}
               <filter id="dotGlow" x="-50%" y="-50%" width="200%" height="200%">
                 <feGaussianBlur stdDeviation="4" result="blur" />
                 <feMerge>
@@ -187,7 +183,6 @@ export default function RiskTimelineChart({ policies }) {
 
             <Tooltip content={<TimelineTooltip />} />
 
-            {/* Main neon line */}
             <Line
               type="monotone"
               dataKey="score"
@@ -208,4 +203,3 @@ export default function RiskTimelineChart({ policies }) {
     </div>
   );
 }
- 
