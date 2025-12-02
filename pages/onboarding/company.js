@@ -26,12 +26,16 @@ export default function OnboardingCompany() {
     }
 
     try {
+      /* ==========================================================
+         SECTION 1 — SAVE COMPANY BASICS 
+      ========================================================== */
       const res = await fetch("/api/onboarding/company", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          // Send session token if required later:
-          Authorization: `Bearer ${localStorage.getItem("supabase_token") || ""}`,
+          Authorization: `Bearer ${
+            localStorage.getItem("supabase_token") || ""
+          }`,
         },
         body: JSON.stringify({
           companyName,
@@ -42,11 +46,42 @@ export default function OnboardingCompany() {
       });
 
       const json = await res.json();
-      if (!json.ok) {
-        throw new Error(json.error || "Could not save company settings.");
+      if (!json.ok) throw new Error(json.error || "Could not save company settings.");
+
+      const activeOrgId = json.orgId || json.id || json.org_id;
+
+      /* ==========================================================
+         SECTION 2 — NEW: AI ORG INTELLIGENCE CALL
+      ========================================================== */
+      try {
+        const aiRes = await fetch("/api/onboarding/ai/org-intel", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            orgId: activeOrgId,
+            companyName,
+            industry,
+            hqLocation,
+            vendorCount,
+          }),
+        });
+
+        const aiJson = await aiRes.json();
+        if (aiJson.ok) {
+          // Store AI defaults for the next onboarding steps
+          localStorage.setItem("onboarding_ai_intel", JSON.stringify(aiJson.ai));
+
+          console.log("AI Org-Intel Loaded:", aiJson.ai);
+        } else {
+          console.warn("AI org-intel returned an error:", aiJson.error);
+        }
+      } catch (intelErr) {
+        console.error("AI Intel Error:", intelErr);
       }
 
-      // Move to next step
+      /* ==========================================================
+         NEXT STEP — INSURANCE
+      ========================================================== */
       router.push("/onboarding/insurance");
     } catch (err) {
       console.error(err);
@@ -70,9 +105,8 @@ export default function OnboardingCompany() {
             gap: 20,
           }}
         >
-          {/* ================= FORM LEFT SIDE ================= */}
+          {/* ================= FORM LEFT ================= */}
           <div>
-            {/* Company Name */}
             <label style={labelStyle}>Company Name</label>
             <input
               style={inputStyle}
@@ -81,7 +115,6 @@ export default function OnboardingCompany() {
               placeholder="Acme Construction Group"
             />
 
-            {/* Industry */}
             <label style={labelStyle}>Industry</label>
             <input
               style={inputStyle}
@@ -90,7 +123,6 @@ export default function OnboardingCompany() {
               placeholder="Construction, Property Management, Manufacturing, etc."
             />
 
-            {/* Headquarters */}
             <label style={labelStyle}>Headquarters Location</label>
             <input
               style={inputStyle}
@@ -99,7 +131,6 @@ export default function OnboardingCompany() {
               placeholder="Dallas, TX"
             />
 
-            {/* Approx vendor count */}
             <label style={labelStyle}>Approx. Active Vendors</label>
             <input
               style={inputStyle}
@@ -108,7 +139,6 @@ export default function OnboardingCompany() {
               placeholder="e.g. 75"
             />
 
-            {/* Error Box */}
             {error && (
               <div
                 style={{
@@ -125,7 +155,6 @@ export default function OnboardingCompany() {
               </div>
             )}
 
-            {/* Submit button */}
             <button
               type="submit"
               disabled={loading}
@@ -149,7 +178,7 @@ export default function OnboardingCompany() {
             </button>
           </div>
 
-          {/* ================= RIGHT SIDE INFO PANEL ================= */}
+          {/* ================= RIGHT INFO PANEL ================= */}
           <div
             style={{
               borderRadius: 18,
@@ -176,12 +205,11 @@ export default function OnboardingCompany() {
             <ul style={{ margin: 0, paddingLeft: 18 }}>
               <li>Your org name appears on all PDFs, exports, and AI summaries.</li>
               <li>
-                Industry + HQ help us determine recommended coverage bundles &
+                Industry + HQ determine recommended coverage bundles &
                 required endorsements.
               </li>
               <li>
-                Vendor count helps size notifications, queue batching, and
-                retention defaults.
+                Vendor count helps size notifications, batching, and retention logic.
               </li>
             </ul>
           </div>
