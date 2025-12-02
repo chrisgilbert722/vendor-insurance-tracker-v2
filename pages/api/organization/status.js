@@ -1,10 +1,12 @@
 // pages/api/organization/status.js
 import { sql } from "../../../lib/db";
-import { getUserOrg } from "../../../lib/getUserOrg";
 
 export default async function handler(req, res) {
   try {
-    const { orgId } = await getUserOrg(req, res);
+    const orgId = req.query.orgId;
+    if (!orgId) {
+      return res.json({ ok: false, error: "Missing orgId" });
+    }
 
     const rows = await sql`
       SELECT onboarding_step
