@@ -30,7 +30,6 @@ export default function VendorPortal() {
 
   // Fix Mode state
   const [resolvedCodes, setResolvedCodes] = useState([]);
-
   /* ============================================================
      LOAD PORTAL DATA
   ============================================================ */
@@ -40,24 +39,18 @@ export default function VendorPortal() {
     async function load() {
       try {
         setLoading(true);
+
         const res = await fetch(`/api/vendor/portal?token=${token}`);
         const json = await res.json();
         if (!json.ok) throw new Error(json.error || "Invalid link");
 
         setVendorData(json);
 
-        // Load fix progress from localStorage
-        try {
-          const raw = localStorage.getItem(`vendor_fix_${token}`);
-          if (raw) {
-            const decoded = JSON.parse(raw);
-            setResolvedCodes(decoded);
-          }
-        } catch (e) {
-          console.warn("Could not load fix progress:", e);
-        }
+        // Restore resolved issue codes (Fix Mode)
+        const saved = localStorage.getItem(`vendor_fix_${token}`);
+        if (saved) setResolvedCodes(JSON.parse(saved));
       } catch (err) {
-        setError(err.message);
+        setError(err.message || "Could not load vendor portal.");
       } finally {
         setLoading(false);
       }
@@ -67,17 +60,47 @@ export default function VendorPortal() {
   }, [token]);
 
   /* ============================================================
+     FIX MODE — PERSIST RESOLUTION IN DB (C2)
+  ============================================================ */
+  async function toggleResolved(issueCode) {
+    const updated = resolvedCodes.includes(issueCode)
+      ? resolvedCodes.filter((c) => c !== issueCode)
+      : [...resolvedCodes, issueCode];
+
+    setResolvedCodes(updated);
+    localStorage.setItem(`vendor_fix_${token}`, JSON.stringify(updated));
+
+    try {
+      await fetch("/api/vendor/fix-issue", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          vendorId: vendorData.vendor.id,
+          orgId: vendorData.org.id,
+          code: issueCode,
+        }),
+      });
+
+      // Refresh portal after fix
+      const res = await fetch(`/api/vendor/portal?token=${token}`);
+      const json = await res.json();
+      if (json.ok) setVendorData(json);
+    } catch (err) {
+      console.error("Fix-issue failed:", err);
+    }
+  }
+  /* ============================================================
      FILE HANDLING
   ============================================================ */
   function handleFileInput(e) {
     const f = e.target.files?.[0];
     if (!f) return;
     if (!f.name.toLowerCase().endsWith(".pdf")) {
-      setUploadError("Only PDF files allowed.");
+      setUploadError("Only PDF files allowed");
       return;
     }
-    setUploadError("");
     setSelectedFile(f);
+    setUploadError("");
   }
 
   function handleDrop(e) {
@@ -85,7 +108,7 @@ export default function VendorPortal() {
     const f = e.dataTransfer.files?.[0];
     if (!f) return;
     if (!f.name.toLowerCase().endsWith(".pdf")) {
-      setUploadError("Only PDF files allowed.");
+      setUploadError("Only PDF files allowed");
       return;
     }
     setSelectedFile(f);
@@ -101,7 +124,7 @@ export default function VendorPortal() {
   ============================================================ */
   async function handleUpload() {
     if (!selectedFile) {
-      setUploadError("Please choose a COI PDF first.");
+      setUploadError("Please choose a PDF first.");
       return;
     }
 
@@ -110,27 +133,28 @@ export default function VendorPortal() {
       setUploadError("");
       setUploadSuccess("");
 
-      const formData = new FormData();
-      formData.append("file", selectedFile);
-      formData.append("token", token);
+      const fd = new FormData();
+      fd.append("file", selectedFile);
+      fd.append("token", token);
 
-      const uploadRes = await fetch("/api/vendor/upload-coi", {
+      const res = await fetch("/api/vendor/upload-coi", {
         method: "POST",
-        body: formData,
+        body: fd,
       });
 
-      const json = await uploadRes.json();
+      const json = await res.json();
       if (!json.ok) throw new Error(json.error || "Upload failed");
 
-      setUploadSuccess("Uploaded! Parsing your COI…");
+      setUploadSuccess("Uploaded! Parsing COI...");
 
+      // Update UI live with AI output
       setVendorData((prev) => ({
         ...prev,
         ai: json.ai || prev?.ai,
         alerts: json.alerts || prev?.alerts,
         status: {
           state: json.status || prev?.status?.state,
-          label: (json.status || prev?.status?.state || "pending").toUpperCase(),
+          label: (json.status || prev?.status?.state).toUpperCase(),
         },
       }));
 
@@ -141,30 +165,8 @@ export default function VendorPortal() {
       setUploading(false);
     }
   }
-
   /* ============================================================
-     FIX MODE HELPERS
-  ============================================================ */
-  function toggleResolved(codeOrId) {
-    setResolvedCodes((prev) => {
-      let next;
-      if (prev.includes(codeOrId)) {
-        next = prev.filter((c) => c !== codeOrId);
-      } else {
-        next = [...prev, codeOrId];
-      }
-      // Persist to localStorage keyed by token
-      try {
-        localStorage.setItem(`vendor_fix_${token}`, JSON.stringify(next));
-      } catch (e) {
-        console.warn("Could not save fix progress:", e);
-      }
-      return next;
-    });
-  }
-
-  /* ============================================================
-     BASIC LOADING + ERROR UI
+     LOADING + ERROR UI
   ============================================================ */
   if (loading) {
     return (
@@ -178,7 +180,7 @@ export default function VendorPortal() {
           color: GP.textSoft,
         }}
       >
-        Loading vendor portal…
+        Loading vendor portal...
       </div>
     );
   }
@@ -204,49 +206,15 @@ export default function VendorPortal() {
     );
   }
 
-  const { vendor, org, requirements, alerts = [], status, ai } = vendorData;
-
-  // Convert alerts into fixable items
-  const fixItems = alerts.map((a) => {
-    const severityLabel =
-      a.severity === "critical"
-        ? "Critical"
-        : a.severity === "high"
-        ? "High"
-        : a.severity === "medium"
-        ? "Medium"
-        : "Info";
-
-    const code = a.code || `alert_${a.id || a.message}`;
-    const explanation = a.message || "Review this item with your broker.";
-    const suggestion = (() => {
-      if (a.code?.includes("missing_policy")) {
-        return "Ask your broker to add this coverage and issue an updated COI.";
-      }
-      if (a.code?.includes("low_limit")) {
-        return "Discuss increasing this policy limit to meet the requested requirement.";
-      }
-      if (a.code?.includes("endorsement")) {
-        return "Request the endorsement be added/listed on your COI.";
-      }
-      return "Contact your broker and share this message; they will know how to fix it.";
-    })();
-
-    return { code, severity: a.severity, label: a.label || a.code, explanation, suggestion, severityLabel };
-  });
-
-  const totalIssues = fixItems.length;
-  const resolvedCount = fixItems.filter((i) => resolvedCodes.includes(i.code)).length;
-  const progressPercent = totalIssues === 0 ? 100 : Math.round((resolvedCount / totalIssues) * 100);
-
+  const { vendor, org, requirements, alerts, status, ai } = vendorData;
   /* ============================================================
-     UI
+     UI START
   ============================================================ */
   return (
     <div
       style={{
         minHeight: "100vh",
-        background: "radial-gradient(circle at top,#020617,#000)",
+        background: GP.bg,
         padding: "32px 24px",
         color: GP.text,
       }}
@@ -282,7 +250,7 @@ export default function VendorPortal() {
           </div>
         </div>
 
-        {/* STATUS PILL */}
+        {/* STATUS */}
         <div
           style={{
             padding: "6px 14px",
@@ -308,7 +276,6 @@ export default function VendorPortal() {
           </div>
         </div>
       </div>
-
       {/* MAIN GRID */}
       <div
         style={{
@@ -319,7 +286,7 @@ export default function VendorPortal() {
           gap: 24,
         }}
       >
-        {/* LEFT SIDE — Upload + AI Summary */}
+        {/* LEFT SIDE — UPLOAD + AI SUMMARY */}
         <div>
           {/* UPLOAD PANEL */}
           <div
@@ -341,6 +308,7 @@ export default function VendorPortal() {
               style={{ display: "none" }}
               onChange={handleFileInput}
             />
+
             <label htmlFor="coiUpload">
               <div
                 style={{
@@ -408,7 +376,7 @@ export default function VendorPortal() {
             </button>
           </div>
 
-          {/* AI SUMMARY PANEL */}
+          {/* AI SUMMARY BLOCK */}
           {ai && (
             <div
               style={{
@@ -417,7 +385,7 @@ export default function VendorPortal() {
                 padding: 20,
                 border: `1px solid ${GP.border}`,
                 background: "rgba(15,23,42,0.92)",
-                boxShadow: "0 0 35px rgba(56,189,248,0.15)",
+                boxShadow: "0 0 35px rgba(56,189,248,0.12)",
               }}
             >
               <h3 style={{ marginTop: 0, color: GP.text }}>AI COI Summary</h3>
@@ -425,13 +393,13 @@ export default function VendorPortal() {
               {ai.brokerStyle && (
                 <div style={{ marginBottom: 14 }}>
                   <strong style={{ color: GP.neonBlue }}>Broker Style:</strong>
-                  <div style={{ fontSize: 13, color: GP.textSoft }}>{ai.brokerStyle}</div>
+                  <div style={{ color: GP.textSoft }}>{ai.brokerStyle}</div>
                 </div>
               )}
 
               <div style={{ marginBottom: 14 }}>
                 <strong style={{ color: GP.neonBlue }}>Detected Policies:</strong>
-                <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginTop: 6 }}>
+                <div style={{ marginTop: 6, display: "flex", flexWrap: "wrap", gap: 6 }}>
                   {ai.policyTypes?.map((p, i) => (
                     <span
                       key={i}
@@ -449,12 +417,12 @@ export default function VendorPortal() {
                   ))}
                 </div>
               </div>
-
               {ai.limits && (
                 <div style={{ marginBottom: 14 }}>
                   <strong style={{ color: GP.neonBlue }}>Extracted Limits:</strong>
-                  {Object.entries(ai.limits).map(([policy, vals], idx) => (
-                    <div key={idx} style={{ marginBottom: 12 }}>
+
+                  {Object.entries(ai.limits).map(([policy, vals], i) => (
+                    <div key={i} style={{ marginBottom: 10 }}>
                       <div
                         style={{
                           fontSize: 13,
@@ -465,18 +433,18 @@ export default function VendorPortal() {
                       >
                         {policy}
                       </div>
+
                       <div
                         style={{
                           background: "rgba(2,6,23,0.6)",
-                          padding: "10px 12px",
+                          padding: 10,
                           borderRadius: 12,
                           fontSize: 12,
                         }}
                       >
                         {Object.entries(vals).map(([k, v]) => (
                           <div key={k} style={{ color: GP.textSoft }}>
-                            {k}:{" "}
-                            <span style={{ color: GP.neonGold }}>{v}</span>
+                            {k}: <span style={{ color: GP.neonGold }}>{v}</span>
                           </div>
                         ))}
                       </div>
@@ -488,7 +456,7 @@ export default function VendorPortal() {
               {ai.endorsements?.length > 0 && (
                 <div style={{ marginBottom: 14 }}>
                   <strong style={{ color: GP.neonBlue }}>Endorsements:</strong>
-                  <div style={{ marginTop: 6, display: "flex", flexWrap: "wrap", gap: 6 }}>
+                  <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginTop: 6 }}>
                     {ai.endorsements.map((e, i) => (
                       <span
                         key={i}
@@ -509,7 +477,7 @@ export default function VendorPortal() {
               )}
 
               {ai.observations && (
-                <div style={{ marginBottom: 12 }}>
+                <div style={{ marginBottom: 14 }}>
                   <strong style={{ color: GP.neonBlue }}>AI Notes:</strong>
                   <p style={{ fontSize: 13, color: GP.textSoft }}>{ai.observations}</p>
                 </div>
@@ -534,229 +502,61 @@ export default function VendorPortal() {
             </div>
           )}
         </div>
-
-        {/* RIGHT SIDE — Alerts + Fix Mode + Requirements + Download */}
+        {/* RIGHT SIDE — Alerts + Requirements */}
         <div>
-          {/* ALERTS PANEL */}
+          {/* Fix Mode Block */}
           <div
             style={{
               borderRadius: 20,
               padding: 18,
               border: `1px solid ${GP.border}`,
               background: "rgba(15,23,42,0.92)",
-              marginBottom: 16,
+              marginBottom: 24,
             }}
           >
-            <h3 style={{ marginTop: 0 }}>Issues to Fix</h3>
+            <h3 style={{ marginTop: 0 }}>Fix Issues</h3>
+
             {alerts?.length ? (
-              <ul style={{ paddingLeft: 18 }}>
-                {alerts.map((a, i) => (
-                  <li key={i} style={{ marginBottom: 6 }}>
-                    <strong
+              alerts.map((item, i) => {
+                const resolved = resolvedCodes.includes(item.code);
+
+                return (
+                  <div
+                    key={i}
+                    style={{
+                      marginBottom: 14,
+                      padding: 12,
+                      borderRadius: 14,
+                      border: "1px solid rgba(148,163,184,0.3)",
+                      background: "rgba(2,6,23,0.6)",
+                    }}
+                  >
+                    <div
                       style={{
+                        fontSize: 14,
                         color:
-                          a.severity === "critical"
+                          item.severity === "critical"
                             ? GP.neonRed
-                            : a.severity === "high"
+                            : item.severity === "high"
                             ? GP.neonGold
                             : GP.neonBlue,
+                        fontWeight: 600,
                       }}
                     >
-                      {a.label || a.code}
-                    </strong>
-                    : {a.message}
-                  </li>
-                ))}
-              </ul>
-            ) : (
-              <div style={{ color: GP.textSoft }}>No issues detected.</div>
-            )}
-          </div>
-
-          {/* FIX MODE PANEL */}
-          {fixItems.length > 0 && (
-            <div
-              style={{
-                borderRadius: 20,
-                padding: 18,
-                border: `1px solid ${GP.border}`,
-                background: "rgba(15,23,42,0.95)",
-                marginBottom: 16,
-              }}
-            >
-              <h3 style={{ marginTop: 0, marginBottom: 10 }}>Fix My COI (AI Guidance)</h3>
-
-              {/* Progress */}
-              <div
-                style={{
-                  marginBottom: 12,
-                  fontSize: 12,
-                  color: GP.textSoft,
-                }}
-              >
-                Fix Progress:{" "}
-                <strong style={{ color: GP.neonGreen }}>
-                  {resolvedCount} of {totalIssues} issues
-                </strong>{" "}
-                ({progressPercent}%)
-                <div
-                  style={{
-                    marginTop: 6,
-                    width: "100%",
-                    height: 6,
-                    borderRadius: 999,
-                    background: "rgba(15,23,42,0.85)",
-                    overflow: "hidden",
-                    border: "1px solid rgba(55,65,81,0.9)",
-                  }}
-                >
-                  <div
-                    style={{
-                      width: `${progressPercent}%`,
-                      height: "100%",
-                      background:
-                        progressPercent >= 100
-                          ? GP.neonGreen
-                          : progressPercent >= 50
-                          ? GP.neonGold
-                          : GP.neonRed,
-                      transition: "width 0.25s ease",
-                    }}
-                  />
-                </div>
-              </div>
-
-              {/* Fix items list */}
-              <div style={{ maxHeight: 260, overflowY: "auto", paddingRight: 6 }}>
-                {fixItems.map((item) => {
-                  const resolved = resolvedCodes.includes(item.code);
-                  return (
-                    <div
-                      key={item.code}
-                      style={{
-                        borderRadius: 14,
-                        border: `1px solid ${
-                          item.severity === "critical"
-                            ? "rgba(248,113,113,0.9)"
-                            : item.severity === "high"
-                            ? "rgba(250,204,21,0.9)"
-                            : "rgba(56,189,248,0.9)"
-                        }`,
-                        background: resolved
-                          ? "rgba(22,163,74,0.12)"
-                          : "rgba(15,23,42,0.9)",
-                        padding: 10,
-                        marginBottom: 10,
-                      }}
-                    >
-                      <div
-                        style={{
-                          display: "flex",
-                          justifyContent: "space-between",
-                          alignItems: "center",
-                          marginBottom: 6,
-                        }}
-                      >
-                        <div
-                          style={{
-                            fontSize: 12,
-                            color:
-                              item.severity === "critical"
-                                ? GP.neonRed
-                                : item.severity === "high"
-                                ? GP.neonGold
-                                : GP.neonBlue,
-                            fontWeight: 600,
-                          }}
-                        >
-                          {item.label}
-                        </div>
-                        <button
-                          type="button"
-                          onClick={() => toggleResolved(item.code)}
-                          style={{
-                            fontSize: 11,
-                            borderRadius: 999,
-                            padding: "4px 10px",
-                            border: "1px solid rgba(148,163,184,0.7)",
-                            background: resolved
-                              ? "rgba(22,163,74,0.2)"
-                              : "rgba(15,23,42,0.8)",
-                            color: resolved ? GP.neonGreen : GP.textSoft,
-                            cursor: "pointer",
-                          }}
-                        >
-                          {resolved ? "Marked Fixed ✓" : "Mark as Fixed"}
-                        </button>
-                      </div>
-
-                      <div style={{ fontSize: 12, color: GP.textSoft }}>
-                        <div style={{ marginBottom: 4 }}>
-                          <strong>Why this matters:</strong>{" "}
-                          {item.explanation}
-                        </div>
-                        <div>
-                          <strong>How to fix:</strong> {item.suggestion}
-                        </div>
-                      </div>
+                      {item.label || item.code}
                     </div>
-                  );
-                })}
-              </div>
-            </div>
-          )}
 
-          {/* Requirements */}
-          <div
-            style={{
-              borderRadius: 20,
-              padding: 18,
-              border: `1px solid ${GP.border}`,
-              background: "rgba(15,23,42,0.92)",
-            }}
-          >
-            <h3 style={{ marginTop: 0 }}>Coverage Requirements</h3>
-            <ul style={{ paddingLeft: 18 }}>
-              {(requirements?.coverages || []).map((c, i) => (
-                <li key={i}>
-                  <strong>{c.name}</strong> {c.limit && `— ${c.limit}`}
-                </li>
-              ))}
-            </ul>
-          </div>
+                    <div style={{ fontSize: 12, color: GP.textSoft, marginTop: 4 }}>
+                      {item.message}
+                    </div>
 
-          {/* Download PDF */}
-          <div
-            style={{
-              marginTop: 24,
-              padding: 18,
-              borderRadius: 20,
-              border: `1px solid ${GP.border}`,
-              background: "rgba(15,23,42,0.92)",
-              textAlign: "center",
-            }}
-          >
-            <button
-              onClick={() =>
-                window.open(`/api/vendor/download-summary-pdf?token=${token}`, "_blank")
-              }
-              style={{
-                padding: "10px 22px",
-                borderRadius: 999,
-                border: `1px solid ${GP.neonBlue}`,
-                background: "linear-gradient(90deg,#38bdf8,#0ea5e9)",
-                color: "#e5f2ff",
-                cursor: "pointer",
-                fontSize: 14,
-                fontWeight: 600,
-                boxShadow: "0 0 25px rgba(56,189,248,0.25)",
-              }}
-            >
-              Download COI Summary PDF
-            </button>
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-}
+                    <button
+                      type="button"
+                      onClick={() => toggleResolved(item.code)}
+                      style={{
+                        marginTop: 10,
+                        padding: "4px 10px",
+                        borderRadius: 999,
+                        border: resolved
+                          ? "1px solid rgba(34,197,94,0.8)"
+                          : "1px solid rgba(148
