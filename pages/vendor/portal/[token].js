@@ -14,6 +14,20 @@ const GP = {
   textSoft: "#9ca3af",
 };
 
+function getTimelineIcon(item) {
+  const action = (item.action || "").toLowerCase();
+
+  if (action.includes("upload") || action.includes("coi")) return "📄";
+  if (action.includes("parse") || action.includes("ai")) return "🤖";
+  if (action.includes("fix") || action.includes("resolve")) return "🛠️";
+  if (action.includes("status") || action.includes("state")) return "📊";
+  if (action.includes("email") || action.includes("reminder")) return "✉️";
+
+  if (item.severity === "critical") return "⚠️";
+  if (item.severity === "warning") return "⚡";
+  return "📌";
+}
+
 export default function VendorPortal() {
   const router = useRouter();
   const { token } = router.query;
@@ -34,6 +48,7 @@ export default function VendorPortal() {
   // Timeline state
   const [timeline, setTimeline] = useState([]);
   const [loadingTimeline, setLoadingTimeline] = useState(true);
+  const [timelineFilter, setTimelineFilter] = useState("all");
 
   /* ============================================================
      LOAD PORTAL DATA
@@ -86,6 +101,22 @@ export default function VendorPortal() {
 
     loadTimeline();
   }, [token]);
+
+  const filteredTimeline = timeline.filter((item) => {
+    const action = (item.action || "").toLowerCase();
+    switch (timelineFilter) {
+      case "uploads":
+        return action.includes("upload") || action.includes("coi");
+      case "ai":
+        return action.includes("parse") || action.includes("ai");
+      case "fixes":
+        return action.includes("fix") || action.includes("resolve");
+      case "status":
+        return action.includes("status") || action.includes("state");
+      default:
+        return true;
+    }
+  });
 
   /* ============================================================
      FIX MODE — PERSIST RESOLUTION
@@ -638,6 +669,51 @@ export default function VendorPortal() {
           >
             <h3 style={{ marginTop: 0 }}>Recent Activity</h3>
 
+            {/* TIMELINE FILTERS */}
+            <div
+              style={{
+                marginTop: 10,
+                marginBottom: 14,
+                display: "flex",
+                flexWrap: "wrap",
+                gap: 8,
+              }}
+            >
+              {[
+                { id: "all", label: "All" },
+                { id: "uploads", label: "Uploads" },
+                { id: "ai", label: "AI & Parsing" },
+                { id: "fixes", label: "Fixes" },
+                { id: "status", label: "Status & System" },
+              ].map((f) => {
+                const active = timelineFilter === f.id;
+                return (
+                  <button
+                    key={f.id}
+                    type="button"
+                    onClick={() => setTimelineFilter(f.id)}
+                    style={{
+                      padding: "6px 10px",
+                      borderRadius: 999,
+                      fontSize: 11,
+                      textTransform: "uppercase",
+                      letterSpacing: 0.5,
+                      cursor: "pointer",
+                      border: active
+                        ? `1px solid ${GP.neonBlue}`
+                        : "1px solid rgba(148,163,184,0.35)",
+                      background: active
+                        ? "linear-gradient(90deg,#38bdf8,#0ea5e9)"
+                        : "rgba(15,23,42,0.9)",
+                      color: active ? "#0b1120" : GP.textSoft,
+                    }}
+                  >
+                    {f.label}
+                  </button>
+                );
+              })}
+            </div>
+
             {loadingTimeline ? (
               <div style={{ color: GP.textSoft, fontSize: 13 }}>
                 Loading activity…
@@ -646,9 +722,13 @@ export default function VendorPortal() {
               <div style={{ color: GP.textSoft, fontSize: 13 }}>
                 No recent activity logged.
               </div>
+            ) : filteredTimeline.length === 0 ? (
+              <div style={{ color: GP.textSoft, fontSize: 13 }}>
+                No events match this filter yet. Try another filter.
+              </div>
             ) : (
               <ul style={{ paddingLeft: 0, listStyle: "none", margin: 0 }}>
-                {timeline.map((item, i) => (
+                {filteredTimeline.map((item, i) => (
                   <li
                     key={i}
                     style={{
@@ -657,36 +737,54 @@ export default function VendorPortal() {
                       borderRadius: 14,
                       background: "rgba(2,6,23,0.6)",
                       border: "1px solid rgba(148,163,184,0.28)",
+                      display: "flex",
+                      gap: 10,
                     }}
                   >
+                    {/* ICON COLUMN */}
                     <div
                       style={{
-                        fontSize: 12,
-                        textTransform: "uppercase",
-                        color:
-                          item.severity === "critical"
-                            ? GP.neonRed
-                            : item.severity === "warning"
-                            ? GP.neonGold
-                            : GP.neonBlue,
-                        fontWeight: 600,
-                        marginBottom: 4,
+                        fontSize: 18,
+                        display: "flex",
+                        alignItems: "flex-start",
+                        paddingTop: 2,
                       }}
                     >
-                      {item.action?.replace(/_/g, " ")}
+                      {getTimelineIcon(item)}
                     </div>
-                    <div style={{ fontSize: 13, color: GP.textSoft }}>
-                      {item.message}
-                    </div>
-                    <div
-                      style={{
-                        marginTop: 6,
-                        fontSize: 11,
-                        color: GP.textSoft,
-                        opacity: 0.6,
-                      }}
-                    >
-                      {new Date(item.createdAt).toLocaleString()}
+
+                    {/* TEXT COLUMN */}
+                    <div style={{ flex: 1 }}>
+                      <div
+                        style={{
+                          fontSize: 12,
+                          textTransform: "uppercase",
+                          color:
+                            item.severity === "critical"
+                              ? GP.neonRed
+                              : item.severity === "warning"
+                              ? GP.neonGold
+                              : GP.neonBlue,
+                          fontWeight: 600,
+                          marginBottom: 4,
+                          letterSpacing: 0.4,
+                        }}
+                      >
+                        {item.action?.replace(/_/g, " ")}
+                      </div>
+                      <div style={{ fontSize: 13, color: GP.textSoft }}>
+                        {item.message}
+                      </div>
+                      <div
+                        style={{
+                          marginTop: 6,
+                          fontSize: 11,
+                          color: GP.textSoft,
+                          opacity: 0.6,
+                        }}
+                      >
+                        {new Date(item.createdAt).toLocaleString()}
+                      </div>
                     </div>
                   </li>
                 ))}
