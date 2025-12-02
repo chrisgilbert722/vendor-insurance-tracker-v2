@@ -1,5 +1,5 @@
 // pages/onboarding/rules.js
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useRouter } from "next/router";
 import OnboardingLayout from "../../components/onboarding/OnboardingLayout";
 
@@ -13,6 +13,39 @@ export default function OnboardingRules() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
 
+  /* ==========================================================
+     SECTION 1 — LOAD AI INTEL AND PREFILL FIELDS
+  ========================================================== */
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem("onboarding_ai_intel");
+      if (!raw) return;
+
+      const intel = JSON.parse(raw);
+
+      if (intel?.rulesDefaults) {
+        const defaults = intel.rulesDefaults;
+
+        if (defaults.strictness) {
+          setStrictness(defaults.strictness);
+        }
+        if (defaults.expirationWarningDays) {
+          setExpirationWindow(String(defaults.expirationWarningDays));
+        }
+        if (defaults.defaultMissingSeverity) {
+          setMissingSeverity(defaults.defaultMissingSeverity);
+        }
+
+        console.log("AI Rule Defaults Applied:", defaults);
+      }
+    } catch (err) {
+      console.warn("Could not load AI intel:", err);
+    }
+  }, []);
+
+  /* ==========================================================
+     Submit Handler
+  ========================================================== */
   async function handleSubmit(e) {
     e.preventDefault();
     setError("");
@@ -35,7 +68,8 @@ export default function OnboardingRules() {
       });
 
       const json = await res.json();
-      if (!json.ok) throw new Error(json.error || "Could not save rule defaults.");
+      if (!json.ok)
+        throw new Error(json.error || "Could not save rule defaults.");
 
       router.push("/onboarding/team");
     } catch (err) {
@@ -189,8 +223,8 @@ export default function OnboardingRules() {
             </h3>
             <p style={{ marginTop: 0 }}>
               These settings form the baseline rules applied to all vendor COIs.
-              Your team can override per vendor, but this gives your organization a
-              consistent starting point for compliance automation.
+              Your team can override per vendor, but this gives your organization
+              a consistent starting point for compliance automation.
             </p>
           </div>
         </div>
