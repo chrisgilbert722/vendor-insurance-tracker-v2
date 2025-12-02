@@ -1,4 +1,4 @@
-// components/Layout.js — Unified Application Shell V6 (Onboarding Normalized)
+// components/Layout.js — Fixed & Safe (No Illegal Hook Use)
 import { useRouter } from "next/router";
 import Sidebar from "./Sidebar";
 import Header from "./Header";
@@ -9,11 +9,11 @@ export default function Layout({ children }) {
   const router = useRouter();
   const pathname = router.pathname;
 
-  // Global role system
-  const { isAdmin, isManager, isViewer } = useRole();
+  // Valid hook usage — we actually read the result
+  const orgContext = useOrg();
 
-  // Ensure org context initializes
-  useOrg();
+  // Role system
+  const { isAdmin, isManager, isViewer } = useRole();
 
   return (
     <div
@@ -31,7 +31,7 @@ export default function Layout({ children }) {
         position: "relative",
       }}
     >
-      {/* 🔥 AMBIENT LIGHTING OVERLAY */}
+      {/* Ambient lighting overlay */}
       <div
         style={{
           position: "absolute",
@@ -47,10 +47,10 @@ export default function Layout({ children }) {
         }}
       />
 
-      {/* 🔥 HOLOGRAPHIC PARTICLES FIELD */}
+      {/* Particle field */}
       <div className="cockpit-particles" />
 
-      {/* 🔥 LEFT SIDEBAR — TACTICAL RAIL */}
+      {/* Sidebar */}
       <Sidebar
         pathname={pathname}
         isAdmin={isAdmin}
@@ -58,7 +58,7 @@ export default function Layout({ children }) {
         isViewer={isViewer}
       />
 
-      {/* 🔥 MAIN PANEL */}
+      {/* Main panel */}
       <div
         style={{
           flex: 1,
@@ -68,10 +68,10 @@ export default function Layout({ children }) {
           zIndex: 2,
         }}
       >
-        {/* 🔥 GLOBAL HEADER */}
+        {/* Header */}
         <Header />
 
-        {/* 🔥 PAGE CONTENT */}
+        {/* Page content */}
         <main
           style={{
             padding: "30px 40px",
