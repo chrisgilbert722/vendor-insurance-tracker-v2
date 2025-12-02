@@ -111,7 +111,7 @@ export default function VendorPortal() {
 
       setUploadSuccess("Uploaded! Parsing your COI…");
 
-      // 2) Merge returned AI data into vendorData UI
+      // 2) Update local view
       setVendorData((prev) => ({
         ...prev,
         ai: json.ai || prev?.ai,
@@ -194,6 +194,7 @@ export default function VendorPortal() {
           justifyContent: "space-between",
         }}
       >
+        {/* Title */}
         <div>
           <div style={{ fontSize: 12, textTransform: "uppercase", color: GP.textSoft }}>
             Vendor Compliance Portal
@@ -253,7 +254,9 @@ export default function VendorPortal() {
           gap: 24,
         }}
       >
-        {/* LEFT SIDE */}
+        {/* =======================================================================
+            LEFT SIDE — UPLOAD + AI SUMMARY
+        ======================================================================= */}
         <div>
           {/* UPLOAD PANEL */}
           <div
@@ -343,7 +346,7 @@ export default function VendorPortal() {
           </div>
 
           {/* ===================================================
-              🔥 AI SUMMARY PANEL (NEW CINEMATIC BLOCK)
+              🔥 AI SUMMARY PANEL (CINEMATIC BLOCK)
           =================================================== */}
           {ai && (
             <div
@@ -358,17 +361,14 @@ export default function VendorPortal() {
             >
               <h3 style={{ marginTop: 0, color: GP.text }}>AI COI Summary</h3>
 
-              {/* Broker formatting */}
               {ai.brokerStyle && (
                 <div style={{ marginBottom: 14 }}>
                   <strong style={{ color: GP.neonBlue }}>Broker Style:</strong>
-                  <div style={{ fontSize: 13, color: GP.textSoft }}>
-                    {ai.brokerStyle}
-                  </div>
+                  <div style={{ fontSize: 13, color: GP.textSoft }}>{ai.brokerStyle}</div>
                 </div>
               )}
 
-              {/* Policy types */}
+              {/* Policies */}
               <div style={{ marginBottom: 14 }}>
                 <strong style={{ color: GP.neonBlue }}>Detected Policies:</strong>
                 <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginTop: 6 }}>
@@ -450,7 +450,6 @@ export default function VendorPortal() {
                 </div>
               )}
 
-              {/* Observations */}
               {ai.observations && (
                 <div style={{ marginBottom: 12 }}>
                   <strong style={{ color: GP.neonBlue }}>AI Notes:</strong>
@@ -458,7 +457,6 @@ export default function VendorPortal() {
                 </div>
               )}
 
-              {/* Recommended rules */}
               {ai.recommendedRules && (
                 <div>
                   <strong style={{ color: GP.neonBlue }}>Rule Suggestions:</strong>
@@ -479,7 +477,9 @@ export default function VendorPortal() {
           )}
         </div>
 
-        {/* RIGHT SIDE */}
+        {/* =======================================================================
+            RIGHT SIDE — Alerts + Requirements + PDF Download
+        ======================================================================= */}
         <div>
           {/* Alerts */}
           <div
@@ -530,11 +530,43 @@ export default function VendorPortal() {
             <ul style={{ paddingLeft: 18 }}>
               {(requirements?.coverages || []).map((c, i) => (
                 <li key={i}>
-                  <strong>{c.name}</strong>{" "}
-                  {c.limit && `— ${c.limit}`}
+                  <strong>{c.name}</strong> {c.limit && `— ${c.limit}`}
                 </li>
               ))}
             </ul>
+          </div>
+
+          {/* ===================================================
+              DOWNLOAD SUMMARY PDF  (NEW)
+          =================================================== */}
+          <div
+            style={{
+              marginTop: 24,
+              padding: 18,
+              borderRadius: 20,
+              border: `1px solid ${GP.border}`,
+              background: "rgba(15,23,42,0.92)",
+              textAlign: "center",
+            }}
+          >
+            <button
+              onClick={() =>
+                window.open(`/api/vendor/download-summary-pdf?token=${token}`, "_blank")
+              }
+              style={{
+                padding: "10px 22px",
+                borderRadius: 999,
+                border: `1px solid ${GP.neonBlue}`,
+                background: "linear-gradient(90deg,#38bdf8,#0ea5e9)",
+                color: "#e5f2ff",
+                cursor: "pointer",
+                fontSize: 14,
+                fontWeight: 600,
+                boxShadow: "0 0 25px rgba(56,189,248,0.25)",
+              }}
+            >
+              Download COI Summary PDF
+            </button>
           </div>
         </div>
       </div>
