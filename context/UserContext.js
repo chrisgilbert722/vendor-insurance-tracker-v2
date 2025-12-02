@@ -7,25 +7,20 @@ const UserContext = createContext(null);
 export function UserProvider({ children }) {
   const [session, setSession] = useState(null);
   const [user, setUser] = useState(null);
+  
+  const [org, setOrg] = useState(null);
   const [initializing, setInitializing] = useState(true);
 
+  // Load Supabase session
   useEffect(() => {
     let ignore = false;
 
     async function loadSession() {
-      try {
-        const { data, error } = await supabase.auth.getSession();
-        if (error) {
-          console.error("[UserProvider] getSession error:", error);
-        }
-        if (ignore) return;
-        setSession(data?.session ?? null);
-        setUser(data?.session?.user ?? null);
-      } catch (err) {
-        console.error("[UserProvider] getSession throw:", err);
-      } finally {
-        if (!ignore) setInitializing(false);
-      }
+      const { data } = await supabase.auth.getSession();
+      if (ignore) return;
+      
+      setSession(data?.session ?? null);
+      setUser(data?.session?.user ?? null);
     }
 
     loadSession();
@@ -43,19 +38,41 @@ export function UserProvider({ children }) {
     };
   }, []);
 
-  const signOut = async () => {
-    try {
-      await supabase.auth.signOut();
-    } catch (e) {
-      console.error("[UserProvider] signOut error:", e);
+  // Load organization for logged-in user
+  useEffect(() => {
+    if (!user) {
+      setOrg(null);
+      setInitializing(false);
+      return;
     }
-  };
 
-  // Simple role stub — later we can read from user.metadata/DB
+    async function loadOrg() {
+      try {
+        const { data, error } = await supabase
+          .from("organization_members")
+          .select("org_id")
+          .eq("user_id", user.id)
+          .single();
+
+        if (error) {
+          console.error("[UserProvider] org lookup error:", error);
+        } else {
+          setOrg({ id: data.org_id });
+        }
+      } catch (err) {
+        console.error("[UserProvider] org load throw:", err);
+      } finally {
+        setInitializing(false);
+      }
+    }
+
+    loadOrg();
+  }, [user]);
+
   const role =
     user?.app_metadata?.role ||
     user?.user_metadata?.role ||
-    "admin"; // default treat as admin for now
+    "admin";
 
   const isAdmin = role === "admin";
   const isManager = role === "manager" || role === "admin";
@@ -64,12 +81,12 @@ export function UserProvider({ children }) {
   const value = {
     session,
     user,
-    initializing,
+    org,              // ⭐ now available!
     isLoggedIn: !!user,
     isAdmin,
     isManager,
     isViewer,
-    signOut,
+    initializing,
   };
 
   return <UserContext.Provider value={value}>{children}</UserContext.Provider>;
