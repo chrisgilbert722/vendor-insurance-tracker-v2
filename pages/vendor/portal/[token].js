@@ -83,6 +83,7 @@ export default function VendorPortal() {
   const [timeline, setTimeline] = useState([]);
   const [loadingTimeline, setLoadingTimeline] = useState(true);
   const [timelineFilter, setTimelineFilter] = useState("all");
+  const [timelineSearch, setTimelineSearch] = useState("");
 
   /* ============================================================
      LOAD PORTAL DATA
@@ -138,18 +139,41 @@ export default function VendorPortal() {
 
   const filteredTimeline = timeline.filter((item) => {
     const action = (item.action || "").toLowerCase();
+
+    let passesFilter = true;
     switch (timelineFilter) {
       case "uploads":
-        return action.includes("upload") || action.includes("coi");
+        passesFilter = action.includes("upload") || action.includes("coi");
+        break;
       case "ai":
-        return action.includes("parse") || action.includes("ai");
+        passesFilter = action.includes("parse") || action.includes("ai");
+        break;
       case "fixes":
-        return action.includes("fix") || action.includes("resolve");
+        passesFilter = action.includes("fix") || action.includes("resolve");
+        break;
       case "status":
-        return action.includes("status") || action.includes("state");
+        passesFilter = action.includes("status") || action.includes("state");
+        break;
       default:
-        return true;
+        passesFilter = true;
     }
+    if (!passesFilter) return false;
+
+    const q = timelineSearch.trim().toLowerCase();
+    if (!q) return true;
+
+    const message = (item.message || "").toLowerCase();
+    const severity = (item.severity || "").toLowerCase();
+    const createdDate = item.createdAt
+      ? new Date(item.createdAt).toLocaleString().toLowerCase()
+      : "";
+
+    return (
+      action.includes(q) ||
+      message.includes(q) ||
+      severity.includes(q) ||
+      createdDate.includes(q)
+    );
   });
 
   const bucketOrder = ["Today", "Yesterday", "This Week", "Last Week", "This Month", "Older"];
@@ -714,49 +738,104 @@ export default function VendorPortal() {
           >
             <h3 style={{ marginTop: 0 }}>Recent Activity</h3>
 
-            {/* TIMELINE FILTERS */}
+            {/* SEARCH + FILTER ROW */}
             <div
               style={{
                 marginTop: 10,
                 marginBottom: 14,
                 display: "flex",
                 flexWrap: "wrap",
-                gap: 8,
+                gap: 10,
+                alignItems: "center",
               }}
             >
-              {[
-                { id: "all", label: "All" },
-                { id: "uploads", label: "Uploads" },
-                { id: "ai", label: "AI & Parsing" },
-                { id: "fixes", label: "Fixes" },
-                { id: "status", label: "Status & System" },
-              ].map((f) => {
-                const active = timelineFilter === f.id;
-                return (
-                  <button
-                    key={f.id}
-                    type="button"
-                    onClick={() => setTimelineFilter(f.id)}
+              {/* FILTER BUTTONS */}
+              <div
+                style={{
+                  display: "flex",
+                  flexWrap: "wrap",
+                  gap: 8,
+                  flex: "0 0 auto",
+                }}
+              >
+                {[
+                  { id: "all", label: "All" },
+                  { id: "uploads", label: "Uploads" },
+                  { id: "ai", label: "AI & Parsing" },
+                  { id: "fixes", label: "Fixes" },
+                  { id: "status", label: "Status & System" },
+                ].map((f) => {
+                  const active = timelineFilter === f.id;
+                  return (
+                    <button
+                      key={f.id}
+                      type="button"
+                      onClick={() => setTimelineFilter(f.id)}
+                      style={{
+                        padding: "6px 10px",
+                        borderRadius: 999,
+                        fontSize: 11,
+                        textTransform: "uppercase",
+                        letterSpacing: 0.5,
+                        cursor: "pointer",
+                        border: active
+                          ? `1px solid ${GP.neonBlue}`
+                          : "1px solid rgba(148,163,184,0.35)",
+                        background: active
+                          ? "linear-gradient(90deg,#38bdf8,#0ea5e9)"
+                          : "rgba(15,23,42,0.9)",
+                        color: active ? "#0b1120" : GP.textSoft,
+                        whiteSpace: "nowrap",
+                      }}
+                    >
+                      {f.label}
+                    </button>
+                  );
+                })}
+              </div>
+
+              {/* SEARCH INPUT */}
+              <div
+                style={{
+                  flex: 1,
+                  minWidth: 180,
+                }}
+              >
+                <div
+                  style={{
+                    position: "relative",
+                  }}
+                >
+                  <span
                     style={{
-                      padding: "6px 10px",
-                      borderRadius: 999,
-                      fontSize: 11,
-                      textTransform: "uppercase",
-                      letterSpacing: 0.5,
-                      cursor: "pointer",
-                      border: active
-                        ? `1px solid ${GP.neonBlue}`
-                        : "1px solid rgba(148,163,184,0.35)",
-                      background: active
-                        ? "linear-gradient(90deg,#38bdf8,#0ea5e9)"
-                        : "rgba(15,23,42,0.9)",
-                      color: active ? "#0b1120" : GP.textSoft,
+                      position: "absolute",
+                      left: 10,
+                      top: "50%",
+                      transform: "translateY(-50%)",
+                      fontSize: 13,
+                      opacity: 0.6,
                     }}
                   >
-                    {f.label}
-                  </button>
-                );
-              })}
+                    🔍
+                  </span>
+                  <input
+                    type="text"
+                    value={timelineSearch}
+                    onChange={(e) => setTimelineSearch(e.target.value)}
+                    placeholder='Search: "upload", "critical", "renewal"…'
+                    style={{
+                      width: "100%",
+                      padding: "7px 10px 7px 30px",
+                      borderRadius: 999,
+                      border: "1px solid rgba(148,163,184,0.55)",
+                      background: "rgba(15,23,42,0.95)",
+                      color: GP.text,
+                      fontSize: 11,
+                      outline: "none",
+                    }}
+                  />
+                </div>
+              </div>
             </div>
 
             {loadingTimeline ? (
@@ -769,7 +848,7 @@ export default function VendorPortal() {
               </div>
             ) : filteredTimeline.length === 0 ? (
               <div style={{ color: GP.textSoft, fontSize: 13 }}>
-                No events match this filter yet. Try another filter.
+                No events match this filter or search yet. Try adjusting your filters.
               </div>
             ) : (
               groupedTimeline.map((group, groupIndex) => (
