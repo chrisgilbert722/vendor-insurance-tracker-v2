@@ -3,32 +3,30 @@ import { supabaseServer } from "../../../lib/supabaseServer";
 
 export default async function handler(req, res) {
   try {
-    const { userId } = req.body;
+    const supabase = supabaseServer(req, res);
 
-    if (!userId) {
-      return res.status(400).json({ ok: false, error: "Missing userId" });
+    const {
+      data: { session },
+    } = await supabase.auth.getSession();
+
+    if (!session?.user?.id) {
+      return res.status(200).json({ ok: false, error: "Missing userId" });
     }
 
-    // FIXED: correct Supabase query syntax
-    const { data, error } = await supabaseServer
+    const userId = session.user.id;
+
+    const { data, error } = await supabase
       .from("organization_members")
-      .select("org_id, organizations(*)")   // JOIN org details
+      .select("org_id, organizations(*)")
       .eq("user_id", userId);
 
-    if (error) {
-      console.error("[org/list] error", error);
-      return res.status(500).json({ ok: false, error: error.message });
-    }
+    if (error) throw error;
 
-    const orgs = data.map((row) => ({
-      id: row.org_id,
-      name: row.organizations?.name || "Organization",
-      onboarding_step: row.organizations?.onboarding_step ?? 0,
-    }));
+    const orgs = data.map((row) => row.organizations);
 
     return res.status(200).json({ ok: true, orgs });
   } catch (err) {
-    console.error("[org/list] exception", err);
+    console.error("[org/list] ERROR", err);
     return res.status(500).json({ ok: false, error: err.message });
   }
 }
