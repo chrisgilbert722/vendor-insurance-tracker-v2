@@ -85,6 +85,35 @@ export default function VendorPortal() {
   const [timelineFilter, setTimelineFilter] = useState("all");
   const [timelineSearch, setTimelineSearch] = useState("");
 
+  // AI Assistant
+  const [assistantMessages, setAssistantMessages] = useState([
+    {
+      role: "assistant",
+      text: "Hi! I can help explain your requirements, issues, and what to fix to become compliant.",
+    },
+  ]);
+  const [assistantInput, setAssistantInput] = useState("");
+  const [assistantLoading, setAssistantLoading] = useState(false);
+  const [assistantError, setAssistantError] = useState("");
+
+  // Responsive
+  const [isMobile, setIsMobile] = useState(false);
+
+  /* ============================================================
+     RESPONSIVE DETECTION
+  ============================================================ */
+  useEffect(() => {
+    function handleResize() {
+      if (typeof window === "undefined") return;
+      setIsMobile(window.innerWidth < 900);
+    }
+    handleResize();
+    if (typeof window !== "undefined") {
+      window.addEventListener("resize", handleResize);
+      return () => window.removeEventListener("resize", handleResize);
+    }
+  }, []);
+
   /* ============================================================
      LOAD PORTAL DATA
   ============================================================ */
@@ -293,6 +322,69 @@ export default function VendorPortal() {
   }
 
   /* ============================================================
+     AI ASSISTANT HANDLER
+  ============================================================ */
+  async function handleAssistantSend() {
+    const question = assistantInput.trim();
+    if (!question || !token) return;
+
+    setAssistantError("");
+    setAssistantLoading(true);
+    setAssistantInput("");
+
+    const newMessages = [
+      ...assistantMessages,
+      { role: "user", text: question },
+    ];
+    setAssistantMessages(newMessages);
+
+    try {
+      const res = await fetch("/api/vendor/assistant", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          token,
+          question,
+        }),
+      });
+
+      const json = await res.json();
+      if (!json.ok || !json.reply) {
+        throw new Error(json.error || "Assistant is unavailable.");
+      }
+
+      setAssistantMessages((prev) => [
+        ...prev,
+        { role: "assistant", text: json.reply },
+      ]);
+    } catch (err) {
+      console.error("[assistant] failed:", err);
+      setAssistantError(
+        "I'm having trouble responding right now. Please try again in a moment."
+      );
+      setAssistantMessages((prev) => [
+        ...prev,
+        {
+          role: "assistant",
+          text:
+            "Sorry — I'm having trouble reaching the compliance assistant right now. You can still review your issues and requirements above.",
+        },
+      ]);
+    } finally {
+      setAssistantLoading(false);
+    }
+  }
+
+  function handleAssistantKeyDown(e) {
+    if (e.key === "Enter" && !e.shiftKey) {
+      e.preventDefault();
+      if (!assistantLoading) {
+        handleAssistantSend();
+      }
+    }
+  }
+
+  /* ============================================================
      LOADING + ERROR UI
   ============================================================ */
   if (loading) {
@@ -343,7 +435,7 @@ export default function VendorPortal() {
       style={{
         minHeight: "100vh",
         background: GP.bg,
-        padding: "32px 24px",
+        padding: isMobile ? "20px 14px" : "32px 24px",
         color: GP.text,
       }}
     >
@@ -353,7 +445,9 @@ export default function VendorPortal() {
           maxWidth: 1150,
           margin: "0 auto 24px auto",
           display: "flex",
+          flexDirection: isMobile ? "column" : "row",
           justifyContent: "space-between",
+          gap: isMobile ? 12 : 0,
         }}
       >
         <div>
@@ -364,7 +458,7 @@ export default function VendorPortal() {
           <h1
             style={{
               margin: "4px 0",
-              fontSize: 28,
+              fontSize: isMobile ? 24 : 28,
               background: "linear-gradient(90deg,#38bdf8,#a855f7,#22c55e)",
               WebkitBackgroundClip: "text",
               color: "transparent",
@@ -381,6 +475,7 @@ export default function VendorPortal() {
         {/* STATUS PILL */}
         <div
           style={{
+            alignSelf: isMobile ? "flex-start" : "center",
             padding: "6px 14px",
             borderRadius: 999,
             border: `1px solid ${GP.border}`,
@@ -411,7 +506,9 @@ export default function VendorPortal() {
           maxWidth: 1150,
           margin: "0 auto",
           display: "grid",
-          gridTemplateColumns: "minmax(0,1.7fr) minmax(0,1.1fr)",
+          gridTemplateColumns: isMobile
+            ? "minmax(0,1fr)"
+            : "minmax(0,1.7fr) minmax(0,1.1fr)",
           gap: 24,
         }}
       >
@@ -421,14 +518,14 @@ export default function VendorPortal() {
           <div
             style={{
               borderRadius: 20,
-              padding: 20,
+              padding: isMobile ? 16 : 20,
               border: `1px dashed ${GP.border}`,
               background: "rgba(15,23,42,0.92)",
             }}
             onDrop={handleDrop}
             onDragOver={handleDragOver}
           >
-            <h3 style={{ marginTop: 0 }}>Upload COI PDF</h3>
+            <h3 style={{ marginTop: 0, fontSize: isMobile ? 16 : 18 }}>Upload COI PDF</h3>
 
             <input
               id="coiUpload"
@@ -445,6 +542,7 @@ export default function VendorPortal() {
                   background: "linear-gradient(90deg,#38bdf8,#0ea5e9)",
                   cursor: "pointer",
                   display: "inline-block",
+                  fontSize: 13,
                 }}
               >
                 Choose File
@@ -466,6 +564,7 @@ export default function VendorPortal() {
                   background: "rgba(127,29,29,0.8)",
                   border: "1px solid #f87171",
                   color: "#fecaca",
+                  fontSize: 12,
                 }}
               >
                 {uploadError}
@@ -481,6 +580,7 @@ export default function VendorPortal() {
                   background: "rgba(16,185,129,0.2)",
                   border: "1px solid #4ade80",
                   color: "#bbf7d0",
+                  fontSize: 12,
                 }}
               >
                 {uploadSuccess}
@@ -498,6 +598,7 @@ export default function VendorPortal() {
                 background: "linear-gradient(90deg,#38bdf8,#0ea5e9)",
                 color: "#e5f2ff",
                 cursor: uploading ? "not-allowed" : "pointer",
+                fontSize: 13,
               }}
             >
               {uploading ? "Uploading & Analyzing…" : "Upload & Analyze COI →"}
@@ -510,13 +611,13 @@ export default function VendorPortal() {
               style={{
                 marginTop: 24,
                 borderRadius: 20,
-                padding: 20,
+                padding: isMobile ? 16 : 20,
                 border: `1px solid ${GP.border}`,
                 background: "rgba(15,23,42,0.92)",
                 boxShadow: "0 0 35px rgba(56,189,248,0.15)",
               }}
             >
-              <h3 style={{ marginTop: 0 }}>AI COI Summary</h3>
+              <h3 style={{ marginTop: 0, fontSize: isMobile ? 16 : 18 }}>AI COI Summary</h3>
 
               {ai.brokerStyle && (
                 <div style={{ marginBottom: 14 }}>
@@ -622,9 +723,9 @@ export default function VendorPortal() {
               )}
 
               {ai.observations && (
-                <div style={{ marginBottom: 14 }}>
+                <div style={{ marginBottom: 4 }}>
                   <strong style={{ color: GP.neonBlue }}>AI Notes:</strong>
-                  <p style={{ fontSize: 13, color: GP.textSoft }}>
+                  <p style={{ fontSize: 13, color: GP.textSoft, marginTop: 4 }}>
                     {ai.observations}
                   </p>
                 </div>
@@ -633,19 +734,19 @@ export default function VendorPortal() {
           )}
         </div>
 
-        {/* RIGHT SIDE — Fix Issues + Requirements + Timeline */}
+        {/* RIGHT SIDE — Fix Issues + Requirements + Timeline + Assistant */}
         <div>
           {/* FIX MODE BLOCK */}
           <div
             style={{
               borderRadius: 20,
-              padding: 18,
+              padding: isMobile ? 16 : 18,
               border: `1px solid ${GP.border}`,
               background: "rgba(15,23,42,0.92)",
               marginBottom: 24,
             }}
           >
-            <h3 style={{ marginTop: 0 }}>Fix Issues</h3>
+            <h3 style={{ marginTop: 0, fontSize: isMobile ? 16 : 18 }}>Fix Issues</h3>
             {alerts?.length ? (
               alerts.map((item, i) => {
                 const resolved = resolvedCodes.includes(item.code);
@@ -702,7 +803,7 @@ export default function VendorPortal() {
                 );
               })
             ) : (
-              <div style={{ color: GP.textSoft }}>No issues detected.</div>
+              <div style={{ color: GP.textSoft, fontSize: 13 }}>No issues detected.</div>
             )}
           </div>
 
@@ -710,16 +811,18 @@ export default function VendorPortal() {
           <div
             style={{
               borderRadius: 20,
-              padding: 18,
+              padding: isMobile ? 16 : 18,
               border: `1px solid ${GP.border}`,
               background: "rgba(15,23,42,0.92)",
               marginBottom: 24,
             }}
           >
-            <h3 style={{ marginTop: 0 }}>Coverage Requirements</h3>
-            <ul style={{ paddingLeft: 18 }}>
+            <h3 style={{ marginTop: 0, fontSize: isMobile ? 16 : 18 }}>
+              Coverage Requirements
+            </h3>
+            <ul style={{ paddingLeft: 18, fontSize: 13 }}>
               {(requirements?.coverages || []).map((c, i) => (
-                <li key={i}>
+                <li key={i} style={{ marginBottom: 4 }}>
                   <strong>{c.name}</strong> {c.limit && `— ${c.limit}`}
                 </li>
               ))}
@@ -730,13 +833,14 @@ export default function VendorPortal() {
           <div
             style={{
               borderRadius: 20,
-              padding: 18,
+              padding: isMobile ? 16 : 18,
               border: `1px solid ${GP.border}`,
               background: "rgba(15,23,42,0.92)",
-              marginTop: 24,
+              marginTop: 0,
+              marginBottom: 24,
             }}
           >
-            <h3 style={{ marginTop: 0 }}>Recent Activity</h3>
+            <h3 style={{ marginTop: 0, fontSize: isMobile ? 16 : 18 }}>Recent Activity</h3>
 
             {/* SEARCH + FILTER ROW */}
             <div
@@ -744,9 +848,10 @@ export default function VendorPortal() {
                 marginTop: 10,
                 marginBottom: 14,
                 display: "flex",
+                flexDirection: isMobile ? "column" : "row",
                 flexWrap: "wrap",
                 gap: 10,
-                alignItems: "center",
+                alignItems: isMobile ? "stretch" : "center",
               }}
             >
               {/* FILTER BUTTONS */}
@@ -755,7 +860,7 @@ export default function VendorPortal() {
                   display: "flex",
                   flexWrap: "wrap",
                   gap: 8,
-                  flex: "0 0 auto",
+                  flex: isMobile ? "0 0 auto" : "0 0 auto",
                 }}
               >
                 {[
@@ -798,7 +903,7 @@ export default function VendorPortal() {
               <div
                 style={{
                   flex: 1,
-                  minWidth: 180,
+                  minWidth: isMobile ? "100%" : 180,
                 }}
               >
                 <div
@@ -970,6 +1075,192 @@ export default function VendorPortal() {
               ))
             )}
           </div>
+
+          {/* AI ASSISTANT PANEL */}
+          <div
+            style={{
+              borderRadius: 20,
+              padding: isMobile ? 16 : 18,
+              border: `1px solid ${GP.border}`,
+              background: "rgba(15,23,42,0.96)",
+              marginBottom: 8,
+            }}
+          >
+            <div
+              style={{
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "space-between",
+                marginBottom: 8,
+              }}
+            >
+              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                <span
+                  style={{
+                    width: 24,
+                    height: 24,
+                    borderRadius: "999px",
+                    background:
+                      "radial-gradient(circle at 30% 0,#38bdf8,#22c55e,#0f172a)",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    fontSize: 14,
+                  }}
+                >
+                  🤖
+                </span>
+                <div>
+                  <div
+                    style={{
+                      fontSize: isMobile ? 14 : 15,
+                      fontWeight: 600,
+                    }}
+                  >
+                    Ask the Compliance Assistant
+                  </div>
+                  <div
+                    style={{
+                      fontSize: 11,
+                      color: GP.textSoft,
+                      opacity: 0.8,
+                    }}
+                  >
+                    Get quick help on issues, requirements, and what to fix.
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* CHAT WINDOW */}
+            <div
+              style={{
+                borderRadius: 14,
+                border: "1px solid rgba(148,163,184,0.35)",
+                background: "rgba(15,23,42,0.98)",
+                padding: 10,
+                maxHeight: 220,
+                overflowY: "auto",
+                marginBottom: 10,
+              }}
+            >
+              {assistantMessages.map((m, i) => (
+                <div
+                  key={i}
+                  style={{
+                    marginBottom: 8,
+                    display: "flex",
+                    justifyContent: m.role === "user" ? "flex-end" : "flex-start",
+                  }}
+                >
+                  <div
+                    style={{
+                      maxWidth: "85%",
+                      padding: "6px 10px",
+                      borderRadius:
+                        m.role === "user" ? "16px 16px 4px 16px" : "16px 16px 16px 4px",
+                      fontSize: 12,
+                      lineHeight: 1.45,
+                      background:
+                        m.role === "user"
+                          ? "linear-gradient(135deg,#38bdf8,#0ea5e9)"
+                          : "rgba(15,23,42,0.96)",
+                      color: m.role === "user" ? "#0b1120" : GP.textSoft,
+                      border:
+                        m.role === "user"
+                          ? "1px solid rgba(56,189,248,0.7)"
+                          : "1px solid rgba(148,163,184,0.45)",
+                    }}
+                  >
+                    {m.text}
+                  </div>
+                </div>
+              ))}
+
+              {assistantLoading && (
+                <div
+                  style={{
+                    fontSize: 11,
+                    color: GP.textSoft,
+                    opacity: 0.8,
+                    marginTop: 2,
+                  }}
+                >
+                  Assistant is thinking…
+                </div>
+              )}
+            </div>
+
+            {assistantError && (
+              <div
+                style={{
+                  fontSize: 11,
+                  color: "#fecaca",
+                  marginBottom: 6,
+                }}
+              >
+                {assistantError}
+              </div>
+            )}
+
+            {/* INPUT ROW */}
+            <div
+              style={{
+                display: "flex",
+                gap: 8,
+                alignItems: "center",
+              }}
+            >
+              <textarea
+                rows={1}
+                value={assistantInput}
+                onChange={(e) => setAssistantInput(e.target.value)}
+                onKeyDown={handleAssistantKeyDown}
+                placeholder='Ask: "What am I missing?", "Why am I non-compliant?"…'
+                style={{
+                  flex: 1,
+                  resize: "none",
+                  padding: "7px 9px",
+                  borderRadius: 10,
+                  border: "1px solid rgba(148,163,184,0.6)",
+                  background: "rgba(15,23,42,0.98)",
+                  color: GP.text,
+                  fontSize: 11,
+                  outline: "none",
+                  minHeight: 34,
+                  maxHeight: 64,
+                }}
+              />
+              <button
+                type="button"
+                onClick={handleAssistantSend}
+                disabled={assistantLoading || !assistantInput.trim()}
+                style={{
+                  padding: "7px 12px",
+                  borderRadius: 999,
+                  border: `1px solid ${
+                    assistantLoading || !assistantInput.trim()
+                      ? "rgba(148,163,184,0.5)"
+                      : GP.neonBlue
+                  }`,
+                  background:
+                    assistantLoading || !assistantInput.trim()
+                      ? "rgba(15,23,42,0.8)"
+                      : "linear-gradient(135deg,#38bdf8,#0ea5e9)",
+                  color: assistantLoading || !assistantInput.trim() ? GP.textSoft : "#0b1120",
+                  fontSize: 11,
+                  fontWeight: 600,
+                  cursor:
+                    assistantLoading || !assistantInput.trim()
+                      ? "not-allowed"
+                      : "pointer",
+                  whiteSpace: "nowrap",
+                }}
+              >
+                {assistantLoading ? "Sending…" : "Send"}
+              </button>
+            </div>
+          </div>
         </div>
       </div>
 
@@ -998,25 +1289,25 @@ export default function VendorPortal() {
 
         @keyframes vpNeonPulseRed {
           0% {
-            box-shadow: 0 0 0 rgba(248, 113, 113, 0.0);
+            box-shadow: 0 0 0 rgba(248, 113, 113, 0);
           }
           50% {
             box-shadow: 0 0 16px rgba(248, 113, 113, 0.4);
           }
           100% {
-            box-shadow: 0 0 0 rgba(248, 113, 113, 0.0);
+            box-shadow: 0 0 0 rgba(248, 113, 113, 0);
           }
         }
 
         @keyframes vpNeonPulseGold {
           0% {
-            box-shadow: 0 0 0 rgba(250, 204, 21, 0.0);
+            box-shadow: 0 0 0 rgba(250, 204, 21, 0);
           }
           50% {
             box-shadow: 0 0 14px rgba(250, 204, 21, 0.35);
           }
           100% {
-            box-shadow: 0 0 0 rgba(250, 204, 21, 0.0);
+            box-shadow: 0 0 0 rgba(250, 204, 21, 0);
           }
         }
 
