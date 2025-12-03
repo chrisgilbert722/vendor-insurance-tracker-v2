@@ -2,6 +2,7 @@
 import { useRouter } from "next/router";
 import { useEffect, useState } from "react";
 import EliteComplianceBlock from "../../../../components/elite/EliteComplianceBlock";
+import { useOrg } from "../../../../context/OrgContext";
 
 /* ===========================
    RISK HELPERS
@@ -75,6 +76,7 @@ function computeVendorAiRisk({ primaryPolicy, elite, compliance }) {
 export default function VendorFixPage() {
   const router = useRouter();
   const { id } = router.query;
+  const { activeOrgId } = useOrg();
 
   const [vendor, setVendor] = useState(null);
   const [org, setOrg] = useState(null);
@@ -96,6 +98,12 @@ export default function VendorFixPage() {
   const [sendLoading, setSendLoading] = useState(false);
   const [sendError, setSendError] = useState("");
   const [sendSuccess, setSendSuccess] = useState("");
+
+  // Rule Engine V3 state
+  const [engineLoading, setEngineLoading] = useState(false);
+  const [engineError, setEngineError] = useState("");
+  const [engineSummary, setEngineSummary] = useState(null); // { globalScore, failedCount, rulesEvaluated, ... }
+  const [engineGroups, setEngineGroups] = useState([]); // groupResults from API
 
   useEffect(() => {
     if (!id) return;
@@ -173,6 +181,59 @@ export default function VendorFixPage() {
 
     loadAll();
   }, [id]);
+
+  // Rule Engine V3 runner
+  async function runRuleEngineV3(vendorIdArg, orgIdArg) {
+    const finalVendorId = vendorIdArg || vendor?.id;
+    const finalOrgId = orgIdArg || org?.id || activeOrgId;
+
+    if (!finalVendorId || !finalOrgId) return;
+
+    try {
+      setEngineLoading(true);
+      setEngineError("");
+      setEngineSummary(null);
+      setEngineGroups([]);
+
+      const res = await fetch("/api/engine/run-v3", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          vendorId: finalVendorId,
+          orgId: finalOrgId,
+        }),
+      });
+
+      const json = await res.json();
+
+      if (!res.ok || !json.ok) {
+        throw new Error(json.error || "Rule Engine V3 failed.");
+      }
+
+      setEngineSummary({
+        vendorId: json.vendorId,
+        orgId: json.orgId,
+        globalScore: json.globalScore,
+        failedCount: json.failedCount,
+        rulesEvaluated: json.rulesEvaluated,
+      });
+
+      setEngineGroups(Array.isArray(json.groupResults) ? json.groupResults : []);
+    } catch (err) {
+      console.error("[fix.js] Rule Engine V3 error:", err);
+      setEngineError(err.message || "Failed to run Rule Engine V3.");
+    } finally {
+      setEngineLoading(false);
+    }
+  }
+
+  // Auto-run Rule Engine V3 when vendor + org context is known
+  useEffect(() => {
+    if (vendor && (org?.id || activeOrgId)) {
+      runRuleEngineV3(vendor.id, org?.id);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [vendor, org, activeOrgId]);
 
   async function loadFixPlan() {
     if (!vendor || !org) return;
@@ -911,6 +972,202 @@ export default function VendorFixPage() {
               </div>
             </>
           )}
+        </div>
+      </div>
+
+      {/* RULE ENGINE V3 PANEL */}
+      <div
+        style={{
+          position: "relative",
+          zIndex: 2,
+          marginTop: 16,
+          marginBottom: 16,
+          display: "grid",
+          gridTemplateColumns: "minmax(0,1.2fr) minmax(0,2fr)",
+          gap: 16,
+        }}
+      >
+        {/* LEFT: Global Score */}
+        <div
+          style={{
+            borderRadius: 16,
+            padding: 14,
+            border: "1px solid rgba(51,65,85,0.9)",
+            background: "rgba(15,23,42,0.98)",
+          }}
+        >
+          <div
+            style={{
+              fontSize: 12,
+              textTransform: "uppercase",
+              letterSpacing: "0.12em",
+              color: "#9ca3af",
+              marginBottom: 8,
+            }}
+          >
+            Rule Engine V3 · Vendor Risk
+          </div>
+
+          {engineLoading && (
+            <div style={{ fontSize: 13, color: "#9ca3af" }}>
+              Running rule engine…
+            </div>
+          )}
+
+          {engineError && !engineLoading && (
+            <div style={{ fontSize: 13, color: "#fca5a5" }}>{engineError}</div>
+          )}
+
+          {engineSummary && !engineLoading && !engineError && (
+            <div>
+              <div
+                style={{
+                  fontSize: 28,
+                  fontWeight: 700,
+                  marginBottom: 4,
+                  background:
+                    engineSummary.globalScore >= 80
+                      ? "linear-gradient(120deg,#22c55e,#bef264)"
+                      : engineSummary.globalScore >= 60
+                      ? "linear-gradient(120deg,#facc15,#fde68a)"
+                      : "linear-gradient(120deg,#fb7185,#fecaca)",
+                  WebkitBackgroundClip: "text",
+                  color: "transparent",
+                }}
+              >
+                {engineSummary.globalScore}
+              </div>
+              <div style={{ fontSize: 11, color: "#9ca3af" }}>Global Score</div>
+
+              <div
+                style={{
+                  marginTop: 8,
+                  fontSize: 11,
+                  color: "#9ca3af",
+                }}
+              >
+                Rules evaluated:{" "}
+                <strong>{engineSummary.rulesEvaluated}</strong> · Failing groups:{" "}
+                <strong>{engineSummary.failedCount}</strong>
+              </div>
+
+              <button
+                onClick={() => runRuleEngineV3(vendor.id, org?.id)}
+                style={{
+                  marginTop: 10,
+                  padding: "6px 12px",
+                  borderRadius: 999,
+                  border: "1px solid rgba(75,85,99,0.9)",
+                  background: "rgba(15,23,42,0.9)",
+                  color: "#e5e7eb",
+                  fontSize: 12,
+                  cursor: "pointer",
+                }}
+              >
+                🔁 Re-run engine
+              </button>
+            </div>
+          )}
+        </div>
+
+        {/* RIGHT: Group breakdown */}
+        <div
+          style={{
+            borderRadius: 16,
+            padding: 14,
+            border: "1px solid rgba(51,65,85,0.9)",
+            background: "rgba(15,23,42,0.98)",
+            maxHeight: 260,
+            overflowY: "auto",
+          }}
+        >
+          <div
+            style={{
+              fontSize: 12,
+              textTransform: "uppercase",
+              letterSpacing: "0.12em",
+              color: "#9ca3af",
+              marginBottom: 8,
+            }}
+          >
+            Rule Groups
+          </div>
+
+          {engineGroups.length === 0 && !engineLoading && !engineError && (
+            <div style={{ fontSize: 13, color: "#9ca3af" }}>
+              No rule groups evaluated.
+            </div>
+          )}
+
+          {engineGroups.map((g) => {
+            const isFail = !g.passed;
+            const color = isFail ? "#fb7185" : "#22c55e";
+            const bg = isFail
+              ? "rgba(248,113,113,0.12)"
+              : "rgba(34,197,94,0.12)";
+
+            return (
+              <div
+                key={g.groupId}
+                style={{
+                  borderRadius: 12,
+                  padding: "8px 10px",
+                  marginBottom: 8,
+                  border: `1px solid ${color}55`,
+                  background: bg,
+                }}
+              >
+                <div
+                  style={{
+                    display: "flex",
+                    justifyContent: "space-between",
+                    alignItems: "center",
+                    marginBottom: 4,
+                  }}
+                >
+                  <div
+                    style={{
+                      fontSize: 13,
+                      fontWeight: 600,
+                      color,
+                    }}
+                  >
+                    {g.label}
+                  </div>
+                  <div
+                    style={{
+                      fontSize: 12,
+                      fontWeight: 600,
+                      color,
+                    }}
+                  >
+                    {g.score}
+                  </div>
+                </div>
+                {g.description && (
+                  <div
+                    style={{
+                      fontSize: 11,
+                      color: "#e5e7eb",
+                      marginBottom: 4,
+                    }}
+                  >
+                    {g.description}
+                  </div>
+                )}
+                <div
+                  style={{
+                    fontSize: 11,
+                    color: "#e5e7eb",
+                  }}
+                >
+                  Status:{" "}
+                  <strong>{g.passed ? "PASS" : "FAIL"}</strong> · Severity:{" "}
+                  <strong>{g.severity || "medium"}</strong>
+                </div>
+              </div>
+            );
+          })}
         </div>
       </div>
     </div>
