@@ -11,10 +11,14 @@ export default async function handler(req, res) {
     const vendorId = id ? parseInt(id, 10) : null;
 
     if (!vendorId || Number.isNaN(vendorId)) {
-      return res.status(400).json({ ok: false, error: "Missing or invalid vendor id." });
+      return res
+        .status(400)
+        .json({ ok: false, error: "Missing or invalid vendor id." });
     }
 
-    // 1) Vendor
+    /* ----------------------------------------------------------
+       1) Vendor
+    ---------------------------------------------------------- */
     const vendorRows = await sql`
       SELECT id, name
       FROM vendors
@@ -23,12 +27,16 @@ export default async function handler(req, res) {
     `;
 
     if (!vendorRows.length) {
-      return res.status(404).json({ ok: false, error: "Vendor not found." });
+      return res
+        .status(404)
+        .json({ ok: false, error: "Vendor not found." });
     }
 
     const vendor = vendorRows[0];
 
-    // 2) Portal token + org
+    /* ----------------------------------------------------------
+       2) Portal token + org
+    ---------------------------------------------------------- */
     const portalRows = await sql`
       SELECT org_id, token
       FROM vendor_portal_tokens
@@ -42,18 +50,22 @@ export default async function handler(req, res) {
     if (portalRows.length) {
       portalToken = portalRows[0].token;
       const orgId = portalRows[0].org_id;
+
       const orgRows = await sql`
         SELECT id, name
         FROM orgs
         WHERE id = ${orgId}
         LIMIT 1;
       `;
+
       if (orgRows.length) {
         org = orgRows[0];
       }
     }
 
-    // 3) Alerts
+    /* ----------------------------------------------------------
+       3) Alerts
+    ---------------------------------------------------------- */
     const alertRows = await sql`
       SELECT code, label, message, severity
       FROM vendor_alerts
@@ -61,8 +73,11 @@ export default async function handler(req, res) {
       ORDER BY severity DESC, code ASC;
     `;
 
-    // 4) Requirements
+    /* ----------------------------------------------------------
+       4) Requirements
+    ---------------------------------------------------------- */
     let requirementRows = [];
+
     if (org) {
       requirementRows = await sql`
         SELECT name, limit
@@ -72,7 +87,9 @@ export default async function handler(req, res) {
       `;
     }
 
-    // 5) Timeline
+    /* ----------------------------------------------------------
+       5) Timeline
+    ---------------------------------------------------------- */
     const timelineRows = await sql`
       SELECT action, message, severity, created_at
       FROM vendor_timeline
@@ -81,16 +98,33 @@ export default async function handler(req, res) {
       LIMIT 50;
     `;
 
-    // 6) Derived metrics
+    /* ----------------------------------------------------------
+       6) NEW: Documents (W9, License, Contract, Other)
+    ---------------------------------------------------------- */
+    const documentRows = await sql`
+      SELECT id, doc_type, filename, mimetype, created_at
+      FROM vendor_documents
+      WHERE vendor_id = ${vendorId}
+      ORDER BY created_at DESC;
+    `;
+
+    /* ----------------------------------------------------------
+       7) Derived metrics
+    ---------------------------------------------------------- */
     const metrics = {
       totalAlerts: alertRows.length,
-      criticalAlerts: alertRows.filter((a) => a.severity === "critical").length,
+      criticalAlerts: alertRows.filter(
+        (a) => a.severity === "critical"
+      ).length,
       highAlerts: alertRows.filter((a) => a.severity === "high").length,
       infoAlerts: alertRows.filter((a) => a.severity === "info").length,
       coverageCount: requirementRows.length,
       lastActivity: timelineRows[0]?.created_at || null,
     };
 
+    /* ----------------------------------------------------------
+       RETURN
+    ---------------------------------------------------------- */
     return res.status(200).json({
       ok: true,
       vendor,
@@ -100,6 +134,9 @@ export default async function handler(req, res) {
       requirements: requirementRows,
       timeline: timelineRows,
       metrics,
+
+      // 🔥 NEW:
+      documents: documentRows,
     });
   } catch (err) {
     console.error("[admin/vendor/overview] ERROR", err);
