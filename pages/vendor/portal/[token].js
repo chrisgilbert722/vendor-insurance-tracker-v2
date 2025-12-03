@@ -1,3 +1,4 @@
+// SECTION 1/4 — imports, helpers, state, effects, handlers
 // pages/vendor/portal/[token].js
 import { useEffect, useState } from "react";
 import { useRouter } from "next/router";
@@ -95,6 +96,12 @@ export default function VendorPortal() {
   const [assistantInput, setAssistantInput] = useState("");
   const [assistantLoading, setAssistantLoading] = useState(false);
   const [assistantError, setAssistantError] = useState("");
+
+  // Smart Suggestions
+  const [smartSuggestions, setSmartSuggestions] = useState("");
+  const [smartSuggestionsLoaded, setSmartSuggestionsLoaded] = useState(false);
+  const [smartSuggestionsError, setSmartSuggestionsError] = useState("");
+  const [smartSuggestionsLoading, setSmartSuggestionsLoading] = useState(false);
 
   // Responsive
   const [isMobile, setIsMobile] = useState(false);
@@ -322,6 +329,38 @@ export default function VendorPortal() {
   }
 
   /* ============================================================
+     SMART SUGGESTIONS HANDLER
+  ============================================================ */
+  async function loadSmartSuggestions() {
+    if (!token || smartSuggestionsLoading) return;
+
+    try {
+      setSmartSuggestionsError("");
+      setSmartSuggestionsLoading(true);
+
+      const res = await fetch("/api/vendor/suggestions", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ token }),
+      });
+
+      const json = await res.json();
+      if (!json.ok || !json.suggestions) {
+        throw new Error(json.error || "Failed to load suggestions.");
+      }
+
+      setSmartSuggestions(json.suggestions);
+      setSmartSuggestionsLoaded(true);
+    } catch (err) {
+      console.error("[smart suggestions]", err);
+      setSmartSuggestionsError("Could not generate suggestions. Please try again.");
+      setSmartSuggestionsLoaded(false);
+    } finally {
+      setSmartSuggestionsLoading(false);
+    }
+  }
+
+  /* ============================================================
      AI ASSISTANT HANDLER
   ============================================================ */
   async function handleAssistantSend() {
@@ -426,7 +465,7 @@ export default function VendorPortal() {
   }
 
   const { vendor, org, requirements, alerts, status, ai } = vendorData;
-
+// SECTION 2/4 — top-level layout + LEFT column (upload + AI summary)
   /* ============================================================
      MAIN UI
   ============================================================ */
@@ -733,9 +772,88 @@ export default function VendorPortal() {
             </div>
           )}
         </div>
-
-        {/* RIGHT SIDE — Fix Issues + Requirements + Timeline + Assistant */}
+// SECTION 3/4 — RIGHT column: Smart Suggestions + Fix Issues + Requirements + Timeline
+        {/* RIGHT SIDE — Smart Suggestions + Fix Issues + Requirements + Timeline + Assistant */}
         <div>
+          {/* SMART SUGGESTIONS PANEL */}
+          <div
+            style={{
+              borderRadius: 20,
+              padding: isMobile ? 16 : 18,
+              border: `1px solid ${GP.border}`,
+              background: "rgba(15,23,42,0.96)",
+              marginBottom: 24,
+            }}
+          >
+            <h3 style={{ marginTop: 0, fontSize: isMobile ? 16 : 18 }}>
+              Smart Suggestions
+            </h3>
+            <div
+              style={{
+                fontSize: 11,
+                color: GP.textSoft,
+                marginBottom: 8,
+                opacity: 0.85,
+              }}
+            >
+              Automatic guidance based on your requirements, issues, and recent activity.
+            </div>
+
+            {!smartSuggestionsLoaded && !smartSuggestionsLoading ? (
+              <button
+                onClick={loadSmartSuggestions}
+                style={{
+                  padding: "8px 14px",
+                  borderRadius: 999,
+                  border: `1px solid ${GP.neonBlue}`,
+                  background: "linear-gradient(135deg,#38bdf8,#0ea5e9)",
+                  color: "#0b1120",
+                  fontSize: 13,
+                  cursor: "pointer",
+                  marginTop: 4,
+                }}
+              >
+                Generate Suggestions →
+              </button>
+            ) : smartSuggestionsLoading ? (
+              <div
+                style={{
+                  marginTop: 6,
+                  fontSize: 12,
+                  color: GP.textSoft,
+                }}
+              >
+                Generating suggestions…
+              </div>
+            ) : smartSuggestionsError ? (
+              <div
+                style={{
+                  marginTop: 6,
+                  fontSize: 12,
+                  color: "#fecaca",
+                }}
+              >
+                {smartSuggestionsError}
+              </div>
+            ) : (
+              <div
+                style={{
+                  whiteSpace: "pre-wrap",
+                  fontSize: 13,
+                  color: GP.textSoft,
+                  marginTop: 6,
+                  lineHeight: 1.45,
+                  borderRadius: 12,
+                  padding: 12,
+                  background: "rgba(2,6,23,0.6)",
+                  border: "1px solid rgba(148,163,184,0.3)",
+                }}
+              >
+                {smartSuggestions}
+              </div>
+            )}
+          </div>
+
           {/* FIX MODE BLOCK */}
           <div
             style={{
@@ -1075,7 +1193,7 @@ export default function VendorPortal() {
               ))
             )}
           </div>
-
+// SECTION 4/4 — AI Assistant panel + global styles + closing
           {/* AI ASSISTANT PANEL */}
           <div
             style={{
