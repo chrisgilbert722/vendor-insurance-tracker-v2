@@ -224,6 +224,7 @@ function renderComplianceBadge(vendorId, complianceMap) {
     </span>
   );
 }
+
 /* ===========================
    MAIN DASHBOARD
 =========================== */
@@ -253,6 +254,9 @@ export default function Dashboard() {
   // System Timeline
   const [systemTimeline, setSystemTimeline] = useState([]);
   const [systemTimelineLoading, setSystemTimelineLoading] = useState(true);
+
+  // Rule Engine V3 map (per vendor)
+  const [engineMap, setEngineMap] = useState({});
 
   // Derived metrics
   const avgScore = dashboard?.globalScore ?? 0;
@@ -367,6 +371,56 @@ export default function Dashboard() {
         });
     });
   }, [policies, eliteMap]);
+
+  /* LOAD RULE ENGINE V3 PER VENDOR */
+  useEffect(() => {
+    if (!policies.length || !activeOrgId) return;
+    const vendorIds = [...new Set(policies.map((p) => p.vendor_id))];
+
+    vendorIds.forEach((vendorId) => {
+      const existing = engineMap[vendorId];
+      if (existing && (existing.loading === false && existing.loaded)) return;
+
+      setEngineMap((prev) => ({
+        ...prev,
+        [vendorId]: { ...(prev[vendorId] || {}), loading: true },
+      }));
+
+      fetch("/api/engine/run-v3", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ vendorId, orgId: activeOrgId }),
+      })
+        .then((res) => res.json())
+        .then((json) => {
+          setEngineMap((prev) => ({
+            ...prev,
+            [vendorId]: json.ok
+              ? {
+                  loading: false,
+                  loaded: true,
+                  globalScore: json.globalScore,
+                  failedCount: json.failedCount,
+                }
+              : {
+                  loading: false,
+                  loaded: true,
+                  error: json.error || "Rule Engine V3 error",
+                },
+          }));
+        })
+        .catch(() => {
+          setEngineMap((prev) => ({
+            ...prev,
+            [vendorId]: {
+              loading: false,
+              loaded: true,
+              error: "Failed to run Rule Engine V3",
+            },
+          }));
+        });
+    });
+  }, [policies, activeOrgId, engineMap]);
 
   /* ELITE SUMMARY */
   useEffect(() => {
@@ -794,6 +848,7 @@ export default function Dashboard() {
       <SlaBreachWidget orgId={activeOrgId} />
       <CriticalVendorWatchlist orgId={activeOrgId} />
       <AlertHeatSignature orgId={activeOrgId} />
+
       {/* RENEWAL INTELLIGENCE V3 — HEATMAP + BACKLOG */}
       <RenewalHeatmap range={90} />
       <RenewalBacklog />
@@ -991,6 +1046,7 @@ export default function Dashboard() {
                   <th style={th}>Status</th>
                   <th style={th}>Risk Tier</th>
                   <th style={th}>AI Risk</th>
+                  <th style={th}>V3 Risk</th>
                   <th style={th}>Compliance</th>
                   <th style={th}>Elite</th>
                   <th style={th}>Flags</th>
@@ -1003,6 +1059,18 @@ export default function Dashboard() {
                   const elite = eliteMap[p.vendor_id];
                   const compliance = complianceMap[p.vendor_id];
                   const ai = computeAiRisk({ risk, elite, compliance });
+                  const engine = engineMap[p.vendor_id];
+
+                  // derive V3 tier for display
+                  let v3Tier = "Unknown";
+                  if (engine && typeof engine.globalScore === "number") {
+                    const s = engine.globalScore;
+                    if (s >= 85) v3Tier = "Elite Safe";
+                    else if (s >= 70) v3Tier = "Preferred";
+                    else if (s >= 55) v3Tier = "Watch";
+                    else if (s >= 35) v3Tier = "High Risk";
+                    else v3Tier = "Severe";
+                  }
 
                   return (
                     <tr
@@ -1086,6 +1154,60 @@ export default function Dashboard() {
                             }}
                           />
                         </div>
+                      </td>
+                      {/* V3 Risk Column */}
+                      <td style={{ ...td, textAlign: "center" }}>
+                        {!engine || engine.loading ? (
+                          <span
+                            style={{ fontSize: 11, color: GP.textMuted }}
+                          >
+                            Running…
+                          </span>
+                        ) : engine.error ? (
+                          <span
+                            style={{ fontSize: 11, color: GP.neonRed }}
+                          >
+                            Error
+                          </span>
+                        ) : typeof engine.globalScore === "number" ? (
+                          <div
+                            style={{
+                              display: "flex",
+                              flexDirection: "column",
+                              alignItems: "center",
+                              gap: 3,
+                            }}
+                          >
+                            <span
+                              style={{
+                                fontSize: 13,
+                                fontWeight: 600,
+                                color:
+                                  engine.globalScore >= 80
+                                    ? GP.neonGreen
+                                    : engine.globalScore >= 60
+                                    ? GP.neonGold
+                                    : GP.neonRed,
+                              }}
+                            >
+                              {engine.globalScore}
+                            </span>
+                            <span
+                              style={{
+                                fontSize: 10,
+                                color: GP.textSoft,
+                              }}
+                            >
+                              {v3Tier}
+                            </span>
+                          </div>
+                        ) : (
+                          <span
+                            style={{ fontSize: 11, color: GP.textMuted }}
+                          >
+                            —
+                          </span>
+                        )}
                       </td>
                       <td style={{ ...td, textAlign: "center" }}>
                         {renderComplianceBadge(p.vendor_id, complianceMap)}
