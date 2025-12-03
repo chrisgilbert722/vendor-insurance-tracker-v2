@@ -13,7 +13,7 @@ import { normalizeW9 } from "../../../lib/w9Normalizer";
 import { normalizeLicense } from "../../../lib/licenseNormalizer";
 import { normalizeContract } from "../../../lib/contractNormalizer";
 
-// Disable Next's default body parser for file upload
+// Disable Next.js default body parser for file upload
 export const config = {
   api: { bodyParser: false },
 };
@@ -51,22 +51,19 @@ export default async function handler(req, res) {
         });
       }
 
-      // Basic file info
       const filepath = file.filepath || file.path;
       const filename = file.originalFilename || file.name;
       const mimetype = file.mimetype || file.type || "application/octet-stream";
 
-      // TODO: You can pass this file to your AI extraction pipeline
-      // For now, we pretend we got "ai" JSON from somewhere.
-      const aiExtracted = {}; // placeholder (hook real AI later)
+      // TODO: integrate real AI extraction later
+      const aiExtracted = {};
 
-      // Light text sampling placeholder
-      const textSample = ""; // future: read a few KB & send to AI or lexical hints
+      const textSample = ""; // placeholder for classifier (can enhance later)
 
-      // Classify doc
+      // Classify doc type
       let docType = docTypeHint || classifyDocument({ filename, mimetype, textSample });
 
-      // COIs should still be handled by /upload-coi, but we guard against mis-routes
+      // COIs belong in upload-coi
       if (docType === "coi") {
         return res.status(400).json({
           ok: false,
@@ -74,12 +71,14 @@ export default async function handler(req, res) {
         });
       }
 
-      // Upload raw file to Supabase Storage (if you're using it)
+      /* ----------------------------------------------------------
+         Upload raw PDF to Supabase Storage
+      ---------------------------------------------------------- */
       let storageKey = null;
+
       if (filepath) {
         const fileBuffer = fs.readFileSync(filepath);
-        const bucket = "vendor-docs"; // make sure this bucket exists in Supabase
-
+        const bucket = "vendor-docs";
         const uploadPath = `${vendorId}/${Date.now()}-${filename}`;
 
         const { error: uploadErr } = await supabase.storage
@@ -91,7 +90,6 @@ export default async function handler(req, res) {
 
         if (uploadErr) {
           console.error("[upload-doc] supabase upload error", uploadErr);
-          // Not fatal if you want to continue, but we bail for safety.
           return res.status(500).json({
             ok: false,
             error: "Failed to store document.",
@@ -101,7 +99,9 @@ export default async function handler(req, res) {
         storageKey = `${bucket}/${uploadPath}`;
       }
 
-      // Normalize based on docType
+      /* ----------------------------------------------------------
+         Normalize based on docType
+      ---------------------------------------------------------- */
       let normalized = null;
 
       if (docType === "w9") {
@@ -114,7 +114,9 @@ export default async function handler(req, res) {
         normalized = { raw: aiExtracted, doc_type: "other" };
       }
 
-      // Store metadata + normalized AI JSON in Neon
+      /* ----------------------------------------------------------
+         Store in vendor_documents table
+      ---------------------------------------------------------- */
       const inserted = await sql`
         INSERT INTO vendor_documents (vendor_id, org_id, doc_type, filename, mimetype, storage_key, ai_json)
         VALUES (
@@ -129,14 +131,39 @@ export default async function handler(req, res) {
         RETURNING id;
       `;
 
-      // TODO: In future we can trigger specialized rule engines here:
-      // - W9 rule group
-      // - License expiration checks
-      // - Contract → rule inference
+      const documentId = inserted[0]?.id;
 
+      /* ==========================================================
+         🚀 NEW: AUTO-PROCESS CONTRACTS
+         Calls:
+           1. /api/admin/rules-v3/auto-process-contract
+           2. auto-infers rules
+           3. auto-creates rule group
+           4. auto-runs rule engine v3
+           5. auto-updates vendor alerts
+      ========================================================== */
+      if (docType === "contract") {
+        try {
+          await fetch(
+            `${process.env.NEXT_PUBLIC_BASE_URL}/api/admin/rules-v3/auto-process-contract`,
+            {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ documentId }),
+            }
+          );
+        } catch (autoErr) {
+          console.error("[AUTO CONTRACT PROCESS FAILED]", autoErr);
+          // Do not block response — upload still succeeds even if automation fails
+        }
+      }
+
+      /* ----------------------------------------------------------
+         FINAL RESPONSE
+      ---------------------------------------------------------- */
       return res.status(200).json({
         ok: true,
-        docId: inserted[0]?.id,
+        docId: documentId,
         docType,
         filename,
       });
