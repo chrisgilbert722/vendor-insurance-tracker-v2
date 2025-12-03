@@ -97,6 +97,7 @@ function computeRisk(p) {
 
   return { daysLeft, severity, score, flags, tier };
 }
+
 function badgeStyle(level) {
   switch (level) {
     case "expired":
@@ -252,7 +253,7 @@ export default function Dashboard() {
   const [dashboard, setDashboard] = useState(null);
   const [dashboardLoading, setDashboardLoading] = useState(true);
 
-  // Policies (still live from /api/get-policies)
+  // Policies
   const [policies, setPolicies] = useState([]);
   const [loadingPolicies, setLoadingPolicies] = useState(true);
 
@@ -277,8 +278,12 @@ export default function Dashboard() {
   const [drawerVendor, setDrawerVendor] = useState(null);
   const [drawerPolicies, setDrawerPolicies] = useState([]);
 
+  // 🔥 NEW: System Timeline state
+  const [systemTimeline, setSystemTimeline] = useState([]);
+  const [systemTimelineLoading, setSystemTimelineLoading] = useState(true);
+
   /* ===========================
-      LOAD DASHBOARD METRICS (LIVE)
+      LOAD DASHBOARD METRICS
   ============================ */
   useEffect(() => {
     if (!activeOrgId) return;
@@ -300,7 +305,7 @@ export default function Dashboard() {
   }, [activeOrgId]);
 
   /* ===========================
-      LOAD POLICIES (LIVE)
+      LOAD POLICIES
   ============================ */
   useEffect(() => {
     async function load() {
@@ -318,7 +323,7 @@ export default function Dashboard() {
   }, []);
 
   /* ===========================
-      LOAD COMPLIANCE (LIVE)
+      LOAD COMPLIANCE
   ============================ */
   useEffect(() => {
     if (!policies.length || !activeOrgId) return;
@@ -356,7 +361,7 @@ export default function Dashboard() {
   }, [policies, activeOrgId, complianceMap]);
 
   /* ===========================
-      LOAD ELITE ENGINE RESULTS (LIVE)
+      LOAD ELITE ENGINE
   ============================ */
   useEffect(() => {
     if (!policies.length) return;
@@ -403,7 +408,7 @@ export default function Dashboard() {
   }, [policies, eliteMap]);
 
   /* ===========================
-      ELITE SUMMARY COUNTER
+      ELITE SUMMARY
   ============================ */
   useEffect(() => {
     let pass = 0,
@@ -412,7 +417,6 @@ export default function Dashboard() {
 
     Object.values(eliteMap).forEach((e) => {
       if (!e || e.loading || e.error) return;
-
       if (e.overall === "pass") pass++;
       else if (e.overall === "warn") warn++;
       else if (e.overall === "fail") fail++;
@@ -422,7 +426,7 @@ export default function Dashboard() {
   }, [eliteMap]);
 
   /* ===========================
-      LOAD V2 ALERTS (LIVE)
+      LOAD V2 ALERTS
   ============================ */
   useEffect(() => {
     if (!activeOrgId) return;
@@ -441,6 +445,28 @@ export default function Dashboard() {
     const interval = setInterval(loadAlerts, 7000);
     return () => clearInterval(interval);
   }, [activeOrgId]);
+
+  /* ===========================
+      LOAD SYSTEM TIMELINE (GLOBAL)
+  ============================ */
+  useEffect(() => {
+    async function loadTimeline() {
+      try {
+        setSystemTimelineLoading(true);
+        const res = await fetch("/api/admin/timeline");
+        const data = await res.json();
+        if (data.ok) setSystemTimeline(data.timeline);
+      } catch (err) {
+        console.error("[dashboard] system timeline load error:", err);
+      } finally {
+        setSystemTimelineLoading(false);
+      }
+    }
+
+    loadTimeline();
+    const interval = setInterval(loadTimeline, 10000); // refresh every 10s
+    return () => clearInterval(interval);
+  }, []);
 
   /* ===========================
       DRAWER HANDLERS
@@ -486,7 +512,6 @@ export default function Dashboard() {
       p.coverage_type?.toLowerCase().includes(t)
     );
   });
-
   return (
     <div
       style={{
@@ -497,9 +522,7 @@ export default function Dashboard() {
         color: GP.text,
       }}
     >
-      {/* =======================================
-          HERO COMMAND PANEL
-      ======================================= */}
+      {/* HERO COMMAND PANEL */}
       <div
         className="cockpit-hero cockpit-pulse"
         style={{
@@ -509,11 +532,8 @@ export default function Dashboard() {
           border: "1px solid rgba(148,163,184,0.45)",
           background:
             "radial-gradient(circle at top left,rgba(15,23,42,0.98),rgba(15,23,42,0.92))",
-          boxShadow: `
-            0 0 55px rgba(0,0,0,0.85),
-            0 0 70px rgba(56,189,248,0.35),
-            inset 0 0 25px rgba(0,0,0,0.7)
-          `,
+          boxShadow:
+            "0 0 55px rgba(0,0,0,0.85),0 0 70px rgba(56,189,248,0.35),inset 0 0 25px rgba(0,0,0,0.7)",
           display: "grid",
           gridTemplateColumns: "minmax(0,1.8fr) minmax(0,1.3fr)",
           gap: 24,
@@ -522,7 +542,6 @@ export default function Dashboard() {
       >
         {/* LEFT SIDE — Title / AI Summary / KPIs / Alerts */}
         <div style={{ paddingTop: 22 }}>
-          {/* HUD LABEL */}
           <div
             style={{
               position: "absolute",
@@ -537,7 +556,6 @@ export default function Dashboard() {
             DASHBOARD V4 • GLOBAL COMPLIANCE ENGINE
           </div>
 
-          {/* TITLE */}
           <h1
             style={{
               fontSize: 30,
@@ -566,7 +584,6 @@ export default function Dashboard() {
             and risk engines. This is your command center.
           </p>
 
-          {/* AI SNAPSHOT PILL */}
           <div
             style={{
               marginTop: 12,
@@ -605,7 +622,6 @@ export default function Dashboard() {
             </span>
           </div>
 
-          {/* ACTION BUTTONS */}
           <div
             style={{
               marginTop: 16,
@@ -656,7 +672,6 @@ export default function Dashboard() {
             </button>
           </div>
 
-          {/* KPI STRIP */}
           <div
             style={{
               marginTop: 20,
@@ -691,7 +706,6 @@ export default function Dashboard() {
             />
           </div>
 
-          {/* SEVERITY BREAKDOWN */}
           <div
             style={{
               marginTop: 22,
@@ -751,7 +765,6 @@ export default function Dashboard() {
             )}
           </div>
 
-          {/* ALERT DROPDOWN (with Resolve) */}
           {showAlerts && (
             <div
               style={{
@@ -808,7 +821,6 @@ export default function Dashboard() {
                     <button
                       onClick={async (e) => {
                         e.stopPropagation();
-
                         await fetch("/api/alerts-v2/resolve", {
                           method: "POST",
                           headers: { "Content-Type": "application/json" },
@@ -974,9 +986,7 @@ export default function Dashboard() {
         </div>
       </div>
 
-      {/* =======================================
-          CHART ROW — cockpit-telemetry
-      ======================================= */}
+      {/* TELEMETRY CHARTS */}
       <div
         className="cockpit-telemetry"
         style={{
@@ -991,26 +1001,126 @@ export default function Dashboard() {
         <PassFailDonutChart overview={dashboard} />
       </div>
 
-      {/* =======================================
-          SECONDARY BASE CHARTS
-      ======================================= */}
+      {/* SECONDARY BASE CHARTS */}
       <ExpiringCertsHeatmap policies={policies} />
       <SeverityDistributionChart overview={dashboard} />
       <RiskTimelineChart policies={policies} />
 
-      {/* =======================================
-          ALERT WEAPON PACK (ALL 6 COMPONENTS)
-      ======================================= */}
+      {/* ALERT WEAPON PACK */}
       <AlertTimelineChart orgId={activeOrgId} />
       <TopAlertTypes orgId={activeOrgId} />
       <AlertAgingKpis orgId={activeOrgId} />
       <SlaBreachWidget orgId={activeOrgId} />
       <CriticalVendorWatchlist orgId={activeOrgId} />
       <AlertHeatSignature orgId={activeOrgId} />
-
       {/* =======================================
-          POLICIES TABLE
+          SYSTEM TIMELINE (GLOBAL EVENTS)
       ======================================= */}
+      <div
+        style={{
+          marginTop: 40,
+          marginBottom: 32,
+          borderRadius: 20,
+          padding: 18,
+          border: "1px solid rgba(148,163,184,0.4)",
+          background: "rgba(15,23,42,0.96)",
+          boxShadow: "0 10px 35px rgba(0,0,0,0.45)",
+        }}
+      >
+        <h2
+          style={{
+            marginTop: 0,
+            marginBottom: 14,
+            fontSize: 18,
+            fontWeight: 600,
+            background: "linear-gradient(90deg,#38bdf8,#a855f7)",
+            WebkitBackgroundClip: "text",
+            color: "transparent",
+          }}
+        >
+          System Timeline (Automated Compliance Events)
+        </h2>
+
+        {systemTimelineLoading ? (
+          <div style={{ fontSize: 13, color: GP.textSoft }}>
+            Loading system events…
+          </div>
+        ) : systemTimeline.length === 0 ? (
+          <div style={{ fontSize: 13, color: GP.textSoft }}>
+            No system events recorded yet.
+          </div>
+        ) : (
+          <div
+            style={{
+              display: "flex",
+              flexDirection: "column",
+              gap: 10,
+              maxHeight: 340,
+              overflowY: "auto",
+              paddingRight: 6,
+            }}
+          >
+            {systemTimeline.map((item, idx) => (
+              <div
+                key={idx}
+                style={{
+                  padding: "10px 12px",
+                  borderRadius: 14,
+                  background: "rgba(2,6,23,0.65)",
+                  border: "1px solid rgba(148,163,184,0.28)",
+                  boxShadow: "0 2px 6px rgba(0,0,0,0.25)",
+                }}
+              >
+                <div
+                  style={{
+                    fontSize: 11,
+                    fontWeight: 600,
+                    textTransform: "uppercase",
+                    color:
+                      item.severity === "critical"
+                        ? GP.neonRed
+                        : item.severity === "high"
+                        ? GP.neonGold
+                        : GP.neonBlue,
+                    marginBottom: 4,
+                  }}
+                >
+                  {item.action.replace(/_/g, " ")}
+                </div>
+
+                <div style={{ fontSize: 13, color: GP.text }}>
+                  {item.message}
+                </div>
+
+                <div
+                  style={{
+                    fontSize: 11,
+                    color: GP.textSoft,
+                    marginTop: 4,
+                  }}
+                >
+                  Vendor:{" "}
+                  <span style={{ color: GP.neonBlue }}>
+                    {item.vendor_name || "Unknown"}
+                  </span>
+                </div>
+
+                <div
+                  style={{
+                    fontSize: 11,
+                    color: GP.textMuted,
+                    marginTop: 2,
+                  }}
+                >
+                  {new Date(item.created_at).toLocaleString()}
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* POLICIES TABLE */}
       <h2
         style={{
           marginTop: 32,
@@ -1089,7 +1199,6 @@ export default function Dashboard() {
                   <th style={th}>Flags</th>
                 </tr>
               </thead>
-
               <tbody>
                 {filtered.map((p) => {
                   const risk = computeRisk(p);
@@ -1158,7 +1267,6 @@ export default function Dashboard() {
                         }}
                       >
                         <div>{ai.score}</div>
-
                         <div
                           style={{
                             marginTop: 4,
@@ -1259,7 +1367,6 @@ function SeverityBox({ label, count, color }) {
       >
         {label}
       </div>
-
       <div
         style={{
           fontSize: 18,
@@ -1291,12 +1398,10 @@ function MiniKpi({ label, value, color, icon }) {
       }}
     >
       <div style={{ fontSize: 18 }}>{icon}</div>
-
       <div>
         <div style={{ fontSize: 12, color: GP.textSoft, marginBottom: 2 }}>
           {label}
         </div>
-
         <div style={{ fontSize: 16, fontWeight: 600, color }}>{value}</div>
       </div>
     </div>
