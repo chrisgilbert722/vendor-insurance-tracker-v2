@@ -2,6 +2,7 @@
 import { useRouter } from "next/router";
 import { useEffect, useState } from "react";
 import VendorRenewalStatusPanel from "../../../../components/renewals/VendorRenewalStatusPanel";
+import RenewalCommunicationLog from "../../../../components/renewals/RenewalCommunicationLog";
 
 export default function AdminVendorDetailPage() {
   const router = useRouter();
@@ -215,8 +216,13 @@ export default function AdminVendorDetailPage() {
           />
         </div>
 
+        {/* 🔥 Renewal Communication Log Panel */}
+        <div style={{ marginTop: 30 }}>
+          <RenewalCommunicationLog vendorId={vendor.id} />
+        </div>
+
         {/* Simple policy list preview (optional) */}
-        <div style={{ marginTop: 20 }}>
+        <div style={{ marginTop: 30 }}>
           <h2
             style={{
               margin: 0,
