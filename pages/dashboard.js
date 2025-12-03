@@ -20,9 +20,14 @@ import SlaBreachWidget from "../components/kpis/SlaBreachWidget";
 import CriticalVendorWatchlist from "../components/panels/CriticalVendorWatchlist";
 import AlertHeatSignature from "../components/charts/AlertHeatSignature";
 
-// 🔥 RENEWAL INTELLIGENCE V3
+// 🔥 RENEWAL INTELLIGENCE V3 (Drop 2)
 import RenewalHeatmap from "../components/renewals/RenewalHeatmap";
 import RenewalBacklog from "../components/renewals/RenewalBacklog";
+
+// 🔥 RENEWAL INTELLIGENCE V3 (Drop 3)
+import RenewalSlaWidget from "../components/renewals/RenewalSlaWidget";
+import RenewalCalendar from "../components/renewals/RenewalCalendar";
+import RenewalAiSummary from "../components/renewals/RenewalAiSummary";
 
 /* ===========================
    ELECTRIC NEON THEME
@@ -790,14 +795,30 @@ export default function Dashboard() {
       <SlaBreachWidget orgId={activeOrgId} />
       <CriticalVendorWatchlist orgId={activeOrgId} />
       <AlertHeatSignature orgId={activeOrgId} />
+
       {/* RENEWAL INTELLIGENCE V3 — HEATMAP + BACKLOG */}
       <RenewalHeatmap range={90} />
       <RenewalBacklog />
 
+      {/* 🔥 NEW — RENEWAL INTELLIGENCE V3 DROP 3 BLOCK */}
+      <div
+        style={{
+          marginTop: 24,
+          marginBottom: 24,
+          display: "grid",
+          gridTemplateColumns: "minmax(0,1.2fr) minmax(0,1.2fr) minmax(0,1.6fr)",
+          gap: 16,
+        }}
+      >
+        <RenewalSlaWidget orgId={activeOrgId} />
+        <RenewalCalendar range={60} />
+        <RenewalAiSummary orgId={activeOrgId} />
+      </div>
+
       {/* SYSTEM TIMELINE (GLOBAL EVENTS) */}
       <div
         style={{
-          marginTop: 40,
+          marginTop: 16,
           marginBottom: 32,
           borderRadius: 20,
           padding: 18,
@@ -1119,6 +1140,7 @@ export default function Dashboard() {
     </div>
   );
 }
+
 /* =======================================
    SEVERITY BOX COMPONENT
 ======================================= */
