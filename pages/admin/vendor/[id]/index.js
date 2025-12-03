@@ -214,20 +214,21 @@ export default function AdminVendorDetailPage() {
           />
         </div>
 
-        {/* 🔥 Renewal Upload Panel */}
+        {/* 🔥 Renewal Upload */}
         <div style={{ marginTop: 30 }}>
           <RenewalUploadPanel
             vendorId={vendor.id}
             orgId={vendor.org_id}
-            onComplete={() => {
-              router.replace(router.asPath);
-            }}
+            onComplete={() => router.replace(router.asPath)}
           />
         </div>
 
-        {/* 🔮 AI Renewal Prediction Panel */}
+        {/* 🔮 AI Renewal Prediction */}
         <div style={{ marginTop: 30 }}>
-          <RenewalPredictionPanel vendorId={vendor.id} orgId={vendor.org_id} />
+          <RenewalPredictionPanel
+            vendorId={vendor.id}
+            orgId={vendor.org_id}
+          />
         </div>
 
         {/* 🔥 Renewal Communication Log */}
@@ -293,8 +294,7 @@ export default function AdminVendorDetailPage() {
                       <td style={td}>{p.expiration_date || "—"}</td>
                     </tr>
                   ))}
-                </tbody>
-              </tbody>
+                </tbody>    {/* ✔ FIX: only one </tbody> */}
               </table>
             </div>
           )}
@@ -304,7 +304,6 @@ export default function AdminVendorDetailPage() {
   );
 }
 
-/* Table styles */
 const th = {
   padding: "8px 10px",
   background: "rgba(15,23,42,0.98)",
