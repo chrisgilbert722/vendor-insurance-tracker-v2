@@ -3,6 +3,7 @@ import { useRouter } from "next/router";
 import { useEffect, useState } from "react";
 import VendorRenewalStatusPanel from "../../../../components/renewals/VendorRenewalStatusPanel";
 import RenewalCommunicationLog from "../../../../components/renewals/RenewalCommunicationLog";
+import RenewalUploadPanel from "../../../../components/renewals/RenewalUploadPanel";
 
 export default function AdminVendorDetailPage() {
   const router = useRouter();
@@ -68,9 +69,7 @@ export default function AdminVendorDetailPage() {
         }}
       >
         <h1>{vendor ? "Error" : "Vendor not found"}</h1>
-        {error && (
-          <p style={{ color: "#fecaca", marginTop: 8 }}>{error}</p>
-        )}
+        {error && <p style={{ color: "#fecaca", marginTop: 8 }}>{error}</p>}
       </div>
     );
   }
@@ -187,9 +186,7 @@ export default function AdminVendorDetailPage() {
           </div>
 
           <button
-            onClick={() =>
-              router.push(`/admin/vendor/${vendor.id}/fix`)
-            }
+            onClick={() => router.push(`/admin/vendor/${vendor.id}/fix`)}
             style={{
               borderRadius: 999,
               padding: "8px 14px",
@@ -207,7 +204,7 @@ export default function AdminVendorDetailPage() {
           </button>
         </div>
 
-        {/* Renewal Status + V3 Risk + Alerts */}
+        {/* Renewal Status + V3 Risk */}
         <div style={{ marginTop: 8 }}>
           <VendorRenewalStatusPanel
             vendorId={vendor.id}
@@ -216,12 +213,23 @@ export default function AdminVendorDetailPage() {
           />
         </div>
 
-        {/* 🔥 Renewal Communication Log Panel */}
+        {/* 🔥 Renewal Upload Panel */}
+        <div style={{ marginTop: 30 }}>
+          <RenewalUploadPanel
+            vendorId={vendor.id}
+            orgId={vendor.org_id}
+            onComplete={() => {
+              router.replace(router.asPath); // reload page after upload
+            }}
+          />
+        </div>
+
+        {/* 🔥 Renewal Communication Log */}
         <div style={{ marginTop: 30 }}>
           <RenewalCommunicationLog vendorId={vendor.id} />
         </div>
 
-        {/* Simple policy list preview (optional) */}
+        {/* Policies */}
         <div style={{ marginTop: 30 }}>
           <h2
             style={{
