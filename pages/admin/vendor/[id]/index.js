@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import VendorRenewalStatusPanel from "../../../../components/renewals/VendorRenewalStatusPanel";
 import RenewalCommunicationLog from "../../../../components/renewals/RenewalCommunicationLog";
 import RenewalUploadPanel from "../../../../components/renewals/RenewalUploadPanel";
+import RenewalPredictionPanel from "../../../../components/renewals/RenewalPredictionPanel";
 
 export default function AdminVendorDetailPage() {
   const router = useRouter();
@@ -219,9 +220,14 @@ export default function AdminVendorDetailPage() {
             vendorId={vendor.id}
             orgId={vendor.org_id}
             onComplete={() => {
-              router.replace(router.asPath); // reload page after upload
+              router.replace(router.asPath);
             }}
           />
+        </div>
+
+        {/* 🔮 AI Renewal Prediction Panel */}
+        <div style={{ marginTop: 30 }}>
+          <RenewalPredictionPanel vendorId={vendor.id} orgId={vendor.org_id} />
         </div>
 
         {/* 🔥 Renewal Communication Log */}
@@ -288,6 +294,7 @@ export default function AdminVendorDetailPage() {
                     </tr>
                   ))}
                 </tbody>
+              </tbody>
               </table>
             </div>
           )}
@@ -297,7 +304,7 @@ export default function AdminVendorDetailPage() {
   );
 }
 
-/* Table styles reused */
+/* Table styles */
 const th = {
   padding: "8px 10px",
   background: "rgba(15,23,42,0.98)",
