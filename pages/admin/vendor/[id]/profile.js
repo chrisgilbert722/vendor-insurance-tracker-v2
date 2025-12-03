@@ -29,11 +29,11 @@ export default function AdminVendorProfile() {
   const [overview, setOverview] = useState(null);
   const [error, setError] = useState("");
 
-  // Email sending state
+  // Email state
   const [emailSending, setEmailSending] = useState(false);
   const [emailMessage, setEmailMessage] = useState("");
 
-  // 📌 NEW: Rule Engine V3 state
+  // 🔧 NEW: Rule Engine V3 state
   const [engineRunning, setEngineRunning] = useState(false);
   const [engineMessage, setEngineMessage] = useState("");
 
@@ -47,7 +47,9 @@ export default function AdminVendorProfile() {
 
         const res = await fetch(`/api/admin/vendor/overview?id=${id}`);
         const json = await res.json();
-        if (!json.ok) throw new Error(json.error || "Failed to load vendor profile.");
+        if (!json.ok) {
+          throw new Error(json.error || "Failed to load vendor profile.");
+        }
 
         setOverview(json);
       } catch (err) {
@@ -62,7 +64,7 @@ export default function AdminVendorProfile() {
   }, [id]);
 
   /* ============================================================
-     UPDATED EMAIL SENDER — Now calls /api/email/send
+     EMAIL SENDER — calls /api/email/send
   ============================================================ */
   async function handleSendEmail(type) {
     if (!overview?.vendor) return;
@@ -77,17 +79,14 @@ export default function AdminVendorProfile() {
         case "request":
           payload.template = "upload-request";
           break;
-
         case "fix":
           payload.template = "fix-issues";
           payload.issues = overview.alerts || [];
           break;
-
         case "renewal":
           payload.template = "renewal-reminder";
           payload.expirationDate = overview.metrics?.expirationDate || null;
           break;
-
         default:
           throw new Error("Unknown email action.");
       }
@@ -111,7 +110,7 @@ export default function AdminVendorProfile() {
   }
 
   /* ============================================================
-     📌 NEW — RUN RULE ENGINE V3
+     🔥 RUN RULE ENGINE V3 — calls /api/engine/run-v3
   ============================================================ */
   async function handleRunEngine() {
     if (!overview?.vendor || !overview?.org) return;
@@ -136,11 +135,14 @@ export default function AdminVendorProfile() {
         `Rule Engine V3 complete — ${json.failedCount} failures detected.`
       );
 
-      // 🔄 Refresh vendor profile after re-evaluation
-      const updated = await fetch(`/api/admin/vendor/overview?id=${overview.vendor.id}`);
+      // Refresh overview after engine run
+      const updated = await fetch(
+        `/api/admin/vendor/overview?id=${overview.vendor.id}`
+      );
       const updatedJson = await updated.json();
-      if (updatedJson.ok) setOverview(updatedJson);
-
+      if (updatedJson.ok) {
+        setOverview(updatedJson);
+      }
     } catch (err) {
       console.error("[RunEngine ERROR]", err);
       setEngineMessage(err.message || "Failed to run Rule Engine V3.");
@@ -193,6 +195,7 @@ export default function AdminVendorProfile() {
   }
 
   const { vendor, org, metrics, alerts, requirements, timeline, portalToken } = overview;
+
   const criticalAlerts = alerts.filter((a) => a.severity === "critical");
   const highAlerts = alerts.filter((a) => a.severity === "high");
   const infoAlerts = alerts.filter((a) => a.severity === "info" || !a.severity);
@@ -206,7 +209,6 @@ export default function AdminVendorProfile() {
       }}
     >
       <div style={{ maxWidth: 1200, margin: "0 auto" }}>
-        
         {/* HEADER */}
         <div
           style={{
@@ -226,6 +228,448 @@ export default function AdminVendorProfile() {
               }}
             >
               Admin · Vendor Profile
+            </div>
+
+            <h1
+              style={{
+                margin: "4px 0 6px 0",
+                fontSize: 26,
+                background: "linear-gradient(90deg,#38bdf8,#a855f7,#22c55e)",
+                WebkitBackgroundClip: "text",
+                color: "transparent",
+              }}
+            >
+              {vendor?.name || "Vendor"}
+            </h1>
+
+            <div style={{ fontSize: 13, color: GP.textSoft }}>
+              Organization:{" "}
+              <span style={{ color: "#e5e7eb" }}>{org?.name || "Unknown org"}</span>
+            </div>
+
+            {portalToken && (
+              <div style={{ marginTop: 4, fontSize: 11, color: GP.textSoft }}>
+                Portal token linked ·{" "}
+                <code
+                  style={{
+                    background: "rgba(15,23,42,0.9)",
+                    padding: "2px 6px",
+                    borderRadius: 6,
+                    border: `1px solid ${GP.border}`,
+                  }}
+                >
+                  {portalToken}
+                </code>
+              </div>
+            )}
+          </div>
+
+          {/* SUMMARY STATS */}
+          <div
+            style={{
+              display: "flex",
+              flexWrap: "wrap",
+              gap: 10,
+              alignSelf: "flex-start",
+              justifyContent: "flex-end",
+            }}
+          >
+            <div
+              style={{
+                minWidth: 120,
+                padding: "6px 10px",
+                borderRadius: 12,
+                border: `1px solid ${GP.border}`,
+                background: "rgba(15,23,42,0.95)",
+              }}
+            >
+              <div style={{ fontSize: 11, color: GP.textSoft }}>Total Alerts</div>
+              <div style={{ fontSize: 18, fontWeight: 600 }}>
+                {metrics?.totalAlerts ?? alerts.length}
+              </div>
+            </div>
+
+            <div
+              style={{
+                minWidth: 120,
+                padding: "6px 10px",
+                borderRadius: 12,
+                border: "1px solid rgba(248,113,113,0.5)",
+                background: "rgba(120,53,15,0.4)",
+              }}
+            >
+              <div style={{ fontSize: 11, color: GP.textSoft }}>Critical / High</div>
+              <div style={{ fontSize: 16, fontWeight: 600 }}>
+                {(metrics?.criticalAlerts ?? criticalAlerts.length) +
+                  (metrics?.highAlerts ?? highAlerts.length)}
+              </div>
+            </div>
+
+            <div
+              style={{
+                minWidth: 140,
+                padding: "6px 10px",
+                borderRadius: 12,
+                border: `1px solid ${GP.border}`,
+                background: "rgba(15,23,42,0.95)",
+              }}
+            >
+              <div style={{ fontSize: 11, color: GP.textSoft }}>Coverage Req.</div>
+              <div style={{ fontSize: 16, fontWeight: 600 }}>
+                {metrics?.coverageCount ?? requirements.length}
+              </div>
+            </div>
+
+            <div
+              style={{
+                minWidth: 160,
+                padding: "6px 10px",
+                borderRadius: 12,
+                border: `1px solid ${GP.border}`,
+                background: "rgba(15,23,42,0.95)",
+              }}
+            >
+              <div style={{ fontSize: 11, color: GP.textSoft }}>Last Activity</div>
+              <div style={{ fontSize: 12 }}>
+                {formatDateTime(metrics?.lastActivity)}
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* MAIN GRID */}
+        <div
+          style={{
+            display: "grid",
+            gridTemplateColumns: "minmax(0,1.3fr) minmax(0,1.1fr)",
+            gap: 20,
+          }}
+        >
+          {/* LEFT COLUMN */}
+          <div>
+            {/* ALERTS PANEL */}
+            <div
+              style={{
+                borderRadius: 16,
+                padding: 16,
+                border: `1px solid ${GP.border}`,
+                background: "rgba(15,23,42,0.96)",
+                marginBottom: 18,
+              }}
+            >
+              <div
+                style={{
+                  display: "flex",
+                  justifyContent: "space-between",
+                  marginBottom: 8,
+                }}
+              >
+                <h3 style={{ margin: 0, fontSize: 15 }}>Alerts by Severity</h3>
+
+                <div style={{ fontSize: 11, display: "flex", gap: 8 }}>
+                  <span style={{ color: GP.neonRed }}>
+                    ● Critical: {criticalAlerts.length}
+                  </span>
+                  <span style={{ color: GP.neonGold }}>
+                    ● High: {highAlerts.length}
+                  </span>
+                  <span style={{ color: GP.neonBlue }}>
+                    ● Info: {infoAlerts.length}
+                  </span>
+                </div>
+              </div>
+
+              {alerts.length === 0 ? (
+                <div style={{ fontSize: 13, color: GP.textSoft }}>
+                  No alerts for this vendor.
+                </div>
+              ) : (
+                <div
+                  style={{
+                    display: "grid",
+                    gridTemplateColumns: "repeat(auto-fit,minmax(220px,1fr))",
+                    gap: 10,
+                  }}
+                >
+                  {criticalAlerts.map((a, idx) => (
+                    <div
+                      key={idx}
+                      style={{
+                        borderRadius: 12,
+                        padding: 10,
+                        border: "1px solid rgba(248,113,113,0.7)",
+                        background: "rgba(127,29,29,0.35)",
+                        fontSize: 12,
+                      }}
+                    >
+                      <div style={{ color: GP.neonRed, fontWeight: 600 }}>
+                        {a.label || a.code}
+                      </div>
+                      <div style={{ color: GP.textSoft }}>{a.message}</div>
+                    </div>
+                  ))}
+
+                  {highAlerts.map((a, idx) => (
+                    <div
+                      key={idx}
+                      style={{
+                        borderRadius: 12,
+                        padding: 10,
+                        border: "1px solid rgba(250,204,21,0.7)",
+                        background: "rgba(120,53,15,0.35)",
+                        fontSize: 12,
+                      }}
+                    >
+                      <div style={{ color: GP.neonGold, fontWeight: 600 }}>
+                        {a.label || a.code}
+                      </div>
+                      <div style={{ color: GP.textSoft }}>{a.message}</div>
+                    </div>
+                  ))}
+
+                  {infoAlerts.map((a, idx) => (
+                    <div
+                      key={idx}
+                      style={{
+                        borderRadius: 12,
+                        padding: 10,
+                        border: "1px solid rgba(148,163,184,0.6)",
+                        background: "rgba(15,23,42,0.9)",
+                        fontSize: 12,
+                      }}
+                    >
+                      <div style={{ color: GP.neonBlue, fontWeight: 600 }}>
+                        {a.label || a.code}
+                      </div>
+                      <div style={{ color: GP.textSoft }}>{a.message}</div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {/* REQUIREMENTS PANEL */}
+            <div
+              style={{
+                borderRadius: 16,
+                padding: 16,
+                border: `1px solid ${GP.border}`,
+                background: "rgba(15,23,42,0.96)",
+                marginBottom: 18,
+              }}
+            >
+              <h3 style={{ margin: 0, fontSize: 15, marginBottom: 8 }}>
+                Coverage Requirements
+              </h3>
+
+              {requirements.length === 0 ? (
+                <div style={{ fontSize: 13, color: GP.textSoft }}>
+                  No requirements configured.
+                </div>
+              ) : (
+                <table style={{ width: "100%", fontSize: 12 }}>
+                  <thead>
+                    <tr>
+                      <th
+                        style={{
+                          textAlign: "left",
+                          padding: "6px 4px",
+                          borderBottom: `1px solid ${GP.border}`,
+                          color: GP.textSoft,
+                        }}
+                      >
+                        Coverage
+                      </th>
+                      <th
+                        style={{
+                          textAlign: "left",
+                          padding: "6px 4px",
+                          borderBottom: `1px solid ${GP.border}`,
+                          color: GP.textSoft,
+                        }}
+                      >
+                        Limit
+                      </th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {requirements.map((r, idx) => (
+                      <tr key={idx}>
+                        <td style={{ padding: "6px 4px" }}>{r.name}</td>
+                        <td
+                          style={{
+                            padding: "6px 4px",
+                            color: GP.neonGold,
+                          }}
+                        >
+                          {r.limit || "—"}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              )}
+            </div>
+            {/* TIMELINE PANEL (ADMIN VIEW) */}
+            <div
+              style={{
+                borderRadius: 16,
+                padding: 16,
+                border: `1px solid ${GP.border}`,
+                background: "rgba(15,23,42,0.96)",
+                marginBottom: 18,
+              }}
+            >
+              <h3
+                style={{
+                  marginTop: 0,
+                  marginBottom: 8,
+                  fontSize: 15,
+                }}
+              >
+                Activity Timeline
+              </h3>
+
+              {timeline.length === 0 ? (
+                <div style={{ fontSize: 13, color: GP.textSoft }}>
+                  No recorded activity for this vendor yet.
+                </div>
+              ) : (
+                <div
+                  style={{
+                    maxHeight: 260,
+                    overflowY: "auto",
+                    paddingRight: 4,
+                  }}
+                >
+                  {timeline.map((item, idx) => (
+                    <div
+                      key={idx}
+                      style={{
+                        marginBottom: 10,
+                        padding: 10,
+                        borderRadius: 10,
+                        background: "rgba(15,23,42,0.98)",
+                        border: "1px solid rgba(148,163,184,0.4)",
+                        fontSize: 12,
+                      }}
+                    >
+                      {/* ACTION LABEL */}
+                      <div
+                        style={{
+                          fontSize: 11,
+                          textTransform: "uppercase",
+                          letterSpacing: 0.4,
+                          marginBottom: 2,
+                          color:
+                            item.severity === "critical"
+                              ? GP.neonRed
+                              : item.severity === "warning"
+                              ? GP.neonGold
+                              : GP.neonBlue,
+                        }}
+                      >
+                        {item.action?.replace(/_/g, " ") || "Event"}
+                      </div>
+
+                      {/* MESSAGE */}
+                      <div style={{ color: GP.textSoft }}>{item.message}</div>
+
+                      {/* DATE */}
+                      <div
+                        style={{
+                          marginTop: 4,
+                          fontSize: 11,
+                          color: GP.textSoft,
+                          opacity: 0.7,
+                        }}
+                      >
+                        {formatDateTime(item.created_at)}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* RIGHT COLUMN — Compliance Snapshot, Quick Actions, Notes */}
+          <div>
+            {/* COMPLIANCE SNAPSHOT PANEL */}
+            <div
+              style={{
+                borderRadius: 16,
+                padding: 16,
+                border: `1px solid ${GP.border}`,
+                background: "rgba(15,23,42,0.96)",
+                marginBottom: 18,
+              }}
+            >
+              <h3 style={{ marginTop: 0, marginBottom: 6, fontSize: 15 }}>
+                Compliance Snapshot
+              </h3>
+
+              <div
+                style={{
+                  fontSize: 13,
+                  color: GP.textSoft,
+                  lineHeight: 1.5,
+                }}
+              >
+                {alerts.length === 0 ? (
+                  <>
+                    This vendor currently has{" "}
+                    <strong style={{ color: GP.neonGreen }}>no active alerts</strong>.
+                    Their compliance posture is good — review their COI for final validation.
+                  </>
+                ) : (
+                  <>
+                    This vendor has{" "}
+                    <strong style={{ color: GP.neonRed }}>
+                      {criticalAlerts.length} critical
+                    </strong>{" "}
+                    and{" "}
+                    <strong style={{ color: GP.neonGold }}>
+                      {highAlerts.length} high severity
+                    </strong>{" "}
+                    alerts, plus{" "}
+                    <strong style={{ color: GP.neonBlue }}>
+                      {infoAlerts.length} informational items
+                    </strong>
+                    .<br />
+                    Focus on critical and high items first to restore compliance.
+                  </>
+                )}
+              </div>
+
+              <div
+                style={{
+                  marginTop: 10,
+                  padding: 10,
+                  borderRadius: 12,
+                  background: "rgba(15,23,42,0.98)",
+                  border: "1px dashed rgba(148,163,184,0.7)",
+                  fontSize: 12,
+                  color: GP.textSoft,
+                }}
+              >
+                <div
+                  style={{
+                    marginBottom: 6,
+                    fontWeight: 600,
+                    color: GP.neonBlue,
+                  }}
+                >
+                  Suggested Review Order
+                </div>
+
+                <ol style={{ paddingLeft: 18, margin: 0 }}>
+                  <li>Fix all critical alerts immediately.</li>
+                  <li>Resolve high-severity alerts next.</li>
+                  <li>Verify coverage requirements match the COI.</li>
+                  <li>Ensure the COI upload date is current.</li>
+                </ol>
+              </div>
             </div>
             {/* QUICK ACTIONS PANEL — EMAILS + RULE ENGINE */}
             <div
@@ -302,7 +746,7 @@ export default function AdminVendorProfile() {
                   ⏰ Send Renewal Reminder
                 </button>
 
-                {/* 📌 NEW BUTTON — RUN RULE ENGINE V3 */}
+                {/* NEW: Run Rule Engine V3 */}
                 <button
                   type="button"
                   onClick={handleRunEngine}
@@ -347,9 +791,10 @@ export default function AdminVendorProfile() {
               <h3 style={{ marginTop: 0, marginBottom: 8, fontSize: 15 }}>
                 Internal Notes (Admin Only)
               </h3>
+
               <textarea
                 rows={4}
-                placeholder="Example: Approved exception for Auto Liability limit based on broker letter…"
+                placeholder="Example: Approved exception for Auto Liability limit based on broker letter dated 1/20/2025…"
                 style={{
                   width: "100%",
                   minHeight: 80,
@@ -365,7 +810,6 @@ export default function AdminVendorProfile() {
                 }}
               />
             </div>
-
           </div>
         </div>
       </div>
