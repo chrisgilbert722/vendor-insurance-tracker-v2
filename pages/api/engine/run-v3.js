@@ -1,13 +1,13 @@
 // pages/api/engine/run-v3.js
+// NEW Neon-based Rule Engine V3 (per-vendor evaluator)
+
+import { sql } from "../../../lib/db";          // adjust path if your db helper lives elsewhere
 import { supabase } from "../../../lib/supabaseClient";
 
-export const config = {
-  api: { bodyParser: true },
-};
-
-/* -----------------------------------------------------------
-   HELPER: Build flattened policy object from JSON
-------------------------------------------------------------*/
+/* ============================================================
+   HELPER: Flatten policies.extracted JSON into one object
+   (re-using your existing pattern, but now feeding Neon rules)
+============================================================ */
 function buildPolicyObj(policies = []) {
   const obj = {};
   for (const p of policies) {
@@ -19,347 +19,218 @@ function buildPolicyObj(policies = []) {
         extracted = {};
       }
     }
-    Object.assign(obj, extracted);
+    if (extracted && typeof extracted === "object") {
+      Object.assign(obj, extracted);
+    }
   }
   return obj;
 }
 
-/* -----------------------------------------------------------
-   HELPER: Basic operator evaluation
-------------------------------------------------------------*/
-function simpleCompare(operator, actual, expected) {
-  switch (operator) {
-    case "=":
-    case "equals":
-      return String(actual) == String(expected);
+/* ============================================================
+   RULE ENGINE V3 EVALUATOR
+   - Uses Neon tables:
+     • rule_groups
+     • rules_v3
+     • rule_results_v3
+   - Reads policy data from Supabase (policies.extracted)
+   - Writes alerts into Neon vendor_alerts
+============================================================ */
 
-    case "!=":
-    case "not_equals":
-      return String(actual) != String(expected);
-
-    case ">":
-      return Number(actual) > Number(expected);
-
-    case "<":
-      return Number(actual) < Number(expected);
-
-    case ">=":
-    case "gte":
-      return Number(actual) >= Number(expected);
-
-    case "<=":
-    case "lte":
-      return Number(actual) <= Number(expected);
-
-    case "contains":
-      return String(actual).toLowerCase().includes(String(expected).toLowerCase());
-
-    default:
-      return false;
-  }
-}
-
-/* -----------------------------------------------------------
-   HELPER: Evaluate rule + missing detection
-------------------------------------------------------------*/
-function evaluateRuleFull(rule, policyObj) {
-  const conditions = Array.isArray(rule.conditions) && rule.conditions.length
-    ? rule.conditions
-    : [
-        {
-          field_key: rule.field_key,
-          operator: rule.operator,
-          expected_value: rule.expected_value,
-        },
-      ];
-
-  const missing = [];
-
-  // Detect missing fields
-  for (const c of conditions) {
-    const val = policyObj[c.field_key];
-    if (val === undefined || val === null || val === "") {
-      missing.push(c.field_key);
-    }
-  }
-
-  if (missing.length > 0) {
-    return { passed: false, missing, fail: false };
-  }
-
-  // Evaluate each condition
-  let allPassed = true;
-  for (const c of conditions) {
-    const actual = policyObj[c.field_key];
-    if (!simpleCompare(c.operator, actual, c.expected_value)) {
-      allPassed = false;
-      break;
-    }
-  }
-
-  return { passed: allPassed, missing: [], fail: !allPassed };
-}
-
-/* -----------------------------------------------------------
-   HELPER: Risk score calculator
-------------------------------------------------------------*/
-function computeRisk(failingCount, missingCount) {
-  let score = 100;
-  score -= failingCount * 20;
-  score -= missingCount * 10;
-  if (score < 0) score = 0;
-  return score;
-}
-
-/* -----------------------------------------------------------
-   ENGINE RUNNER (V3.5)
-------------------------------------------------------------*/
 export default async function handler(req, res) {
   if (req.method !== "POST") {
     return res.status(405).json({ ok: false, error: "POST only" });
   }
 
   try {
-    const now = new Date().toISOString();
+    const { vendorId, orgId } = req.body;
 
-    /* -----------------------------------------------------------
-       1. Load ALL vendors
-    ----------------------------------------------------------- */
-    const { data: vendors, error: vErr } = await supabase
-      .from("vendors")
-      .select("id, org_id, name");
-
-    if (vErr) throw vErr;
-
-    /* -----------------------------------------------------------
-       2. Load all rules w/ group join
-    ----------------------------------------------------------- */
-    const { data: rawRules, error: rErr } = await supabase
-      .from("requirements_rules_v2")
-      .select(`
-        id,
-        group_id,
-        logic,
-        conditions,
-        field_key,
-        operator,
-        expected_value,
-        severity,
-        requirement_text,
-        internal_note,
-        is_active,
-        group:requirements_groups_v2(id, name, org_id, is_active)
-      `);
-
-    if (rErr) throw rErr;
-
-    const rules =
-      rawRules?.map((r) => {
-        let conditions = [];
-        try {
-          conditions = Array.isArray(r.conditions) ? r.conditions : [];
-        } catch {
-          conditions = [];
-        }
-
-        if (!conditions.length) {
-          conditions = [
-            {
-              field_key: r.field_key,
-              operator: r.operator,
-              expected_value: r.expected_value,
-            },
-          ];
-        }
-
-        return {
-          id: r.id,
-          group_id: r.group_id,
-          logic: r.logic || "all",
-          conditions,
-          field_key: r.field_key,
-          operator: r.operator,
-          expected_value: r.expected_value,
-          severity: r.severity || "medium",
-          requirement_text: r.requirement_text || "",
-          internal_note: r.internal_note || "",
-          is_active: r.is_active !== false,
-          group: r.group,
-        };
-      }) || [];
-
-    /* -----------------------------------------------------------
-       Prepare accumulators
-    ----------------------------------------------------------- */
-    const alertsToInsert = [];
-    const cacheRows = [];
-    const riskRows = [];
-
-    let totalRulesEvaluated = 0;
-
-    /* -----------------------------------------------------------
-       3. Evaluate vendor by vendor
-    ----------------------------------------------------------- */
-    for (const v of vendors) {
-      const vendorId = v.id;
-      const vendorOrgId = v.org_id;
-
-      // Load policies
-      const { data: policies, error: pErr } = await supabase
-        .from("policies")
-        .select("id, extracted")
-        .eq("vendor_id", vendorId);
-
-      if (pErr) {
-        console.error("Error loading policies:", pErr);
-        continue;
-      }
-
-      const hasPolicies = policies && policies.length > 0;
-      const policyObj = hasPolicies ? buildPolicyObj(policies) : {};
-
-      // Filter rules for org + active state
-      const vendorRules = rules.filter(
-        (r) =>
-          r.is_active &&
-          r.group &&
-          r.group.org_id === vendorOrgId &&
-          (r.group.is_active === null || r.group.is_active === true)
-      );
-
-      const missing = [];
-      const failing = [];
-      const passing = [];
-
-      // Evaluate each rule
-      for (const rule of vendorRules) {
-        totalRulesEvaluated++;
-
-        if (!hasPolicies) {
-          missing.push({
-            rule_id: rule.id,
-            rule: rule.requirement_text || rule.field_key,
-            detail: "No policy uploaded",
-          });
-          continue;
-        }
-
-        const evaluation = evaluateRuleFull(rule, policyObj);
-
-        if (evaluation.missing.length > 0) {
-          missing.push({
-            rule_id: rule.id,
-            rule: rule.requirement_text || rule.field_key,
-            detail: `Missing fields: ${evaluation.missing.join(", ")}`,
-          });
-          continue;
-        }
-
-        if (!evaluation.passed) {
-          failing.push({
-            rule_id: rule.id,
-            rule: rule.requirement_text || rule.field_key,
-            expected: rule.conditions[0]?.expected_value,
-            found: policyObj[rule.conditions[0]?.field_key] ?? null,
-            severity: rule.severity,
-          });
-
-          alertsToInsert.push({
-            vendor_id: vendorId,
-            org_id: vendorOrgId,
-            rule_id: rule.id,
-            group_id: rule.group_id,
-            rule_name: rule.requirement_text || rule.field_key,
-            vendor_name: v.name,
-            severity: rule.severity || "medium",
-            type: "rule_fail",
-            status: "open",
-            message: `Expected "${rule.conditions[0]?.expected_value}", found "${policyObj[rule.conditions[0]?.field_key] ?? "N/A"}".`,
-            requirement_text: rule.requirement_text || null,
-            field_key: rule.conditions[0]?.field_key,
-            created_at: now,
-            last_seen_at: now,
-          });
-        } else {
-          passing.push({
-            rule_id: rule.id,
-            rule: rule.requirement_text || rule.field_key,
-          });
-        }
-      }
-
-      // Summary + status
-      const summary =
-        failing.length > 0
-          ? `${failing.length} failing / ${missing.length} missing`
-          : missing.length > 0
-          ? `${missing.length} missing`
-          : "PASS";
-
-      const status = failing.length > 0 ? "fail" : "pass";
-      const riskScore = computeRisk(failing.length, missing.length);
-
-      cacheRows.push({
-        vendor_id: vendorId,
-        org_id: vendorOrgId,
-        missing,
-        failing,
-        passing,
-        summary,
-        status,
-        last_checked_at: now,
-        updated_at: now,
-      });
-
-      riskRows.push({
-        vendor_id: vendorId,
-        org_id: vendorOrgId,
-        risk_score: riskScore,
-        days_left: 0,
-        elite_status:
-          riskScore >= 90 ? "Elite" : riskScore >= 70 ? "Preferred" : "Watch",
-        created_at: now,
+    if (!vendorId || !orgId) {
+      return res.status(400).json({
+        ok: false,
+        error: "Missing vendorId or orgId in body.",
       });
     }
 
-    /* -----------------------------------------------------------
-       4. INSERT ALERTS
-    ----------------------------------------------------------- */
-    if (alertsToInsert.length > 0) {
-      const { error: aErr } = await supabase
-        .from("alerts")
-        .insert(alertsToInsert);
-      if (aErr) console.error("Alert insert error", aErr);
+    const now = new Date();
+
+    /* --------------------------------------------------------
+       1) LOAD POLICY DATA (from Supabase)
+    --------------------------------------------------------- */
+    const { data: policies, error: pErr } = await supabase
+      .from("policies")
+      .select("id, extracted")
+      .eq("vendor_id", vendorId);
+
+    if (pErr) {
+      console.error("[RULE V3] Error loading policies from Supabase:", pErr);
+      return res.status(500).json({ ok: false, error: "Failed to load policies." });
     }
 
-    /* -----------------------------------------------------------
-       5. UPSERT VENDOR COMPLIANCE CACHE
-    ----------------------------------------------------------- */
-    for (const c of cacheRows) {
-      const { error: cErr } = await supabase
-        .from("vendor_compliance_cache")
-        .upsert(c, { onConflict: "vendor_id" });
-      if (cErr) console.error("Cache upsert error:", cErr);
+    const hasPolicies = policies && policies.length > 0;
+    const policyObj = hasPolicies ? buildPolicyObj(policies) : {};
+
+    /* --------------------------------------------------------
+       2) LOAD RULE GROUPS + RULES (from Neon)
+    --------------------------------------------------------- */
+    const groups = await sql`
+      SELECT id, org_id, label, description, severity, active
+      FROM rule_groups
+      WHERE org_id = ${orgId} AND active = TRUE
+      ORDER BY id ASC;
+    `;
+
+    if (!groups.length) {
+      return res.status(200).json({
+        ok: true,
+        message: "No active rule groups for this org.",
+        results: [],
+        failed: 0,
+      });
     }
 
-    /* -----------------------------------------------------------
-       6. INSERT RISK HISTORY RECORDS
-    ----------------------------------------------------------- */
-    if (riskRows.length > 0) {
-      const { error: rErr2 } = await supabase
-        .from("risk_history")
-        .insert(riskRows);
-      if (rErr2) console.error("Risk history insert error", rErr2);
+    const rules = await sql`
+      SELECT id, group_id, type, field, condition, value, message, severity, active
+      FROM rules_v3
+      WHERE group_id IN (
+        SELECT id FROM rule_groups WHERE org_id = ${orgId} AND active = TRUE
+      )
+      AND active = TRUE
+      ORDER BY id ASC;
+    `;
+
+    if (!rules.length) {
+      return res.status(200).json({
+        ok: true,
+        message: "No active rules for this org.",
+        results: [],
+        failed: 0,
+      });
+    }
+
+    /* --------------------------------------------------------
+       3) EVALUATE RULES
+    --------------------------------------------------------- */
+    const results = [];
+
+    for (const rule of rules) {
+      let passed = true;
+
+      const field = rule.field;          // e.g. "general_liability_limit"
+      const cond = rule.condition;       // e.g. "gte", "exists"
+      const val = rule.value;            // expected value
+      const actual = policyObj[field];   // from flattened extracted COI
+
+      switch (rule.type) {
+        case "coverage":
+          if (cond === "exists") passed = actual !== undefined && actual !== null && actual !== "";
+          if (cond === "missing") passed = actual === undefined || actual === null || actual === "";
+          break;
+
+        case "limit": {
+          const numeric = Number(actual || 0);
+          const limit = Number(val || 0);
+          if (cond === "gte") passed = numeric >= limit;
+          if (cond === "lte") passed = numeric <= limit;
+          break;
+        }
+
+        case "endorsement": {
+          const endorsements = Array.isArray(policyObj.endorsements)
+            ? policyObj.endorsements
+            : [];
+          if (cond === "requires") passed = endorsements.includes(val);
+          if (cond === "missing") passed = !endorsements.includes(val);
+          break;
+        }
+
+        case "date": {
+          const date = actual ? new Date(actual) : null;
+          const compare = val ? new Date(val) : null;
+          if (!date || !compare || Number.isNaN(date.getTime()) || Number.isNaN(compare.getTime())) {
+            passed = false;
+          } else {
+            if (cond === "before") passed = date < compare;
+            if (cond === "after") passed = date > compare;
+          }
+          break;
+        }
+
+        case "custom":
+          // Placeholder for AI-powered or JS-expression rules
+          passed = true;
+          break;
+
+        default:
+          passed = true;
+      }
+
+      results.push({
+        ruleId: rule.id,
+        passed,
+        message: rule.message,
+        severity: rule.severity,
+      });
+    }
+
+    /* --------------------------------------------------------
+       4) WRITE RULE RESULTS (rule_results_v3 in Neon)
+    --------------------------------------------------------- */
+    await sql`
+      DELETE FROM rule_results_v3
+      WHERE vendor_id = ${vendorId};
+    `;
+
+    for (const r of results) {
+      await sql`
+        INSERT INTO rule_results_v3 (vendor_id, rule_id, passed, message, severity)
+        VALUES (
+          ${vendorId},
+          ${r.ruleId},
+          ${r.passed},
+          ${r.message},
+          ${r.severity}
+        );
+      `;
+    }
+
+    /* --------------------------------------------------------
+       5) GENERATE ALERTS FOR FAILED RULES (Neon vendor_alerts)
+    --------------------------------------------------------- */
+    // clear old rule-based alerts for this vendor
+    await sql`
+      DELETE FROM vendor_alerts
+      WHERE vendor_id = ${vendorId};
+    `;
+
+    const failed = results.filter((r) => !r.passed);
+
+    for (const f of failed) {
+      await sql`
+        INSERT INTO vendor_alerts (vendor_id, org_id, code, message, severity)
+        VALUES (
+          ${vendorId},
+          ${orgId},
+          ${"RULE_" + f.ruleId},
+          ${f.message},
+          ${f.severity}
+        );
+      `;
     }
 
     return res.status(200).json({
       ok: true,
-      vendors_evaluated: vendors.length,
-      rules_evaluated: totalRulesEvaluated,
-      alerts_created: alertsToInsert.length,
+      vendorId,
+      orgId,
+      rulesEvaluated: results.length,
+      failedCount: failed.length,
+      results,
     });
   } catch (err) {
-    console.error("ENGINE V3.5 RUN ERROR:", err);
-    return res.status(500).json({ ok: false, error: err.message || "Engine failed" });
+    console.error("[RULE ENGINE V3 Neon ERROR]", err);
+    return res.status(500).json({
+      ok: false,
+      error: err.message || "Rule Engine V3 failed.",
+    });
   }
 }
+
