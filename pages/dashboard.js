@@ -224,7 +224,6 @@ function renderComplianceBadge(vendorId, complianceMap) {
     </span>
   );
 }
-
 /* ===========================
    MAIN DASHBOARD
 =========================== */
@@ -795,7 +794,6 @@ export default function Dashboard() {
       <SlaBreachWidget orgId={activeOrgId} />
       <CriticalVendorWatchlist orgId={activeOrgId} />
       <AlertHeatSignature orgId={activeOrgId} />
-
       {/* RENEWAL INTELLIGENCE V3 — HEATMAP + BACKLOG */}
       <RenewalHeatmap range={90} />
       <RenewalBacklog />
