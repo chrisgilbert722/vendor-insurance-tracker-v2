@@ -244,8 +244,8 @@ export default function Dashboard() {
   const [eliteMap, setEliteMap] = useState({});
   const [eliteSummary, setEliteSummary] = useState({ pass: 0, warn: 0, fail: 0 });
 
-  const [alerts, setAlerts] = useState([]);
   const [showAlerts, setShowAlerts] = useState(false);
+  const [alertSummary, setAlertSummary] = useState(null);
 
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [drawerVendor, setDrawerVendor] = useState(null);
@@ -261,11 +261,7 @@ export default function Dashboard() {
   // Derived metrics
   const avgScore = dashboard?.globalScore ?? 0;
   const totalVendors = dashboard?.vendorCount ?? 0;
-  const alertsCount =
-    (dashboard?.alerts?.expired ?? 0) +
-    (dashboard?.alerts?.critical30d ?? 0) +
-    (dashboard?.alerts?.warning90d ?? 0) +
-    (dashboard?.alerts?.eliteFails ?? 0);
+  const alertsCount = alertSummary?.total ?? 0;
 
   /* LOAD DASHBOARD METRICS */
   useEffect(() => {
@@ -379,7 +375,7 @@ export default function Dashboard() {
 
     vendorIds.forEach((vendorId) => {
       const existing = engineMap[vendorId];
-      if (existing && (existing.loading === false && existing.loaded)) return;
+      if (existing && existing.loaded && existing.loading === false) return;
 
       setEngineMap((prev) => ({
         ...prev,
@@ -436,20 +432,28 @@ export default function Dashboard() {
     setEliteSummary({ pass, warn, fail });
   }, [eliteMap]);
 
-  /* LOAD ALERTS */
+  /* LOAD ALERT SUMMARY V3 */
   useEffect(() => {
     if (!activeOrgId) return;
-    async function loadAlerts() {
+
+    async function loadAlertSummary() {
       try {
-        const res = await fetch(`/api/alerts/get?orgId=${activeOrgId}`);
-        const data = await res.json();
-        if (data.ok) setAlerts(data.alerts);
+        const res = await fetch(
+          `/api/alerts/summary-v3?orgId=${encodeURIComponent(activeOrgId)}`
+        );
+        const json = await res.json();
+        if (json.ok) {
+          setAlertSummary(json);
+        } else {
+          console.error("[dashboard] alert summary error:", json.error);
+        }
       } catch (err) {
-        console.error("[dashboard] alerts error:", err);
+        console.error("[dashboard] alert summary error:", err);
       }
     }
-    loadAlerts();
-    const interval = setInterval(loadAlerts, 7000);
+
+    loadAlertSummary();
+    const interval = setInterval(loadAlertSummary, 15000);
     return () => clearInterval(interval);
   }, [activeOrgId]);
 
@@ -499,6 +503,17 @@ export default function Dashboard() {
       p.coverage_type?.toLowerCase().includes(t)
     );
   });
+
+  // Derive a compact list of top vendors by alert severity/total for the panel
+  const alertVendorsList = alertSummary
+    ? Object.values(alertSummary.vendors || {}).sort((a, b) => {
+        // sort: critical desc, high desc, total desc
+        if (b.critical !== a.critical) return b.critical - a.critical;
+        if (b.high !== a.high) return b.high - a.high;
+        return b.total - a.total;
+      })
+    : [];
+
   return (
     <div
       style={{
@@ -660,7 +675,7 @@ export default function Dashboard() {
                 color: "#e5e7eb",
               }}
             >
-              🔔 Alerts ({alerts.length})
+              🔔 Alerts ({alertsCount})
             </button>
           </div>
 
@@ -820,6 +835,179 @@ export default function Dashboard() {
           </div>
         </div>
       </div>
+
+      {/* ALERTS V3 PANEL (TOGGLE) */}
+      {showAlerts && (
+        <div
+          style={{
+            marginBottom: 26,
+            borderRadius: 20,
+            padding: 16,
+            border: "1px solid rgba(148,163,184,0.5)",
+            background: "rgba(15,23,42,0.97)",
+            boxShadow: "0 16px 40px rgba(15,23,42,0.9)",
+          }}
+        >
+          <div
+            style={{
+              display: "flex",
+              justifyContent: "space-between",
+              gap: 16,
+              flexWrap: "wrap",
+              marginBottom: 10,
+            }}
+          >
+            <div>
+              <div
+                style={{
+                  fontSize: 12,
+                  textTransform: "uppercase",
+                  letterSpacing: "0.16em",
+                  color: GP.textSoft,
+                  marginBottom: 4,
+                }}
+              >
+                Alerts V3 Overview
+              </div>
+              <div style={{ fontSize: 14, color: GP.text }}>
+                {alertSummary
+                  ? `${alertSummary.total} open alerts across ${
+                      Object.keys(alertSummary.vendors || {}).length
+                    } vendors.`
+                  : "Loading alert summary…"}
+              </div>
+            </div>
+          </div>
+
+          {alertSummary && (
+            <div
+              style={{
+                display: "grid",
+                gridTemplateColumns:
+                  "repeat(auto-fit,minmax(140px,1fr))",
+                gap: 10,
+                marginBottom: 12,
+              }}
+            >
+              <SeverityBox
+                label="Critical"
+                count={alertSummary.countsBySeverity?.critical ?? 0}
+                color={GP.neonRed}
+              />
+              <SeverityBox
+                label="High"
+                count={alertSummary.countsBySeverity?.high ?? 0}
+                color={GP.neonGold}
+              />
+              <SeverityBox
+                label="Medium"
+                count={alertSummary.countsBySeverity?.medium ?? 0}
+                color={GP.neonBlue}
+              />
+              <SeverityBox
+                label="Low"
+                count={alertSummary.countsBySeverity?.low ?? 0}
+                color={GP.neonGreen}
+              />
+            </div>
+          )}
+
+          {alertSummary && alertVendorsList.length > 0 && (
+            <div
+              style={{
+                marginTop: 8,
+                maxHeight: 220,
+                overflowY: "auto",
+                paddingRight: 4,
+              }}
+            >
+              <div
+                style={{
+                  fontSize: 11,
+                  textTransform: "uppercase",
+                  letterSpacing: "0.14em",
+                  color: GP.textSoft,
+                  marginBottom: 6,
+                }}
+              >
+                Vendors with Active Alerts
+              </div>
+              <table
+                style={{
+                  width: "100%",
+                  borderCollapse: "separate",
+                  borderSpacing: 0,
+                  fontSize: 12,
+                }}
+              >
+                <thead>
+                  <tr>
+                    <th style={{ ...th, fontSize: 11 }}>Vendor ID</th>
+                    <th style={{ ...th, fontSize: 11 }}>Total</th>
+                    <th style={{ ...th, fontSize: 11 }}>Critical</th>
+                    <th style={{ ...th, fontSize: 11 }}>High</th>
+                    <th style={{ ...th, fontSize: 11 }}>Medium</th>
+                    <th style={{ ...th, fontSize: 11 }}>Low</th>
+                    <th style={{ ...th, fontSize: 11 }}>Latest</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {alertVendorsList.slice(0, 12).map((v) => (
+                    <tr
+                      key={v.vendorId}
+                      style={{
+                        cursor: "pointer",
+                        background:
+                          "linear-gradient(90deg,rgba(15,23,42,0.98),rgba(15,23,42,0.94))",
+                      }}
+                      onClick={() => openDrawer(v.vendorId)}
+                    >
+                      <td style={td}>{v.vendorId}</td>
+                      <td style={td}>{v.total}</td>
+                      <td style={td}>{v.critical}</td>
+                      <td style={td}>{v.high}</td>
+                      <td style={td}>{v.medium}</td>
+                      <td style={td}>{v.low}</td>
+                      <td style={td}>
+                        {v.latest ? (
+                          <span
+                            style={{
+                              fontSize: 11,
+                              color:
+                                v.latest.severity === "critical"
+                                  ? GP.neonRed
+                                  : v.latest.severity === "high"
+                                  ? GP.neonGold
+                                  : GP.textSoft,
+                            }}
+                          >
+                            {v.latest.code} · {v.latest.message}
+                          </span>
+                        ) : (
+                          <span
+                            style={{
+                              fontSize: 11,
+                              color: GP.textMuted,
+                            }}
+                          >
+                            —
+                          </span>
+                        )}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+
+          {!alertSummary && (
+            <div style={{ fontSize: 12, color: GP.textSoft, marginTop: 8 }}>
+              Loading alert summary…
+            </div>
+          )}
+        </div>
+      )}
 
       {/* TELEMETRY CHARTS */}
       <div
@@ -1061,7 +1249,6 @@ export default function Dashboard() {
                   const ai = computeAiRisk({ risk, elite, compliance });
                   const engine = engineMap[p.vendor_id];
 
-                  // derive V3 tier for display
                   let v3Tier = "Unknown";
                   if (engine && typeof engine.globalScore === "number") {
                     const s = engine.globalScore;
@@ -1155,7 +1342,6 @@ export default function Dashboard() {
                           />
                         </div>
                       </td>
-                      {/* V3 Risk Column */}
                       <td style={{ ...td, textAlign: "center" }}>
                         {!engine || engine.loading ? (
                           <span
