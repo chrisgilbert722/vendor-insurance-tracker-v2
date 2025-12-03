@@ -1,4 +1,10 @@
-// pages/api/vendor/upload-coi.js
+// pages/api/renewals/upload.js
+// Renewal-aware COI upload endpoint (can be used by vendors or admins)
+//
+// Supports two modes:
+// 1) Vendor magic-link: multipart/form-data with `token` + `file`
+// 2) Admin portal: multipart/form-data with `vendorId`, `orgId` + `file`
+
 import formidable from "formidable";
 import fs from "fs";
 import { sql } from "../../../lib/db";
@@ -12,46 +18,88 @@ export const config = {
 
 export default async function handler(req, res) {
   try {
+    if (req.method !== "POST") {
+      res.setHeader("Allow", ["POST"]);
+      return res
+        .status(405)
+        .json({ ok: false, error: "Method not allowed. Use POST." });
+    }
+
     const form = formidable({ multiples: false });
     const [fields, files] = await form.parse(req);
 
-    const token = fields.token?.[0];
+    const token = fields.token?.[0]; // vendor magic link flow
+    const vendorIdField = fields.vendorId?.[0]; // admin flow
+    const orgIdField = fields.orgId?.[0]; // admin flow
+
     const file = files.file?.[0];
 
-    if (!token) {
-      return res.status(400).json({ ok: false, error: "Missing token" });
-    }
     if (!file) {
-      return res.status(400).json({ ok: false, error: "No file uploaded" });
+      return res
+        .status(400)
+        .json({ ok: false, error: "No file uploaded" });
     }
     if (!file.originalFilename.toLowerCase().endsWith(".pdf")) {
-      return res.status(400).json({ ok: false, error: "Only PDF files allowed." });
+      return res
+        .status(400)
+        .json({ ok: false, error: "Only PDF files allowed." });
     }
 
     /* -----------------------------------------
-       1. Validate vendor magic-link token
+       1. Resolve vendor (token or vendorId/orgId)
     ----------------------------------------- */
-    const rows = await sql`
-      SELECT id, org_id, name
-      FROM vendors
-      WHERE magic_link_token = ${token}
-      LIMIT 1;
-    `;
+    let vendor = null;
 
-    if (rows.length === 0) {
-      return res.status(404).json({ ok: false, error: "Invalid vendor access link." });
+    if (token) {
+      // Magic-link vendor upload
+      const rows = await sql`
+        SELECT id, org_id, name
+        FROM vendors
+        WHERE magic_link_token = ${token}
+        LIMIT 1;
+      `;
+      if (!rows.length) {
+        return res.status(404).json({
+          ok: false,
+          error: "Invalid vendor access link.",
+        });
+      }
+      vendor = rows[0];
+    } else if (vendorIdField && orgIdField) {
+      // Admin-upload flow (no magic link)
+      const rows = await sql`
+        SELECT id, org_id, name
+        FROM vendors
+        WHERE id = ${vendorIdField}
+        AND org_id = ${orgIdField}
+        LIMIT 1;
+      `;
+      if (!rows.length) {
+        return res.status(404).json({
+          ok: false,
+          error: "Vendor not found for given vendorId/orgId.",
+        });
+      }
+      vendor = rows[0];
+    } else {
+      return res.status(400).json({
+        ok: false,
+        error: "Missing vendor identity. Provide either token OR vendorId + orgId.",
+      });
     }
 
-    const vendor = rows[0];
-
-    // ⭐ LOG: vendor accessed upload endpoint
-    await logVendorActivity(vendor.id, "access_upload", "Vendor accessed upload endpoint");
+    // ⭐ LOG: vendor accessed renewal upload endpoint
+    await logVendorActivity(
+      vendor.id,
+      "access_upload",
+      "Vendor accessed renewal upload endpoint"
+    );
 
     /* -----------------------------------------
        2. Upload PDF → Supabase storage
     ----------------------------------------- */
     const buffer = fs.readFileSync(file.filepath);
-    const fileName = `vendor-coi-${vendor.id}-${Date.now()}.pdf`;
+    const fileName = `vendor-coi-renewal-${vendor.id}-${Date.now()}.pdf`;
 
     const { error: uploadErr } = await supabase.storage
       .from("uploads")
@@ -59,14 +107,16 @@ export default async function handler(req, res) {
 
     if (uploadErr) throw uploadErr;
 
-    const { data: urlData } = supabase.storage.from("uploads").getPublicUrl(fileName);
+    const { data: urlData } = supabase.storage
+      .from("uploads")
+      .getPublicUrl(fileName);
     const fileUrl = urlData.publicUrl;
 
     // ⭐ LOG
     await logVendorActivity(
       vendor.id,
       "uploaded_coi",
-      `Vendor uploaded COI: ${fileName}`,
+      `Vendor uploaded renewal COI: ${fileName}`,
       "info"
     );
 
@@ -79,7 +129,7 @@ export default async function handler(req, res) {
     await logVendorActivity(
       vendor.id,
       "parsed_ai",
-      "AI successfully parsed COI data",
+      "AI successfully parsed renewal COI data",
       "info"
     );
 
@@ -95,13 +145,14 @@ export default async function handler(req, res) {
     const requirements = reqRows || [];
 
     /* -----------------------------------------
-       5. Compare → generate alerts
+       5. Compare → generate alerts (simple requirements-based)
+       NOTE: This mirrors your existing upload-coi alerts logic
     ----------------------------------------- */
     const alerts = [];
 
     for (const req of requirements) {
       const match = ai.policies?.find(
-        (p) => p.type.toLowerCase() === req.coverage_type.toLowerCase()
+        (p) => p.type?.toLowerCase() === req.coverage_type?.toLowerCase()
       );
 
       if (!match) {
@@ -135,7 +186,7 @@ export default async function handler(req, res) {
       await logVendorActivity(
         vendor.id,
         "issues_detected",
-        `${alerts.length} compliance issues detected`,
+        `${alerts.length} renewal compliance issues detected`,
         "warning"
       );
     }
@@ -153,12 +204,13 @@ export default async function handler(req, res) {
     await logVendorActivity(
       vendor.id,
       "status_update",
-      `Vendor status updated: ${status}`,
+      `Vendor renewal status updated: ${status}`,
       status === "compliant" ? "info" : "warning"
     );
 
     /* -----------------------------------------
        6. Save parsed AI + status to DB
+       (mirrors vendor/upload-coi.js)
     ----------------------------------------- */
     await sql`
       UPDATE vendors
@@ -172,16 +224,25 @@ export default async function handler(req, res) {
     `;
 
     /* -----------------------------------------
-       7. Save alerts
+       7. Save alerts (and implicitly clear renewal alerts)
+       We clear all vendor_alerts for this vendor and reinsert.
+       That nukes RENEWAL_7D / 3D / 1D alerts after a successful upload.
     ----------------------------------------- */
     await sql`
-      DELETE FROM vendor_alerts WHERE vendor_id = ${vendor.id};
+      DELETE FROM vendor_alerts 
+      WHERE vendor_id = ${vendor.id};
     `;
 
     for (const a of alerts) {
       await sql`
         INSERT INTO vendor_alerts (vendor_id, severity, code, message, created_at)
-        VALUES (${vendor.id}, ${a.severity}, ${a.code}, ${a.message}, NOW());
+        VALUES (
+          ${vendor.id},
+          ${a.severity},
+          ${a.code},
+          ${a.message},
+          NOW()
+        );
       `;
     }
 
@@ -190,17 +251,24 @@ export default async function handler(req, res) {
     ----------------------------------------- */
     return res.status(200).json({
       ok: true,
+      mode: token ? "magic_link" : "admin",
+      vendorId: vendor.id,
+      orgId: vendor.org_id,
       fileUrl,
       ai,
       alerts,
       status,
     });
   } catch (err) {
-    console.error("[vendor/upload-coi] ERROR:", err);
+    console.error("[renewals/upload] ERROR:", err);
 
-    // ⭐ LOG error event
     try {
-      await logVendorActivity(null, "error", `Upload failed: ${err.message}`, "critical");
+      await logVendorActivity(
+        null,
+        "error",
+        `Renewal upload failed: ${err.message}`,
+        "critical"
+      );
     } catch (_) {}
 
     return res.status(500).json({ ok: false, error: err.message });
