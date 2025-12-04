@@ -14,7 +14,7 @@ export default async function handler(req, res) {
   try {
     const { messages, orgId, vendorId, path } = req.body || {};
 
-    if (!messages || !Array.isArray(messages)) {
+    if (!messages || !Array.isArray(messages) || messages.length === 0) {
       return res.status(400).json({ ok: false, error: "Missing messages" });
     }
 
@@ -24,37 +24,41 @@ export default async function handler(req, res) {
     let vendorContext = "No vendor context available.";
 
     if (vendorId) {
-      // Load basic vendor
+      // 1) Vendor basic info
       const vendorRows = await sql`
-        SELECT id, name, compliance_status, org_id 
+        SELECT id, name, compliance_status, org_id
         FROM vendors
         WHERE id = ${vendorId}
         LIMIT 1;
       `;
       const vendor = vendorRows[0];
 
-      // Load policies
-      const policyRows = await supabase
+      // 2) Policies from Supabase
+      const { data: policyRows = [], error: policyErr } = await supabase
         .from("policies")
-        .select("id, coverage_type, carrier, expiration_date, extracted")
+        .select("id, coverage_type, carrier, expiration_date")
         .eq("vendor_id", vendorId);
 
-      // Load alerts
+      if (policyErr) {
+        console.error("[chat/support] policies error:", policyErr);
+      }
+
+      // 3) Alerts from Neon
       const alerts = await sql`
-        SELECT code, message, severity 
+        SELECT code, message, severity
         FROM vendor_alerts
         WHERE vendor_id = ${vendorId}
-        ORDER BY severity DESC;
+        ORDER BY severity DESC, created_at DESC NULLS LAST;
       `;
 
-      // Load Rule Engine V3 failures
+      // 4) Rule Engine V3 failures
       const ruleFailures = await sql`
         SELECT rr.rule_id, rr.message, rr.severity
         FROM rule_results_v3 rr
         WHERE rr.vendor_id = ${vendorId} AND rr.passed = FALSE;
       `;
 
-      // Load renewal predictions
+      // 5) Renewal predictions
       const renewPred = await sql`
         SELECT risk_score, risk_tier, likelihood_fail, likelihood_on_time
         FROM renewal_predictions
@@ -64,88 +68,122 @@ export default async function handler(req, res) {
       const r = renewPred[0];
 
       vendorContext = `
-Vendor Context:
-- Name: ${vendor?.name || "Unknown"}
-- Compliance Status: ${vendor?.compliance_status || "Unknown"}
+[VENDOR CONTEXT]
+Name: ${vendor?.name || "Unknown"}
+Compliance Status: ${vendor?.compliance_status || "Unknown"}
+Org ID: ${vendor?.org_id || "Unknown"}
 
-Policies:
-${(policyRows.data || [])
-  .map(
-    (p) =>
-      `• ${p.coverage_type} (Carrier: ${p.carrier}, Expires: ${p.expiration_date})`
-  )
-  .join("\n")}
+[POLICIES]
+${
+  policyRows && policyRows.length
+    ? policyRows
+        .map(
+          (p) =>
+            `• ${p.coverage_type || "Unknown"} — Carrier: ${
+              p.carrier || "Unknown"
+            }, Expires: ${p.expiration_date || "Unknown"}`
+        )
+        .join("\n")
+    : "• No policies found."
+}
 
-Alerts:
-${alerts.map((a) => `• [${a.severity}] ${a.message}`).join("\n") || "None"}
+[ALERTS]
+${
+  alerts && alerts.length
+    ? alerts
+        .map(
+          (a) =>
+            `• [${a.severity || "unknown"}] ${a.code || ""} — ${
+              a.message || ""
+            }`
+        )
+        .join("\n")
+    : "• No alerts."
+}
 
-Rule Failures:
-${ruleFailures
-  .map((f) => `• ${f.message} (severity: ${f.severity})`)
-  .join("\n") || "None"}
+[RULE FAILURES]
+${
+  ruleFailures && ruleFailures.length
+    ? ruleFailures
+        .map(
+          (f) =>
+            `• Severity: ${f.severity || "unknown"} — ${f.message || "Unknown rule failure"}`
+        )
+        .join("\n")
+    : "• No failing rules."
+}
 
-Renewal Prediction:
+[RENEWAL PREDICTION]
 ${
   r
-    ? `- Risk Score: ${r.risk_score}
-- Tier: ${r.risk_tier}
-- Fail Likelihood: ${r.likelihood_fail}%
-- On-Time Likelihood: ${r.likelihood_on_time}%`
-    : "No prediction data"
+    ? `Risk Score: ${r.risk_score}
+Risk Tier: ${r.risk_tier}
+Likelihood of Failure: ${r.likelihood_fail}%
+Likelihood of On-Time Renewal: ${r.likelihood_on_time}%`
+    : "No prediction recorded for this vendor."
 }
 `;
     }
 
     // ----------------------------------------------------------------------
-    // 🔥 SYSTEM PROMPT — stronger, more directive AI personality
+    // 🔥 SYSTEM PROMPT — define assistant role clearly
     // ----------------------------------------------------------------------
     const systemMessage = {
       role: "system",
       content: `
 You are the AI Assistant for a vendor insurance compliance platform.
 
-Your capabilities:
-- Explain vendor risk, rule failures, alerts, missing coverage.
-- Explain renewal predictions in simple terms.
-- Provide next steps for compliance.
-- Suggest broker or vendor communication.
-- Help admins navigate the interface.
-- Answer questions about how to use the platform.
+You can:
+- Explain vendor compliance status.
+- Explain rule engine failures in clear language.
+- Explain vendor alerts and what they mean.
+- Explain renewal predictions and risk tiers.
+- Suggest next steps for the admin (who to contact, what to change).
+- Draft emails to vendors and brokers.
+- Help navigate the app (“where do I go to see X?”).
 
-DO NOT hallucinate unknown data. 
-If asked about unprovided vendor details: summarize based on the provided vendorContext ONLY.
-
-Be concise, accurate, and friendly.
+Rules:
+- Do NOT invent vendor data beyond what is in the context.
+- If something is not in context, answer conceptually and say it’s an example.
+- Always speak clearly and concisely, as if to a busy risk manager.
+- You are allowed to generate email templates and action plans.
 `,
     };
 
+    // ----------------------------------------------------------------------
+    // 🔥 CONTEXT MESSAGE — inject org + vendor context
+    // ----------------------------------------------------------------------
     const contextMessage = {
       role: "system",
       content: `
-Additional Context:
-- Page: ${path}
-- orgId: ${orgId}
-${vendorId ? vendorContext : "No vendor selected."}
+[CONTEXT]
+Current Path: ${path || "unknown"}
+Org ID: ${orgId || "unknown"}
+Vendor ID: ${vendorId || "none"}
+
+${vendorId ? vendorContext : "No specific vendor selected."}
 `,
     };
 
-    // ----------------------------------------------------------------------
-    // 🔥 Run OpenAI
-    // ----------------------------------------------------------------------
-    const recent = messages.slice(-8);
+    // Only keep recent messages to control token usage
+    const recentMessages = messages.slice(-8);
 
     const completion = await openai.chat.completions.create({
       model: "gpt-4.1",
       temperature: 0.2,
-      messages: [systemMessage, contextMessage, ...recent],
+      messages: [systemMessage, contextMessage, ...recentMessages],
     });
+
+    const reply = completion.choices?.[0]?.message?.content || "";
 
     return res.status(200).json({
       ok: true,
-      reply: completion.choices[0].message.content,
+      reply,
     });
   } catch (err) {
-    console.error("AI Chatbot Error:", err);
-    return res.status(500).json({ ok: false, error: "Chatbot failed." });
+    console.error("[/api/chat/support] ERROR:", err);
+    return res
+      .status(500)
+      .json({ ok: false, error: err.message || "Chatbot failed." });
   }
 }
