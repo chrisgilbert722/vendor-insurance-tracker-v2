@@ -25,11 +25,14 @@ export default function SupportChatPanel() {
   const router = useRouter();
   const { activeOrgId } = useOrg() || {};
 
-  async function sendMessage() {
-    if (!input.trim()) return;
-    const userMessage = { role: "user", content: input.trim() };
+  async function sendMessage(forcedMessage = null) {
+    const content = forcedMessage || input.trim();
+    if (!content) return;
+
+    const userMessage = { role: "user", content };
     setMessages((prev) => [...prev, userMessage]);
-    setInput("");
+
+    if (!forcedMessage) setInput("");
 
     try {
       setSending(true);
@@ -40,7 +43,7 @@ export default function SupportChatPanel() {
         body: JSON.stringify({
           messages: [...messages, userMessage],
           orgId: activeOrgId || null,
-          vendorId: null, // later you can thread in vendorId if you have it
+          vendorId: null, 
           path: router.pathname,
         }),
       });
@@ -112,7 +115,7 @@ export default function SupportChatPanel() {
             right: 24,
             bottom: 90,
             width: 340,
-            maxHeight: 420,
+            maxHeight: 520,
             borderRadius: 18,
             background: GP.panelBg,
             border: GP.border,
@@ -151,9 +154,88 @@ export default function SupportChatPanel() {
                   color: "#e5e7eb",
                 }}
               >
-                Ask me about vendors, renewals, rules…
+                Ask me anything about your vendors, renewals, alerts, or rules.
               </div>
             </div>
+          </div>
+
+          {/* ⭐ QUICK ACTION BUTTONS */}
+          <div
+            style={{
+              padding: "8px 10px",
+              borderBottom: "1px solid rgba(51,65,85,0.9)",
+              background: "rgba(15,23,42,0.96)",
+              display: "flex",
+              flexWrap: "wrap",
+              gap: "6px",
+            }}
+          >
+            <button
+              onClick={() =>
+                sendMessage("Explain this vendor's risk score in simple terms.")
+              }
+              style={quickBtn}
+            >
+              ⚠️ Risk Score
+            </button>
+
+            <button
+              onClick={() =>
+                sendMessage("Why did this vendor fail compliance?")
+              }
+              style={quickBtn}
+            >
+              📘 Rule Failures
+            </button>
+
+            <button
+              onClick={() => sendMessage("Explain this vendor's alerts.")}
+              style={quickBtn}
+            >
+              🔔 Alerts
+            </button>
+
+            <button
+              onClick={() =>
+                sendMessage("Explain this vendor’s renewal prediction.")
+              }
+              style={quickBtn}
+            >
+              🔮 Prediction
+            </button>
+
+            <button
+              onClick={() =>
+                sendMessage(
+                  "Generate a broker email requesting an updated COI with missing items highlighted."
+                )
+              }
+              style={quickBtn}
+            >
+              📧 Broker Email
+            </button>
+
+            <button
+              onClick={() =>
+                sendMessage(
+                  "Generate a vendor fix request email listing missing or incorrect insurance items."
+                )
+              }
+              style={quickBtn}
+            >
+              🛠️ Fix Email
+            </button>
+
+            <button
+              onClick={() =>
+                sendMessage(
+                  "What should I do next for this vendor based on their compliance and renewal status?"
+                )
+              }
+              style={quickBtn}
+            >
+              ▶️ Next Steps
+            </button>
           </div>
 
           {/* Messages */}
@@ -229,13 +311,14 @@ export default function SupportChatPanel() {
                 background: "rgba(15,23,42,0.98)",
                 color: "#e5e7eb",
                 fontSize: 12,
-                fontFamily: "system-ui, -apple-system, BlinkMacSystemFont",
+                fontFamily:
+                  "system-ui, -apple-system, BlinkMacSystemFont, Segoe UI",
                 minHeight: 38,
                 maxHeight: 80,
               }}
             />
             <button
-              onClick={sendMessage}
+              onClick={() => sendMessage()}
               disabled={sending || !input.trim()}
               style={{
                 padding: "6px 10px",
@@ -258,3 +341,15 @@ export default function SupportChatPanel() {
     </>
   );
 }
+
+/* ⭐ Quick Action Button Style */
+const quickBtn = {
+  padding: "4px 8px",
+  borderRadius: 8,
+  border: "1px solid rgba(56,189,248,0.5)",
+  background: "rgba(15,23,42,0.9)",
+  fontSize: 11,
+  color: "#e5e7eb",
+  cursor: "pointer",
+  whiteSpace: "nowrap",
+};
