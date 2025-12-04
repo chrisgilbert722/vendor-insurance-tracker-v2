@@ -4,9 +4,11 @@
 import PDFDocument from "pdfkit";
 import { sql } from "../../../lib/db";
 
+// Ensure Node.js serverless environment + unlimited PDF size
 export const config = {
   api: {
-    bodyParser: true, // JSON body
+    bodyParser: true,
+    responseLimit: false,
   },
 };
 
@@ -69,7 +71,7 @@ export default async function handler(req, res) {
       .filter((p) => (p.likelihood_fail || 0) >= 40)
       .sort((a, b) => b.likelihood_fail - a.likelihood_fail);
 
-    // Start PDF
+    // Start PDF document
     const doc = new PDFDocument({ margin: 40 });
 
     const fileName = `Executive_Renewal_Report_${orgId}_${Date.now()}.pdf`;
@@ -91,11 +93,11 @@ export default async function handler(req, res) {
     doc
       .fontSize(10)
       .fillColor("#6b7280")
-      .text(`Org ID: ${orgId}`, { align: "left" });
+      .text(`Org ID: ${orgId}`);
     doc
       .fontSize(10)
       .fillColor("#6b7280")
-      .text(`Generated: ${new Date().toLocaleString()}`, { align: "left" });
+      .text(`Generated: ${new Date().toLocaleString()}`);
 
     doc.moveDown(1);
 
@@ -108,19 +110,15 @@ export default async function handler(req, res) {
     doc.moveDown(0.5);
     doc
       .fontSize(11)
-      .fillColor("#111827")
       .text(
         totalVendors > 0
           ? `Vendors scored: ${totalVendors}`
           : "No vendors have predictions yet."
       );
-    doc
-      .fontSize(11)
-      .fillColor("#111827")
-      .text(`Average renewal risk: ${avgRisk ?? "—"}`);
+    doc.fontSize(11).text(`Average renewal risk: ${avgRisk ?? "—"}`);
 
     doc.moveDown(0.5);
-    doc.fontSize(11).fillColor("#111827").text("Risk tier breakdown:");
+    doc.fontSize(11).text("Risk tier breakdown:");
     doc
       .fontSize(10)
       .fillColor("#374151")
@@ -138,7 +136,7 @@ export default async function handler(req, res) {
 
     doc.moveDown(1);
 
-    // AI-ish narrative
+    // AI Org Narrative
     if (totalVendors > 0) {
       doc
         .fontSize(12)
@@ -153,16 +151,15 @@ export default async function handler(req, res) {
             avgRisk ?? "—"
           }. ${tierCounts.severe} vendors are in Severe risk and ${
             tierCounts["high risk"]
-          } in High Risk, indicating where renewal interventions and broker follow-up should be focused in the next 30–60 days.`,
-          { align: "left" }
+          } in High Risk, indicating where renewal interventions and broker follow-up should be focused in the next 30–60 days.`
         );
       doc.moveDown(1);
     }
 
-    // High-risk vendors table
+    // High Risk Vendors
     const highRiskVendors = predictions
-      .filter((p) => {
-        const t = (p.risk_tier || "").toLowerCase();
+      .filter((v) => {
+        const t = (v.risk_tier || "").toLowerCase();
         return t === "severe" || t === "high risk";
       })
       .sort((a, b) => b.risk_score - a.risk_score)
@@ -183,7 +180,7 @@ export default async function handler(req, res) {
       doc.fontSize(10).fillColor("#111827");
       doc.text("Vendor                 Tier            Risk    Fail%   On-Time%");
       doc.moveTo(doc.x, doc.y + 2).lineTo(550, doc.y + 2).stroke("#e5e7eb");
-      doc.moveDown(0.4);
+      doc.moveDown(0.5);
 
       highRiskVendors.forEach((v) => {
         const line = [
@@ -193,34 +190,33 @@ export default async function handler(req, res) {
           `${v.likelihood_fail ?? "—"}%`.padEnd(8, " "),
           `${v.likelihood_on_time ?? "—"}%`,
         ].join("  ");
-
         doc.text(line);
       });
     }
 
     doc.addPage();
 
-    // Predicted failures block
+    // Predicted Failures
     doc
       .fontSize(12)
       .fillColor("#111827")
       .text("Vendors Likely to Fail Renewal", { underline: true });
     doc.moveDown(0.5);
 
-    if (!predictedFailures.length) {
+    const predictedFailSet = predictedFailures.slice(0, 20);
+
+    if (!predictedFailSet.length) {
       doc
         .fontSize(11)
         .fillColor("#374151")
-        .text(
-          "No vendors currently predicted at 40% or higher likelihood of renewal failure."
-        );
+        .text("No vendors predicted to fail (≥40% likelihood).");
     } else {
       doc.fontSize(10).fillColor("#111827");
       doc.text("Vendor                 Risk    Fail%   On-Time%");
       doc.moveTo(doc.x, doc.y + 2).lineTo(550, doc.y + 2).stroke("#e5e7eb");
-      doc.moveDown(0.4);
+      doc.moveDown(0.5);
 
-      predictedFailures.slice(0, 20).forEach((v) => {
+      predictedFailSet.forEach((v) => {
         const line = [
           (v.vendor_name || "").slice(0, 22).padEnd(22, " "),
           String(v.risk_score || "—").padEnd(7, " "),
