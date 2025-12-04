@@ -1,4 +1,4 @@
-// components/Sidebar.js — Tactical Neon Rail V9 (Added Onboarding Route + Executive Dashboard)
+// components/Sidebar.js — Tactical Neon Rail V9 (With Executive AI Link)
 import React from "react";
 
 export default function Sidebar({ pathname, isAdmin, isManager, isViewer }) {
