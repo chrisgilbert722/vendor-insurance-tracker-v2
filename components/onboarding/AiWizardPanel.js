@@ -1,5 +1,5 @@
 // components/onboarding/AiWizardPanel.js
-// Full AI Onboarding Wizard Panel — 10 Minute Org Setup
+// Full AI Onboarding Wizard Panel — 10 Minute Org Setup (with Industry Detection)
 
 import { useState } from "react";
 
@@ -74,7 +74,9 @@ export default function AiWizardPanel({ orgId }) {
   }
 
   async function finalizeRules() {
-    alert("✔ AI Onboarding Complete!\nRules and templates have already been stored in the database.\nYou can now proceed to Dashboard or Requirements.");
+    alert(
+      "✔ AI Onboarding Complete!\nRules and templates have already been stored in the database.\nYou can now proceed to Dashboard or Requirements."
+    );
   }
 
   return (
@@ -138,7 +140,8 @@ export default function AiWizardPanel({ orgId }) {
           padding: "10px 16px",
           borderRadius: 999,
           border: "1px solid rgba(56,189,248,0.9)",
-          background: "radial-gradient(circle at top left,#38bdf8,#0ea5e9,#1e3a8a)",
+          background:
+            "radial-gradient(circle at top left,#38bdf8,#0ea5e9,#1e3a8a)",
           color: "#e0f2fe",
           fontSize: 13,
           fontWeight: 600,
@@ -148,7 +151,7 @@ export default function AiWizardPanel({ orgId }) {
         {loading ? "Analyzing your vendors…" : "✨ Run AI Onboarding Wizard"}
       </button>
 
-      {/* LOADING INDICATOR */}
+      {/* LOADING */}
       {loading && (
         <div
           style={{
@@ -161,13 +164,13 @@ export default function AiWizardPanel({ orgId }) {
             fontSize: 13,
           }}
         >
-          AI is generating rule groups, coverage requirements, and templates…  
+          AI is generating industry detection, rule groups, and templates…  
           <br />
           This may take 10–15 seconds.
         </div>
       )}
 
-      {/* STEP 2 — AI RESULTS */}
+      {/* STEP 2 — RESULTS */}
       {aiResult && (
         <div style={{ marginTop: 28 }}>
           <h2 style={{ fontSize: 18, fontWeight: 600, marginBottom: 12 }}>
@@ -191,6 +194,25 @@ export default function AiWizardPanel({ orgId }) {
               {aiResult.summary}
             </div>
           </div>
+
+          {/* ⭐ DETECTED INDUSTRIES BLOCK */}
+          {aiResult.detectedIndustries &&
+            aiResult.detectedIndustries.length > 0 && (
+              <div
+                style={{
+                  marginBottom: 20,
+                  padding: 12,
+                  borderRadius: 14,
+                  background: "rgba(15,23,42,0.9)",
+                  border: "1px solid rgba(55,65,81,0.9)",
+                  fontSize: 12,
+                  color: "#e5e7eb",
+                }}
+              >
+                <strong style={{ color: "#38bdf8" }}>Detected Industries:</strong>{" "}
+                {aiResult.detectedIndustries.join(", ")}
+              </div>
+            )}
 
           {/* RULE GROUPS */}
           <div>
@@ -228,8 +250,8 @@ export default function AiWizardPanel({ orgId }) {
                     <strong>{r.type.toUpperCase()}</strong> — {r.message}
                     <br />
                     <span style={{ color: "#9ca3af" }}>
-                      Field: {r.field} · Condition: {r.condition} · Value: {r.value} · Severity:{" "}
-                      {r.severity}
+                      Field: {r.field} · Condition: {r.condition} · Value:{" "}
+                      {r.value} · Severity: {r.severity}
                     </span>
                   </div>
                 ))}
@@ -270,7 +292,7 @@ export default function AiWizardPanel({ orgId }) {
             ))}
           </div>
 
-          {/* FINALIZE BUTTON */}
+          {/* COMPLETE BUTTON */}
           <button
             onClick={finalizeRules}
             style={{
