@@ -1,5 +1,5 @@
 // components/chat/SupportChatPanel.js
-// Ultimate AI Assistant v6 — Global, Vendor, Wizard, Explain, Auto-Fix, Org Brain, Proactive Onboarding
+// Ultimate AI Assistant v6 — Global, Vendor, Wizard, Explain, Auto-Fix, Org Brain, Onboarding Checklist
 
 import { useState, useEffect } from "react";
 
@@ -27,7 +27,7 @@ export default function SupportChatPanel({ orgId, vendorId, pathname }) {
   const [input, setInput] = useState("");
   const [sending, setSending] = useState(false);
 
-  // Listen for Explain-This-Page events from ❓ button in Layout
+  // Explain-This-Page listener (❓)
   useEffect(() => {
     const handler = () => {
       sendMessage(
@@ -38,6 +38,26 @@ export default function SupportChatPanel({ orgId, vendorId, pathname }) {
 
     window.addEventListener("explain_page", handler);
     return () => window.removeEventListener("explain_page", handler);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, messages]);
+
+  // 🔥 Onboarding Checklist listener
+  useEffect(() => {
+    const openChecklist = () => {
+      if (!open) setOpen(true);
+      sendMessage("start checklist");
+    };
+
+    window.addEventListener(
+      "onboarding_chat_forceChecklist",
+      openChecklist
+    );
+
+    return () =>
+      window.removeEventListener(
+        "onboarding_chat_forceChecklist",
+        openChecklist
+      );
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, messages]);
 
@@ -66,27 +86,6 @@ export default function SupportChatPanel({ orgId, vendorId, pathname }) {
       const json = await res.json();
       if (!json.ok) throw new Error(json.error || "Chat failed");
 
-      // ⭐ AUTO-LAUNCH WIZARD BEHAVIOR
-      if (json.launchWizard) {
-        // Show the AI's onboarding message first
-        setMessages((prev) => [
-          ...prev,
-          {
-            role: "assistant",
-            content: json.reply || "Launching onboarding wizard…",
-          },
-        ]);
-
-        // Slight delay for cinematic effect, then redirect
-        setTimeout(() => {
-          window.location.href = "/onboarding/start";
-        }, 800);
-
-        setSending(false);
-        return;
-      }
-
-      // Normal reply
       const aiMessage = {
         role: "assistant",
         content: json.reply || "I couldn’t generate a response.",
@@ -113,7 +112,6 @@ export default function SupportChatPanel({ orgId, vendorId, pathname }) {
       if (!sending) sendMessage();
     }
   }
-
   return (
     <>
       {/* Floating Chat Toggle Button */}
@@ -166,7 +164,7 @@ export default function SupportChatPanel({ orgId, vendorId, pathname }) {
           <div
             style={{
               padding: "10px 12px",
-              borderBottom: "1px solid rgba(51,65,85,0.9)",
+              borderBottom: GP.border,
             }}
           >
             <div
@@ -197,7 +195,7 @@ export default function SupportChatPanel({ orgId, vendorId, pathname }) {
           <div
             style={{
               padding: 8,
-              borderBottom: "1px solid rgba(51,65,85,0.9)",
+              borderBottom: GP.border,
               background: "rgba(15,23,42,0.96)",
               display: "flex",
               flexWrap: "wrap",
@@ -318,7 +316,7 @@ export default function SupportChatPanel({ orgId, vendorId, pathname }) {
               </>
             )}
 
-            {/* Global Mode + Org Brain */}
+            {/* Global Mode + Org Brain + Checklist */}
             {!isWizard && !vendorId && (
               <>
                 <button
@@ -388,6 +386,14 @@ export default function SupportChatPanel({ orgId, vendorId, pathname }) {
                   onClick={() => sendMessage("What can Org Brain do?")}
                 >
                   🔍 What can Org Brain do?
+                </button>
+
+                {/* 🔥 Start Checklist CTA */}
+                <button
+                  style={quickBtn}
+                  onClick={() => sendMessage("start checklist")}
+                >
+                  ✅ Start Checklist
                 </button>
               </>
             )}
@@ -499,7 +505,7 @@ export default function SupportChatPanel({ orgId, vendorId, pathname }) {
           {/* Input */}
           <div
             style={{
-              borderTop: "1px solid rgba(51,65,85,0.9)",
+              borderTop: GP.border,
               padding: 8,
               display: "flex",
               gap: 6,
@@ -521,9 +527,9 @@ export default function SupportChatPanel({ orgId, vendorId, pathname }) {
                 resize: "none",
                 borderRadius: 10,
                 padding: 8,
-                border: "1px solid rgba(51,65,85,0.9)",
+                border: GP.border,
                 background: "rgba(2,6,23,0.8)",
-                color: "#e5e7eb",
+                color: GP.text,
                 fontSize: 12,
                 minHeight: 38,
               }}
