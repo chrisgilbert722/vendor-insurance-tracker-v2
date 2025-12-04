@@ -1,7 +1,30 @@
-// components/Sidebar.js — Tactical Neon Rail V9 (With AI Rule Lab)
-import React from "react";
+// components/Sidebar.js — Tactical Neon Rail V10 (Onboarding-Aware + AI Setup Center)
+import React, { useEffect, useState } from "react";
+import { useOrg } from "../context/OrgContext";
 
 export default function Sidebar({ pathname, isAdmin, isManager, isViewer }) {
+  const { activeOrgId } = useOrg() || {};
+  const [onboardingComplete, setOnboardingComplete] = useState(true);
+
+  // Fetch onboarding status so we know whether to show "Onboard" or "AI Setup"
+  useEffect(() => {
+    async function fetchStatus() {
+      if (!activeOrgId) return;
+      try {
+        const res = await fetch(
+          `/api/onboarding/status?orgId=${encodeURIComponent(activeOrgId)}`
+        );
+        const json = await res.json();
+        if (json.ok) {
+          setOnboardingComplete(!!json.onboardingComplete);
+        }
+      } catch (err) {
+        console.error("[Sidebar] onboarding status error:", err);
+      }
+    }
+    fetchStatus();
+  }, [activeOrgId]);
+
   return (
     <div
       style={{
@@ -88,7 +111,7 @@ export default function Sidebar({ pathname, isAdmin, isManager, isViewer }) {
         />
       )}
 
-      {/* ⭐ REQUIREMENTS ENGINE (V5) ⭐ */}
+      {/* ⭐ REQUIREMENTS ENGINE ⭐ */}
       {isAdmin && (
         <RailLink
           href="/admin/requirements-v5"
@@ -98,13 +121,33 @@ export default function Sidebar({ pathname, isAdmin, isManager, isViewer }) {
         />
       )}
 
-      {/* ⭐ NEW: AI RULE LAB (RULE BUILDER V6) ⭐ */}
+      {/* ⭐ AI RULE LAB (RULE BUILDER V6) ⭐ */}
       {isAdmin && (
         <RailLink
           href="/admin/rules/ai-builder"
           label="AI Rules"
           icon="⚙️"
           active={pathname === "/admin/rules/ai-builder"}
+        />
+      )}
+
+      {/* ⭐ ONBOARD (ONLY WHILE ONBOARDING INCOMPLETE) ⭐ */}
+      {!onboardingComplete && (
+        <RailLink
+          href="/onboarding"
+          label="Onboard"
+          icon="🎉"
+          active={pathname.startsWith("/onboarding")}
+        />
+      )}
+
+      {/* ⭐ AI SETUP CENTER (AFTER ONBOARDING COMPLETE) ⭐ */}
+      {onboardingComplete && isAdmin && (
+        <RailLink
+          href="/admin/ai-setup-center"
+          label="AI Setup"
+          icon="🧠"
+          active={pathname === "/admin/ai-setup-center"}
         />
       )}
 
@@ -117,14 +160,6 @@ export default function Sidebar({ pathname, isAdmin, isManager, isViewer }) {
           active={pathname === "/admin/renewals"}
         />
       )}
-
-      {/* ⭐ ONBOARDING ⭐ */}
-      <RailLink
-        href="/onboarding"
-        label="Onboard"
-        icon="🎉"
-        active={pathname.startsWith("/onboarding")}
-      />
 
       {/* ===== LOGOUT ===== */}
       <div style={{ marginTop: "auto" }}>
