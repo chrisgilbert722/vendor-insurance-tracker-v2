@@ -1,5 +1,5 @@
 // pages/api/chat/support.js
-// Vendor-aware AI Assistant with Rule Engine Explanation Mode
+// Vendor-aware AI Assistant with Rule Engine Explanation + Auto-Fix Mode
 
 import { openai } from "../../../lib/openaiClient";
 import { sql } from "../../../lib/db";
@@ -22,7 +22,7 @@ export default async function handler(req, res) {
     // LOAD CONTEXT IF vendorId PROVIDED
     // ============================================================
     let vendorContext = "No vendor selected.";
-    let ruleExplanationBlock = "No rule failures.";
+    let ruleExplanationBlock = "This vendor has no rule failures.";
 
     if (vendorId) {
       // 1) Vendor basic info
@@ -34,7 +34,7 @@ export default async function handler(req, res) {
       `;
       const vendor = vendorRows[0];
 
-      // 2) Policies (supabase)
+      // 2) Policies (Supabase)
       const { data: policies = [] } = await supabase
         .from("policies")
         .select("id, coverage_type, carrier, expiration_date")
@@ -45,7 +45,7 @@ export default async function handler(req, res) {
         SELECT code, message, severity
         FROM vendor_alerts
         WHERE vendor_id = ${vendorId}
-        ORDER BY severity DESC;
+        ORDER BY severity DESC, created_at DESC NULLS LAST;
       `;
 
       // 4) Rule failures
@@ -64,9 +64,7 @@ export default async function handler(req, res) {
       `;
       const pred = renewPred[0];
 
-      // ============================================================
-      // NEW: LOAD RULE DEFINITIONS + GROUP DEFINITIONS
-      // ============================================================
+      // 6) Rule + Group definitions
       const ruleDefs = await sql`
         SELECT id, group_id, type, field, condition, value, message, severity
         FROM rules_v3
@@ -84,40 +82,42 @@ export default async function handler(req, res) {
       // ============================================================
       // BUILD RULE EXPLANATION BLOCK
       // ============================================================
-      ruleExplanationBlock =
-        ruleFailures.length === 0
-          ? "This vendor has no rule failures."
-          : ruleFailures
-              .map((f) => {
-                const rule = ruleDefs.find((r) => r.id === f.rule_id);
-                const group = groupDefs.find((g) => g.id === rule?.group_id);
+      if (ruleFailures.length > 0) {
+        ruleExplanationBlock = ruleFailures
+          .map((f) => {
+            const rule = ruleDefs.find((r) => r.id === f.rule_id);
+            const group = groupDefs.find((g) => g.id === rule?.group_id);
 
-                return `
+            return `
 RULE FAILURE:
 - Rule ID: ${f.rule_id}
-- Severity: ${f.severity}
+- Severity: ${f.severity || rule?.severity || "unknown"}
 - Group: ${group?.label || "Unknown"}
 - Group Description: ${group?.description || "N/A"}
 - Field Checked: ${rule?.field || "unknown"}
 - Condition: ${rule?.condition || "unknown"}
 - Expected Value: ${rule?.value || "none"}
-- Failure Message: ${rule?.message || f.message}
+- Failure Message: ${rule?.message || f.message || "Rule failed for unknown reason"}
 
-EXPLANATION (for AI use):
-This rule checks whether the vendor's "${rule?.field}" meets the condition "${
-                  rule?.condition
-                }" with expected value "${rule?.value}". The vendor did not meet this requirement, triggering a ${f.severity} severity failure.
-                `;
-              })
-              .join("\n");
+INTERPRETATION FOR AI:
+This rule checks whether the vendor's "${rule?.field}" satisfies the condition "${
+              rule?.condition
+            }" with expected value "${rule?.value}". The vendor did NOT meet this requirement, causing a ${
+              f.severity || rule?.severity || "policy"
+            }-level failure.
+`;
+          })
+          .join("\n");
+      }
 
       // ============================================================
       // BUILD VENDOR CONTEXT BLOCK
       // ============================================================
       vendorContext = `
 [VENDOR INFO]
-Name: ${vendor?.name}
-Status: ${vendor?.compliance_status}
+Name: ${vendor?.name || "Unknown"}
+Status: ${vendor?.compliance_status || "Unknown"}
+Org ID: ${vendor?.org_id || "Unknown"}
 
 [POLICIES]
 ${
@@ -125,7 +125,9 @@ ${
     ? policies
         .map(
           (p) =>
-            `• ${p.coverage_type} — Carrier: ${p.carrier}, Expires: ${p.expiration_date}`
+            `• ${p.coverage_type || "Unknown"} — Carrier: ${
+              p.carrier || "Unknown"
+            }, Expires: ${p.expiration_date || "Unknown"}`
         )
         .join("\n")
     : "No policies found."
@@ -137,63 +139,83 @@ ${
     ? alerts
         .map(
           (a) =>
-            `• [${a.severity}] ${a.code} — ${a.message}`
+            `• [${a.severity || "unknown"}] ${a.code || ""} — ${
+              a.message || ""
+            }`
         )
         .join("\n")
     : "No alerts."
 }
 
-[RULE ENGINE FAILURES — STRUCTURED]
+[RULE ENGINE FAILURES]
 ${ruleExplanationBlock}
 
 [RENEWAL PREDICTION]
 ${
   pred
-    ? `Risk Score: ${pred.risk_score}
-Risk Tier: ${pred.risk_tier}
-Fail Chance: ${pred.likelihood_fail}%
-On-Time Chance: ${pred.likelihood_on_time}%`
+    ? `- Risk Score: ${pred.risk_score}
+- Risk Tier: ${pred.risk_tier}
+- Likelihood of Failure: ${pred.likelihood_fail}%
+- Likelihood of On-Time Renewal: ${pred.likelihood_on_time}%`
     : "No renewal prediction available."
 }
 `;
     }
 
     // ============================================================
-    // SYSTEM PROMPT — TEACH AI HOW TO EXPLAIN RULES
+    // SYSTEM PROMPT — AI EXPLANATION + AUTO-FIX MODE
     // ============================================================
     const systemMessage = {
       role: "system",
       content: `
 You are the AI Assistant for a vendor insurance compliance platform.
 
-Your capabilities:
-- Explain rule engine failures in plain English.
-- Tell the user EXACTLY why the vendor failed a rule.
-- Compare expected vs. actual values if available.
-- Interpret conditions ("gte", "lte", "exists", "missing", "requires").
-- Suggest precise remediation steps.
-- Draft emails to vendors/brokers based on failures.
-- Explain renewal predictions.
-- Provide next steps for compliance.
+You do 3 primary jobs:
 
-RULE EXPLANATION PROTOCOL:
-1. Identify the rule group and purpose.
-2. Explain what field was checked.
-3. Explain the condition (gte/lte/exists/missing/etc.) in simple language.
-4. State what the vendor's actual value appears to be (if known).
-5. Explain why this caused a failure.
-6. Recommend how to fix it (in practical terms).
-7. Do NOT invent data not in vendorContext.
+1) EXPLAIN
+- Explain vendor compliance status.
+- Explain why specific rules failed.
+- Explain alerts, their severity, and business impact.
+- Explain renewal predictions and risk tiers.
+
+2) AUTO-FIX
+- Propose a concrete remediation plan for this vendor.
+- List specific steps the admin or vendor should take.
+- Prioritize steps by impact (fix high severity first).
+- Suggest which documents, limits, or endorsements are missing.
+- Suggest whether the vendor should be escalated or paused.
+
+3) COMMUNICATE
+- Generate email templates to vendors and/or brokers.
+- Your emails should be professional, actionable, and specific to the failures.
+- You may generate both an internal note and an external email.
+
+When the user asks something like:
+- "Auto-fix this vendor" 
+- "What should I do next?"
+- "Generate fix plan"
+You must output **four clearly labeled sections**:
+
+1) SUMMARY — one short paragraph summarizing this vendor’s situation.
+2) ISSUES — bullet list of key failures and alerts, each with severity.
+3) ACTION PLAN — numbered list of recommended steps (with who should act: admin / vendor / broker).
+4) EMAIL TEMPLATES — one email to the vendor and one to the broker (if applicable).
+
+Do NOT invent vendor data that is not in the context. If a value is unknown, say "based on the available data" and respond conceptually.
+
+Always be clear, concise, and helpful. You are allowed to be opinionated about risk (e.g. "high risk, should not be approved yet").
 `,
     };
 
-    // Context message
+    // CONTEXT MESSAGE
     const contextMessage = {
       role: "system",
       content: `
 [PATH] ${path}
-[ORG] ${orgId}
+[ORG] ${orgId || "unknown"}
 [VENDOR] ${vendorId || "none"}
+
+CONTEXT DATA:
 ${vendorContext}
 `,
     };
@@ -210,7 +232,9 @@ ${vendorContext}
 
     return res.status(200).json({ ok: true, reply });
   } catch (err) {
-    console.error("[AI Chat Rule Explain ERROR]:", err);
-    return res.status(500).json({ ok: false, error: "Chatbot failed." });
+    console.error("[AI Chat Auto-Fix ERROR]:", err);
+    return res
+      .status(500)
+      .json({ ok: false, error: "Chatbot failed to respond." });
   }
 }
