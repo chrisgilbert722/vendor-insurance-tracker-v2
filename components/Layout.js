@@ -1,9 +1,10 @@
-// components/Layout.js — Fixed & Safe (No Illegal Hook Use)
+// components/Layout.js — Updated with AI Chatbot Panel
 import { useRouter } from "next/router";
 import Sidebar from "./Sidebar";
 import Header from "./Header";
 import { useRole } from "../lib/useRole";
 import { useOrg } from "../context/OrgContext";
+import SupportChatPanel from "./chat/SupportChatPanel";  // ⭐ ADDED IMPORT
 
 export default function Layout({ children }) {
   const router = useRouter();
@@ -83,6 +84,9 @@ export default function Layout({ children }) {
           {children}
         </main>
       </div>
+
+      {/* ⭐ AI Chatbot Panel */}
+      <SupportChatPanel />
     </div>
   );
 }
