@@ -1,5 +1,5 @@
 // pages/api/chat/support.js
-// Ultimate Multi-Mode Chat Engine (Vendor Mode, Wizard Mode, Explain Mode, Auto-Fix Mode, Org Brain Mode)
+// Ultimate Multi-Mode Chat Engine (Vendor Mode, Wizard Mode, Explain Mode, Auto-Fix Mode, Org Brain Mode, Proactive Onboarding)
 
 import { openai } from "../../../lib/openaiClient";
 import { sql } from "../../../lib/db";
@@ -20,13 +20,64 @@ export default async function handler(req, res) {
     const { messages, orgId, vendorId, path } = req.body || {};
 
     if (!messages || !Array.isArray(messages)) {
-      return res.status(400).json({ ok: false, error: "Missing messages array." });
+      return res
+        .status(400)
+        .json({ ok: false, error: "Missing messages array." });
     }
 
-    const lastMessage = messages[messages.length - 1]?.content?.toLowerCase() || "";
+    const lastMessage =
+      messages[messages.length - 1]?.content?.toLowerCase() || "";
 
     // ================================================================
-    // ⭐ ORG BRAIN MODE DETECTION
+    // ⭐ NEW USER ONBOARDING: "WHERE DO I START?" DETECTION + AUTO-LAUNCH
+    // ================================================================
+    const onboardingTriggers = [
+      "where do i start",
+      "where do we start",
+      "how do i start",
+      "i just signed up",
+      "i just joined",
+      "how do we set this up",
+      "how do i set this up",
+      "what do i do first",
+      "what should i do first",
+      "help me get started",
+      "get started",
+      "starting guide",
+      "start setup",
+    ];
+
+    const askedStart = onboardingTriggers.some((t) =>
+      lastMessage.includes(t)
+    );
+
+    if (askedStart) {
+      return res.status(200).json({
+        ok: true,
+        launchWizard: true,
+        reply: `
+🎉 **Welcome! You're in the right place.**
+
+The fastest way to get fully set up is the **AI Onboarding Wizard**.
+
+I’m going to launch it for you now at **/onboarding/start**.
+
+In that wizard, you will:
+- Upload or paste your vendor list  
+- Let AI detect your industry  
+- Let AI build your rule groups  
+- Let AI generate renewal workflows  
+- Let AI create your communication templates  
+
+You’ll be ready to go in under **10 minutes**.
+
+➡️ Launching the AI Onboarding Wizard now…
+        `.trim(),
+      });
+    }
+
+    // ================================================================
+    // ⭐ ORG BRAIN MODE DETECTION (SYSTEM DESIGNER)
     // ================================================================
     const isOrgBrain =
       lastMessage.includes("org brain") ||
@@ -87,7 +138,8 @@ Severity: *${r.severity}*\n`;
         console.error("[Org Brain from Chat ERROR]", err);
         return res.status(200).json({
           ok: true,
-          reply: "❌ Org Brain encountered an unexpected problem. Try again later.",
+          reply:
+            "❌ Org Brain encountered an unexpected problem. Try again later.",
         });
       }
     }
@@ -99,12 +151,6 @@ Severity: *${r.severity}*\n`;
 
     if (isAutoFix && vendorId) {
       try {
-        const vendorData = await sql`
-          SELECT *
-          FROM policies
-          WHERE vendor_id = ${vendorId}
-        `;
-
         const rules = await sql`
           SELECT rr.passed, rr.message, rr.severity
           FROM rule_results_v3 rr
@@ -139,7 +185,10 @@ Return as plain text, structured with headers.
           model: "gpt-4.1",
           temperature: 0,
           messages: [
-            { role: "system", content: "You are an insurance compliance remediation expert." },
+            {
+              role: "system",
+              content: "You are an insurance compliance remediation expert.",
+            },
             { role: "user", content: fixPrompt },
           ],
         });
@@ -154,7 +203,8 @@ Return as plain text, structured with headers.
         console.error("[Auto-Fix Error]", err);
         return res.status(200).json({
           ok: true,
-          reply: "❌ Auto-Fix encountered a problem while generating remediation steps.",
+          reply:
+            "❌ Auto-Fix encountered a problem while generating remediation steps.",
         });
       }
     }
@@ -168,8 +218,6 @@ Return as plain text, structured with headers.
       lastMessage.includes("explain everything here");
 
     if (explainMode) {
-      const context = `User is on: ${path}\nVendor ID: ${vendorId || "none"}\nOrg ID: ${orgId}`;
-
       const promptExplain = `
 Explain this UI page to the user in simple terms.
 Page path: ${path}
@@ -179,13 +227,17 @@ Include:
 - What the panels mean
 - What the KPIs mean
 - What actions they should take next
-- Any warnings based on common workflows`;
+- Any warnings based on common workflows
+`;
 
       const completion = await openai.chat.completions.create({
         model: "gpt-4.1",
         temperature: 0.3,
         messages: [
-          { role: "system", content: "You are an expert UI explainer and compliance strategist." },
+          {
+            role: "system",
+            content: "You are an expert UI explainer and compliance strategist.",
+          },
           { role: "user", content: promptExplain },
         ],
       });
@@ -197,7 +249,7 @@ Include:
     }
 
     // ================================================================
-    // ⭐ NORMAL CHAT MODE (fallback for general questions)
+    // ⭐ NORMAL CHAT MODE (fallback)
     // ================================================================
     const systemPrompt = `
 You are an elite insurance compliance AI assistant inside a vendor COI platform.
