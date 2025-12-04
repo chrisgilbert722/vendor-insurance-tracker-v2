@@ -1,4 +1,4 @@
-// components/Sidebar.js — Tactical Neon Rail V9 (With Executive AI Link)
+// components/Sidebar.js — Tactical Neon Rail V9 (With AI Rule Lab)
 import React from "react";
 
 export default function Sidebar({ pathname, isAdmin, isManager, isViewer }) {
@@ -88,7 +88,7 @@ export default function Sidebar({ pathname, isAdmin, isManager, isViewer }) {
         />
       )}
 
-      {/* ⭐ REQUIREMENTS ENGINE ⭐ */}
+      {/* ⭐ REQUIREMENTS ENGINE (V5) ⭐ */}
       {isAdmin && (
         <RailLink
           href="/admin/requirements-v5"
@@ -98,7 +98,17 @@ export default function Sidebar({ pathname, isAdmin, isManager, isViewer }) {
         />
       )}
 
-      {/* ⭐ NEW: EXECUTIVE AI DASHBOARD ⭐ */}
+      {/* ⭐ NEW: AI RULE LAB (RULE BUILDER V6) ⭐ */}
+      {isAdmin && (
+        <RailLink
+          href="/admin/rules/ai-builder"
+          label="AI Rules"
+          icon="⚙️"
+          active={pathname === "/admin/rules/ai-builder"}
+        />
+      )}
+
+      {/* ⭐ EXECUTIVE AI DASHBOARD ⭐ */}
       {isAdmin && (
         <RailLink
           href="/admin/renewals"
@@ -108,7 +118,7 @@ export default function Sidebar({ pathname, isAdmin, isManager, isViewer }) {
         />
       )}
 
-      {/* ⭐ NEW: ONBOARDING ⭐ */}
+      {/* ⭐ ONBOARDING ⭐ */}
       <RailLink
         href="/onboarding"
         label="Onboard"
@@ -147,9 +157,7 @@ function RailLink({ href, label, icon, active }) {
         marginBottom: 8,
 
         background: active ? "rgba(56,189,248,0.14)" : "transparent",
-        borderLeft: active
-          ? "4px solid #38bdf8"
-          : "4px solid transparent",
+        borderLeft: active ? "4px solid #38bdf8" : "4px solid transparent",
         boxShadow: active ? "0 0 14px rgba(56,189,248,0.55)" : "none",
 
         transition: "all 0.18s ease",
