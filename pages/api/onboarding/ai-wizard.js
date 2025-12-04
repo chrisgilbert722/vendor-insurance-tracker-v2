@@ -1,5 +1,5 @@
 // pages/api/onboarding/ai-wizard.js
-// AI Onboarding Wizard — Automated Org Setup
+// AI Onboarding Wizard — Now with Automatic Industry Detection
 
 import { openai } from "../../../lib/openaiClient";
 import { sql } from "../../../lib/db";
@@ -23,35 +23,53 @@ export default async function handler(req, res) {
         .json({ ok: false, error: "Missing orgId or vendorCsv" });
     }
 
-    // --------------------------------------------------------
-    // FORMAT: vendorCsv = array of {name, email, category}
-    // --------------------------------------------------------
-
+    // vendorCsv: array of { name, email, category }
     const vendorText = vendorCsv
-      .map((v) => `${v.name}, ${v.email || "no email"}, ${v.category || "general"}`)
+      .map(
+        (v) =>
+          `${v.name || ""}, ${v.email || "no-email"}, ${
+            v.category || "uncategorized"
+          }`
+      )
       .join("\n");
 
-    // --------------------------------------------------------
-    // 🔥 RUN AI — Analyze Vendors + Generate Rules + Templates
-    // --------------------------------------------------------
-    const prompt = `
+    // ---------------- AI PROMPT ----------------
+    const system = {
+      role: "system",
+      content: `
 You are the AI Onboarding Wizard for a vendor insurance compliance platform.
 
-A NEW ORGANIZATION is being created.
+Your jobs:
 
-Your job:
-1. Analyze the vendor list.
-2. Suggest reasonable coverage requirements based on categories.
-3. Generate full RULE ENGINE V3 rule groups + rules for this org.
-4. Create default COMMUNICATION TEMPLATES.
-5. Create a concise ONBOARDING SUMMARY.
+1) INFER INDUSTRIES
+- Analyze the vendor list (names, categories, implied services).
+- Infer one or more likely industries this organization operates in.
+- Examples: "Construction", "Property Management", "Healthcare", "Manufacturing", "Retail", "Hospitality", "Transportation", etc.
+- Output them as an array: ["Construction", "Property Management"].
 
-Vendor List:
-${vendorText}
+2) DESIGN RULE ENGINE CONFIGURATION
+- Based on detected industries AND the vendor list, propose a reasonable set of rule groups and rules.
+- Use realistic, sensible requirements for that industry mix:
+  - GL, Auto, WC, Umbrella
+  - Endorsements (Additional Insured, Waiver of Subrogation, Primary/Non-Contributory)
+  - Higher limits for high-risk trades.
 
-OUTPUT MUST BE JSON WITH EXACT FIELDS:
+3) GENERATE COMMUNICATION TEMPLATES
+- vendorWelcome: email inviting vendors to upload COIs.
+- brokerRequest: email requesting updated COIs from brokers.
+- renewalReminder: friendly but firm reminder about upcoming expiration.
+- fixRequest: email explaining what’s missing / incorrect.
+
+4) SUMMARIZE
+- Provide a short summary explaining:
+  - The industries you detected.
+  - The logic behind the requirements.
+  - Any special handling for high-risk vendor types.
+
+Return STRICT JSON ONLY in this shape:
 
 {
+  "detectedIndustries": ["..."],
   "ruleGroups": [
     {
       "label": "",
@@ -61,9 +79,9 @@ OUTPUT MUST BE JSON WITH EXACT FIELDS:
         {
           "type": "coverage|limit|endorsement|date",
           "field": "",
-          "condition": "",
-          "value": "",
-          "severity": "",
+          "condition": "exists|missing|gte|lte|requires|before|after",
+          "value": "string or number",
+          "severity": "low|medium|high|critical",
           "message": ""
         }
       ]
@@ -77,57 +95,118 @@ OUTPUT MUST BE JSON WITH EXACT FIELDS:
   },
   "summary": ""
 }
-`;
+`,
+    };
+
+    const user = {
+      role: "user",
+      content: `Org ID: ${orgId}\n\nVendor list (one per line: name, email, category):\n${vendorText}`,
+    };
 
     const completion = await openai.chat.completions.create({
       model: "gpt-4.1",
       temperature: 0.2,
-      messages: [{ role: "user", content: prompt }],
+      messages: [system, user],
     });
 
-    const responseRaw = completion.choices[0].message.content;
+    const raw = completion.choices[0].message.content;
 
-    let responseJson;
+    let parsed;
     try {
-      responseJson = JSON.parse(responseRaw);
+      parsed = JSON.parse(raw);
     } catch (err) {
-      console.error("JSON parse error:", err);
+      console.error("JSON parse error in ai-wizard:", err, raw?.slice(0, 400));
       return res.status(200).json({
-        ok: true,
-        needsFix: true,
-        raw: responseRaw,
+        ok: false,
+        error: "AI returned invalid JSON. Try refining your CSV or trying again.",
+        raw,
       });
     }
 
-    // --------------------------------------------------------
-    // STORE RULE GROUPS + RULES IN DB
-    // --------------------------------------------------------
-    for (const group of responseJson.ruleGroups || []) {
+    const detectedIndustries = Array.isArray(parsed.detectedIndustries)
+      ? parsed.detectedIndustries
+      : [];
+    const ruleGroups = Array.isArray(parsed.ruleGroups)
+      ? parsed.ruleGroups
+      : [];
+    const templates = parsed.templates || {};
+    const summary = parsed.summary || "";
+
+    if (!ruleGroups.length) {
+      return res.status(200).json({
+        ok: false,
+        error: "AI did not return any rule groups.",
+        detectedIndustries,
+        summary,
+        templates,
+        raw,
+      });
+    }
+
+    // ---------------- PERSIST RULE GROUPS + RULES ----------------
+    const savedGroups = [];
+
+    for (const g of ruleGroups) {
+      const groupLabel = g.label || "AI Rule Group";
+      const groupDesc = g.description || "";
+      const groupSeverity = g.severity || "medium";
+
       const insertedGroup = await sql`
         INSERT INTO rule_groups (org_id, label, description, severity, active)
-        VALUES (${orgId}, ${group.label}, ${group.description}, ${group.severity}, TRUE)
-        RETURNING id;
+        VALUES (${orgId}, ${groupLabel}, ${groupDesc}, ${groupSeverity}, TRUE)
+        RETURNING id, label, description, severity;
       `;
 
       const groupId = insertedGroup[0].id;
+      const rules = Array.isArray(g.rules) ? g.rules : [];
+      const savedRules = [];
 
-      for (const r of group.rules || []) {
-        await sql`
+      for (const r of rules) {
+        const type = r.type || "coverage";
+        const field = r.field || "unknown_field";
+        const condition = r.condition || "exists";
+        const value = r.value ?? "";
+        const severity = r.severity || "medium";
+        const message = r.message || "Requirement not met.";
+
+        const insertedRule = await sql`
           INSERT INTO rules_v3 (group_id, type, field, condition, value, message, severity, active)
-          VALUES (${groupId}, ${r.type}, ${r.field}, ${r.condition}, ${r.value},
-                  ${r.message}, ${r.severity}, TRUE);
+          VALUES (
+            ${groupId},
+            ${type},
+            ${field},
+            ${condition},
+            ${String(value)},
+            ${message},
+            ${severity},
+            TRUE
+          )
+          RETURNING id, type, field, condition, value, message, severity;
         `;
+
+        savedRules.push(insertedRule[0]);
       }
+
+      savedGroups.push({
+        group: insertedGroup[0],
+        rules: savedRules,
+      });
     }
 
     return res.status(200).json({
       ok: true,
-      ruleGroups: responseJson.ruleGroups,
-      templates: responseJson.templates,
-      summary: responseJson.summary,
+      detectedIndustries,
+      ruleGroups: savedGroups.map((g) => ({
+        label: g.group.label,
+        description: g.group.description,
+        severity: g.group.severity,
+        rules: g.rules,
+      })),
+      templates,
+      summary,
     });
   } catch (err) {
-    console.error("[AI Onboarding Wizard ERROR]:", err);
+    console.error("[AI Onboarding Wizard ERROR]", err);
     return res.status(500).json({ ok: false, error: err.message });
   }
 }
