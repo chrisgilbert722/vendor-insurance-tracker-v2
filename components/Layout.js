@@ -1,20 +1,35 @@
-// components/Layout.js — Updated with AI Chatbot Panel
+// components/Layout.js — Updated with Vendor-Aware AI Chatbot Panel
 import { useRouter } from "next/router";
 import Sidebar from "./Sidebar";
 import Header from "./Header";
 import { useRole } from "../lib/useRole";
 import { useOrg } from "../context/OrgContext";
-import SupportChatPanel from "./chat/SupportChatPanel";  // ⭐ ADDED IMPORT
+import SupportChatPanel from "./chat/SupportChatPanel";
+
+/* ------------------------------------------------------------
+   STEP 1 — Vendor ID Extraction Helper
+------------------------------------------------------------ */
+function extractVendorId(pathname) {
+  // Matches paths like /admin/vendor/123 or /vendors/123
+  const match = pathname.match(/\/vendor\/(\d+)/);
+  return match ? match[1] : null;
+}
 
 export default function Layout({ children }) {
   const router = useRouter();
   const pathname = router.pathname;
 
-  // Valid hook usage — we actually read the result
+  // Org context
   const orgContext = useOrg();
+  const orgId = orgContext?.activeOrgId || null;
 
   // Role system
   const { isAdmin, isManager, isViewer } = useRole();
+
+  /* ------------------------------------------------------------
+     STEP 2 — Auto-detect vendorId from page URL
+  ------------------------------------------------------------ */
+  const vendorId = extractVendorId(pathname);
 
   return (
     <div
@@ -85,8 +100,12 @@ export default function Layout({ children }) {
         </main>
       </div>
 
-      {/* ⭐ AI Chatbot Panel */}
-      <SupportChatPanel />
+      {/* ⭐ AI Chatbot Panel — NOW VENDOR-AWARE */}
+      <SupportChatPanel
+        orgId={orgId}
+        vendorId={vendorId}
+        pathname={pathname}
+      />
     </div>
   );
 }
