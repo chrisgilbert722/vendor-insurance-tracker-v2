@@ -1,4 +1,4 @@
-// components/Sidebar.js — Tactical Neon Rail V9 (Added Onboarding Route)
+// components/Sidebar.js — Tactical Neon Rail V9 (Added Onboarding Route + Executive Dashboard)
 import React from "react";
 
 export default function Sidebar({ pathname, isAdmin, isManager, isViewer }) {
@@ -88,13 +88,23 @@ export default function Sidebar({ pathname, isAdmin, isManager, isViewer }) {
         />
       )}
 
-      {/* ⭐ REQUIREMENTS ENGINE V5 ⭐ */}
+      {/* ⭐ REQUIREMENTS ENGINE ⭐ */}
       {isAdmin && (
         <RailLink
           href="/admin/requirements-v5"
           label="Rules"
           icon="🧠"
           active={pathname === "/admin/requirements-v5"}
+        />
+      )}
+
+      {/* ⭐ NEW: EXECUTIVE AI DASHBOARD ⭐ */}
+      {isAdmin && (
+        <RailLink
+          href="/admin/renewals"
+          label="Exec AI"
+          icon="🏆"
+          active={pathname === "/admin/renewals"}
         />
       )}
 
