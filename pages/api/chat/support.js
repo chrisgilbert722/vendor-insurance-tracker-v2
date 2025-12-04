@@ -1,5 +1,5 @@
 // pages/api/chat/support.js
-// Ultimate Multi-Mode Chat Engine (Vendor Mode, Wizard Mode, Explain Mode, Auto-Fix Mode, Org Brain Mode, Proactive Onboarding)
+// Ultimate Multi-Mode Chat Engine (Vendor Mode, Wizard Mode, Explain Mode, Auto-Fix Mode, Org Brain Mode, Onboarding Checklist)
 
 import { openai } from "../../../lib/openaiClient";
 import { sql } from "../../../lib/db";
@@ -29,55 +29,70 @@ export default async function handler(req, res) {
       messages[messages.length - 1]?.content?.toLowerCase() || "";
 
     // ================================================================
-    // ⭐ NEW USER ONBOARDING: "WHERE DO I START?" DETECTION + AUTO-LAUNCH
+    // ⭐ ONBOARDING CHECKLIST MODE
     // ================================================================
-    const onboardingTriggers = [
+    const onboardingChecklistTriggers = [
+      "start checklist",
       "where do i start",
       "where do we start",
-      "how do i start",
-      "i just signed up",
-      "i just joined",
-      "how do we set this up",
-      "how do i set this up",
-      "what do i do first",
-      "what should i do first",
       "help me get started",
+      "how do i onboard",
+      "i just signed up",
+      "what do i do first",
+      "begin onboarding",
       "get started",
-      "starting guide",
-      "start setup",
+      "start onboarding",
     ];
 
-    const askedStart = onboardingTriggers.some((t) =>
-      lastMessage.includes(t)
-    );
+    if (
+      onboardingChecklistTriggers.some((t) =>
+        lastMessage.includes(t)
+      )
+    ) {
+      const checklist = `
+🧭 **AI Onboarding Checklist**
 
-    if (askedStart) {
+Here’s the fastest path to finish your setup:
+
+1️⃣ **Upload Vendors**
+• Upload a CSV of vendors  
+• OR drag-and-drop COIs so AI can build the list  
+• OR add a few vendors manually  
+
+2️⃣ **AI Detects Your Industry**
+We auto-tune requirements for: Construction, Property Management, Healthcare, Retail, etc.
+
+3️⃣ **AI Builds Rule Groups**
+Expiration rules  
+Limit rules  
+Endorsement requirements  
+Missing coverage detection  
+
+4️⃣ **AI Generates Communication Templates**
+Vendor fix emails  
+Broker request emails  
+Renewal reminders  
+
+5️⃣ **Activate Your System**
+View your dashboard  
+Resolve critical alerts  
+Invite your team
+
+You can say:
+• "Upload vendors for me"  
+• "Explain rule groups"  
+• "Show renewal steps"  
+• "Help me with vendor COIs"
+
+I'm here with you the whole way.`;
+
       return res.status(200).json({
         ok: true,
-        launchWizard: true,
-        reply: `
-🎉 **Welcome! You're in the right place.**
-
-The fastest way to get fully set up is the **AI Onboarding Wizard**.
-
-I’m going to launch it for you now at **/onboarding/start**.
-
-In that wizard, you will:
-- Upload or paste your vendor list  
-- Let AI detect your industry  
-- Let AI build your rule groups  
-- Let AI generate renewal workflows  
-- Let AI create your communication templates  
-
-You’ll be ready to go in under **10 minutes**.
-
-➡️ Launching the AI Onboarding Wizard now…
-        `.trim(),
+        reply: checklist,
       });
     }
-
     // ================================================================
-    // ⭐ ORG BRAIN MODE DETECTION (SYSTEM DESIGNER)
+    // ⭐ ORG BRAIN MODE DETECTION
     // ================================================================
     const isOrgBrain =
       lastMessage.includes("org brain") ||
@@ -111,7 +126,6 @@ You’ll be ready to go in under **10 minutes**.
           });
         }
 
-        // Format Org Brain response nicely
         let reply = `🧠 **ORG BRAIN SYSTEM REBUILD COMPLETE**\n\n`;
         reply += `**Summary:**\n${brainJson.summary}\n\n`;
 
@@ -210,13 +224,14 @@ Return as plain text, structured with headers.
     }
 
     // ================================================================
-    // ⭐ EXPLAIN-THIS-PAGE MODE (❓ button)
+    // ⭐ EXPLAIN-THIS-PAGE MODE (❓)
     // ================================================================
     const explainMode =
       lastMessage.includes("explain this page") ||
       lastMessage.includes("what is on this page") ||
       lastMessage.includes("explain everything here");
 
+    if (expl
     if (explainMode) {
       const promptExplain = `
 Explain this UI page to the user in simple terms.
@@ -225,8 +240,8 @@ Vendor context: ${vendorId ? "Vendor Detail Mode" : "Global Mode"}
 
 Include:
 - What the panels mean
-- What the KPIs mean
-- What actions they should take next
+- What KPIs represent
+- What actions should be taken next
 - Any warnings based on common workflows
 `;
 
@@ -247,18 +262,18 @@ Include:
         reply: completion.choices[0].message.content,
       });
     }
-
     // ================================================================
-    // ⭐ NORMAL CHAT MODE (fallback)
+    // ⭐ NORMAL CHAT MODE (Fallback)
     // ================================================================
     const systemPrompt = `
 You are an elite insurance compliance AI assistant inside a vendor COI platform.
-You respond with:
+You ALWAYS respond with:
 - Clear reasoning
 - Actionable steps
 - No hallucinations
-- Realistic insurance knowledge
-- Short, sharp answers
+- Realistic insurance/compliance knowledge
+- Simple, direct answers
+- Keep answers short unless user asks for depth
 
 User context:
 - Org ID: ${orgId}
@@ -271,7 +286,10 @@ User context:
       temperature: 0.4,
       messages: [
         { role: "system", content: systemPrompt },
-        ...messages.map((m) => ({ role: m.role, content: m.content })),
+        ...messages.map((m) => ({
+          role: m.role,
+          content: m.content,
+        })),
       ],
     });
 
@@ -286,3 +304,4 @@ User context:
     });
   }
 }
+// End of /pages/api/chat/support.js
