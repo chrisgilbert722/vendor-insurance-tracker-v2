@@ -13,10 +13,9 @@ export default function SupportChatPanel({ orgId, vendorId, pathname }) {
   const [messages, setMessages] = useState([
     {
       role: "assistant",
-      content:
-        vendorId
-          ? "You're viewing a specific vendor — ask me why they failed, their risk score, or what to do next."
-          : "Hey there 👋 I’m your AI assistant. Ask me about renewals, alerts, vendors, rules, or where to click next.",
+      content: vendorId
+        ? "You're viewing a specific vendor — ask me why they failed, their risk score, or what to do next."
+        : "Hey there 👋 I’m your AI assistant. Ask me about renewals, alerts, vendors, rules, or where to click next.",
     },
   ]);
   const [input, setInput] = useState("");
@@ -49,19 +48,13 @@ export default function SupportChatPanel({ orgId, vendorId, pathname }) {
 
       setMessages((prev) => [
         ...prev,
-        {
-          role: "assistant",
-          content: json.reply || "I couldn't generate a response.",
-        },
+        { role: "assistant", content: json.reply || "I couldn't generate a response." },
       ]);
     } catch (err) {
       console.error("[ChatBot] ERROR:", err);
       setMessages((prev) => [
         ...prev,
-        {
-          role: "assistant",
-          content: "Something went wrong. Try again shortly.",
-        },
+        { role: "assistant", content: "Something went wrong. Try again shortly." },
       ]);
     } finally {
       setSending(false);
@@ -77,9 +70,9 @@ export default function SupportChatPanel({ orgId, vendorId, pathname }) {
 
   return (
     <>
-      {/* Floating Button */}
+      {/* Floating Chat Button */}
       <button
-        onClick={() => setOpen(o => !o)}
+        onClick={() => setOpen((o) => !o)}
         style={{
           position: "fixed",
           right: 24,
@@ -89,22 +82,20 @@ export default function SupportChatPanel({ orgId, vendorId, pathname }) {
           height: 54,
           borderRadius: "999px",
           border: "1px solid rgba(56,189,248,0.9)",
-          background:
-            "radial-gradient(circle at top left,#38bdf8,#0ea5e9,#0f172a)",
+          background: "radial-gradient(circle at top left,#38bdf8,#0ea5e9,#0f172a)",
           color: "#e0f2fe",
           fontSize: 24,
           display: "flex",
           alignItems: "center",
           justifyContent: "center",
-          boxShadow:
-            "0 0 25px rgba(56,189,248,0.7), 0 0 40px rgba(15,23,42,0.9)",
+          boxShadow: "0 0 25px rgba(56,189,248,0.7), 0 0 40px rgba(15,23,42,0.9)",
           cursor: "pointer",
         }}
       >
         {open ? "✖️" : "💬"}
       </button>
 
-      {/* Panel */}
+      {/* Chat Panel */}
       {open && (
         <div
           style={{
@@ -130,14 +121,7 @@ export default function SupportChatPanel({ orgId, vendorId, pathname }) {
               borderBottom: "1px solid rgba(51,65,85,0.9)",
             }}
           >
-            <div
-              style={{
-                fontSize: 11,
-                textTransform: "uppercase",
-                letterSpacing: "0.14em",
-                color: GP.textSoft,
-              }}
-            >
+            <div style={{ fontSize: 11, textTransform: "uppercase", letterSpacing: "0.14em", color: GP.textSoft }}>
               AI Assistant
             </div>
 
@@ -161,35 +145,19 @@ export default function SupportChatPanel({ orgId, vendorId, pathname }) {
           >
             {vendorId && (
               <>
-                <button
-                  style={quickBtn}
-                  onClick={() => sendMessage("Explain this vendor's risk score.")}
-                >
+                <button style={quickBtn} onClick={() => sendMessage("Explain this vendor's risk score.")}>
                   ⚠️ Risk Score
                 </button>
 
-                <button
-                  style={quickBtn}
-                  onClick={() =>
-                    sendMessage("Why did this vendor fail compliance?")
-                  }
-                >
+                <button style={quickBtn} onClick={() => sendMessage("Why did this vendor fail compliance?")}>
                   📘 Rule Failures
                 </button>
 
-                <button
-                  style={quickBtn}
-                  onClick={() => sendMessage("Explain this vendor’s alerts.")}
-                >
+                <button style={quickBtn} onClick={() => sendMessage("Explain this vendor’s alerts.")}>
                   🔔 Alerts
                 </button>
 
-                <button
-                  style={quickBtn}
-                  onClick={() =>
-                    sendMessage("Explain this vendor’s renewal prediction.")
-                  }
-                >
+                <button style={quickBtn} onClick={() => sendMessage("Explain this vendor’s renewal prediction.")}>
                   🔮 Prediction
                 </button>
 
@@ -207,20 +175,32 @@ export default function SupportChatPanel({ orgId, vendorId, pathname }) {
                 <button
                   style={quickBtn}
                   onClick={() =>
-                    sendMessage(
-                      "Generate a fix request email listing missing or incorrect insurance items."
-                    )
+                    sendMessage("Generate a fix request email listing missing or incorrect insurance items.")
                   }
                 >
                   🛠️ Fix Email
                 </button>
 
+                {/* 🚀 FULL AUTO-FIX BUTTON */}
+                <button
+                  style={{
+                    ...quickBtn,
+                    border: "1px solid rgba(248,113,113,0.9)",
+                    color: "#fecaca",
+                  }}
+                  onClick={() =>
+                    sendMessage(
+                      "Auto-fix this vendor: summarize the situation, list key issues with severity, propose a step-by-step remediation plan, and generate vendor and broker email templates."
+                    )
+                  }
+                >
+                  🚀 Auto-Fix Vendor
+                </button>
+
                 <button
                   style={quickBtn}
                   onClick={() =>
-                    sendMessage(
-                      "What should I do next for this vendor based on their compliance and renewal status?"
-                    )
+                    sendMessage("What should I do next for this vendor based on their compliance and renewal status?")
                   }
                 >
                   ▶️ Next Steps
@@ -230,28 +210,13 @@ export default function SupportChatPanel({ orgId, vendorId, pathname }) {
 
             {!vendorId && (
               <>
-                <button
-                  style={quickBtn}
-                  onClick={() =>
-                    sendMessage("Show me all severe or high-risk vendors.")
-                  }
-                >
+                <button style={quickBtn} onClick={() => sendMessage("Show me all severe or high-risk vendors.")}>
                   🔥 High-Risk Vendors
                 </button>
-                <button
-                  style={quickBtn}
-                  onClick={() =>
-                    sendMessage("Explain how renewal predictions work.")
-                  }
-                >
+                <button style={quickBtn} onClick={() => sendMessage("Explain how renewal predictions work.")}>
                   🔮 Prediction Help
                 </button>
-                <button
-                  style={quickBtn}
-                  onClick={() =>
-                    sendMessage("How do I upload a COI or contact a vendor?")
-                  }
-                >
+                <button style={quickBtn} onClick={() => sendMessage("How do I upload a COI or contact a vendor?")}>
                   📄 COI Help
                 </button>
               </>
@@ -279,9 +244,7 @@ export default function SupportChatPanel({ orgId, vendorId, pathname }) {
                     maxWidth: "80%",
                     padding: "8px 10px",
                     borderRadius: 12,
-                    background: isUser
-                      ? "rgba(37,99,235,0.9)"
-                      : "rgba(15,23,42,0.98)",
+                    background: isUser ? "rgba(37,99,235,0.9)" : "rgba(15,23,42,0.98)",
                     border: isUser
                       ? "1px solid rgba(129,140,248,0.8)"
                       : "1px solid rgba(51,65,85,0.9)",
@@ -295,9 +258,7 @@ export default function SupportChatPanel({ orgId, vendorId, pathname }) {
               );
             })}
 
-            {sending && (
-              <div style={{ fontSize: 11, color: GP.textSoft }}>Thinking…</div>
-            )}
+            {sending && <div style={{ fontSize: 11, color: GP.textSoft }}>Thinking…</div>}
           </div>
 
           {/* Input */}
@@ -337,13 +298,11 @@ export default function SupportChatPanel({ orgId, vendorId, pathname }) {
                 padding: "6px 10px",
                 borderRadius: 999,
                 border: "1px solid rgba(34,197,94,0.9)",
-                background:
-                  "radial-gradient(circle at top left,#22c55e,#16a34a,#052e16)",
+                background: "radial-gradient(circle at top left,#22c55e,#16a34a,#052e16)",
                 color: "#ecfdf5",
                 fontSize: 12,
                 fontWeight: 600,
-                cursor:
-                  sending || !input.trim() ? "not-allowed" : "pointer",
+                cursor: sending || !input.trim() ? "not-allowed" : "pointer",
               }}
             >
               ➤
@@ -366,4 +325,3 @@ const quickBtn = {
   cursor: "pointer",
   whiteSpace: "nowrap",
 };
-
