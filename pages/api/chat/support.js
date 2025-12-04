@@ -1,5 +1,5 @@
 // pages/api/chat/support.js
-// Upgraded AI Assistant with vendor-awareness, rule engine context, renewal context
+// Vendor-aware AI Assistant with Rule Engine Explanation Mode
 
 import { openai } from "../../../lib/openaiClient";
 import { sql } from "../../../lib/db";
@@ -14,14 +14,15 @@ export default async function handler(req, res) {
   try {
     const { messages, orgId, vendorId, path } = req.body || {};
 
-    if (!messages || !Array.isArray(messages) || messages.length === 0) {
+    if (!messages || !Array.isArray(messages)) {
       return res.status(400).json({ ok: false, error: "Missing messages" });
     }
 
-    // ----------------------------------------------------------------------
-    // 🔥 Load vendor-level context if vendorId is provided
-    // ----------------------------------------------------------------------
-    let vendorContext = "No vendor context available.";
+    // ============================================================
+    // LOAD CONTEXT IF vendorId PROVIDED
+    // ============================================================
+    let vendorContext = "No vendor selected.";
+    let ruleExplanationBlock = "No rule failures.";
 
     if (vendorId) {
       // 1) Vendor basic info
@@ -33,157 +34,183 @@ export default async function handler(req, res) {
       `;
       const vendor = vendorRows[0];
 
-      // 2) Policies from Supabase
-      const { data: policyRows = [], error: policyErr } = await supabase
+      // 2) Policies (supabase)
+      const { data: policies = [] } = await supabase
         .from("policies")
         .select("id, coverage_type, carrier, expiration_date")
         .eq("vendor_id", vendorId);
 
-      if (policyErr) {
-        console.error("[chat/support] policies error:", policyErr);
-      }
-
-      // 3) Alerts from Neon
+      // 3) Alerts
       const alerts = await sql`
         SELECT code, message, severity
         FROM vendor_alerts
         WHERE vendor_id = ${vendorId}
-        ORDER BY severity DESC, created_at DESC NULLS LAST;
+        ORDER BY severity DESC;
       `;
 
-      // 4) Rule Engine V3 failures
+      // 4) Rule failures
       const ruleFailures = await sql`
-        SELECT rr.rule_id, rr.message, rr.severity
-        FROM rule_results_v3 rr
-        WHERE rr.vendor_id = ${vendorId} AND rr.passed = FALSE;
+        SELECT rule_id, message, severity, passed
+        FROM rule_results_v3
+        WHERE vendor_id = ${vendorId} AND passed = FALSE;
       `;
 
-      // 5) Renewal predictions
+      // 5) Renewal prediction
       const renewPred = await sql`
         SELECT risk_score, risk_tier, likelihood_fail, likelihood_on_time
         FROM renewal_predictions
         WHERE vendor_id = ${vendorId}
         LIMIT 1;
       `;
-      const r = renewPred[0];
+      const pred = renewPred[0];
 
+      // ============================================================
+      // NEW: LOAD RULE DEFINITIONS + GROUP DEFINITIONS
+      // ============================================================
+      const ruleDefs = await sql`
+        SELECT id, group_id, type, field, condition, value, message, severity
+        FROM rules_v3
+        WHERE group_id IN (
+          SELECT id FROM rule_groups WHERE org_id = ${orgId}
+        );
+      `;
+
+      const groupDefs = await sql`
+        SELECT id, label, description, severity
+        FROM rule_groups
+        WHERE org_id = ${orgId};
+      `;
+
+      // ============================================================
+      // BUILD RULE EXPLANATION BLOCK
+      // ============================================================
+      ruleExplanationBlock =
+        ruleFailures.length === 0
+          ? "This vendor has no rule failures."
+          : ruleFailures
+              .map((f) => {
+                const rule = ruleDefs.find((r) => r.id === f.rule_id);
+                const group = groupDefs.find((g) => g.id === rule?.group_id);
+
+                return `
+RULE FAILURE:
+- Rule ID: ${f.rule_id}
+- Severity: ${f.severity}
+- Group: ${group?.label || "Unknown"}
+- Group Description: ${group?.description || "N/A"}
+- Field Checked: ${rule?.field || "unknown"}
+- Condition: ${rule?.condition || "unknown"}
+- Expected Value: ${rule?.value || "none"}
+- Failure Message: ${rule?.message || f.message}
+
+EXPLANATION (for AI use):
+This rule checks whether the vendor's "${rule?.field}" meets the condition "${
+                  rule?.condition
+                }" with expected value "${rule?.value}". The vendor did not meet this requirement, triggering a ${f.severity} severity failure.
+                `;
+              })
+              .join("\n");
+
+      // ============================================================
+      // BUILD VENDOR CONTEXT BLOCK
+      // ============================================================
       vendorContext = `
-[VENDOR CONTEXT]
-Name: ${vendor?.name || "Unknown"}
-Compliance Status: ${vendor?.compliance_status || "Unknown"}
-Org ID: ${vendor?.org_id || "Unknown"}
+[VENDOR INFO]
+Name: ${vendor?.name}
+Status: ${vendor?.compliance_status}
 
 [POLICIES]
 ${
-  policyRows && policyRows.length
-    ? policyRows
+  policies.length
+    ? policies
         .map(
           (p) =>
-            `• ${p.coverage_type || "Unknown"} — Carrier: ${
-              p.carrier || "Unknown"
-            }, Expires: ${p.expiration_date || "Unknown"}`
+            `• ${p.coverage_type} — Carrier: ${p.carrier}, Expires: ${p.expiration_date}`
         )
         .join("\n")
-    : "• No policies found."
+    : "No policies found."
 }
 
 [ALERTS]
 ${
-  alerts && alerts.length
+  alerts.length
     ? alerts
         .map(
           (a) =>
-            `• [${a.severity || "unknown"}] ${a.code || ""} — ${
-              a.message || ""
-            }`
+            `• [${a.severity}] ${a.code} — ${a.message}`
         )
         .join("\n")
-    : "• No alerts."
+    : "No alerts."
 }
 
-[RULE FAILURES]
-${
-  ruleFailures && ruleFailures.length
-    ? ruleFailures
-        .map(
-          (f) =>
-            `• Severity: ${f.severity || "unknown"} — ${f.message || "Unknown rule failure"}`
-        )
-        .join("\n")
-    : "• No failing rules."
-}
+[RULE ENGINE FAILURES — STRUCTURED]
+${ruleExplanationBlock}
 
 [RENEWAL PREDICTION]
 ${
-  r
-    ? `Risk Score: ${r.risk_score}
-Risk Tier: ${r.risk_tier}
-Likelihood of Failure: ${r.likelihood_fail}%
-Likelihood of On-Time Renewal: ${r.likelihood_on_time}%`
-    : "No prediction recorded for this vendor."
+  pred
+    ? `Risk Score: ${pred.risk_score}
+Risk Tier: ${pred.risk_tier}
+Fail Chance: ${pred.likelihood_fail}%
+On-Time Chance: ${pred.likelihood_on_time}%`
+    : "No renewal prediction available."
 }
 `;
     }
 
-    // ----------------------------------------------------------------------
-    // 🔥 SYSTEM PROMPT — define assistant role clearly
-    // ----------------------------------------------------------------------
+    // ============================================================
+    // SYSTEM PROMPT — TEACH AI HOW TO EXPLAIN RULES
+    // ============================================================
     const systemMessage = {
       role: "system",
       content: `
 You are the AI Assistant for a vendor insurance compliance platform.
 
-You can:
-- Explain vendor compliance status.
-- Explain rule engine failures in clear language.
-- Explain vendor alerts and what they mean.
-- Explain renewal predictions and risk tiers.
-- Suggest next steps for the admin (who to contact, what to change).
-- Draft emails to vendors and brokers.
-- Help navigate the app (“where do I go to see X?”).
+Your capabilities:
+- Explain rule engine failures in plain English.
+- Tell the user EXACTLY why the vendor failed a rule.
+- Compare expected vs. actual values if available.
+- Interpret conditions ("gte", "lte", "exists", "missing", "requires").
+- Suggest precise remediation steps.
+- Draft emails to vendors/brokers based on failures.
+- Explain renewal predictions.
+- Provide next steps for compliance.
 
-Rules:
-- Do NOT invent vendor data beyond what is in the context.
-- If something is not in context, answer conceptually and say it’s an example.
-- Always speak clearly and concisely, as if to a busy risk manager.
-- You are allowed to generate email templates and action plans.
+RULE EXPLANATION PROTOCOL:
+1. Identify the rule group and purpose.
+2. Explain what field was checked.
+3. Explain the condition (gte/lte/exists/missing/etc.) in simple language.
+4. State what the vendor's actual value appears to be (if known).
+5. Explain why this caused a failure.
+6. Recommend how to fix it (in practical terms).
+7. Do NOT invent data not in vendorContext.
 `,
     };
 
-    // ----------------------------------------------------------------------
-    // 🔥 CONTEXT MESSAGE — inject org + vendor context
-    // ----------------------------------------------------------------------
+    // Context message
     const contextMessage = {
       role: "system",
       content: `
-[CONTEXT]
-Current Path: ${path || "unknown"}
-Org ID: ${orgId || "unknown"}
-Vendor ID: ${vendorId || "none"}
-
-${vendorId ? vendorContext : "No specific vendor selected."}
+[PATH] ${path}
+[ORG] ${orgId}
+[VENDOR] ${vendorId || "none"}
+${vendorContext}
 `,
     };
 
-    // Only keep recent messages to control token usage
-    const recentMessages = messages.slice(-8);
+    const recent = messages.slice(-8);
 
     const completion = await openai.chat.completions.create({
       model: "gpt-4.1",
       temperature: 0.2,
-      messages: [systemMessage, contextMessage, ...recentMessages],
+      messages: [systemMessage, contextMessage, ...recent],
     });
 
     const reply = completion.choices?.[0]?.message?.content || "";
 
-    return res.status(200).json({
-      ok: true,
-      reply,
-    });
+    return res.status(200).json({ ok: true, reply });
   } catch (err) {
-    console.error("[/api/chat/support] ERROR:", err);
-    return res
-      .status(500)
-      .json({ ok: false, error: err.message || "Chatbot failed." });
+    console.error("[AI Chat Rule Explain ERROR]:", err);
+    return res.status(500).json({ ok: false, error: "Chatbot failed." });
   }
 }
