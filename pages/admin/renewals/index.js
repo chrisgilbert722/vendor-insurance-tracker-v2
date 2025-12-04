@@ -486,4 +486,6 @@ function HighRiskVendorsPanel({ vendors }) {
             </tbody>
           </table>
         </div>
+      )}
+
      
