@@ -1,5 +1,5 @@
 // components/chat/SupportChatPanel.js
-// Ultimate AI Assistant v5 — Global, Vendor, Wizard, Explain, Auto-Fix, Org Brain
+// Ultimate AI Assistant v6 — Global, Vendor, Wizard, Explain, Auto-Fix, Org Brain, Proactive Onboarding
 
 import { useState, useEffect } from "react";
 
@@ -66,6 +66,27 @@ export default function SupportChatPanel({ orgId, vendorId, pathname }) {
       const json = await res.json();
       if (!json.ok) throw new Error(json.error || "Chat failed");
 
+      // ⭐ AUTO-LAUNCH WIZARD BEHAVIOR
+      if (json.launchWizard) {
+        // Show the AI's onboarding message first
+        setMessages((prev) => [
+          ...prev,
+          {
+            role: "assistant",
+            content: json.reply || "Launching onboarding wizard…",
+          },
+        ]);
+
+        // Slight delay for cinematic effect, then redirect
+        setTimeout(() => {
+          window.location.href = "/onboarding/start";
+        }, 800);
+
+        setSending(false);
+        return;
+      }
+
+      // Normal reply
       const aiMessage = {
         role: "assistant",
         content: json.reply || "I couldn’t generate a response.",
