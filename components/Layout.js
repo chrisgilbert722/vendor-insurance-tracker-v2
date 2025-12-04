@@ -1,4 +1,4 @@
-// components/Layout.js — Updated with Vendor-Aware AI Chatbot Panel
+// components/Layout.js — Updated with Explain-This-Page Mode + Vendor-Aware Chatbot
 import { useRouter } from "next/router";
 import Sidebar from "./Sidebar";
 import Header from "./Header";
@@ -6,11 +6,8 @@ import { useRole } from "../lib/useRole";
 import { useOrg } from "../context/OrgContext";
 import SupportChatPanel from "./chat/SupportChatPanel";
 
-/* ------------------------------------------------------------
-   STEP 1 — Vendor ID Extraction Helper
------------------------------------------------------------- */
+/* Extract vendorId from URL */
 function extractVendorId(pathname) {
-  // Matches paths like /admin/vendor/123 or /vendors/123
   const match = pathname.match(/\/vendor\/(\d+)/);
   return match ? match[1] : null;
 }
@@ -19,16 +16,11 @@ export default function Layout({ children }) {
   const router = useRouter();
   const pathname = router.pathname;
 
-  // Org context
   const orgContext = useOrg();
   const orgId = orgContext?.activeOrgId || null;
 
-  // Role system
   const { isAdmin, isManager, isViewer } = useRole();
 
-  /* ------------------------------------------------------------
-     STEP 2 — Auto-detect vendorId from page URL
-  ------------------------------------------------------------ */
   const vendorId = extractVendorId(pathname);
 
   return (
@@ -47,7 +39,7 @@ export default function Layout({ children }) {
         position: "relative",
       }}
     >
-      {/* Ambient lighting overlay */}
+      {/* Ambient lighting */}
       <div
         style={{
           position: "absolute",
@@ -63,7 +55,6 @@ export default function Layout({ children }) {
         }}
       />
 
-      {/* Particle field */}
       <div className="cockpit-particles" />
 
       {/* Sidebar */}
@@ -80,14 +71,12 @@ export default function Layout({ children }) {
           flex: 1,
           display: "flex",
           flexDirection: "column",
-          position: "relative",
           zIndex: 2,
+          position: "relative",
         }}
       >
-        {/* Header */}
         <Header />
 
-        {/* Page content */}
         <main
           style={{
             padding: "30px 40px",
@@ -100,7 +89,32 @@ export default function Layout({ children }) {
         </main>
       </div>
 
-      {/* ⭐ AI Chatbot Panel — NOW VENDOR-AWARE */}
+      {/* ⭐ Explain This Page Button */}
+      <button
+        onClick={() => window.dispatchEvent(new CustomEvent("explain_page"))}
+        style={{
+          position: "fixed",
+          right: 24,
+          bottom: 90,
+          zIndex: 50,
+          width: 44,
+          height: 44,
+          borderRadius: "999px",
+          border: "1px solid rgba(250,204,21,0.9)",
+          background: "radial-gradient(circle at top left,#facc15,#eab308,#854d0e)",
+          color: "#1e1e1e",
+          fontSize: 20,
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          boxShadow: "0 0 25px rgba(250,204,21,0.7)",
+          cursor: "pointer",
+        }}
+      >
+        ❓
+      </button>
+
+      {/* Chatbot */}
       <SupportChatPanel
         orgId={orgId}
         vendorId={vendorId}
