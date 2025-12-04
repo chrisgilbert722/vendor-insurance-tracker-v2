@@ -41,7 +41,11 @@ export default function RenewalPredictionDashboardPage() {
   const [predictions, setPredictions] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [downloading, setDownloading] = useState(false);
 
+  /* ===========================
+      LOAD ORG PREDICTIONS
+  ============================ */
   useEffect(() => {
     if (!orgId) return;
 
@@ -66,6 +70,39 @@ export default function RenewalPredictionDashboardPage() {
 
     load();
   }, [orgId]);
+
+  /* ===========================
+      EXEC PDF DOWNLOAD HANDLER
+  ============================ */
+  async function downloadExecutivePdf() {
+    if (!orgId) return;
+    try {
+      setDownloading(true);
+
+      const res = await fetch("/api/admin/executive-renewal-report-pdf", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ orgId }),
+      });
+
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.error || "Failed generating PDF");
+      }
+
+      const blob = await res.blob();
+      const url = window.URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = `Executive_Renewal_Report_${orgId}.pdf`;
+      link.click();
+      window.URL.revokeObjectURL(url);
+    } catch (err) {
+      alert("PDF Error: " + err.message);
+    } finally {
+      setDownloading(false);
+    }
+  }
 
   const totalVendors = predictions.length;
   const avgRisk =
@@ -215,6 +252,7 @@ export default function RenewalPredictionDashboardPage() {
             </p>
           </div>
 
+          {/* Org Snapshot + PDF Button */}
           <div
             style={{
               minWidth: 230,
@@ -223,23 +261,50 @@ export default function RenewalPredictionDashboardPage() {
               border: "1px solid rgba(51,65,85,0.9)",
               background: "rgba(15,23,42,0.98)",
               fontSize: 12,
+              display: "flex",
+              flexDirection: "column",
+              gap: 8,
             }}
           >
             <div style={{ color: GP.textSoft, marginBottom: 4 }}>
               Org Snapshot
             </div>
+
             <div style={{ display: "flex", justifyContent: "space-between" }}>
               <span>Vendors scored</span>
               <strong>{totalVendors}</strong>
             </div>
+
             <div style={{ display: "flex", justifyContent: "space-between" }}>
               <span>Avg risk</span>
               <strong>{avgRisk == null ? "—" : avgRisk}</strong>
             </div>
+
             <div style={{ display: "flex", justifyContent: "space-between" }}>
               <span>Predicted failures ≥40%</span>
               <strong>{predictedFailures.length}</strong>
             </div>
+
+            <button
+              onClick={downloadExecutivePdf}
+              disabled={downloading}
+              style={{
+                marginTop: 6,
+                padding: "6px 10px",
+                borderRadius: 999,
+                border: "1px solid rgba(56,189,248,0.8)",
+                background:
+                  "radial-gradient(circle at top left,#38bdf8,#0ea5e9,#0f172a)",
+                color: "#e0f2fe",
+                fontSize: 11,
+                fontWeight: 600,
+                cursor: downloading ? "not-allowed" : "pointer",
+                textAlign: "center",
+                whiteSpace: "nowrap",
+              }}
+            >
+              {downloading ? "Generating PDF…" : "📄 Download Executive PDF"}
+            </button>
           </div>
         </div>
 
@@ -252,34 +317,14 @@ export default function RenewalPredictionDashboardPage() {
             marginBottom: 20,
           }}
         >
-          <KpiCard
-            label="Severe Risk"
-            value={tierCounts.severe}
-            color={GP.severe}
-          />
-          <KpiCard
-            label="High Risk"
-            value={tierCounts["high risk"]}
-            color={GP.high}
-          />
-          <KpiCard
-            label="Watch"
-            value={tierCounts.watch}
-            color={GP.watch}
-          />
-          <KpiCard
-            label="Preferred"
-            value={tierCounts.preferred}
-            color={GP.preferred}
-          />
-          <KpiCard
-            label="Elite Safe"
-            value={tierCounts["elite safe"]}
-            color={GP.safe}
-          />
+          <KpiCard label="Severe Risk" value={tierCounts.severe} color={GP.severe} />
+          <KpiCard label="High Risk" value={tierCounts["high risk"]} color={GP.high} />
+          <KpiCard label="Watch" value={tierCounts.watch} color={GP.watch} />
+          <KpiCard label="Preferred" value={tierCounts.preferred} color={GP.preferred} />
+          <KpiCard label="Elite Safe" value={tierCounts["elite safe"]} color={GP.safe} />
         </div>
 
-        {/* AI-ish summary (rule-based narrative) */}
+        {/* AIish summary */}
         <div
           style={{
             borderRadius: 18,
@@ -300,29 +345,20 @@ export default function RenewalPredictionDashboardPage() {
           >
             AI Org Insight
           </div>
-          <div
-            style={{
-              fontSize: 13,
-              color: GP.text,
-              lineHeight: 1.5,
-            }}
-          >
+
+          <div style={{ fontSize: 13, color: GP.text, lineHeight: 1.5 }}>
             {loading && "Calculating renewal risk for this organization…"}
-            {!loading && predictions.length === 0 && (
-              <>No prediction data yet. Run vendor predictions to populate this view.</>
-            )}
+            {!loading && predictions.length === 0 && "No prediction data yet."}
+
             {!loading && predictions.length > 0 && (
               <>
                 Your organization currently has{" "}
-                <strong>{totalVendors}</strong> vendors scored, with an
-                average renewal risk of{" "}
-                <strong>{avgRisk ?? "—"}</strong>.{" "}
-                <strong>{tierCounts.severe}</strong> vendors are in{" "}
-                <span style={{ color: GP.severe }}>Severe</span> risk and{" "}
-                <strong>{tierCounts["high risk"]}</strong> in{" "}
-                <span style={{ color: GP.high }}>High Risk</span>, suggesting
-                where renewal follow-up and escalation should focus in the next
-                30–60 days.
+                <strong>{totalVendors}</strong> vendors scored with an average
+                renewal risk of <strong>{avgRisk ?? "—"}</strong>.{" "}
+                <strong>{tierCounts.severe}</strong> vendors are in Severe risk
+                and <strong>{tierCounts["high risk"]}</strong> in High Risk,
+                indicating where renewal follow-up and escalation should focus over
+                the next 30–60 days.
               </>
             )}
           </div>
@@ -331,7 +367,7 @@ export default function RenewalPredictionDashboardPage() {
         {/* Heatmap */}
         <OrgRenewalPredictionHeatmap orgId={orgId} />
 
-        {/* High-Risk Vendors + Predicted Failures */}
+        {/* Panels */}
         <div
           style={{
             marginTop: 30,
@@ -345,7 +381,7 @@ export default function RenewalPredictionDashboardPage() {
           <PredictedFailuresPanel vendors={predictedFailures} />
         </div>
 
-        {/* Error state */}
+        {/* Error */}
         {error && (
           <div
             style={{
@@ -406,22 +442,11 @@ function HighRiskVendorsPanel({ vendors }) {
         border: GP.borderSoft,
       }}
     >
-      <div
-        style={{
-          fontSize: 13,
-          fontWeight: 600,
-          marginBottom: 6,
-        }}
-      >
+      <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 6 }}>
         Top High-Risk Vendors
       </div>
-      <div
-        style={{
-          fontSize: 11,
-          color: GP.textSoft,
-          marginBottom: 8,
-        }}
-      >
+
+      <div style={{ fontSize: 11, color: GP.textSoft, marginBottom: 8 }}>
         Vendors in Severe or High Risk tiers, sorted by risk score.
       </div>
 
@@ -432,13 +457,7 @@ function HighRiskVendorsPanel({ vendors }) {
       )}
 
       {vendors.length > 0 && (
-        <div
-          style={{
-            maxHeight: 260,
-            overflowY: "auto",
-            paddingRight: 4,
-          }}
-        >
+        <div style={{ maxHeight: 260, overflowY: "auto", paddingRight: 4 }}>
           <table
             style={{
               width: "100%",
@@ -461,118 +480,10 @@ function HighRiskVendorsPanel({ vendors }) {
                   <td style={tdCell}>{v.vendor_name}</td>
                   <td style={tdCell}>{v.risk_tier}</td>
                   <td style={tdCell}>{v.risk_score}</td>
-                  <td style={tdCell}>
-                    {v.likelihood_fail != null ? v.likelihood_fail : "—"}%
-                  </td>
+                  <td style={tdCell}>{v.likelihood_fail ?? "—"}%</td>
                 </tr>
               ))}
             </tbody>
           </table>
         </div>
-      )}
-    </div>
-  );
-}
-
-function PredictedFailuresPanel({ vendors }) {
-  return (
-    <div
-      style={{
-        borderRadius: 18,
-        padding: 14,
-        background: GP.panelBg,
-        border: GP.borderSoft,
-      }}
-    >
-      <div
-        style={{
-          fontSize: 13,
-          fontWeight: 600,
-          marginBottom: 6,
-        }}
-      >
-        Vendors Likely to Fail Renewal
-      </div>
-      <div
-        style={{
-          fontSize: 11,
-          color: GP.textSoft,
-          marginBottom: 8,
-        }}
-      >
-        Vendors with failure likelihood ≥ 40% — focus for early intervention.
-      </div>
-
-      {vendors.length === 0 && (
-        <div style={{ fontSize: 12, color: GP.textSoft }}>
-          No vendors currently flagged as likely to fail renewal.
-        </div>
-      )}
-
-      {vendors.length > 0 && (
-        <div
-          style={{
-            maxHeight: 260,
-            overflowY: "auto",
-            paddingRight: 4,
-          }}
-        >
-          <table
-            style={{
-              width: "100%",
-              borderCollapse: "separate",
-              borderSpacing: 0,
-              fontSize: 12,
-            }}
-          >
-            <thead>
-              <tr>
-                <th style={thCell}>Vendor</th>
-                <th style={thCell}>Risk</th>
-                <th style={thCell}>Fail %</th>
-                <th style={thCell}>On-Time %</th>
-              </tr>
-            </thead>
-            <tbody>
-              {vendors.slice(0, 10).map((v) => (
-                <tr key={v.vendor_id} style={rowStyle}>
-                  <td style={tdCell}>{v.vendor_name}</td>
-                  <td style={tdCell}>{v.risk_score}</td>
-                  <td style={tdCell}>{v.likelihood_fail}%</td>
-                  <td style={tdCell}>
-                    {v.likelihood_on_time != null
-                      ? v.likelihood_on_time
-                      : "—"}
-                    %
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      )}
-    </div>
-  );
-}
-
-/* mini table styles */
-const thCell = {
-  padding: "6px 8px",
-  color: GP.textSoft,
-  fontWeight: 600,
-  textAlign: "left",
-  borderBottom: "1px solid rgba(51,65,85,0.8)",
-  fontSize: 11,
-};
-
-const tdCell = {
-  padding: "6px 8px",
-  color: GP.text,
-  borderBottom: "1px solid rgba(51,65,85,0.5)",
-  fontSize: 12,
-};
-
-const rowStyle = {
-  background:
-    "linear-gradient(90deg,rgba(15,23,42,0.98),rgba(15,23,42,0.94))",
-};
+     
