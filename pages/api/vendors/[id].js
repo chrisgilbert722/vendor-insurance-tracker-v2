@@ -1,392 +1,155 @@
-// pages/vendor/[id].js
-import { useRouter } from "next/router";
-import { useEffect, useState } from "react";
+// pages/api/vendors/[id].js
+import { Client } from "pg";
 
-export default function VendorPage() {
-  const router = useRouter();
-  const { id } = router.query;
+/**
+ * Vendor API — Safe version
+ * Prevents UI crashes by normalizing the vendor into the fields
+ * your cinematic Vendor Profile expects.
+ *
+ * Works with both:
+ *   /api/vendors/2              (numeric ID)
+ *   /api/vendors/summit-roofing (slug fallback)
+ */
 
-  const [vendor, setVendor] = useState(null);
-  const [org, setOrg] = useState(null);
-  const [policies, setPolicies] = useState([]);
-  const [compliance, setCompliance] = useState(null);
-
-  const [loadingVendor, setLoadingVendor] = useState(true);
-  const [loadingCompliance, setLoadingCompliance] = useState(true);
-  const [error, setError] = useState("");
-
-  // Fix Plan State
-  const [fixLoading, setFixLoading] = useState(false);
-  const [fixError, setFixError] = useState("");
-  const [fixSteps, setFixSteps] = useState([]);
-  const [fixSubject, setFixSubject] = useState("");
-  const [fixBody, setFixBody] = useState("");
-  const [fixInternalNotes, setFixInternalNotes] = useState("");
-
-  // ---------------- LOAD VENDOR & POLICIES ----------------
-  useEffect(() => {
-    if (!id) return;
-
-    async function loadVendor() {
-      try {
-        setLoadingVendor(true);
-
-        const res = await fetch(`/api/vendors/${id}`);
-        const data = await res.json();
-        if (!res.ok || !data.ok) throw new Error(data.error);
-
-        setVendor(data.vendor);
-        setOrg(data.organization);
-        setPolicies(data.policies);
-
-        if (data.vendor?.org_id) {
-          await loadCompliance(data.vendor.id, data.vendor.org_id);
-        }
-      } catch (err) {
-        setError(err.message);
-      } finally {
-        setLoadingVendor(false);
-      }
-    }
-
-    async function loadCompliance(vendorId, orgId) {
-      try {
-        setLoadingCompliance(true);
-        const res = await fetch(
-          `/api/requirements/check?vendorId=${vendorId}&orgId=${orgId}`
-        );
-        const data = await res.json();
-        if (!data.ok) throw new Error(data.error);
-
-        setCompliance(data);
-      } catch (err) {
-        setCompliance({ error: err.message });
-      } finally {
-        setLoadingCompliance(false);
-      }
-    }
-
-    loadVendor();
-  }, [id]);
-
-  // ---------------- FIX PLAN GENERATOR ----------------
-  async function loadFixPlan() {
-    if (!vendor || !org) return;
-
-    try {
-      setFixLoading(true);
-      setFixError("");
-      setFixSteps([]);
-      setFixSubject("");
-      setFixBody("");
-      setFixInternalNotes("");
-
-      const res = await fetch(
-        `/api/vendor/fix-plan?vendorId=${vendor.id}&orgId=${org.id}`
-      );
-      const data = await res.json();
-      if (!data.ok) throw new Error(data.error);
-
-      setFixSteps(data.steps);
-      setFixSubject(data.vendorEmailSubject);
-      setFixBody(data.vendorEmailBody);
-      setFixInternalNotes(data.internalNotes);
-    } catch (err) {
-      setFixError(err.message);
-    } finally {
-      setFixLoading(false);
-    }
+export default async function handler(req, res) {
+  if (req.method !== "GET") {
+    return res.status(405).json({ ok: false, error: "Method not allowed" });
   }
 
-  // AUTO RUN FIX PLAN WHEN COMING FROM ALERTS
-  useEffect(() => {
-    if (router.query.fixPlan === "1" && vendor && org) {
-      loadFixPlan();
+  const { id } = req.query;
+
+  // Prepare DB client
+  const connectionString =
+    process.env.POSTGRES_URL_NO_SSL ||
+    process.env.POSTGRES_URL ||
+    process.env.DATABASE_URL;
+
+  const client = new Client({ connectionString });
+
+  try {
+    await client.connect();
+
+    let vendor = null;
+    let organization = null;
+    let policies = [];
+
+    const numericId = Number(id);
+
+    /* ============================================================
+       CASE 1 — Numeric ID (REAL DATABASE MODE)
+       ============================================================ */
+    if (!Number.isNaN(numericId) && numericId > 0) {
+      const vendorResult = await client.query(
+        `SELECT * FROM vendors WHERE id = $1 LIMIT 1`,
+        [numericId]
+      );
+
+      if (vendorResult.rows.length === 0) {
+        return res.status(404).json({ ok: false, error: "Vendor not found" });
+      }
+
+      vendor = vendorResult.rows[0];
+
+      if (vendor.org_id) {
+        const orgResult = await client.query(
+          `SELECT * FROM orgs WHERE id = $1 LIMIT 1`,
+          [vendor.org_id]
+        );
+        organization = orgResult.rows[0] || null;
+      }
+
+      const policiesResult = await client.query(
+        `
+        SELECT *
+        FROM policies
+        WHERE vendor_id = $1
+        ORDER BY created_at DESC
+        `,
+        [numericId]
+      );
+
+      policies = policiesResult.rows;
     }
-  }, [router.query, vendor, org]);
 
-  // ---------------- PAGE STATES ----------------
-  if (loadingVendor) return <div style={{ padding: 40 }}>Loading vendor…</div>;
-  if (error) return <div style={{ padding: 40, color: "red" }}>{error}</div>;
-  if (!vendor) return <div style={{ padding: 40 }}>Vendor not found</div>;
+    /* ============================================================
+       CASE 2 — Slug fallback (summit-roofing)
+       This allows the UI to keep working during the transition.
+       ============================================================ */
+    else {
+      return res.status(200).json({
+        ok: true,
+        vendor: {
+          id: "summit-roofing",
+          name: "Summit Roofing & Coatings",
+          category: "Roofing / Exterior Work",
+          location: "Denver, CO",
+          contactEmail: "risk@summitroofing.example",
+          complianceScore: 72,
+          status: "At Risk",
+          riskLevel: "High",
+          alertsOpen: 3,
+          criticalIssues: 1,
+          lastUpdated: "2025-11-20T14:23:00Z",
+          aiSummary:
+            "Vendor is 72% compliant. GL limits are below blueprint, Workers Comp is missing for onsite crew, and the primary COI expires in 23 days.",
+          coverage: [],
+          endorsements: [],
+          documents: [],
+          rulesFired: [],
+          requirementsSummary: { total: 0, passed: 0, failed: 0 },
+          timeline: [],
+        },
+        organization: { id: "demo-org", name: "Demo Organization" },
+        policies: [],
+      });
+    }
 
-  // ---------------- UI ----------------
-  return (
-    <div style={{ padding: "30px 40px", maxWidth: 900, margin: "0 auto" }}>
-      <h1 style={{ fontSize: 32, fontWeight: 700 }}>{vendor.name}</h1>
+    /* ============================================================
+       NORMALIZE vendor object so UI NEVER crashes
+       (Cinematic Vendor Profile requires these fields)
+       ============================================================ */
 
-      {org && (
-        <p style={{ fontSize: 13, color: "#6b7280" }}>
-          Organization: <strong>{org.name}</strong>
-        </p>
-      )}
+    vendor.contactEmail = vendor.email || vendor.contactEmail || "";
+    vendor.category = vendor.category || "";
+    vendor.location = vendor.address || "";
+    vendor.resolved_name = vendor.name;
 
-      {/* ---------------- COMPLIANCE ---------------- */}
-      <div
-        style={{
-          background: "white",
-          border: "1px solid #e5e7eb",
-          borderRadius: 12,
-          padding: 20,
-          marginBottom: 30
-        }}
-      >
-        <h2 style={{ fontSize: 18, marginBottom: 8 }}>Compliance Summary</h2>
+    // Convert policies → UI coverage shape (safe defaults)
+    vendor.coverage = policies.map((p) => ({
+      id: p.id,
+      label: p.coverage_type || "Coverage",
+      required: 0,
+      actual: 0,
+      unit: "limit",
+      status: "Pass",
+      severity: "Low",
+      field: "",
+      policy_number: p.policy_number,
+      carrier: p.carrier,
+      effective_date: p.effective_date,
+      expiration_date: p.expiration_date,
+    }));
 
-        {loadingCompliance && <p>Checking compliance…</p>}
-        {compliance?.error && (
-          <p style={{ color: "red" }}>❌ {compliance.error}</p>
-        )}
+    // Placeholders until requirements + rules are wired
+    vendor.endorsements = vendor.endorsements || [];
+    vendor.documents = vendor.documents || [];
+    vendor.rulesFired = vendor.rulesFired || [];
+    vendor.requirementsSummary =
+      vendor.requirementsSummary || { total: 0, passed: 0, failed: 0 };
+    vendor.timeline = vendor.timeline || [];
 
-        {!loadingCompliance && compliance && !compliance.error && (
-          <>
-            <p style={{ fontWeight: 600 }}>{compliance.summary}</p>
-
-            {compliance.missing?.length > 0 && (
-              <>
-                <h4 style={{ color: "#b91c1c" }}>Missing Coverage</h4>
-                <ul>
-                  {compliance.missing.map((m, i) => (
-                    <li key={i}>{m.coverage_type}</li>
-                  ))}
-                </ul>
-              </>
-            )}
-
-            {compliance.failing?.length > 0 && (
-              <>
-                <h4 style={{ color: "#b45309" }}>Failing Requirements</h4>
-                <ul>
-                  {compliance.failing.map((f, i) => (
-                    <li key={i}>
-                      {f.coverage_type}: {f.reason}
-                    </li>
-                  ))}
-                </ul>
-              </>
-            )}
-
-            {compliance.passing?.length > 0 && (
-              <>
-                <h4 style={{ color: "#15803d" }}>Passing</h4>
-                <ul>
-                  {compliance.passing.map((p, i) => (
-                    <li key={i}>{p.coverage_type}</li>
-                  ))}
-                </ul>
-              </>
-            )}
-          </>
-        )}
-      </div>
-
-      {/* ---------------- FIX PLAN ---------------- */}
-      <div
-        style={{
-          background: "white",
-          border: "1px solid #e5e7eb",
-          borderRadius: 12,
-          padding: 20,
-          marginBottom: 30
-        }}
-      >
-        <div style={{ display: "flex", justifyContent: "space-between" }}>
-          <div>
-            <h2 style={{ fontSize: 18 }}>AI Fix Plan</h2>
-            <p style={{ color: "#6b7280", fontSize: 13 }}>
-              Hybrid G+Legal remediation plan
-            </p>
-          </div>
-
-          <button
-            onClick={loadFixPlan}
-            disabled={fixLoading}
-            style={{
-              padding: "8px 14px",
-              borderRadius: 999,
-              background: "#0f172a",
-              color: "white",
-              border: "none",
-              cursor: "pointer",
-              fontWeight: 600
-            }}
-          >
-            {fixLoading ? "Generating…" : "Generate Fix Plan"}
-          </button>
-        </div>
-
-        {fixError && <p style={{ color: "red" }}>{fixError}</p>}
-
-        {fixSteps.length > 0 && (
-          <>
-            <h3 style={{ marginTop: 10 }}>Action Steps</h3>
-            <ol>
-              {fixSteps.map((s, i) => (
-                <li key={i}>{s}</li>
-              ))}
-            </ol>
-          </>
-        )}
-
-        {fixSubject && (
-          <>
-            <h3 style={{ marginTop: 15 }}>Vendor Email Subject</h3>
-            <p
-              style={{
-                border: "1px solid #e5e7eb",
-                padding: 8,
-                borderRadius: 8
-              }}
-            >
-              {fixSubject}
-            </p>
-          </>
-        )}
-
-        {fixBody && (
-          <>
-            <h3 style={{ marginTop: 15 }}>Vendor Email Body</h3>
-            <textarea
-              readOnly
-              value={fixBody}
-              style={{
-                width: "100%",
-                minHeight: 140,
-                padding: 10,
-                borderRadius: 8,
-                border: "1px solid #e5e7eb",
-                fontFamily: "system-ui"
-              }}
-            />
-
-            {/* SEND FIX EMAIL */}
-            <button
-              onClick={async () => {
-                try {
-                  const res = await fetch("/api/vendor/send-fix-email", {
-                    method: "POST",
-                    headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify({
-                      vendorId: vendor.id,
-                      orgId: org.id,
-                      subject: fixSubject,
-                      body: fixBody
-                    })
-                  });
-
-                  const data = await res.json();
-                  if (!data.ok) throw new Error(data.error);
-
-                  alert(`Email sent to ${data.sentTo}`);
-                } catch (err) {
-                  alert("Email error: " + err.message);
-                }
-              }}
-              style={{
-                padding: "10px 14px",
-                borderRadius: 8,
-                background: "#0f172a",
-                color: "white",
-                width: "100%",
-                marginTop: 10,
-                fontWeight: 600
-              }}
-            >
-              📬 Send Fix Email
-            </button>
-
-            {/* EXPORT PDF */}
-            <button
-              onClick={async () => {
-                try {
-                  const res = await fetch("/api/vendor/fix-plan-pdf", {
-                    method: "POST",
-                    headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify({
-                      vendorName: vendor.name,
-                      steps: fixSteps,
-                      subject: fixSubject,
-                      body: fixBody,
-                      internalNotes: fixInternalNotes
-                    })
-                  });
-
-                  if (!res.ok) throw new Error("PDF failed");
-
-                  const blob = await res.blob();
-                  const url = window.URL.createObjectURL(blob);
-
-                  const a = document.createElement("a");
-                  a.href = url;
-                  a.download = `${vendor.name}-Fix-Plan.pdf`;
-                  a.click();
-                  window.URL.revokeObjectURL(url);
-                } catch (err) {
-                  alert("PDF error: " + err.message);
-                }
-              }}
-              style={{
-                padding: "10px 14px",
-                borderRadius: 8,
-                background: "#111827",
-                color: "white",
-                width: "100%",
-                marginTop: 10,
-                fontWeight: 600
-              }}
-            >
-              📄 Export Fix Plan PDF
-            </button>
-          </>
-        )}
-
-        {fixInternalNotes && (
-          <>
-            <h3 style={{ marginTop: 15 }}>Internal Notes</h3>
-            <pre>{fixInternalNotes}</pre>
-          </>
-        )}
-      </div>
-
-      {/* ---------------- POLICIES ---------------- */}
-      <div
-        style={{
-          background: "white",
-          border: "1px solid #e5e7eb",
-          borderRadius: 12,
-          padding: 20
-        }}
-      >
-        <h2>Policies</h2>
-        {policies.length === 0 && <p>No policies.</p>}
-        {policies.map((p) => (
-          <div
-            key={p.id}
-            style={{
-              background: "#f9fafb",
-              padding: 12,
-              borderRadius: 10,
-              marginBottom: 10
-            }}
-          >
-            <p><strong>{p.coverage_type}</strong></p>
-            <p>Policy #: {p.policy_number || "—"}</p>
-            <p>Carrier: {p.carrier || "—"}</p>
-            <p>
-              Effective: {p.effective_date || "—"} — Expires:{" "}
-              {p.expiration_date || "—"}
-            </p>
-            <p>
-              Limits: {p.limit_each_occurrence || "—"} /{" "}
-              {p.limit_aggregate || "—"}
-            </p>
-          </div>
-        ))}
-      </div>
-
-      <a href="/dashboard" style={{ color: "#2563eb", marginTop: 20 }}>
-        ← Back to Dashboard
-      </a>
-    </div>
-  );
+    return res.status(200).json({
+      ok: true,
+      vendor,
+      organization,
+      policies,
+    });
+  } catch (err) {
+    console.error("Vendor API error:", err);
+    return res.status(500).json({ ok: false, error: err.message });
+  } finally {
+    try {
+      await client.end();
+    } catch {}
+  }
 }

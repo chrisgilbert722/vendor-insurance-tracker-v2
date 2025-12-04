@@ -1,4 +1,4 @@
-// components/Header.js
+// components/Header.js — HUD Strip V5
 import { useState } from "react";
 import { supabase } from "../lib/supabaseClient";
 import { CaretDown } from "@phosphor-icons/react";
@@ -16,72 +16,85 @@ export default function Header() {
   }
 
   const activeOrg = orgs.find((o) => o.id == activeOrgId);
-
   const loading = loadingOrgs || isLoadingRole;
 
   return (
     <div
       style={{
         width: "100%",
-        padding: "12px 24px",
-        borderBottom: "1px solid #ddd",
+        padding: "10px 24px",
         display: "flex",
         justifyContent: "space-between",
         alignItems: "center",
-        background: "#fff",
+
+        // 🔥 CINEMATIC HUD STRIP BACKGROUND
+        background:
+          "linear-gradient(90deg, rgba(15,23,42,0.94), rgba(15,23,42,0.88), rgba(15,23,42,0.96))",
+        borderBottom: "1px solid rgba(56,189,248,0.18)",
+        backdropFilter: "blur(10px)",
         position: "sticky",
         top: 0,
-        zIndex: 100,
+        zIndex: 200,
+
+        boxShadow: `
+          0 2px 22px rgba(0,0,0,0.7),
+          0 0 24px rgba(56,189,248,0.25)
+        `,
       }}
     >
-      {/* ORG SWITCHER */}
+      {/* LEFT — ORG SWITCHER */}
       <div style={{ position: "relative" }}>
         <button
           onClick={() => {
-            if (loading) return; // prevent opening during load
-            setOpen(!open);
+            if (!loading) setOpen((s) => !s);
           }}
           style={{
             padding: "8px 14px",
-            background: "#0f172a",
+            background: "rgba(15,23,42,0.85)",
             color: "#e5e7eb",
             borderRadius: "8px",
-            border: "1px solid #1e293b",
+            border: "1px solid rgba(51,65,85,0.9)",
             display: "flex",
             alignItems: "center",
-            gap: "6px",
+            gap: 6,
             cursor: loading ? "default" : "pointer",
-            fontSize: "14px",
+            fontSize: 13,
             opacity: loading ? 0.6 : 1,
+            boxShadow: open
+              ? "0 0 14px rgba(56,189,248,0.4)"
+              : "0 0 0 rgba(0,0,0,0)",
+            transition: "0.16s ease",
           }}
         >
-          {loading
-            ? "Loading..."
-            : activeOrg?.name || "Select Organization"}
+          {loading ? "Loading…" : activeOrg?.name || "Select Organization"}
           <CaretDown size={14} />
         </button>
 
-        {!!open && !loading && (
+        {open && !loading && (
           <div
             style={{
               position: "absolute",
               top: "44px",
               left: 0,
-              width: "220px",
-              background: "#0f172a",
-              border: "1px solid #1e293b",
-              borderRadius: "8px",
-              padding: "8px",
+              width: 240,
+              background:
+                "radial-gradient(circle at top, rgba(15,23,42,0.98), rgba(15,23,42,0.94))",
+              border: "1px solid rgba(51,65,85,0.95)",
+              borderRadius: 10,
+              padding: 10,
+              boxShadow: `
+                0 12px 30px rgba(0,0,0,0.65),
+                0 0 24px rgba(56,189,248,0.3)
+              `,
               zIndex: 9999,
-              boxShadow: "0 6px 20px rgba(0,0,0,0.25)",
             }}
           >
             {orgs.length === 0 && (
               <div
                 style={{
-                  padding: "8px",
+                  padding: 8,
                   color: "#94a3b8",
-                  fontSize: "13px",
+                  fontSize: 13,
                   textAlign: "center",
                 }}
               >
@@ -97,14 +110,16 @@ export default function Header() {
                   setOpen(false);
                 }}
                 style={{
-                  padding: "10px",
-                  color: "#e5e7eb",
-                  background:
-                    o.id == activeOrgId ? "#1e293b" : "transparent",
-                  borderRadius: "6px",
+                  padding: 10,
+                  borderRadius: 6,
                   cursor: "pointer",
-                  fontSize: "14px",
-                  marginBottom: "4px",
+                  background:
+                    o.id == activeOrgId
+                      ? "rgba(56,189,248,0.15)"
+                      : "transparent",
+                  color: o.id == activeOrgId ? "#38bdf8" : "#e5e7eb",
+                  marginBottom: 6,
+                  transition: "0.16s ease",
                 }}
               >
                 {o.name}
@@ -114,22 +129,62 @@ export default function Header() {
         )}
       </div>
 
-      {/* SIGN OUT */}
-      <button
-        onClick={handleLogout}
+      {/* RIGHT — AI STATUS + SIGN OUT */}
+      <div
         style={{
-          padding: "8px 16px",
-          background: "#222",
-          color: "#fff",
-          borderRadius: "4px",
-          border: "none",
-          cursor: "pointer",
-          fontSize: "14px",
-          fontWeight: 500,
+          display: "flex",
+          alignItems: "center",
+          gap: 14,
         }}
       >
-        Sign Out
-      </button>
+        {/* Tiny AI System Status */}
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: 8,
+            padding: "4px 10px",
+            borderRadius: 999,
+            border: "1px solid rgba(34,197,94,0.5)",
+            background:
+              "radial-gradient(circle at 0% 0%, rgba(34,197,94,0.4), rgba(15,23,42,0.9))",
+            fontSize: 11,
+            color: "#bbf7d0",
+          }}
+        >
+          <span
+            style={{
+              width: 7,
+              height: 7,
+              borderRadius: "999px",
+              background:
+                "radial-gradient(circle at 50% 50%, #4ade80, #22c55e, #15803d)",
+              boxShadow: "0 0 12px rgba(34,197,94,0.8)",
+            }}
+          />
+          <span style={{ textTransform: "uppercase", letterSpacing: "0.1em" }}>
+            AI Online
+          </span>
+        </div>
+
+        <button
+          onClick={handleLogout}
+          style={{
+            padding: "7px 16px",
+            background:
+              "radial-gradient(circle at top left, rgba(56,189,248,0.18), rgba(15,23,42,0.95))",
+            borderRadius: 8,
+            border: "1px solid rgba(51,65,85,0.9)",
+            color: "#e5e7eb",
+            fontSize: 13,
+            cursor: "pointer",
+            fontWeight: 500,
+            transition: "0.16s ease",
+          }}
+        >
+          Sign Out
+        </button>
+      </div>
     </div>
   );
 }

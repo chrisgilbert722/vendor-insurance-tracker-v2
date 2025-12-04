@@ -1,4 +1,5 @@
-import { Client } from "pg";
+// pages/api/get-policies.js
+import { sql } from "../../lib/db";
 
 // ---- Risk + Score Engine (Enterprise Mode) ---- //
 
@@ -44,13 +45,12 @@ function computeRiskBucket(score) {
 }
 
 function computeUnderwriterColor(score) {
-  if (score >= 90) return "#1b5e20"; // green
-  if (score >= 70) return "#b59b00"; // yellow
-  if (score >= 40) return "#cc5200"; // orange
-  return "#b20000"; // red
+  if (score >= 90) return "#1b5e20";
+  if (score >= 70) return "#b59b00";
+  if (score >= 40) return "#cc5200";
+  return "#b20000";
 }
 
-// Flags that go beyond expiration:
 function computeFlags(expiration) {
   const flags = [];
 
@@ -66,20 +66,17 @@ export default async function handler(req, res) {
     return res.status(405).json({ ok: false, error: "Method not allowed" });
   }
 
-  let client;
   try {
-    client = new Client({ connectionString: process.env.DATABASE_URL });
-    await client.connect();
-
-    const result = await client.query(`
+    // Neon SQL query
+    const rows = await sql`
       SELECT id, vendor_name, policy_number, carrier,
              effective_date, expiration_date, coverage_type,
              status, created_at
       FROM policies
-      ORDER BY created_at DESC
-    `);
+      ORDER BY created_at DESC;
+    `;
 
-    const policies = result.rows.map((row) => {
+    const policies = rows.map((row) => {
       const expiration = computeExpiration(row.expiration_date);
       const complianceScore = computeComplianceScore(expiration);
       const riskBucket = computeRiskBucket(complianceScore);
@@ -92,16 +89,14 @@ export default async function handler(req, res) {
         complianceScore,
         riskBucket,
         underwriterColor,
-        flags,
+        flags
       };
     });
-
-    await client.end();
 
     return res.status(200).json({ ok: true, policies });
   } catch (err) {
     console.error("GET POLICIES ERROR:", err);
-    if (client) await client.end();
     return res.status(500).json({ ok: false, error: err.message });
   }
 }
+

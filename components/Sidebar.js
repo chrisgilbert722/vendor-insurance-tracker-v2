@@ -1,109 +1,183 @@
-// components/Sidebar.js
+// components/Sidebar.js — Tactical Neon Rail V9 (With Executive AI Link)
+import React from "react";
 
 export default function Sidebar({ pathname, isAdmin, isManager, isViewer }) {
   return (
     <div
       style={{
-        width: "220px",
-        background: "#0f172a",
-        color: "#e5e7eb",
-        padding: "24px 18px",
+        width: 82,
+        minHeight: "100vh",
         display: "flex",
         flexDirection: "column",
-        gap: "16px",
-        borderRight: "1px solid #1e293b",
-        minHeight: "100vh",
+        alignItems: "center",
+        padding: "24px 0",
+        position: "relative",
+        zIndex: 50,
+        background:
+          "radial-gradient(circle at top, rgba(15,23,42,0.97), rgba(15,23,42,0.95))",
+        borderRight: "1px solid rgba(56,189,248,0.22)",
+        boxShadow: `
+          inset -1px 0 10px rgba(56,189,248,0.28),
+          0 0 20px rgba(0,0,0,0.75)
+        `,
       }}
     >
-      {/* Logo + Title */}
-      <div style={{ marginBottom: "20px" }}>
-        <div style={{ fontSize: "18px", fontWeight: "700" }}>G-Track</div>
-        <div style={{ fontSize: "11px", opacity: 0.7 }}>
-          Vendor COI Automation
-        </div>
+      {/* TOP LOGO */}
+      <div
+        style={{
+          marginBottom: 34,
+          fontSize: 26,
+          color: "#38bdf8",
+          fontWeight: 700,
+          textShadow: "0 0 14px rgba(56,189,248,0.5)",
+        }}
+      >
+        ⚡
       </div>
 
-      {/* Dashboard */}
-      <SidebarLink
+      {/* ===== MAIN NAVIGATION ===== */}
+
+      <RailLink
         href="/dashboard"
         label="Dashboard"
         icon="📊"
         active={pathname === "/dashboard"}
       />
 
-      {/* Vendors */}
-      <SidebarLink
+      <RailLink
         href="/vendors"
         label="Vendors"
         icon="👥"
         active={pathname === "/vendors"}
       />
 
-      {/* Upload COI — Only Admin/Manager */}
       {(isAdmin || isManager) && (
-        <SidebarLink
+        <RailLink
           href="/upload-coi"
-          label="Upload COI"
+          label="Upload"
           icon="📄"
           active={pathname === "/upload-coi"}
         />
       )}
 
-      {/* Organization Settings — Only Admin */}
       {isAdmin && (
-        <SidebarLink
-          href="/organization"
-          label="Organization"
+        <RailLink
+          href="/admin/organization"
+          label="Org"
           icon="🏢"
-          active={pathname === "/organization"}
+          active={pathname === "/admin/organization"}
         />
       )}
 
-      {/* Alerts */}
       {isAdmin && (
-        <SidebarLink
-          href="/alerts"
+        <RailLink
+          href="/admin/alerts"
           label="Alerts"
           icon="🔔"
-          active={pathname === "/alerts"}
+          active={pathname === "/admin/alerts"}
         />
       )}
 
-      {/* Logout */}
-      <SidebarLink
-        href="/auth/login"
-        label="Logout / Login"
-        icon="🔐"
-        active={pathname === "/auth/login"}
+      {/* ⭐ COVERAGE INTEL ⭐ */}
+      {isAdmin && (
+        <RailLink
+          href="/admin/coverage-intel"
+          label="AI Intel"
+          icon="🧬"
+          active={pathname === "/admin/coverage-intel"}
+        />
+      )}
+
+      {/* ⭐ REQUIREMENTS ENGINE ⭐ */}
+      {isAdmin && (
+        <RailLink
+          href="/admin/requirements-v5"
+          label="Rules"
+          icon="🧠"
+          active={pathname === "/admin/requirements-v5"}
+        />
+      )}
+
+      {/* ⭐ NEW: EXECUTIVE AI DASHBOARD ⭐ */}
+      {isAdmin && (
+        <RailLink
+          href="/admin/renewals"
+          label="Exec AI"
+          icon="🏆"
+          active={pathname === "/admin/renewals"}
+        />
+      )}
+
+      {/* ⭐ NEW: ONBOARDING ⭐ */}
+      <RailLink
+        href="/onboarding"
+        label="Onboard"
+        icon="🎉"
+        active={pathname.startsWith("/onboarding")}
       />
+
+      {/* ===== LOGOUT ===== */}
+      <div style={{ marginTop: "auto" }}>
+        <RailLink
+          href="/auth/login"
+          label="Logout"
+          icon="🔐"
+          active={pathname === "/auth/login"}
+        />
+      </div>
     </div>
   );
 }
 
-/* ----------------------------------------------
-   SidebarLink Component
----------------------------------------------- */
-function SidebarLink({ href, label, icon, active }) {
+/* ===========================================
+   Rail Link Component
+=========================================== */
+function RailLink({ href, label, icon, active }) {
   return (
     <a
       href={href}
       style={{
+        width: "100%",
+        padding: "14px 0",
         display: "flex",
+        flexDirection: "column",
         alignItems: "center",
-        gap: "8px",
-        padding: "10px 12px",
-        borderRadius: "8px",
-        color: active ? "#ffffff" : "#e5e7eb",
-        background: active ? "#1e293b" : "transparent",
         textDecoration: "none",
-        fontSize: "14px",
-        fontWeight: active ? "600" : "400",
         cursor: "pointer",
-        transition: "0.15s ease",
+        marginBottom: 8,
+
+        background: active ? "rgba(56,189,248,0.14)" : "transparent",
+        borderLeft: active
+          ? "4px solid #38bdf8"
+          : "4px solid transparent",
+        boxShadow: active ? "0 0 14px rgba(56,189,248,0.55)" : "none",
+
+        transition: "all 0.18s ease",
       }}
     >
-      <span>{icon}</span>
-      <span>{label}</span>
+      <span
+        style={{
+          fontSize: 20,
+          marginBottom: 6,
+          color: active ? "#38bdf8" : "#94a3af",
+          textShadow: active ? "0 0 12px rgba(56,189,248,0.9)" : "none",
+          transition: "0.2s",
+        }}
+      >
+        {icon}
+      </span>
+      <span
+        style={{
+          fontSize: 11,
+          color: active ? "#e5e7eb" : "#64748b",
+          letterSpacing: "0.08em",
+          textTransform: "uppercase",
+          opacity: active ? 1 : 0.6,
+          transition: "0.2s",
+        }}
+      >
+        {label}
+      </span>
     </a>
   );
 }

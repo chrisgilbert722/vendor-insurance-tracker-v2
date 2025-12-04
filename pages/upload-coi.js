@@ -1,433 +1,698 @@
-import { useState, useEffect } from "react";
+// pages/upload-coi.js
+import { useState } from "react";
+import { useOrg } from "../context/OrgContext";
+import { useRole } from "../lib/useRole";
 import { useRouter } from "next/router";
-import { supabase } from "../lib/supabaseClient";
+import DocumentViewerV3 from "../components/documents/DocumentViewerV3";
 
-// ⭐ PHOSPHOR ICONS (React 19 compatible, no peer deps)
-import {
-  UploadSimple,
-  SpinnerGap,
-  WarningCircle,
-  CheckCircle,
-  FileText as FileTextIcon,
-} from "@phosphor-icons/react";
+// simple helper for step animation
+function delay(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
 
-const STEP_LABELS = [
-  "Uploading file",
-  "Extracting fields",
-  "Validating coverage",
-  "Analyzing risk",
+/* ===========================
+   UPLOAD COI V3 — UI STATE
+=========================== */
+
+const STEP_CONFIG = [
+  { id: "upload", label: "Uploading file" },
+  { id: "extract", label: "Extracting fields" },
+  { id: "validate", label: "Validating coverage" },
+  { id: "analyze", label: "Analyzing risk" },
+  { id: "done", label: "Complete" },
 ];
 
-export default function UploadCOI() {
+// Map ?type= to pretty labels
+function getTypeLabel(type) {
+  if (!type) return null;
+  const t = String(type).toLowerCase();
+  if (t === "gl") return "General Liability COI";
+  if (t === "wc") return "Workers’ Compensation COI";
+  if (t === "auto") return "Auto Liability COI";
+  if (t === "umbrella") return "Umbrella / Excess COI";
+  if (t === "generic") return "Insurance document";
+  return null;
+}
+
+/* ===========================
+   MAIN PAGE COMPONENT
+=========================== */
+
+export default function UploadCOIPage() {
+  const { orgId } = useOrg();
+  const { isAdmin, isManager } = useRole();
+  const canUpload = isAdmin || isManager;
+
   const router = useRouter();
+  const vendorId = router.query.vendorId; // /upload-coi?vendorId=2
+  const uploadType = router.query.type || null; // /upload-coi?type=gl
+  const expectedLabel = getTypeLabel(uploadType);
 
   const [file, setFile] = useState(null);
+  const [isDragging, setIsDragging] = useState(false);
+  const [activeStep, setActiveStep] = useState(null);
   const [error, setError] = useState("");
-  const [success, setSuccess] = useState("");
-  const [debugResponse, setDebugResponse] = useState("");
-
-  const [dragActive, setDragActive] = useState(false);
-  const [stepIndex, setStepIndex] = useState(-1);
-  const [status, setStatus] = useState("idle");
   const [result, setResult] = useState(null);
-  const [fileName, setFileName] = useState("");
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
-  // 🔐 Auth check
-  useEffect(() => {
-    async function checkAuth() {
-      const {
-        data: { session },
-      } = await supabase.auth.getSession();
-      if (!session) router.push("/auth/login");
-    }
-    checkAuth();
-  }, [router]);
+  // Document Viewer V3 state
+  const [viewerOpen, setViewerOpen] = useState(false);
+  const [fileUrl, setFileUrl] = useState(null);
+  const [extracted, setExtracted] = useState(null);
 
-  const reset = () => {
+  /* ------------ handlers ----------- */
+
+  const handleFileChange = (e) => {
+    const f = e.target.files?.[0] || null;
+    setFile(f);
     setError("");
-    setSuccess("");
-    setDebugResponse("");
-    setResult(null);
-    setStatus("idle");
-    setStepIndex(-1);
-    setFileName("");
-    setFile(null);
   };
-
-  async function processFile(selectedFile) {
-    if (!selectedFile) return;
-
-    reset();
-    setFile(selectedFile);
-    setFileName(selectedFile.name);
-    setStatus("working");
-    setStepIndex(0);
-
-    try {
-      const form = new FormData();
-      form.append("file", selectedFile);
-
-      setTimeout(() => setStepIndex(1), 250);
-
-      const res = await fetch("/api/extract-coi", {
-        method: "POST",
-        body: form,
-      });
-
-      const contentType = res.headers.get("content-type") || "";
-      let data;
-
-      if (contentType.includes("application/json")) {
-        data = await res.json();
-        if (!res.ok) throw new Error(data.error || "Extraction failed");
-      } else {
-        const text = await res.text();
-        throw new Error("Invalid server response:\n" + text.slice(0, 200));
-      }
-
-      setDebugResponse(JSON.stringify(data, null, 2));
-
-      setTimeout(() => setStepIndex(2), 350);
-      setTimeout(() => {
-        setStepIndex(3);
-        setTimeout(() => {
-          setSuccess("Upload successful!");
-          setStatus("done");
-          setResult(data);
-        }, 350);
-      }, 700);
-    } catch (err) {
-      console.error("Upload error:", err);
-      setError(err.message || "Unknown error");
-      setStatus("error");
-      setStepIndex(-1);
-    }
-  }
 
   const handleDrop = (e) => {
     e.preventDefault();
     e.stopPropagation();
-    setDragActive(false);
     const f = e.dataTransfer.files?.[0];
-    if (f) processFile(f);
+    if (f) {
+      setFile(f);
+      setError("");
+    }
+    setIsDragging(false);
   };
 
-  const handleBrowse = (e) => {
-    const f = e.target.files?.[0];
-    if (f) processFile(f);
+  const handleDragOver = (e) => {
+    e.preventDefault();
+    setIsDragging(true);
   };
 
-  const riskColor = (score) => {
-    if (typeof score !== "number")
-      return "bg-slate-100 text-slate-700 border-slate-200";
-    if (score >= 80) return "bg-green-100 text-green-700 border-green-200";
-    if (score >= 50) return "bg-yellow-100 text-yellow-800 border-yellow-200";
-    return "bg-red-100 text-red-700 border-red-200";
+  const handleDragLeave = (e) => {
+    e.preventDefault();
+    setIsDragging(false);
   };
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+
+    if (!file) {
+      setError("Attach a PDF COI file before uploading.");
+      return;
+    }
+
+    if (!canUpload) {
+      setError("You don’t have permission to upload COIs.");
+      return;
+    }
+
+    if (!vendorId) {
+      setError(
+        "Missing vendorId in URL. Open this page from a vendor profile or append ?vendorId=123."
+      );
+      return;
+    }
+
+    setIsSubmitting(true);
+    setError("");
+    setResult(null);
+    setActiveStep("upload");
+    setViewerOpen(false);
+    setFileUrl(null);
+    setExtracted(null);
+
+    try {
+      const formData = new FormData();
+      formData.append("file", file);
+      formData.append("vendorId", vendorId);
+
+      const res = await fetch("/api/upload-coi", {
+        method: "POST",
+        body: formData,
+      });
+
+      if (!res.ok) {
+        const text = await res.text();
+        throw new Error(
+          `Upload failed (${res.status}) — ${text || "Check server logs."}`
+        );
+      }
+
+      setActiveStep("extract");
+      await delay(700);
+
+      setActiveStep("validate");
+      await delay(700);
+
+      setActiveStep("analyze");
+      const data = await res.json();
+      await delay(600);
+
+      setResult(data);
+
+      if (data?.fileUrl) {
+        setFileUrl(data.fileUrl);
+        setExtracted(data.extracted || null);
+        setViewerOpen(true);
+      }
+
+      setActiveStep("done");
+    } catch (err) {
+      console.error(err);
+      setError(
+        err?.message ||
+          "Something went wrong while uploading or analyzing this COI."
+      );
+      setActiveStep(null);
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  /* ------------ render ----------- */
 
   return (
-    // ⭐ FIX: Removed the full-screen wrapper that broke global layout
-    <div style={{ padding: "30px 40px" }}>
-      <div className="max-w-5xl mx-auto space-y-8">
+    <div
+      style={{
+        minHeight: "100vh",
+        position: "relative",
+        background:
+          "radial-gradient(circle at top left,#020617 0%, #020617 40%, #000 100%)",
+        padding: "30px 40px 40px",
+        color: "#e5e7eb",
+        overflowX: "hidden",
+      }}
+    >
+      {/* AURA */}
+      <div
+        style={{
+          position: "absolute",
+          top: -240,
+          left: "50%",
+          transform: "translateX(-50%)",
+          width: 1100,
+          height: 1100,
+          background:
+            "radial-gradient(circle, rgba(59,130,246,0.35), transparent 60%)",
+          filter: "blur(120px)",
+          pointerEvents: "none",
+          zIndex: 0,
+        }}
+      />
 
-        {/* HEADER */}
-        <header className="space-y-1">
-          <p className="text-xs uppercase tracking-[0.18em] text-slate-500">
-            G-Track · Vendor COI Automation
-          </p>
-          <h1 className="text-3xl font-semibold text-slate-900">
-            Upload Certificate of Insurance
-          </h1>
-          <p className="text-slate-600 text-sm max-w-2xl">
-            Drag &amp; drop a COI PDF. AI will extract carrier, limits,
-            expiration, flags, and risk score.
-          </p>
-        </header>
+      {/* HEADER + EXPECTED DOCUMENT BANNER */}
+      <div style={{ position: "relative", zIndex: 2 }}>
+        <div
+          style={{
+            display: "flex",
+            gap: 16,
+            alignItems: "center",
+            marginBottom: 18,
+          }}
+        >
+          <div
+            style={{
+              padding: 12,
+              borderRadius: 999,
+              background:
+                "radial-gradient(circle at 30% 0,#0ea5e9,#6366f1,#0f172a)",
+              boxShadow: "0 0 40px rgba(59,130,246,0.6)",
+            }}
+          >
+            <span style={{ fontSize: 22 }}>📄</span>
+          </div>
 
-        <div className="grid md:grid-cols-[3fr_2fr] gap-6">
-          {/* LEFT SIDE */}
-          <section className="bg-white rounded-2xl border border-slate-200 shadow-sm p-6 space-y-6">
-
-            {/* Upload Box */}
+          <div>
             <div
-              onDragEnter={(e) => {
-                e.preventDefault();
-                e.stopPropagation();
-                setDragActive(true);
+              style={{
+                display: "inline-flex",
+                gap: 8,
+                padding: "4px 10px",
+                borderRadius: 999,
+                border: "1px solid rgba(148,163,184,0.4)",
+                background:
+                  "linear-gradient(120deg,rgba(15,23,42,0.9),rgba(15,23,42,0))",
+                marginBottom: 6,
               }}
-              onDragLeave={(e) => {
-                e.preventDefault();
-                e.stopPropagation();
-                setDragActive(false);
-              }}
-              onDragOver={(e) => {
-                e.preventDefault();
-                e.stopPropagation();
-              }}
-              onDrop={handleDrop}
-              className={`py-10 px-6 rounded-xl border-2 border-dashed cursor-pointer transition
-                ${
-                  dragActive
-                    ? "border-blue-500 bg-blue-50/80"
-                    : "border-slate-300 bg-slate-100/70 hover:bg-slate-200/60"
-                }`}
             >
-              <label htmlFor="fileInput" className="flex flex-col items-center gap-3">
-                <div className="h-12 w-12 bg-blue-600 rounded-full text-white flex items-center justify-center shadow-sm">
-                  <UploadSimple size={24} weight="bold" />
-                </div>
+              <span
+                style={{
+                  fontSize: 10,
+                  color: "#9ca3af",
+                  letterSpacing: 1.2,
+                  textTransform: "uppercase",
+                }}
+              >
+                Upload COI V3
+              </span>
+              <span
+                style={{
+                  fontSize: 10,
+                  color: "#38bdf8",
+                  letterSpacing: 1,
+                  textTransform: "uppercase",
+                }}
+              >
+                AI Processing Pipeline
+              </span>
+            </div>
 
-                <div className="text-center">
-                  <p className="font-medium text-slate-900">
-                    Drag &amp; drop PDF here
-                  </p>
-                  <p className="text-sm text-slate-500">
-                    or{" "}
-                    <span className="text-blue-600 font-semibold">
-                      browse files
-                    </span>
-                  </p>
-                  {fileName && (
-                    <p className="text-xs text-slate-500 mt-1">
-                      Selected:{" "}
-                      <span className="font-semibold">{fileName}</span>
-                    </p>
-                  )}
-                </div>
-              </label>
+            <h1
+              style={{
+                margin: 0,
+                fontSize: 26,
+                fontWeight: 600,
+                letterSpacing: 0.2,
+              }}
+            >
+              Turn raw COIs into{" "}
+              <span
+                style={{
+                  background:
+                    "linear-gradient(90deg,#38bdf8,#a5b4fc,#e5e7eb)",
+                  WebkitBackgroundClip: "text",
+                  color: "transparent",
+                }}
+              >
+                structured risk data
+              </span>
+              .
+            </h1>
 
+            <p
+              style={{
+                marginTop: 6,
+                marginBottom: 0,
+                fontSize: 13,
+                color: "#cbd5f5",
+                maxWidth: 700,
+              }}
+            >
+              Drag & drop a certificate of insurance. We’ll ingest the PDF,
+              extract coverage, limits, endorsements, and expirations, then flag
+              what matters most — all in one cinematic pipeline.
+            </p>
+
+            <div
+              style={{
+                marginTop: 6,
+                fontSize: 11,
+                color: "#9ca3af",
+              }}
+            >
+              Vendor context:{" "}
+              <span style={{ color: "#e5e7eb" }}>
+                {vendorId ? `vendorId=${vendorId}` : "none (append ?vendorId=123)"}
+              </span>
+            </div>
+
+            {/* MAGICALLY GUIDED DOCUMENT TYPE (Option D) */}
+            {expectedLabel && (
+              <div
+                style={{
+                  marginTop: 8,
+                  padding: "8px 12px",
+                  borderRadius: 12,
+                  border: "1px solid rgba(34,197,94,0.7)",
+                  background:
+                    "linear-gradient(120deg,rgba(22,163,74,0.2),rgba(5,46,22,0.7))",
+                  color: "#bbf7d0",
+                  fontSize: 12,
+                  display: "inline-flex",
+                  flexDirection: "column",
+                  gap: 4,
+                }}
+              >
+                <span
+                  style={{
+                    fontSize: 11,
+                    textTransform: "uppercase",
+                    letterSpacing: 1.1,
+                    color: "#86efac",
+                  }}
+                >
+                  Expected Document (from AI Fix Mode)
+                </span>
+                <span>
+                  Please upload a{" "}
+                  <strong style={{ color: "#f9fafb" }}>
+                    {expectedLabel}
+                  </strong>{" "}
+                  to continue your compliance fix.
+                </span>
+                <span style={{ fontSize: 11, color: "#bbf7d0" }}>
+                  If this doesn’t look right, you can still upload any COI —
+                  we’ll analyze it automatically.
+                </span>
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+
+      {/* MAIN GRID */}
+      <div
+        style={{
+          position: "relative",
+          zIndex: 2,
+          display: "grid",
+          gridTemplateColumns: "minmax(0,2.1fr) minmax(0,1.4fr)",
+          gap: 20,
+          alignItems: "flex-start",
+        }}
+      >
+        {/* LEFT — Upload & Steps */}
+        <div
+          style={{
+            borderRadius: 24,
+            padding: 16,
+            background:
+              "radial-gradient(circle at top left,rgba(15,23,42,0.97),rgba(15,23,42,0.92))",
+            border: "1px solid rgba(148,163,184,0.6)",
+            boxShadow: "0 24px 60px rgba(15,23,42,0.98)",
+            display: "flex",
+            flexDirection: "column",
+            gap: 16,
+          }}
+        >
+          {/* Upload section */}
+          <form onSubmit={handleSubmit}>
+            <div
+              onDrop={handleDrop}
+              onDragOver={handleDragOver}
+              onDragLeave={handleDragLeave}
+              style={{
+                borderRadius: 18,
+                padding: 18,
+                border: `2px dashed ${
+                  isDragging ? "#38bdf8" : "rgba(75,85,99,0.9)"
+                }`,
+                background: isDragging
+                  ? "rgba(56,189,248,0.08)"
+                  : "rgba(15,23,42,0.9)",
+                display: "flex",
+                flexDirection: "column",
+                alignItems: "center",
+                justifyContent: "center",
+                gap: 10,
+                cursor: canUpload ? "pointer" : "not-allowed",
+                transition: "border-color 0.2s ease, background 0.2s ease",
+              }}
+              onClick={() => {
+                if (!canUpload) return;
+                const input = document.getElementById("coi-upload-input");
+                if (input) input.click();
+              }}
+            >
+              <div
+                style={{
+                  width: 56,
+                  height: 56,
+                  borderRadius: "999px",
+                  background:
+                    "radial-gradient(circle at 30% 0,#38bdf8,#1d4ed8,#020617)",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  boxShadow: "0 0 30px rgba(56,189,248,0.5)",
+                }}
+              >
+                <span style={{ fontSize: 26 }}>⬆️</span>
+              </div>
+              <div
+                style={{
+                  fontSize: 14,
+                  fontWeight: 500,
+                  color: "#e5e7eb",
+                }}
+              >
+                {file ? file.name : "Drop COI PDF here or click to browse"}
+              </div>
+              <div
+                style={{
+                  fontSize: 12,
+                  color: "#9ca3af",
+                }}
+              >
+                PDF only · max 25MB · tied to org{" "}
+                <span style={{ color: "#e5e7eb" }}>
+                  {orgId || "(Org context active)"}
+                </span>
+              </div>
               <input
-                id="fileInput"
+                id="coi-upload-input"
                 type="file"
                 accept="application/pdf"
-                className="hidden"
-                onChange={handleBrowse}
+                onChange={handleFileChange}
+                style={{ display: "none" }}
+                disabled={!canUpload}
               />
             </div>
 
-            {/* Pipeline */}
-            <div>
-              <h2 className="text-sm font-semibold text-slate-800 mb-2">
-                AI Processing Pipeline
-              </h2>
-              <ol className="space-y-2">
-                {STEP_LABELS.map((label, idx) => {
-                  const active = stepIndex === idx && status === "working";
-                  const done = stepIndex > idx && status === "done";
-
-                  return (
-                    <li key={label} className="flex items-center justify-between text-sm">
-                      <div className="flex items-center gap-3">
-                        <div
-                          className={`h-6 w-6 rounded-full border flex items-center justify-center text-[11px]
-                          ${
-                            done
-                              ? "bg-emerald-500 border-emerald-500 text-white"
-                              : active
-                              ? "border-blue-500 bg-blue-50 text-blue-600"
-                              : "border-slate-300 bg-white text-slate-400"
-                          }`}
-                        >
-                          {done ? (
-                            <CheckCircle size={16} weight="bold" />
-                          ) : (
-                            idx + 1
-                          )}
-                        </div>
-
-                        <span
-                          className={
-                            active
-                              ? "text-slate-900"
-                              : done
-                              ? "text-slate-700"
-                              : "text-slate-500"
-                          }
-                        >
-                          {label}
-                        </span>
-                      </div>
-
-                      {active && (
-                        <SpinnerGap size={16} className="animate-spin text-blue-500" />
-                      )}
-                    </li>
-                  );
-                })}
-              </ol>
-            </div>
-
-            {/* Status */}
-            {status === "working" && (
-              <div className="flex items-center gap-2 text-xs text-slate-500">
-                <SpinnerGap size={14} className="animate-spin" />
-                <span>AI engine is processing your certificate…</span>
-              </div>
-            )}
-
             {error && (
-              <div className="bg-red-50 border border-red-200 text-red-700 p-3 rounded-xl text-sm flex items-start gap-2">
-                <WarningCircle size={16} weight="bold" className="mt-0.5" />
-                <div>
-                  <p className="font-semibold">Upload failed</p>
-                  <p>{error}</p>
-                </div>
+              <div
+                style={{
+                  marginTop: 12,
+                  padding: "8px 10px",
+                  borderRadius: 10,
+                  border: "1px solid rgba(248,113,113,0.8)",
+                  background: "rgba(127,29,29,0.9)",
+                  color: "#fecaca",
+                  fontSize: 12,
+                }}
+              >
+                {error}
               </div>
             )}
 
-            {success && (
-              <p className="text-sm text-emerald-600 flex items-center gap-2">
-                <CheckCircle size={16} weight="bold" /> {success}
-              </p>
-            )}
-          </section>
+            <div
+              style={{
+                marginTop: 14,
+                display: "flex",
+                justifyContent: "space-between",
+                alignItems: "center",
+                gap: 8,
+              }}
+            >
+              <button
+                type="submit"
+                disabled={isSubmitting || !canUpload}
+                style={{
+                  borderRadius: 999,
+                  padding: "9px 16px",
+                  border: "1px solid rgba(59,130,246,0.9)",
+                  background:
+                    "radial-gradient(circle at top left,#3b82f6,#1d4ed8,#0f172a)",
+                  color: "#e5f2ff",
+                  fontSize: 13,
+                  fontWeight: 500,
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: 8,
+                  cursor: isSubmitting || !canUpload ? "not-allowed" : "pointer",
+                  opacity: isSubmitting || !canUpload ? 0.6 : 1,
+                }}
+              >
+                {isSubmitting ? "Uploading & analyzing…" : "Upload & analyze COI"}
+              </button>
 
-          {/* RIGHT SUMMARY */}
-          <section className="bg-white rounded-2xl border border-slate-200 shadow-sm p-6 space-y-4">
-            <div className="flex items-center gap-3">
-              <div className="h-9 w-9 rounded-xl bg-slate-900 text-white flex items-center justify-center">
-                <FileTextIcon size={20} weight="bold" />
-              </div>
-              <div>
-                <p className="text-sm font-semibold text-slate-900">
-                  COI Summary
-                </p>
-                <p className="text-xs text-slate-500">
-                  AI-parsed carrier, policy, coverage, and risk.
-                </p>
+              <div
+                style={{
+                  fontSize: 10,
+                  color: "#6b7280",
+                }}
+              >
+                This posts to <code>/api/upload-coi</code> with vendorId and
+                streams AI analysis.
               </div>
             </div>
+          </form>
 
-            {!result && status === "idle" && (
-              <p className="text-sm text-slate-500">
-                Upload a certificate to see the details.
-              </p>
-            )}
+          {/* Steps */}
+          <div>
+            <div
+              style={{
+                fontSize: 11,
+                textTransform: "uppercase",
+                letterSpacing: 1.2,
+                color: "#9ca3af",
+                marginBottom: 8,
+              }}
+            >
+              Processing pipeline
+            </div>
 
-            {!result && status === "working" && (
-              <div className="space-y-3">
-                <div className="h-4 w-40 bg-slate-100 animate-pulse rounded" />
-                <div className="grid grid-cols-2 gap-3">
-                  <div className="h-16 bg-slate-100 animate-pulse rounded-xl" />
-                  <div className="h-16 bg-slate-100 animate-pulse rounded-xl" />
-                  <div className="h-16 bg-slate-100 animate-pulse rounded-xl" />
-                  <div className="h-16 bg-slate-100 animate-pulse rounded-xl" />
-                </div>
-              </div>
-            )}
+            <div
+              style={{
+                display: "grid",
+                gridTemplateColumns: `repeat(${STEP_CONFIG.length}, minmax(0,1fr))`,
+                gap: 8,
+              }}
+            >
+              {STEP_CONFIG.map((step, index) => {
+                const isActive = activeStep === step.id;
+                const isCompleted =
+                  activeStep &&
+                  STEP_CONFIG.findIndex((s) => s.id === activeStep) > index;
 
-            {result && (
-              <div className="space-y-4 text-sm">
+                const bg = isCompleted
+                  ? "rgba(34,197,94,0.12)"
+                  : isActive
+                  ? "rgba(56,189,248,0.16)"
+                  : "rgba(15,23,42,0.9)";
 
-                {/* Top Line */}
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="text-xs uppercase tracking-[0.18em] text-slate-500">
-                      Carrier · Policy
-                    </p>
-                    <p className="text-sm font-semibold text-slate-900">
-                      {result.carrier || "—"} ·{" "}
-                      {result.policy_number || result.policyNumber || "—"}
-                    </p>
-                  </div>
+                const border = isCompleted
+                  ? "1px solid rgba(34,197,94,0.9)"
+                  : isActive
+                  ? "1px solid rgba(56,189,248,0.8)"
+                  : "1px solid rgba(51,65,85,0.9)";
 
-                  {typeof result.riskScore === "number" && (
+                return (
+                  <div
+                    key={step.id}
+                    style={{
+                      borderRadius: 14,
+                      padding: "8px 10px",
+                      background: bg,
+                      border,
+                      display: "flex",
+                      flexDirection: "column",
+                      gap: 4,
+                      minHeight: 60,
+                    }}
+                  >
                     <div
-                      className={`inline-flex items-center gap-2 px-3 py-1 rounded-full border text-xs font-medium ${riskColor(
-                        result.riskScore
-                      )}`}
+                      style={{
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "space-between",
+                      }}
                     >
-                      <span>Risk score</span>
-                      <span>{result.riskScore}</span>
+                      <span
+                        style={{
+                          fontSize: 11,
+                          textTransform: "uppercase",
+                          color: "#e5e7eb",
+                        }}
+                      >
+                        Step {index + 1}
+                      </span>
+                      <span style={{ fontSize: 11, color: "#9ca3af" }}>
+                        {isCompleted
+                          ? "Done"
+                          : isActive
+                          ? "In progress"
+                          : "Pending"}
+                      </span>
                     </div>
-                  )}
-                </div>
-
-                {/* Field Grid */}
-                <div className="grid grid-cols-2 gap-3">
-                  <Field label="Coverage" value={result.coverage_type || result.coverageType} />
-                  <Field label="Named insured" value={result.vendor_name || result.namedInsured} />
-                  <Field
-                    label="Additional insured"
-                    value={
-                      typeof result.additionalInsured === "boolean"
-                        ? result.additionalInsured ? "Yes" : "No"
-                        : "—"
-                    }
-                  />
-                  <Field label="Waiver status" value={result.waiverStatus} />
-                  <Field label="Effective date" value={result.effective_date} />
-                  <Field label="Expiration" value={result.expiration_date || result.expiration} />
-                  <Field label="Completeness" value={result.completenessRating} />
-                </div>
-
-                {/* Limits */}
-                {result.limits && (
-                  <div className="mt-3 border border-slate-200 bg-slate-50 rounded-xl p-3">
-                    <p className="text-xs font-semibold text-slate-800 mb-1">Limits</p>
-                    <pre className="text-[11px] text-slate-700 whitespace-pre-wrap">
-                      {typeof result.limits === "string"
-                        ? result.limits
-                        : JSON.stringify(result.limits, null, 2)}
-                    </pre>
+                    <div
+                      style={{
+                        fontSize: 11,
+                        color: "#cbd5f5",
+                      }}
+                    >
+                      {step.label}
+                    </div>
                   </div>
-                )}
-
-                {/* Flags */}
-                <div className="grid grid-cols-2 gap-3">
-                  {Array.isArray(result.flags) && result.flags.length > 0 && (
-                    <div className="border border-amber-200 bg-amber-50 rounded-xl p-3">
-                      <p className="text-xs font-semibold text-amber-800 mb-1">Flags</p>
-                      <ul className="list-disc list-inside text-[11px] text-amber-900">
-                        {result.flags.map((f, i) => (
-                          <li key={i}>{f}</li>
-                        ))}
-                      </ul>
-                    </div>
-                  )}
-
-                  {/* Missing Fields */}
-                  {Array.isArray(result.missingFields) &&
-                    result.missingFields.length > 0 && (
-                      <div className="border border-rose-200 bg-rose-50 rounded-xl p-3">
-                        <p className="text-xs font-semibold text-rose-800 mb-1">
-                          Missing required fields
-                        </p>
-                        <ul className="list-disc list-inside text-[11px] text-rose-900">
-                          {result.missingFields.map((m, i) => (
-                            <li key={i}>{m}</li>
-                          ))}
-                        </ul>
-                      </div>
-                    )}
-                </div>
-
-                {/* Debug */}
-                {debugResponse && (
-                  <pre className="bg-slate-100 text-[11px] border rounded p-2 mt-4 max-h-64 overflow-auto">
-                    {debugResponse}
-                  </pre>
-                )}
-              </div>
-            )}
-          </section>
+                );
+              })}
+            </div>
+          </div>
         </div>
 
-        <a href="/dashboard" className="text-sm text-blue-600">
-          ← Back to Dashboard
-        </a>
-      </div>
-    </div>
-  );
-}
+        {/* RIGHT — COI SUMMARY / RAW OUTPUT */}
+        <div
+          style={{
+            borderRadius: 24,
+            padding: 16,
+            background:
+              "radial-gradient(circle at top right,rgba(15,23,42,0.96),rgba(15,23,42,1))",
+            border: "1px solid rgba(148,163,184,0.55)",
+            boxShadow: "0 24px 60px rgba(15,23,42,0.98)",
+            display: "flex",
+            flexDirection: "column",
+            gap: 12,
+            minHeight: 260,
+          }}
+        >
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "space-between",
+              marginBottom: 4,
+            }}
+          >
+            <div
+              style={{
+                fontSize: 11,
+                textTransform: "uppercase",
+                letterSpacing: 1.2,
+                color: "#9ca3af",
+              }}
+            >
+              COI Summary
+            </div>
 
-function Field({ label, value }) {
-  return (
-    <div className="border border-slate-200 bg-slate-50 rounded-xl px-3 py-2.5">
-      <p className="text-[11px] uppercase tracking-[0.16em] text-slate-500 mb-0.5">
-        {label}
-      </p>
-      <p className="text-sm text-slate-900 truncate">{value || "—"}</p>
+            {result?.fileUrl && (
+              <button
+                type="button"
+                onClick={() => setViewerOpen(true)}
+                style={{
+                  borderRadius: 999,
+                  padding: "6px 12px",
+                  border: "1px solid rgba(56,189,248,0.9)",
+                  background:
+                    "radial-gradient(circle at top left,#38bdf8,#0ea5e9,#0f172a)",
+                  color: "#e5f2ff",
+                  fontSize: 11,
+                  fontWeight: 500,
+                  cursor: "pointer",
+                }}
+              >
+                Open PDF Viewer
+              </button>
+            )}
+          </div>
+
+          {!result && (
+            <div
+              style={{
+                fontSize: 12,
+                color: "#9ca3af",
+              }}
+            >
+              Upload a certificate to see extracted carrier, policy, coverage,
+              limits, endorsement, and risk data here. We’ll render the raw JSON
+              response plus a readable summary.
+            </div>
+          )}
+
+          {result && (
+            <pre
+              style={{
+                margin: 0,
+                borderRadius: 14,
+                background: "#020617",
+                border: "1px solid rgba(30,64,175,0.9)",
+                padding: 10,
+                fontSize: 11,
+                maxHeight: 260,
+                overflow: "auto",
+                whiteSpace: "pre-wrap",
+                wordBreak: "break-word",
+              }}
+            >
+              {JSON.stringify(result, null, 2)}
+            </pre>
+          )}
+        </div>
+      </div>
+
+      {/* DOCUMENT VIEWER V3 */}
+      <DocumentViewerV3
+        open={viewerOpen}
+        onClose={() => setViewerOpen(false)}
+        fileUrl={fileUrl}
+        title="Uploaded COI"
+        extracted={extracted}
+      />
     </div>
   );
 }

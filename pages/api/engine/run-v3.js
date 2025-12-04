@@ -1,0 +1,408 @@
+// pages/api/engine/run-v3.js
+// Neon-based Rule Engine V3 (per-vendor evaluator with group scoring)
+
+import { sql } from "../../../lib/db";
+import { supabase } from "../../../lib/supabaseClient";
+
+// Coverage Normalization + Endorsement Matrix + Limit Engine
+import { normalizeCOI } from "../../../lib/normalizeCOI";
+import { checkMissingEndorsements } from "../../../lib/endorsementMatrix";
+import { checkCoverageLimits } from "../../../lib/limitEngine";
+
+/* ============================================================
+   HELPER: Flatten policies.extracted JSON into one object
+============================================================ */
+function buildPolicyObj(policies = []) {
+  const obj = {};
+  for (const p of policies) {
+    let extracted = p.extracted || {};
+    if (typeof extracted === "string") {
+      try {
+        extracted = JSON.parse(extracted);
+      } catch {
+        extracted = {};
+      }
+    }
+    if (extracted && typeof extracted === "object") {
+      Object.assign(obj, extracted);
+    }
+  }
+  return obj;
+}
+
+/* ============================================================
+   HELPER: Severity weighting + group score
+============================================================ */
+function severityToWeight(severity) {
+  switch (severity) {
+    case "critical":
+      return 1.0;
+    case "high":
+      return 0.7;
+    case "medium":
+      return 0.4;
+    case "low":
+      return 0.2;
+    default:
+      return 0.3;
+  }
+}
+
+function computeGroupScore(ruleResults, groupSeverity) {
+  if (!ruleResults || ruleResults.length === 0) {
+    // No rules in this group — treat as neutral / pass
+    return 100;
+  }
+
+  let score = 100;
+  const groupWeight = severityToWeight(groupSeverity || "medium");
+
+  for (const r of ruleResults) {
+    if (r.passed) continue;
+    const ruleWeight = severityToWeight(r.severity || "medium");
+    // Each failing rule can subtract up to ~15 points scaled by severities
+    const penalty = 15 * ruleWeight * groupWeight;
+    score -= penalty;
+  }
+
+  if (score < 0) score = 0;
+  if (score > 100) score = 100;
+  return Math.round(score);
+}
+
+/* ============================================================
+   RULE ENGINE V3 EVALUATOR (Neon)
+============================================================ */
+export default async function handler(req, res) {
+  if (req.method !== "POST") {
+    return res.status(405).json({ ok: false, error: "POST only" });
+  }
+
+  try {
+    const { vendorId, orgId } = req.body;
+
+    if (!vendorId || !orgId) {
+      return res.status(400).json({
+        ok: false,
+        error: "Missing vendorId or orgId in body.",
+      });
+    }
+
+    /* --------------------------------------------------------
+       1) LOAD POLICY DATA (from Supabase)
+    --------------------------------------------------------- */
+    const { data: policies, error: pErr } = await supabase
+      .from("policies")
+      .select("id, extracted")
+      .eq("vendor_id", vendorId);
+
+    if (pErr) {
+      console.error("[RULE V3] Error loading policies from Supabase:", pErr);
+      return res
+        .status(500)
+        .json({ ok: false, error: "Failed to load policies." });
+    }
+
+    const hasPolicies = policies && policies.length > 0;
+    const policyObj = hasPolicies ? buildPolicyObj(policies) : {};
+
+    /* --------------------------------------------------------
+       2) LOAD RULE GROUPS + RULES (from Neon)
+    --------------------------------------------------------- */
+    const groups = await sql`
+      SELECT id, org_id, label, description, severity, active
+      FROM rule_groups
+      WHERE org_id = ${orgId} AND active = TRUE
+      ORDER BY id ASC;
+    `;
+
+    if (!groups.length) {
+      return res.status(200).json({
+        ok: true,
+        message: "No active rule groups for this org.",
+        results: [],
+        failed: 0,
+        groupResults: [],
+        globalScore: 100,
+      });
+    }
+
+    const rules = await sql`
+      SELECT id, group_id, type, field, condition, value, message, severity, active
+      FROM rules_v3
+      WHERE group_id IN (
+        SELECT id FROM rule_groups WHERE org_id = ${orgId} AND active = TRUE
+      )
+      AND active = TRUE
+      ORDER BY id ASC;
+    `;
+
+    if (!rules.length) {
+      return res.status(200).json({
+        ok: true,
+        message: "No active rules for this org.",
+        results: [],
+        failed: 0,
+        groupResults: [],
+        globalScore: 100,
+      });
+    }
+
+    /* --------------------------------------------------------
+       3) COVERAGE NORMALIZATION + ENDORSEMENT MATRIX + LIMITS
+    --------------------------------------------------------- */
+    const normalized = normalizeCOI(policyObj);
+
+    // Later: make this configurable per org / rule group
+    const profileType = "standard_construction";
+
+    // Missing endorsements
+    const missingEndorsements = checkMissingEndorsements(
+      normalized,
+      profileType
+    );
+
+    // Auto-generated alerts (missing coverage / endorsements / limits)
+    const autoGeneratedAlerts = [];
+
+    // Missing GL
+    if (!normalized.has_gl) {
+      autoGeneratedAlerts.push({
+        code: "MISSING_GL",
+        message: "General Liability coverage is missing.",
+        severity: "critical",
+      });
+    }
+
+    // Missing Auto
+    if (!normalized.has_auto) {
+      autoGeneratedAlerts.push({
+        code: "MISSING_AUTO",
+        message: "Automobile Liability coverage is missing.",
+        severity: "high",
+      });
+    }
+
+    // Missing WC
+    if (!normalized.has_wc) {
+      autoGeneratedAlerts.push({
+        code: "MISSING_WC",
+        message: "Workers Compensation coverage is missing.",
+        severity: "high",
+      });
+    }
+
+    // Missing required endorsements
+    if (missingEndorsements.length > 0) {
+      autoGeneratedAlerts.push({
+        code: "MISSING_ENDORSEMENTS",
+        message: `Missing required endorsements: ${missingEndorsements.join(
+          ", "
+        )}`,
+        severity: "high",
+      });
+    }
+
+    // NEW: limit failures (GL, Auto, WC, combined)
+    const limitFailures = checkCoverageLimits(normalized, profileType);
+    autoGeneratedAlerts.push(...limitFailures);
+
+    /* --------------------------------------------------------
+       4) EVALUATE RULES (V3-style with group metadata)
+    --------------------------------------------------------- */
+    const results = [];
+
+    for (const rule of rules) {
+      let passed = true;
+
+      const field = rule.field; // e.g. "gl_limit" or original AI keys
+      const cond = rule.condition; // 'gte', 'exists', 'missing', etc.
+      const val = rule.value;
+
+      const actual =
+        policyObj[field] !== undefined
+          ? policyObj[field]
+          : normalized[field] !== undefined
+          ? normalized[field]
+          : undefined;
+
+      switch (rule.type) {
+        case "coverage":
+          if (cond === "exists") {
+            passed =
+              actual !== undefined && actual !== null && actual !== "";
+          }
+          if (cond === "missing") {
+            passed =
+              actual === undefined || actual === null || actual === "";
+          }
+          break;
+
+        case "limit": {
+          const numeric = Number(actual || 0);
+          const limit = Number(val || 0);
+          if (cond === "gte") passed = numeric >= limit;
+          if (cond === "lte") passed = numeric <= limit;
+          break;
+        }
+
+        case "endorsement": {
+          const endorsements = Array.isArray(normalized.endorsements)
+            ? normalized.endorsements
+            : [];
+          const target = String(val || "").toUpperCase();
+          if (cond === "requires") {
+            passed = endorsements.includes(target);
+          }
+          if (cond === "missing") {
+            passed = !endorsements.includes(target);
+          }
+          break;
+        }
+
+        case "date": {
+          const date = actual ? new Date(actual) : null;
+          const compare = val ? new Date(val) : null;
+          if (
+            !date ||
+            !compare ||
+            Number.isNaN(date.getTime()) ||
+            Number.isNaN(compare.getTime())
+          ) {
+            passed = false;
+          } else {
+            if (cond === "before") passed = date < compare;
+            if (cond === "after") passed = date > compare;
+          }
+          break;
+        }
+
+        case "custom":
+          // Placeholder for AI-powered / JS-expression rules
+          passed = true;
+          break;
+
+        default:
+          passed = true;
+      }
+
+      results.push({
+        ruleId: rule.id,
+        groupId: rule.group_id,
+        passed,
+        message: rule.message,
+        severity: rule.severity,
+        field,
+        condition: cond,
+        actual,
+        expected: val,
+      });
+    }
+
+    /* --------------------------------------------------------
+       4B) GROUP-LEVEL RESULTS + GLOBAL SCORE (V3)
+    --------------------------------------------------------- */
+    const groupResults = groups.map((g) => {
+      const groupRuleResults = results.filter((r) => r.groupId === g.id);
+      const failedRules = groupRuleResults.filter((r) => !r.passed);
+      const passed = failedRules.length === 0;
+      const score = computeGroupScore(groupRuleResults, g.severity);
+
+      return {
+        groupId: g.id,
+        label: g.label,
+        description: g.description,
+        severity: g.severity,
+        passed,
+        score,
+        failedRuleIds: failedRules.map((fr) => fr.ruleId),
+      };
+    });
+
+    let globalScore = 100;
+    if (groupResults.length > 0) {
+      const total = groupResults.reduce((sum, gr) => sum + gr.score, 0);
+      globalScore = Math.round(total / groupResults.length);
+    }
+
+    /* --------------------------------------------------------
+       5) WRITE RULE RESULTS (Neon)
+    --------------------------------------------------------- */
+    await sql`
+      DELETE FROM rule_results_v3
+      WHERE vendor_id = ${vendorId};
+    `;
+
+    for (const r of results) {
+      await sql`
+        INSERT INTO rule_results_v3 (vendor_id, rule_id, passed, message, severity)
+        VALUES (
+          ${vendorId},
+          ${r.ruleId},
+          ${r.passed},
+          ${r.message},
+          ${r.severity}
+        );
+      `;
+    }
+
+    /* --------------------------------------------------------
+       6) GENERATE ALERTS (auto + rule failures)
+    --------------------------------------------------------- */
+
+    // Remove old alerts
+    await sql`
+      DELETE FROM vendor_alerts
+      WHERE vendor_id = ${vendorId};
+    `;
+
+    // Insert auto-generated alerts
+    for (const a of autoGeneratedAlerts) {
+      await sql`
+        INSERT INTO vendor_alerts (vendor_id, org_id, code, message, severity)
+        VALUES (
+          ${vendorId},
+          ${orgId},
+          ${a.code},
+          ${a.message},
+          ${a.severity}
+        );
+      `;
+    }
+
+    // Insert rule-based failures
+    const failed = results.filter((r) => !r.passed);
+
+    for (const f of failed) {
+      await sql`
+        INSERT INTO vendor_alerts (vendor_id, org_id, code, message, severity)
+        VALUES (
+          ${vendorId},
+          ${orgId},
+          ${"RULE_" + f.ruleId},
+          ${f.message},
+          ${f.severity}
+        );
+      `;
+    }
+
+    return res.status(200).json({
+      ok: true,
+      vendorId,
+      orgId,
+      rulesEvaluated: results.length,
+      failedCount: failed.length + autoGeneratedAlerts.length,
+      results,
+      autoGeneratedAlerts,
+      groupResults,
+      globalScore,
+    });
+  } catch (err) {
+    console.error("[RULE ENGINE V3 Neon ERROR]", err);
+    return res.status(500).json({
+      ok: false,
+      error: err.message || "Rule Engine V3 failed.",
+    });
+  }
+}
+ 

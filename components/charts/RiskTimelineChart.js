@@ -1,4 +1,4 @@
-// components/charts/RiskTimelineChart.js
+// components/charts/RiskTimelineChart.js — Cinematic V2 (FIXED)
 import React, { useMemo } from "react";
 import {
   LineChart,
@@ -10,61 +10,79 @@ import {
   CartesianGrid,
 } from "recharts";
 
+/* ===========================
+   CINEMATIC V2 THEME
+=========================== */
 const GP = {
-  primary: "#0057FF",
-  accent: "#00E0FF",
-  ink: "#0D1623",
-  inkSoft: "#64748B",
-  cardBg: "#FFFFFF",
-  subtleBorder: "rgba(148, 163, 184, 0.35)",
-  softShadow: "0 18px 45px rgba(15,23,42,0.08)",
+  bgPanel: "rgba(15,23,42,0.98)",
+  bgDeep: "rgba(2,6,23,0.95)",
+  border: "rgba(51,65,85,0.9)",
+
+  text: "#e5e7eb",
+  textSoft: "#9ca3af",
+
+  neonBlue: "#38bdf8",
+  neonPurple: "#a855f7",
+  neonGreen: "#22c55e",
+  neonGold: "#facc15",
+
+  glowBlue: "rgba(56,189,248,0.45)",
+  glowPurple: "rgba(168,85,247,0.45)",
 };
 
-/** Fake “risk history” — later we'll replace with real metrics */
-const generateRiskHistory = (policies = []) => {
-  if (!policies.length) {
-    return [
-      { month: "Jan", score: 60 },
-      { month: "Feb", score: 63 },
-      { month: "Mar", score: 67 },
-      { month: "Apr", score: 70 },
-      { month: "May", score: 74 },
-      { month: "Jun", score: 78 },
-    ];
-  }
+/* ===========================
+   TOOLTIP — Cinematic V2
+=========================== */
+function TimelineTooltip({ active, payload, label }) {
+  if (!active || !payload?.length) return null;
 
-  // Aggregate risk scores by vendor-month in real version
-  // This placeholder keeps your dashboard clean for now
+  return (
+    <div
+      style={{
+        background: "rgba(2,6,23,0.95)",
+        padding: "10px 14px",
+        color: GP.text,
+        borderRadius: 12,
+        border: "1px solid rgba(56,189,248,0.35)",
+        boxShadow: `0 0 18px ${GP.glowBlue}`,
+        fontSize: 12,
+      }}
+    >
+      <div
+        style={{
+          fontWeight: 600,
+          marginBottom: 4,
+          color: GP.neonBlue,
+        }}
+      >
+        {label}
+      </div>
+      <div>
+        Risk Score:{" "}
+        <strong style={{ color: GP.neonGreen }}>{payload[0].value}</strong>
+      </div>
+    </div>
+  );
+}
+
+/* ===========================
+   FIXED RISK HISTORY GENERATOR
+=========================== */
+const generateRiskHistory = (policies) => {
+  // Always return static placeholder until real backend implemented
   return [
     { month: "Jan", score: 58 },
     { month: "Feb", score: 62 },
-    { month: "Mar", score: 66 },
+    { month: "Mar", score: 67 },
     { month: "Apr", score: 71 },
     { month: "May", score: 75 },
     { month: "Jun", score: 82 },
   ];
 };
 
-function TimelineTooltip({ active, payload, label }) {
-  if (!active || !payload || !payload.length) return null;
-
-  return (
-    <div
-      style={{
-        background: "#0F172A",
-        color: "#E5E7EB",
-        padding: "8px 12px",
-        borderRadius: 10,
-        boxShadow: "0 16px 40px rgba(15,23,42,0.6)",
-        fontSize: 12,
-      }}
-    >
-      <div style={{ fontWeight: 600 }}>{label}</div>
-      <div>Risk Score: <strong>{payload[0].value}</strong></div>
-    </div>
-  );
-}
-
+/* ===========================
+   MAIN COMPONENT
+=========================== */
 export default function RiskTimelineChart({ policies }) {
   const data = useMemo(() => generateRiskHistory(policies), [policies]);
 
@@ -75,100 +93,91 @@ export default function RiskTimelineChart({ policies }) {
   return (
     <div
       style={{
-        background: GP.cardBg,
-        borderRadius: 20,
-        boxShadow: GP.softShadow,
-        border: `1px solid ${GP.subtleBorder}`,
-        padding: 24,
+        borderRadius: 24,
+        padding: 22,
+        border: `1px solid ${GP.border}`,
+        background:
+          "radial-gradient(circle at top left,rgba(15,23,42,0.98),rgba(15,23,42,0.94))",
+        boxShadow: `
+          0 0 40px rgba(0,0,0,0.75),
+          0 0 60px ${GP.glowBlue},
+          inset 0 0 20px rgba(0,0,0,0.55)
+        `,
         marginBottom: 40,
       }}
     >
       {/* HEADER */}
-      <div
-        style={{
-          display: "flex",
-          justifyContent: "space-between",
-          marginBottom: 18,
-        }}
-      >
-        <div>
-          <div
-            style={{
-              fontSize: 14,
-              fontWeight: 600,
-              textTransform: "uppercase",
-              letterSpacing: "0.08em",
-              color: GP.inkSoft,
-            }}
-          >
-            Risk Timeline
-          </div>
-
-          <div
-            style={{
-              fontSize: 22,
-              fontWeight: 700,
-              color: GP.ink,
-              marginTop: 4,
-            }}
-          >
-            {latest}
-          </div>
-
-          <div style={{ fontSize: 12, color: GP.inkSoft }}>
-            {delta >= 0 ? "↗ Improving" : "↘ Worsening"} ({delta >= 0 ? "+" : ""}{delta})
-          </div>
-        </div>
-
-        <span
+      <div style={{ marginBottom: 18 }}>
+        <div
           style={{
-            fontSize: 11,
-            padding: "6px 10px",
-            borderRadius: 999,
-            background: "rgba(0,87,255,0.05)",
-            border: "1px solid rgba(0,87,255,0.25)",
-            color: GP.primary,
-            fontWeight: 600,
+            fontSize: 12,
             textTransform: "uppercase",
-            height: 20,
-            marginTop: 8,
+            letterSpacing: "0.15em",
+            color: GP.textSoft,
+            marginBottom: 6,
           }}
         >
-          Last 6 Months
-        </span>
+          Risk Timeline
+        </div>
+
+        <div
+          style={{
+            fontSize: 26,
+            fontWeight: 700,
+            background:
+              "linear-gradient(90deg,#38bdf8,#a855f7,#fb7185,#facc15)",
+            WebkitBackgroundClip: "text",
+            color: "transparent",
+            marginBottom: 2,
+          }}
+        >
+          {latest}
+        </div>
+
+        <div style={{ fontSize: 12, color: GP.textSoft }}>
+          {delta >= 0 ? "↗ Improving" : "↘ Worsening"} (
+          {delta >= 0 ? "+" : ""}
+          {delta})
+        </div>
       </div>
 
+      {/* CHART */}
       <div style={{ width: "100%", height: 260 }}>
         <ResponsiveContainer>
           <LineChart data={data}>
             <defs>
-              <linearGradient id="timelineLine" x1="0" y1="0" x2="1" y2="0">
-                <stop offset="0%" stopColor={GP.primary} stopOpacity={0.25} />
-                <stop offset="100%" stopColor={GP.accent} stopOpacity={0.95} />
+              <linearGradient id="riskTimelineGradient" x1="0" y1="0" x2="1" y2="0">
+                <stop offset="0%" stopColor={GP.neonBlue} stopOpacity={0.8} />
+                <stop offset="50%" stopColor={GP.neonPurple} stopOpacity={0.9} />
+                <stop offset="100%" stopColor={GP.neonGreen} stopOpacity={1} />
               </linearGradient>
 
-              <filter id="glow" x="-20%" y="-20%" width="140%" height="140%">
-                <feGaussianBlur stdDeviation="4" result="coloredBlur" />
+              <filter id="dotGlow" x="-50%" y="-50%" width="200%" height="200%">
+                <feGaussianBlur stdDeviation="4" result="blur" />
                 <feMerge>
-                  <feMergeNode in="coloredBlur" />
+                  <feMergeNode in="blur" />
                   <feMergeNode in="SourceGraphic" />
                 </feMerge>
               </filter>
             </defs>
 
-            <CartesianGrid strokeDasharray="3 3" stroke="rgba(148,163,184,0.25)" />
+            <CartesianGrid
+              strokeDasharray="3 3"
+              stroke="rgba(148,163,184,0.16)"
+              vertical={false}
+            />
 
             <XAxis
               dataKey="month"
-              tick={{ fill: GP.inkSoft, fontSize: 12 }}
-              axisLine={false}
+              tick={{ fill: GP.textSoft, fontSize: 12 }}
               tickLine={false}
+              axisLine={false}
             />
 
             <YAxis
-              tick={{ fill: GP.inkSoft, fontSize: 12 }}
-              axisLine={false}
+              tick={{ fill: GP.textSoft, fontSize: 12 }}
               tickLine={false}
+              axisLine={false}
               domain={[30, 100]}
             />
 
@@ -177,15 +186,15 @@ export default function RiskTimelineChart({ policies }) {
             <Line
               type="monotone"
               dataKey="score"
-              stroke="url(#timelineLine)"
+              stroke="url(#riskTimelineGradient)"
               strokeWidth={3}
               dot={false}
               activeDot={{
                 r: 6,
                 strokeWidth: 2,
-                stroke: "#fff",
-                fill: GP.primary,
-                filter: "url(#glow)",
+                stroke: GP.neonBlue,
+                fill: GP.neonBlue,
+                filter: "url(#dotGlow)",
               }}
             />
           </LineChart>

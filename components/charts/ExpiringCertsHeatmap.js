@@ -1,40 +1,39 @@
-// components/charts/ExpiringCertsHeatmap.js
+// components/charts/ExpiringCertsHeatmap.js (Cinematic V2)
 import React, { useMemo } from "react";
 
-/* Local theme matching dashboard / other charts */
+/* ===========================
+   CINEMATIC V2 COLOR SYSTEM
+=========================== */
 const GP = {
-  primary: "#0057FF",
-  primaryDark: "#003BB3",
-  accent1: "#00E0FF",
-  accent2: "#8A2BFF",
-  red: "#FF3B3B",
-  orange: "#FF9800",
-  yellow: "#FFC107",
-  green: "#00C27A",
-  ink: "#0D1623",
-  inkSoft: "#64748B",
-  cardBg: "#FFFFFF",
-  subtleBorder: "rgba(148, 163, 184, 0.35)",
-  softShadow: "0 18px 45px rgba(15, 23, 42, 0.08)",
+  bgPanel: "rgba(15,23,42,0.98)",
+  bgDeep: "rgba(2,6,23,0.95)",
+  border: "rgba(51,65,85,0.9)",
+
+  text: "#e5e7eb",
+  textSoft: "#9ca3af",
+  textMuted: "#6b7280",
+
+  cool: "#38bdf8",     // neon cyan
+  mid: "#a855f7",      // neon purple
+  hot: "#fb7185",      // neon red
+  whiteHot: "#facc15", // gold
+
+  glowCool: "rgba(56,189,248,0.4)",
+  glowMid: "rgba(168,85,247,0.4)",
+  glowHot: "rgba(251,113,133,0.45)",
+  glowWhite: "rgba(250,204,21,0.55)",
 };
 
-/**
- * Parse "MM/DD/YYYY" into a normalized ISO date string (YYYY-MM-DD)
- */
+/* ===========================
+   DATE HELPERS
+=========================== */
 function parseExpirationToISO(dateStr) {
   if (!dateStr) return null;
-  const parts = dateStr.split("/");
-  if (parts.length !== 3) return null;
-  const [mm, dd, yyyy] = parts;
-  if (!mm || !dd || !yyyy) return null;
+  const [mm, dd, yyyy] = dateStr.split("/");
   const d = new Date(`${yyyy}-${mm}-${dd}T00:00:00`);
-  if (Number.isNaN(d.getTime())) return null;
-  return d.toISOString().slice(0, 10);
+  return Number.isNaN(d.getTime()) ? null : d.toISOString().slice(0, 10);
 }
 
-/**
- * Build 6 weeks (42 days) worth of dates starting today
- */
 function buildDateRange(days = 42) {
   const start = new Date();
   start.setHours(0, 0, 0, 0);
@@ -47,212 +46,148 @@ function buildDateRange(days = 42) {
   return arr;
 }
 
-function intensityForCount(count) {
+/* ===========================
+   INTENSITY MAPPING (THE MAGIC)
+   This is the cinematic hybrid: cold → mid → hot → white-hot
+=========================== */
+function cellStyle(count) {
   if (count <= 0) {
     return {
-      background: "rgba(148, 163, 184, 0.06)",
-      border: "1px solid rgba(148, 163, 184, 0.25)",
+      background: "rgba(255,255,255,0.03)",
+      border: "1px solid rgba(255,255,255,0.05)",
+      boxShadow: "none",
     };
   }
+
   if (count === 1) {
     return {
-      background: "rgba(0, 87, 255, 0.18)",
-      border: "1px solid rgba(0, 87, 255, 0.55)",
+      background: "rgba(56,189,248,0.18)",
+      border: "1px solid rgba(56,189,248,0.45)",
+      boxShadow: `0 0 12px ${GP.glowCool}`,
     };
   }
-  if (count <= 3) {
+
+  if (count === 2) {
     return {
-      background: "rgba(0, 87, 255, 0.32)",
-      border: "1px solid rgba(0, 87, 255, 0.7)",
+      background: "rgba(168,85,247,0.22)",
+      border: "1px solid rgba(168,85,247,0.55)",
+      boxShadow: `0 0 16px ${GP.glowMid}`,
     };
   }
+
+  if (count === 3) {
+    return {
+      background: "rgba(251,113,133,0.28)",
+      border: "1px solid rgba(251,113,133,0.75)",
+      boxShadow: `0 0 20px ${GP.glowHot}`,
+    };
+  }
+
+  // 4+ = WHITE-HOT (maximum fear factor)
   return {
     background:
-      "linear-gradient(135deg, rgba(234, 88, 12, 0.9), rgba(220, 38, 38, 0.95))",
-    border: "1px solid rgba(15, 23, 42, 0.75)",
+      "linear-gradient(135deg, rgba(250,204,21,0.85), rgba(251,113,133,0.8), rgba(168,85,247,0.85))",
+    border: "1px solid rgba(250,204,21,0.9)",
+    boxShadow: `
+      0 0 25px ${GP.glowWhite},
+      0 0 35px rgba(255,255,255,0.45)
+    `,
   };
 }
 
+/* ===========================
+   MAIN COMPONENT — CINEMATIC HEATMAP
+=========================== */
 export default function ExpiringCertsHeatmap({ policies = [] }) {
   const days = useMemo(() => buildDateRange(42), []);
   const weekdayLabels = ["S", "M", "T", "W", "T", "F", "S"];
 
-  // Build a map of expiration date -> count
+  // Map date -> count
   const countsByISO = useMemo(() => {
     const map = {};
     for (const p of policies) {
       const iso = parseExpirationToISO(p.expiration_date);
-      if (!iso) continue;
-      map[iso] = (map[iso] || 0) + 1;
+      if (iso) map[iso] = (map[iso] || 0) + 1;
     }
     return map;
   }, [policies]);
 
-  // Total expiring in range (for header)
-  const totalExpiringInRange = useMemo(() => {
-    return days.reduce((sum, d) => {
-      const iso = d.toISOString().slice(0, 10);
-      return sum + (countsByISO[iso] || 0);
-    }, 0);
-  }, [days, countsByISO]);
+  const totalExpiringInRange = useMemo(
+    () =>
+      days.reduce((sum, d) => {
+        const iso = d.toISOString().slice(0, 10);
+        return sum + (countsByISO[iso] || 0);
+      }, 0),
+    [days, countsByISO]
+  );
 
   return (
     <div
       style={{
-        background: GP.cardBg,
-        borderRadius: 20,
-        boxShadow: GP.softShadow,
-        border: `1px solid ${GP.subtleBorder}`,
-        padding: 24,
+        borderRadius: 24,
+        padding: 22,
         marginBottom: 40,
+        border: `1px solid ${GP.border}`,
+        background:
+          "radial-gradient(circle at top left,rgba(15,23,42,0.98),rgba(15,23,42,0.94))",
+        boxShadow: `
+          0 0 40px rgba(0,0,0,0.75),
+          0 0 60px rgba(56,189,248,0.25),
+          inset 0 0 20px rgba(0,0,0,0.55)
+        `,
       }}
     >
-      {/* Header */}
-      <div
-        style={{
-          display: "flex",
-          justifyContent: "space-between",
-          alignItems: "flex-start",
-          marginBottom: 18,
-          gap: 12,
-        }}
-      >
-        <div>
-          <div
-            style={{
-              fontSize: 14,
-              fontWeight: 600,
-              letterSpacing: "0.08em",
-              textTransform: "uppercase",
-              color: GP.inkSoft,
-              marginBottom: 4,
-            }}
-          >
-            Expiring Certificates Heatmap
-          </div>
-          <div
-            style={{
-              fontSize: 18,
-              fontWeight: 600,
-              color: GP.ink,
-              marginBottom: 2,
-            }}
-          >
-            {totalExpiringInRange} certificate
-            {totalExpiringInRange === 1 ? "" : "s"} expiring next 6 weeks
-          </div>
-          <div style={{ fontSize: 12, color: GP.inkSoft }}>
-            Darker tiles indicate heavier expiration clusters. Hover to inspect a day.
-          </div>
+      {/* HEADER */}
+      <div style={{ marginBottom: 18 }}>
+        <div
+          style={{
+            fontSize: 12,
+            letterSpacing: "0.15em",
+            textTransform: "uppercase",
+            color: GP.textSoft,
+            marginBottom: 6,
+          }}
+        >
+          Expiring Certificates Heatmap
         </div>
 
         <div
           style={{
-            display: "flex",
-            flexDirection: "column",
-            alignItems: "flex-end",
-            gap: 6,
-            minWidth: 180,
+            fontSize: 22,
+            fontWeight: 700,
+            background:
+              "linear-gradient(90deg,#38bdf8,#a855f7,#fb7185,#facc15)",
+            WebkitBackgroundClip: "text",
+            color: "transparent",
+            marginBottom: 2,
           }}
         >
-          <span
-            style={{
-              fontSize: 11,
-              padding: "6px 10px",
-              borderRadius: 999,
-              background: "rgba(0, 87, 255, 0.05)",
-              border: "1px solid rgba(0, 87, 255, 0.35)",
-              color: GP.primaryDark,
-              fontWeight: 500,
-              whiteSpace: "nowrap",
-            }}
-          >
-            Next 6 Weeks
-          </span>
+          {totalExpiringInRange} expiring in next 6 weeks
+        </div>
 
-          {/* Legend */}
-          <div
-            style={{
-              display: "flex",
-              alignItems: "center",
-              gap: 10,
-              fontSize: 11,
-              color: GP.inkSoft,
-            }}
-          >
-            <span style={{ display: "flex", alignItems: "center", gap: 4 }}>
-              <span
-                style={{
-                  width: 12,
-                  height: 12,
-                  borderRadius: 4,
-                  background: "rgba(148, 163, 184, 0.06)",
-                  border: "1px solid rgba(148, 163, 184, 0.25)",
-                }}
-              />
-              None
-            </span>
-            <span style={{ display: "flex", alignItems: "center", gap: 4 }}>
-              <span
-                style={{
-                  width: 12,
-                  height: 12,
-                  borderRadius: 4,
-                  background: "rgba(0, 87, 255, 0.18)",
-                  border: "1px solid rgba(0, 87, 255, 0.55)",
-                }}
-              />
-              1
-            </span>
-            <span style={{ display: "flex", alignItems: "center", gap: 4 }}>
-              <span
-                style={{
-                  width: 12,
-                  height: 12,
-                  borderRadius: 4,
-                  background: "rgba(0, 87, 255, 0.32)",
-                  border: "1px solid rgba(0, 87, 255, 0.7)",
-                }}
-              />
-              2–3
-            </span>
-            <span style={{ display: "flex", alignItems: "center", gap: 4 }}>
-              <span
-                style={{
-                  width: 12,
-                  height: 12,
-                  borderRadius: 4,
-                  background:
-                    "linear-gradient(135deg, rgba(234, 88, 12, 0.9), rgba(220, 38, 38, 0.95))",
-                  border: "1px solid rgba(15, 23, 42, 0.75)",
-                }}
-              />
-              4+
-            </span>
-          </div>
+        <div style={{ fontSize: 12, color: GP.textSoft }}>
+          Hover any day to inspect intensity.
         </div>
       </div>
 
-      {/* Weekday labels */}
+      {/* WEEKDAY LABELS */}
       <div
         style={{
           display: "grid",
-          gridTemplateColumns: "repeat(7, minmax(0, 1fr))",
+          gridTemplateColumns: "repeat(7,1fr)",
           gap: 6,
           fontSize: 11,
-          color: GP.inkSoft,
+          color: GP.textSoft,
           marginBottom: 6,
-          paddingLeft: 2,
-          paddingRight: 2,
+          textAlign: "center",
         }}
       >
         {weekdayLabels.map((d) => (
           <div
             key={d}
             style={{
-              textAlign: "center",
               textTransform: "uppercase",
-              letterSpacing: "0.06em",
+              letterSpacing: "0.1em",
             }}
           >
             {d}
@@ -260,23 +195,23 @@ export default function ExpiringCertsHeatmap({ policies = [] }) {
         ))}
       </div>
 
-      {/* Heatmap grid: 6 rows x 7 cols */}
+      {/* HEATMAP GRID */}
       <div
         style={{
           display: "grid",
-          gridTemplateColumns: "repeat(7, minmax(0, 1fr))",
-          gap: 6,
+          gridTemplateColumns: "repeat(7, 1fr)",
+          gap: 8,
         }}
       >
         {days.map((d, idx) => {
           const iso = d.toISOString().slice(0, 10);
           const count = countsByISO[iso] || 0;
-          const styles = intensityForCount(count);
+          const styles = cellStyle(count);
 
           const dayOfMonth = d.getDate();
-          const monthLabel =
+          const showMonth =
             idx < 7 || dayOfMonth === 1
-              ? d.toLocaleString(undefined, { month: "short" })
+              ? d.toLocaleString("default", { month: "short" })
               : null;
 
           return (
@@ -285,49 +220,41 @@ export default function ExpiringCertsHeatmap({ policies = [] }) {
               title={`${d.toLocaleDateString()} — ${count} expiring`}
               style={{
                 ...styles,
-                borderRadius: 10,
-                minHeight: 46,
-                padding: 6,
+                borderRadius: 12,
+                minHeight: 48,
                 display: "flex",
                 flexDirection: "column",
                 justifyContent: "space-between",
-                alignItems: "flex-start",
-                boxShadow:
-                  count >= 4
-                    ? "0 0 0 1px rgba(15, 23, 42, 0.3), 0 18px 35px rgba(15, 23, 42, 0.4)"
-                    : "none",
-                color: count >= 4 ? "#F9FAFB" : GP.inkSoft,
-                transition: "transform 0.12s ease-out, box-shadow 0.12s ease-out",
+                padding: 6,
+                transition:
+                  "transform 0.15s ease-out, box-shadow 0.15s ease-out",
                 cursor: count > 0 ? "pointer" : "default",
               }}
             >
-              <div
-                style={{
-                  fontSize: 10,
-                  fontWeight: 600,
-                  opacity: 0.9,
-                }}
-              >
+              <div style={{ fontSize: 10, fontWeight: 600, color: GP.text }}>
                 {dayOfMonth}
               </div>
-              {monthLabel && (
+
+              {showMonth && (
                 <div
                   style={{
                     fontSize: 9,
+                    color: GP.textSoft,
                     textTransform: "uppercase",
-                    letterSpacing: "0.06em",
-                    opacity: 0.85,
+                    letterSpacing: "0.08em",
                   }}
                 >
-                  {monthLabel}
+                  {showMonth}
                 </div>
               )}
+
               {count > 0 && (
                 <div
                   style={{
                     marginTop: "auto",
                     fontSize: 11,
-                    fontWeight: 600,
+                    fontWeight: 700,
+                    color: GP.text,
                   }}
                 >
                   {count}

@@ -1,5 +1,7 @@
 // pages/api/alerts/log.js
-import { supabase } from "../../../lib/supabaseClient";
+// Backwards-compatible wrapper: logs into Alerts V2 as "system" alerts
+
+import { insertAlertV2Safe } from "../../../lib/alertsV2Engine";
 
 export default async function handler(req, res) {
   if (req.method !== "POST") {
@@ -9,15 +11,29 @@ export default async function handler(req, res) {
   try {
     const { vendorId, orgId, type, message } = req.body;
 
-    const { data, error } = await supabase
-      .from("alerts")
-      .insert([{ vendor_id: vendorId, org_id: orgId, type, message }]);
+    if (!vendorId || !orgId || !type || !message) {
+      return res.status(400).json({
+        ok: false,
+        error: "Missing vendorId, orgId, type, or message",
+      });
+    }
 
-    if (error) throw error;
+    await insertAlertV2Safe({
+      orgId: Number(orgId),
+      vendorId: Number(vendorId),
+      type,
+      severity: "medium",
+      category: "system",
+      message,
+      ruleId: null,
+      metadata: {},
+    });
 
-    return res.status(200).json({ ok: true, alert: data[0] });
+    return res.status(200).json({ ok: true });
   } catch (err) {
-    console.error("ALERT LOG ERROR:", err);
-    return res.status(500).json({ ok: false, error: err.message });
+    console.error("[alerts/log wrapper] error:", err);
+    return res
+      .status(500)
+      .json({ ok: false, error: err.message || "Internal error" });
   }
 }

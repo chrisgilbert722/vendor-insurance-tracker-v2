@@ -1,45 +1,53 @@
+// pages/auth/callback.js
 import { useEffect } from "react";
 import { useRouter } from "next/router";
 import { supabase } from "../../lib/supabaseClient";
 
-export default function Callback() {
+export default function AuthCallback() {
   const router = useRouter();
 
   useEffect(() => {
-    async function finalize() {
-      console.log("🔄 Running callback flow...");
+    async function run() {
+      const code = router.query.code;
 
-      const { data: { session } } = await supabase.auth.getSession();
-
-      if (!session) {
-        console.log("❌ No session — redirecting to login");
+      if (!code) {
+        console.log("No code in URL");
         router.replace("/auth/login");
         return;
       }
 
-      console.log("✅ Session found in callback:", session);
+      console.log("Exchanging code for session…");
 
-      // Sync user to Neon  
-      try {
-        await fetch("/api/auth/sync-user", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ user: session.user }),
-        });
-        console.log("✅ User synced from callback");
-      } catch (err) {
-        console.error("❌ sync-user failed in callback:", err);
+      const { data, error } = await supabase.auth.exchangeCodeForSession(code);
+
+      if (error) {
+        console.error("Exchange error:", error);
+        router.replace("/auth/login");
+        return;
       }
 
-      router.replace("/dashboard");
+      console.log("Session created:", data);
+
+      // redirect to dashboard or provided redirect param
+      const redirectTo = router.query.redirect || "/dashboard";
+      router.replace(redirectTo);
     }
 
-    finalize();
+    if (router.isReady) run();
   }, [router]);
 
   return (
-    <div style={{ padding: "40px" }}>
-      <p>Signing you in...</p>
+    <div
+      style={{
+        minHeight: "100vh",
+        display: "flex",
+        justifyContent: "center",
+        alignItems: "center",
+        color: "#e5e7eb",
+        background: "radial-gradient(circle at top left,#020617,#000)"
+      }}
+    >
+      <div style={{ fontSize: 22 }}>Authenticating…</div>
     </div>
   );
 }
