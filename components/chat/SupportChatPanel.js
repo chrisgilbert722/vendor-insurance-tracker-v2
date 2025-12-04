@@ -1,4 +1,6 @@
 // components/chat/SupportChatPanel.js
+// Global + Vendor-Aware + AI Auto-Fix + Wizard Mode
+
 import { useState } from "react";
 
 const GP = {
@@ -10,14 +12,20 @@ const GP = {
 
 export default function SupportChatPanel({ orgId, vendorId, pathname }) {
   const [open, setOpen] = useState(false);
+
+  const isWizard = pathname.startsWith("/onboarding");
+
   const [messages, setMessages] = useState([
     {
       role: "assistant",
-      content: vendorId
+      content: isWizard
+        ? "Welcome to the AI Onboarding Wizard 🎉 Ask me about CSV format, rule generation, required coverages, or what to do next."
+        : vendorId
         ? "You're viewing a specific vendor — ask me why they failed, their risk score, or what to do next."
-        : "Hey there 👋 I’m your AI assistant. Ask me about renewals, alerts, vendors, rules, or where to click next.",
+        : "I'm your AI assistant. Ask me anything about renewals, alerts, vendors, rules, or navigation.",
     },
   ]);
+
   const [input, setInput] = useState("");
   const [sending, setSending] = useState(false);
 
@@ -27,6 +35,7 @@ export default function SupportChatPanel({ orgId, vendorId, pathname }) {
 
     const userMessage = { role: "user", content };
     setMessages((prev) => [...prev, userMessage]);
+
     if (!forcedText) setInput("");
 
     try {
@@ -40,11 +49,12 @@ export default function SupportChatPanel({ orgId, vendorId, pathname }) {
           orgId: orgId || null,
           vendorId: vendorId || null,
           path: pathname,
+          wizardMode: isWizard,
         }),
       });
 
       const json = await res.json();
-      if (!json.ok) throw new Error(json.error || "Chat failed");
+      if (!json.ok) throw new Error(json.error);
 
       setMessages((prev) => [
         ...prev,
@@ -54,7 +64,7 @@ export default function SupportChatPanel({ orgId, vendorId, pathname }) {
       console.error("[ChatBot] ERROR:", err);
       setMessages((prev) => [
         ...prev,
-        { role: "assistant", content: "Something went wrong. Try again shortly." },
+        { role: "assistant", content: "Something went wrong. Try again soon." },
       ]);
     } finally {
       setSending(false);
@@ -70,7 +80,7 @@ export default function SupportChatPanel({ orgId, vendorId, pathname }) {
 
   return (
     <>
-      {/* Floating Chat Button */}
+      {/* Floating Button */}
       <button
         onClick={() => setOpen((o) => !o)}
         style={{
@@ -80,7 +90,7 @@ export default function SupportChatPanel({ orgId, vendorId, pathname }) {
           zIndex: 50,
           width: 54,
           height: 54,
-          borderRadius: "999px",
+          borderRadius: 999,
           border: "1px solid rgba(56,189,248,0.9)",
           background: "radial-gradient(circle at top left,#38bdf8,#0ea5e9,#0f172a)",
           color: "#e0f2fe",
@@ -103,7 +113,7 @@ export default function SupportChatPanel({ orgId, vendorId, pathname }) {
             right: 24,
             bottom: 90,
             width: 340,
-            maxHeight: 540,
+            maxHeight: 560,
             borderRadius: 18,
             background: GP.panelBg,
             border: GP.border,
@@ -121,14 +131,23 @@ export default function SupportChatPanel({ orgId, vendorId, pathname }) {
               borderBottom: "1px solid rgba(51,65,85,0.9)",
             }}
           >
-            <div style={{ fontSize: 11, textTransform: "uppercase", letterSpacing: "0.14em", color: GP.textSoft }}>
-              AI Assistant
+            <div
+              style={{
+                fontSize: 11,
+                textTransform: "uppercase",
+                letterSpacing: "0.14em",
+                color: GP.textSoft,
+              }}
+            >
+              {isWizard ? "AI Onboarding Assistant" : "AI Assistant"}
             </div>
 
-            <div style={{ fontSize: 12, color: "#e5e7eb" }}>
-              {vendorId
+            <div style={{ fontSize: 12, color: GP.text }}>
+              {isWizard
+                ? "Ask about CSV format, coverage requirements, rule creation, templates, or next steps."
+                : vendorId
                 ? "Ask me about this vendor’s alerts, rules, renewal prediction, or what to do next."
-                : "Ask me anything about renewals, alerts, vendors, or rules."}
+                : "Ask me anything about compliance, renewals, alerts, vendors, or rules."}
             </div>
           </div>
 
@@ -140,10 +159,74 @@ export default function SupportChatPanel({ orgId, vendorId, pathname }) {
               background: "rgba(15,23,42,0.96)",
               display: "flex",
               flexWrap: "wrap",
-              gap: "6px",
+              gap: 6,
             }}
           >
-            {vendorId && (
+            {/* ONBOARDING WIZARD MODE BUTTONS */}
+            {isWizard && (
+              <>
+                <button
+                  style={quickBtn}
+                  onClick={() =>
+                    sendMessage("Create an example vendor CSV for onboarding.")
+                  }
+                >
+                  📝 Example CSV
+                </button>
+
+                <button
+                  style={quickBtn}
+                  onClick={() =>
+                    sendMessage("Explain all the rule groups the wizard generated.")
+                  }
+                >
+                  📘 Explain Rules
+                </button>
+
+                <button
+                  style={quickBtn}
+                  onClick={() =>
+                    sendMessage("Draft a welcome email for all vendors.")
+                  }
+                >
+                  ✉️ Welcome Email
+                </button>
+
+                <button
+                  style={quickBtn}
+                  onClick={() =>
+                    sendMessage(
+                      "Help me choose required coverages and endorsements for my industry."
+                    )
+                  }
+                >
+                  🛡️ Coverage Guide
+                </button>
+
+                <button
+                  style={quickBtn}
+                  onClick={() =>
+                    sendMessage(
+                      "Walk me through the onboarding process step-by-step."
+                    )
+                  }
+                >
+                  🚀 Walk Me Through
+                </button>
+
+                <button
+                  style={quickBtn}
+                  onClick={() =>
+                    sendMessage("Fix my CSV formatting or tell me what's wrong with it.")
+                  }
+                >
+                  🛠️ Fix My CSV
+                </button>
+              </>
+            )}
+
+            {/* VENDOR MODE BUTTONS */}
+            {!isWizard && vendorId && (
               <>
                 <button style={quickBtn} onClick={() => sendMessage("Explain this vendor's risk score.")}>
                   ⚠️ Risk Score
@@ -164,9 +247,7 @@ export default function SupportChatPanel({ orgId, vendorId, pathname }) {
                 <button
                   style={quickBtn}
                   onClick={() =>
-                    sendMessage(
-                      "Generate an email to the broker requesting updated COI with missing items listed."
-                    )
+                    sendMessage("Generate an email to the broker requesting updated COI with missing items listed.")
                   }
                 >
                   📧 Broker Email
@@ -175,19 +256,14 @@ export default function SupportChatPanel({ orgId, vendorId, pathname }) {
                 <button
                   style={quickBtn}
                   onClick={() =>
-                    sendMessage("Generate a fix request email listing missing or incorrect insurance items.")
+                    sendMessage("Generate a fix request email listing all missing or insufficient insurance items.")
                   }
                 >
                   🛠️ Fix Email
                 </button>
 
-                {/* 🚀 FULL AUTO-FIX BUTTON */}
                 <button
-                  style={{
-                    ...quickBtn,
-                    border: "1px solid rgba(248,113,113,0.9)",
-                    color: "#fecaca",
-                  }}
+                  style={{ ...quickBtn, border: "1px solid rgba(248,113,113,0.9)", color: "#fecaca" }}
                   onClick={() =>
                     sendMessage(
                       "Auto-fix this vendor: summarize the situation, list key issues with severity, propose a step-by-step remediation plan, and generate vendor and broker email templates."
@@ -208,7 +284,8 @@ export default function SupportChatPanel({ orgId, vendorId, pathname }) {
               </>
             )}
 
-            {!vendorId && (
+            {/* GLOBAL MODE BUTTONS */}
+            {!isWizard && !vendorId && (
               <>
                 <button style={quickBtn} onClick={() => sendMessage("Show me all severe or high-risk vendors.")}>
                   🔥 High-Risk Vendors
@@ -273,9 +350,11 @@ export default function SupportChatPanel({ orgId, vendorId, pathname }) {
             <textarea
               value={input}
               placeholder={
-                vendorId
-                  ? "Ask about this vendor's rules, alerts, renewals..."
-                  : "Ask anything about compliance or renewals..."
+                isWizard
+                  ? "Ask onboarding questions or request templates…"
+                  : vendorId
+                  ? "Ask about this vendor's rules, alerts, renewals…"
+                  : "Ask anything about compliance or renewals…"
               }
               onChange={(e) => setInput(e.target.value)}
               onKeyDown={handleKeyDown}
