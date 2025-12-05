@@ -1,106 +1,147 @@
 // pages/api/vendor/suggestions.js
+// Vendor Portal V4 — Smart Suggestions API
+// Returns an AI-generated suggestion block for the vendor portal.
+
 import { sql } from "../../../lib/db";
 import { openai } from "../../../lib/openaiClient";
 
+export const config = {
+  api: {
+    bodyParser: { sizeLimit: "1mb" },
+  },
+};
+
 export default async function handler(req, res) {
+  if (req.method !== "POST") {
+    res.setHeader("Allow", ["POST"]);
+    return res
+      .status(405)
+      .json({ ok: false, error: "POST only" });
+  }
+
   try {
-    if (req.method !== "POST") {
-      return res.status(405).json({ ok: false, error: "Method not allowed" });
-    }
+    const { token } = req.body || {};
 
-    const { token } = req.body;
     if (!token) {
-      return res.status(400).json({ ok: false, error: "Missing vendor token." });
+      return res.status(400).json({
+        ok: false,
+        error: "Missing vendor token.",
+      });
     }
 
-    // Look up vendor + org from token
-    const portal = await sql`
-      SELECT vp.vendor_id, vp.org_id, v.name AS vendor_name, o.name AS org_name
-      FROM vendor_portal_tokens vp
-      JOIN vendors v ON v.id = vp.vendor_id
-      JOIN orgs o ON o.id = vp.org_id
-      WHERE vp.token = ${token}
-      LIMIT 1;
+    // 1) Lookup vendor + org from vendor_portal_tokens
+    const portalRows = await sql`
+      SELECT vendor_id, org_id, expires_at
+      FROM vendor_portal_tokens
+      WHERE token = ${token}
+      LIMIT 1
     `;
 
-    if (!portal.length) {
-      return res.status(404).json({ ok: false, error: "Invalid portal token." });
+    if (!portalRows.length) {
+      return res.status(404).json({
+        ok: false,
+        error: "Invalid vendor portal link.",
+      });
     }
 
-    const vendorId = portal[0].vendor_id;
-    const orgId = portal[0].org_id;
+    const { vendor_id: vendorId, org_id: orgId, expires_at } = portalRows[0];
 
-    // Alerts
-    const alerts = await sql`
-      SELECT code, label, severity, message
+    // Token expired?
+    if (expires_at && new Date(expires_at) < new Date()) {
+      return res.status(410).json({
+        ok: false,
+        error: "This vendor link has expired.",
+      });
+    }
+
+    // 2) Load vendor information
+    const vendorRows = await sql`
+      SELECT id, vendor_name, email, category
+      FROM vendors
+      WHERE id = ${vendorId}
+      LIMIT 1
+    `;
+
+    if (!vendorRows.length) {
+      return res.status(404).json({
+        ok: false,
+        error: "Vendor not found.",
+      });
+    }
+
+    const vendor = vendorRows[0];
+
+    // 3) Load policies
+    const policyRows = await sql`
+      SELECT policy_number, carrier, coverage_type, expiration_date
+      FROM policies
+      WHERE vendor_id = ${vendorId}
+      ORDER BY expiration_date ASC NULLS LAST
+    `;
+
+    // 4) Load alerts
+    const alertRows = await sql`
+      SELECT code, message, severity
       FROM vendor_alerts
       WHERE vendor_id = ${vendorId}
-      ORDER BY severity DESC;
-    `;
-
-    // Requirements
-    const reqs = await sql`
-      SELECT name, limit
-      FROM coverage_requirements
-      WHERE org_id = ${orgId}
-      ORDER BY name ASC;
-    `;
-
-    // Timeline (for context)
-    const timeline = await sql`
-      SELECT action, message, severity, created_at
-      FROM vendor_timeline
-      WHERE vendor_id = ${vendorId}
       ORDER BY created_at DESC
-      LIMIT 30;
+      LIMIT 20
     `;
 
-    const context = `
-Vendor: ${portal[0].vendor_name}
-Org: ${portal[0].org_name}
+    // 5) Build AI prompt
+    const prompt = `
+You are an insurance compliance AI assistant.
 
-==== COVERAGE REQUIREMENTS ====
-${reqs.length ? reqs.map(r => `• ${r.name}: ${r.limit || "no limit listed"}`).join("\n") : "None"}
+Your task is to generate a **bullet list of Smart Suggestions** for a vendor.
 
-==== ACTIVE ALERTS (Fix Needed) ====
-${alerts.length ? alerts.map(a => `• [${a.severity}] ${a.label || a.code} — ${a.message}`).join("\n") : "No alerts"}
+Input data:
+Vendor:
+${JSON.stringify(vendor, null, 2)}
 
-==== RECENT ACTIVITY ====
-${timeline.length ? timeline.map(t => `• ${t.action} — ${t.message}`).join("\n") : "No recent activity"}
+Policies:
+${JSON.stringify(policyRows, null, 2)}
 
-Your job:
-- Produce automatic “Smart Suggestions” IN BULLET POINTS.
-- Always start with "Suggested Next Actions".
-- Prioritize critical + high severity alerts.
-- Then list missing coverages (requirements).
-- Then summarize helpful compliance advice.
-- DO NOT invent information.
-- Keep it friendly, short, and actionable.
+Alerts:
+${JSON.stringify(alertRows, null, 2)}
+
+Guidelines:
+- Speak directly to the vendor ("You should…").
+- Keep the language friendly but actionable.
+- Focus on the **next steps** needed to fix issues or stay compliant.
+- If there are no issues, suggest best practices.
+- If policies are near expiration, warn them.
+- If important fields are missing, suggest supplying them.
+- Respond ONLY with the suggestions text (no intro, no outro).
+
+Return format:
+Plain text instructions with bullet points.
 `;
 
+    // 6) Generate AI suggestions
     const completion = await openai.chat.completions.create({
-      model: "gpt-4o-mini",
+      model: "gpt-4.1",
+      temperature: 0.3,
+      max_tokens: 300,
       messages: [
-        { role: "system", content: context },
-        { role: "user", content: "Generate smart compliance suggestions for this vendor." }
+        { role: "system", content: "You provide compliance suggestions." },
+        { role: "user", content: prompt },
       ],
-      max_tokens: 250,
-      temperature: 0.3
     });
 
-    const reply = completion.choices?.[0]?.message?.content?.trim();
+    const suggestions = completion.choices[0]?.message?.content || "";
 
-    if (!reply) {
-      return res.status(500).json({ ok: false, error: "No response from AI." });
-    }
-
-    return res.status(200).json({ ok: true, suggestions: reply });
-
+    // 7) Respond
+    return res.status(200).json({
+      ok: true,
+      vendorId,
+      orgId,
+      suggestions,
+    });
   } catch (err) {
-    console.error("[suggestions ERROR]", err);
+    console.error("[vendor/suggestions] ERROR:", err);
     return res.status(500).json({
       ok: false,
-      error: "Server failure: " + err.message,
+      error: err.message || "Failed to generate vendor suggestions.",
     });
   }
 }
