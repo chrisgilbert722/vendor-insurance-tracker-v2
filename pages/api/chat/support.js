@@ -1,8 +1,9 @@
 // pages/api/chat/support.js
-// Ultimate Multi-Mode Chat Engine v8 — Org Brain, Auto-Fix, Explain Page, GOD MODE Wizard, Checklist, Normal Chat
+// Ultimate Multi-Mode Chat Engine v9 — Org Brain, Auto-Fix, Explain Page, GOD MODE Wizard + Persona Engine, Checklist, Normal Chat
 
 import { openai } from "../../../lib/openaiClient";
 import { sql } from "../../../lib/db";
+import { getWizardPersona } from "../../../lib/wizardPersona";
 
 export const config = {
   api: {
@@ -41,16 +42,32 @@ function isWizardStartTrigger(lastContent, onboardingComplete) {
   return triggers.some((phrase) => t.includes(phrase));
 }
 
-// NOTE: routeWizard is async now because it can call backend endpoints (CSV import)
+// NOTE: routeWizard is async because it can call backend endpoints (e.g., CSV import)
 async function routeWizard({ state, lastContent, onboardingComplete, orgId }) {
   const text = normalize(lastContent);
   const nextState = { ...state, orgId };
+  const powerMode = state.mode === "completed" || state.completed;
+  const mode = powerMode ? "power" : "onboarding";
+  const step = state.step || null;
+  const industry = state.industry || "general";
+
+  // helper to wrap reply with persona
+  function withPersona(rawReply) {
+    const persona = getWizardPersona({
+      mode: powerMode ? "power" : "onboarding",
+      industry,
+      step: nextState.step || step,
+      powerMode,
+      userRole: "admin",
+    });
+    return persona.styleTransform(rawReply);
+  }
 
   // If wizard is completed, always answer in Power Mode voice
-  if (state.mode === "completed" || state.completed) {
+  if (powerMode) {
+    const reply = "Your onboarding is already marked complete. You’re in **Power Mode** now — ask me about vendors, renewals, alerts, or how to improve your rule engine.";
     return {
-      reply:
-        "🎉 Your onboarding is already marked complete. You’re in **Power Mode** now — ask me about vendors, renewals, alerts, or how to improve your rule engine.",
+      reply: withPersona(reply),
       nextState: { ...nextState, mode: "completed", completed: true },
     };
   }
@@ -70,8 +87,7 @@ async function routeWizard({ state, lastContent, onboardingComplete, orgId }) {
     nextState.source = null;
     nextState.completed = false;
 
-    return {
-      reply: `
+    const reply = `
 🔥 Welcome to **Vendor Insurance Tracker – GOD MODE Onboarding**.
 
 I can configure your entire system for you.
@@ -83,7 +99,10 @@ How do you want to start?
 3) **Manual vendor entry**
 
 Reply with: **"CSV"**, **"COIs"**, or **"manual entry"**.
-      `,
+    `;
+
+    return {
+      reply: withPersona(reply),
       nextState,
     };
   }
@@ -109,8 +128,7 @@ Reply with: **"CSV"**, **"COIs"**, or **"manual entry"**.
         if (saidCsv) {
           nextState.source = "csv";
           nextState.step = "csv_paste";
-          return {
-            reply: `
+          const reply = `
 ✅ Great — we’ll start with a **CSV of vendors**.
 
 **Step 1 – Paste CSV here**
@@ -122,7 +140,9 @@ Example:
 ABC Plumbing,info@abc.com,Plumbing
 XYZ HVAC,contact@xyzhvac.com,HVAC\`
 
-As soon as you paste it, I’ll parse and import your vendors automatically.`,
+As soon as you paste it, I’ll parse and import your vendors automatically.`;
+          return {
+            reply: withPersona(reply),
             nextState,
           };
         }
@@ -130,15 +150,16 @@ As soon as you paste it, I’ll parse and import your vendors automatically.`,
         if (saidCoi) {
           nextState.source = "coi";
           nextState.step = "coi_wait_upload";
-          return {
-            reply: `
+          const reply = `
 ✅ Perfect — we’ll start from **COI PDFs**.
 
 1) Go to your **COI upload / drag-and-drop** screen  
 2) Upload your COI PDFs there so the system can scan them  
 3) When you’re done, come back here and say: **"COIs uploaded"** or **"done"**.
 
-I’ll then move you forward to rules & requirements.`,
+I’ll then move you forward to rules & requirements.`;
+          return {
+            reply: withPersona(reply),
             nextState,
           };
         }
@@ -146,8 +167,7 @@ I’ll then move you forward to rules & requirements.`,
         if (saidManual) {
           nextState.source = "manual";
           nextState.step = "manual_wait_vendors";
-          return {
-            reply: `
+          const reply = `
 ✅ No problem — we’ll do **manual vendor entry**.
 
 Open your **Vendors** screen and add vendors with at least:
@@ -155,43 +175,43 @@ Open your **Vendors** screen and add vendors with at least:
 - Email  
 - Category (e.g., HVAC, Plumbing, GC, IT, etc.)
 
-Once you’ve added a first batch, say: **"vendors added"** or **"done"**.`,
+Once you’ve added a first batch, say: **"vendors added"** or **"done"**.`;
+          return {
+            reply: withPersona(reply),
             nextState,
           };
         }
 
-        return {
-          reply: `
+        const reply = `
 To start onboarding, tell me how you want to begin:
 
 1) **CSV** of vendors  
 2) **COI PDFs**  
 3) **Manual entry**
 
-Reply with: **"CSV"**, **"COIs"**, or **"manual entry"**.`,
+Reply with: **"CSV"**, **"COIs"**, or **"manual entry"**.`;
+        return {
+          reply: withPersona(reply),
           nextState,
         };
       }
-
       // CSV: user pastes actual CSV text into chat
       case "csv_paste": {
         if (!orgId) {
+          const reply =
+            "I see CSV text, but I’m missing your org ID, so I can’t import it. Please refresh and try again.";
           return {
-            reply:
-              "I see CSV text, but I’m missing your org ID, so I can’t import it. Please refresh and try again.",
+            reply: withPersona(reply),
             nextState,
           };
         }
 
         const csvText = lastContent || "";
-
-        // quick sanity check: CSV usually has commas & newlines
         const looksLikeCsv =
           csvText.includes(",") && csvText.includes("\n");
 
         if (!looksLikeCsv) {
-          return {
-            reply: `
+          const reply = `
 I was expecting CSV text with a header row.
 
 Example:
@@ -200,7 +220,9 @@ Example:
 ABC Plumbing,info@abc.com,Plumbing
 XYZ HVAC,contact@xyzhvac.com,HVAC\`
 
-Please paste your vendor CSV here and I’ll import it automatically.`,
+Please paste your vendor CSV here and I’ll import it automatically.`;
+          return {
+            reply: withPersona(reply),
             nextState,
           };
         }
@@ -222,18 +244,18 @@ Please paste your vendor CSV here and I’ll import it automatically.`,
           const importJson = await importRes.json();
 
           if (!importJson.ok) {
+            const reply = `⚠️ I tried to import your CSV but hit an error:\n${
+              importJson.error || "Unknown error."
+            }`;
             return {
-              reply: `⚠️ I tried to import your CSV but hit an error:\n${
-                importJson.error || "Unknown error."
-              }`,
+              reply: withPersona(reply),
               nextState,
             };
           }
 
           nextState.step = "rules_intro";
 
-          return {
-            reply: `
+          const reply = `
 🔥 **CSV successfully imported!**
 
 - Vendors created: **${importJson.created}**
@@ -244,14 +266,17 @@ Now let’s configure your **rules & requirements** so your system knows how to 
 Do you want me to:
 
 - **"auto-build rules"** (recommended), or  
-- **"use existing rules"** if you’ve already set them up?`,
+- **"use existing rules"** if you’ve already set them up?`;
+          return {
+            reply: withPersona(reply),
             nextState,
           };
         } catch (err) {
           console.error("[Wizard CSV Import ERROR]", err);
+          const reply =
+            "❌ I tried to import your CSV but the import endpoint failed. Please try again or check the CSV format.";
           return {
-            reply:
-              "❌ I tried to import your CSV but the import endpoint failed. Please try again or check the CSV format.",
+            reply: withPersona(reply),
             nextState,
           };
         }
@@ -265,19 +290,17 @@ Do you want me to:
           text.includes("uploaded");
 
         if (!saidDone) {
+          const reply =
+            'I’m waiting on your COI PDFs. Once you’ve uploaded them in the **COI upload screen**, say **"COIs uploaded"** or **"done"** and I’ll move on.';
           return {
-            reply:
-              'I’m waiting on your COI PDFs. Once you’ve uploaded them in the **COI upload screen**, say **"COIs uploaded"** or **"done"** and I’ll move on.',
+            reply: withPersona(reply),
             nextState,
           };
         }
 
-        // For now we assume your existing COI upload flow has already
-        // processed the PDFs and stored vendors/policies.
-        // Wizard just advances to rules configuration.
+        // For now we assume your existing COI upload flow has already processed the PDFs.
         nextState.step = "rules_intro";
-        return {
-          reply: `
+        const reply = `
 🔥 COIs uploaded — I’ll treat them as your live certificates.
 
 Next we’ll tune your **rules / requirements** so the system knows how to judge each COI.
@@ -285,7 +308,9 @@ Next we’ll tune your **rules / requirements** so the system knows how to judge
 Do you want me to:
 
 - **"auto-build rules"** from standard COI requirements, or  
-- **"use existing rules"** if they’re already set up?`,
+- **"use existing rules"** if they’re already set up?`;
+        return {
+          reply: withPersona(reply),
           nextState,
         };
       }
@@ -297,16 +322,16 @@ Do you want me to:
           text.includes("done");
 
         if (!saidDone) {
+          const reply =
+            'Once you’ve added at least a few vendors, say **"vendors added"** or **"done"** and I’ll move on to rules.';
           return {
-            reply:
-              "Once you’ve added at least a few vendors, say **\"vendors added\"** or **\"done\"** and I’ll move on to rules.",
+            reply: withPersona(reply),
             nextState,
           };
         }
 
         nextState.step = "rules_intro";
-        return {
-          reply: `
+        const reply = `
 ✅ Great — you’ve got initial vendors in the system.
 
 Now we’ll handle **rules** so each vendor can be scored automatically.
@@ -314,7 +339,9 @@ Now we’ll handle **rules** so each vendor can be scored automatically.
 Say:
 
 - **"auto-build rules"** to let me generate standard rules, or  
-- **"use existing rules"** if you’ve already configured them.`,
+- **"use existing rules"** if you’ve already configured them.`;
+        return {
+          reply: withPersona(reply),
           nextState,
         };
       }
@@ -334,8 +361,9 @@ Say:
         if (auto) {
           nextState.rulesMode = "auto";
           nextState.step = "templates_intro";
-          return {
-            reply: `
+
+          // Optionally call /api/rules/auto-build here later (V2)
+          const reply = `
 ✅ I’ll assume a **standard rule set** for common COI requirements (limits, endorsements, additional insured, waivers, etc.).
 
 Next, let’s handle **communication templates**.
@@ -343,7 +371,9 @@ Next, let’s handle **communication templates**.
 Do you want me to:
 
 - **"use default templates"** for expiring / non-compliant vendors, or  
-- **"we’ll customize later"** if your team will rewrite them later?`,
+- **"we’ll customize later"** if your team will rewrite them later?`;
+          return {
+            reply: withPersona(reply),
             nextState,
           };
         }
@@ -351,8 +381,7 @@ Do you want me to:
         if (useExisting) {
           nextState.rulesMode = "existing";
           nextState.step = "templates_intro";
-          return {
-            reply: `
+          const reply = `
 ✅ Got it — I’ll rely on your **existing rules** as the source of truth.
 
 Now, templates.
@@ -360,21 +389,23 @@ Now, templates.
 Say:
 
 - **"use default templates"** to apply standard messaging, or  
-- **"we’ll customize later"** if you’ll adjust the wording later.`,
+- **"we’ll customize later"** if you’ll adjust the wording later.`;
+          return {
+            reply: withPersona(reply),
             nextState,
           };
         }
 
-        return {
-          reply: `
+        const reply = `
 To move forward, say:
 
 - **"auto-build rules"** to let me generate rules, or  
-- **"use existing rules"** if you want to keep what you have.`,
+- **"use existing rules"** if you want to keep what you have.`;
+        return {
+          reply: withPersona(reply),
           nextState,
         };
       }
-
       case "templates_intro": {
         const useDefault =
           text.includes("use default") ||
@@ -390,8 +421,9 @@ To move forward, say:
         if (useDefault || customizeLater) {
           nextState.templatesMode = useDefault ? "default" : "custom_later";
           nextState.step = "alerts_intro";
-          return {
-            reply: `
+
+          // Optionally call /api/templates/auto-generate here later (V2)
+          const reply = `
 ✅ Templates decision locked in.
 
 Now let’s wire up **alerts & recipients**.
@@ -401,41 +433,46 @@ Who should receive **renewal reminders** and **non-compliance alerts**?
 Reply with something like:
 - "Send to risk@mycompany.com"  
 - "Send to me and ap@mycompany.com"  
-- Or list specific people / roles.`,
+- Or list specific people / roles.`;
+          return {
+            reply: withPersona(reply),
             nextState,
           };
         }
 
-        return {
-          reply: `
+        const reply = `
 Tell me:
 
 - **"use default templates"** if you want standard messaging, or  
-- **"we’ll customize later"** if your team will rewrite the emails.`,
+- **"we’ll customize later"** if your team will rewrite the emails.`;
+        return {
+          reply: withPersona(reply),
           nextState,
         };
       }
 
       case "alerts_intro": {
         if (!text || text.length < 3) {
+          const reply =
+            'Tell me who should receive alerts. Example: **"send to risk@mycompany.com"** or **"send to ap@mycompany.com and me"**.';
           return {
-            reply:
-              "Tell me who should receive alerts. Example: **\"send to risk@mycompany.com\"** or **\"send to ap@mycompany.com and me\"**.",
+            reply: withPersona(reply),
             nextState,
           };
         }
 
         nextState.alertRecipients = lastContent;
         nextState.step = "wrap_up";
-        return {
-          reply: `
+        const reply = `
 ✅ Perfect — I’ll treat these as your **alert recipients**:
 
 > ${lastContent}
 
 Final step: I’ll mark onboarding as **complete** and move you into **Power Mode**.
 
-If everything looks good, say **"finish onboarding"** or **"looks good"**.`,
+If everything looks good, say **"finish onboarding"** or **"looks good"**.`;
+        return {
+          reply: withPersona(reply),
           nextState,
         };
       }
@@ -450,9 +487,10 @@ If everything looks good, say **"finish onboarding"** or **"looks good"**.`,
           text.includes("sounds good");
 
         if (!confirm) {
+          const reply =
+            'If everything looks good, say **"finish onboarding"** or **"looks good"** and I’ll mark your system as fully configured.';
           return {
-            reply:
-              'If everything looks good, say **"finish onboarding"** or **"looks good"** and I’ll mark your system as fully configured.',
+            reply: withPersona(reply),
             nextState,
           };
         }
@@ -461,8 +499,7 @@ If everything looks good, say **"finish onboarding"** or **"looks good"**.`,
         nextState.mode = "completed";
         nextState.completed = true;
 
-        return {
-          reply: `
+        const reply = `
 🎉 **Onboarding Complete – GOD MODE Activated**
 
 Your org is now treated as **fully configured**.
@@ -476,7 +513,9 @@ From here on, I’ll operate in **Power Mode**:
 Try asking:
 - "Which vendors are my highest risk right now?"  
 - "Show me who is non-compliant by location."  
-- "What should I fix first this week?"`,
+- "What should I fix first this week?"`;
+        return {
+          reply: withPersona(reply),
           nextState,
         };
       }
@@ -484,8 +523,7 @@ Try asking:
       default: {
         nextState.mode = "onboarding";
         nextState.step = "choose_source";
-        return {
-          reply: `
+        const reply = `
 Let’s restart onboarding cleanly.
 
 How do you want to start?
@@ -494,7 +532,9 @@ How do you want to start?
 2) **COI PDFs**  
 3) **Manual entry**
 
-Reply with: **"CSV"**, **"COIs"**, or **"manual entry"**.`,
+Reply with: **"CSV"**, **"COIs"**, or **"manual entry"**.`;
+        return {
+          reply: withPersona(reply),
           nextState,
         };
       }
@@ -507,7 +547,6 @@ Reply with: **"CSV"**, **"COIs"**, or **"manual entry"**.`,
     nextState,
   };
 }
-
 // ================================
 // MAIN HANDLER
 // ================================
@@ -583,7 +622,6 @@ export default async function handler(req, res) {
           });
         }
 
-        // Format ORG BRAIN response
         let reply = `🧠 **ORG BRAIN SYSTEM BLUEPRINT GENERATED**\n\n`;
         reply += `### Summary\n${brainJson.summary}\n\n`;
         reply += `### Rule Groups Created\n`;
@@ -610,7 +648,6 @@ Field: *${r.field}* | Condition: *${r.condition}* | Value: *${r.value}* | Severi
         });
       }
     }
-
     // ================================================================
     // ⭐ AUTO-FIX MODE — Fully automated remediation
     // ================================================================
@@ -751,7 +788,6 @@ Explain:
       }
       // If wizardReply is null, fall through to checklist/normal modes
     }
-
     // ================================================================
     // ⭐ ONBOARDING CHECKLIST MODE (Lite mode, fallback)
     // ================================================================
