@@ -1,5 +1,6 @@
 // pages/api/vendor/portal/[token].js
-// Vendor Portal Resolver — returns vendor+status info from a secure token
+// Vendor Portal Resolver — V3
+// Validates vendor portal token + returns vendor profile, policies, alerts, and future doc support.
 
 import { sql } from "../../../../lib/db";
 
@@ -18,34 +19,48 @@ export default async function handler(req, res) {
   try {
     const { token } = req.query;
 
-    if (!token) {
-      return res.status(400).json({ ok: false, error: "Missing token" });
+    if (!token || typeof token !== "string") {
+      return res.status(400).json({
+        ok: false,
+        error: "Missing or invalid token parameter.",
+      });
     }
 
     // 1) Find token entry
-    const rows = await sql`
-      SELECT org_id, vendor_id, expires_at
+    const tokenRows = await sql`
+      SELECT id, org_id, vendor_id, expires_at, used_at
       FROM vendor_portal_tokens
       WHERE token = ${token}
       LIMIT 1
     `;
 
-    if (!rows.length) {
-      return res.status(404).json({ ok: false, error: "Invalid or unknown link." });
+    if (!tokenRows.length) {
+      return res.status(404).json({
+        ok: false,
+        error: "Invalid or unknown vendor portal link.",
+      });
     }
 
-    const entry = rows[0];
+    const entry = tokenRows[0];
 
-    if (entry.expires_at && new Date(entry.expires_at) < new Date()) {
-      return res.status(410).json({ ok: false, error: "This link has expired." });
+    // Check expiration
+    if (entry.expires_at) {
+      const expires = new Date(entry.expires_at);
+      const now = new Date();
+      if (expires < now) {
+        return res.status(410).json({
+          ok: false,
+          error: "This vendor portal link has expired.",
+        });
+      }
     }
 
     const orgId = entry.org_id;
     const vendorId = entry.vendor_id;
 
-    // 2) Load vendor
+    // 2) Load vendor profile
     const vendorRows = await sql`
-      SELECT id, vendor_name, email, category
+      SELECT id, vendor_name, email, phone, category, created_at
       FROM vendors
       WHERE id = ${vendorId} AND org_id = ${orgId}
       LIMIT 1
@@ -54,49 +69,81 @@ export default async function handler(req, res) {
     if (!vendorRows.length) {
       return res.status(404).json({
         ok: false,
-        error: "Vendor not found.",
+        error: "Vendor profile not found.",
       });
     }
 
     const vendor = vendorRows[0];
 
-    // 3) Load active policies
-    const policyRows = await sql`
-      SELECT id, policy_number, carrier, coverage_type, expiration_date
+    // 3) Load policies on file
+    const policies = await sql`
+      SELECT
+        id,
+        policy_number,
+        carrier,
+        coverage_type,
+        expiration_date,
+        limit_each_occurrence,
+        auto_limit,
+        work_comp_limit,
+        umbrella_limit
       FROM policies
       WHERE vendor_id = ${vendorId}
-      ORDER BY expiration_date DESC
+      ORDER BY expiration_date DESC NULLS LAST
     `;
 
-    // 4) Load recent alerts
-    const alertRows = await sql`
-      SELECT code, message, severity, created_at
+    // 4) Load vendor alerts (open issues)
+    const alerts = await sql`
+      SELECT
+        code,
+        message,
+        severity,
+        created_at
       FROM vendor_alerts
       WHERE vendor_id = ${vendorId}
       ORDER BY created_at DESC
       LIMIT 20
     `;
 
-    // Mark last access (optional)
-    await sql`
-      UPDATE vendor_portal_tokens
-      SET used_at = NOW()
-      WHERE token = ${token}
-    `;
+    // 5) OPTIONAL — future expansion: load uploaded docs (W9, licenses, etc.)
+    let documents = [];
+    try {
+      documents = await sql`
+        SELECT id, document_type, file_url, uploaded_at
+        FROM vendor_documents
+        WHERE vendor_id = ${vendorId}
+        ORDER BY uploaded_at DESC
+      `;
+    } catch {
+      // Ignore for now — table may not exist yet.
+    }
 
+    // 6) OPTIONAL — update last accessed timestamp
+    try {
+      await sql`
+        UPDATE vendor_portal_tokens
+        SET used_at = NOW()
+        WHERE token = ${token}
+      `;
+    } catch (err) {
+      console.warn("[vendor_portal] failed to update used_at:", err);
+    }
+
+    // 7) Return complete vendor portal payload
     return res.status(200).json({
       ok: true,
       orgId,
       vendorId,
       vendor,
-      policies: policyRows,
-      alerts: alertRows,
+      policies,
+      alerts,
+      documents, // for future-proof portal V4
     });
   } catch (err) {
     console.error("[vendor/portal] ERROR:", err);
     return res.status(500).json({
       ok: false,
-      error: err.message || "Failed to load vendor portal data.",
+      error: err.message || "Vendor portal failed to load.",
     });
   }
 }
