@@ -1,15 +1,20 @@
 // pages/api/engine/run-v3.js
-// Rule Engine V3 — Coverage Requirements Evaluator
+// ============================================================
+// Rule Engine V5 Backend (running behind the old run-v3 route)
 //
 // POST /api/engine/run-v3
 // Body: { vendorId, orgId, dryRun?: boolean }
 //
 // Does:
-// 1) Load vendor's policies
-// 2) Load org's requirements_v5
-// 3) Evaluate missing coverage, low limits, expired policies
+// 1) Load vendor's policies (policies table)
+// 2) Load org's V5 rules (requirements_rules_v2)
+// 3) Evaluate each rule against ALL policies
+//    - A rule PASSES if ANY policy satisfies it
 // 4) Writes rule_results_v3 (unless dryRun)
-// 5) Returns globalScore (0–100) + failing details
+// 5) Tries to update vendor_compliance_cache (wrapped in try/catch)
+// 6) Logs to system_timeline
+// 7) Returns globalScore (0–100) + passing/failing rule details
+// ============================================================
 
 import { sql } from "../../../lib/db";
 
@@ -19,14 +24,11 @@ export const config = {
   },
 };
 
-function numericOrNull(v) {
-  if (v === null || v === undefined) return null;
-  const n = Number(v);
-  return Number.isNaN(n) ? null : n;
-}
-
+// ---------------------------
+// UTILITIES
+// ---------------------------
 function computeScoreFromFailures(failures = []) {
-  // Start from 100, subtract weight per failure by severity
+  // Same scoring model as your original V3 engine
   let score = 100;
 
   for (const f of failures) {
@@ -43,12 +45,110 @@ function computeScoreFromFailures(failures = []) {
   return Math.round(score);
 }
 
+// Guess type from field_key
+function inferType(fieldKey) {
+  if (!fieldKey) return "string";
+  const key = fieldKey.toLowerCase();
+  if (key.includes("date")) return "date";
+  if (key.includes("limit") || key.includes("amount") || key.includes("gl"))
+    return "number";
+  return "string";
+}
+
+// Map V5 rule field_key → policy row value
+function resolvePolicyValue(policy, fieldKey) {
+  if (!fieldKey) return undefined;
+
+  let key = fieldKey;
+  if (key.startsWith("policy.")) {
+    key = key.split(".").slice(1).join(".");
+  }
+
+  // Explicit mappings from V5 UI field options → DB columns
+  if (key === "coverage_type") return policy.coverage_type;
+  if (key === "expiration_date") return policy.expiration_date;
+  if (key === "effective_date") return policy.effective_date;
+  if (key === "carrier") return policy.carrier;
+  if (key === "glEachOccurrence") return policy.limit_each_occurrence;
+  // glAggregate is not in schema yet; adjust if you add it
+  if (key === "glAggregate") return policy.gl_aggregate;
+
+  // Fallback: try direct column name
+  return policy[key];
+}
+
+function normalizeValue(raw, typeHint) {
+  if (raw === null || raw === undefined) return null;
+
+  if (typeHint === "number") {
+    const n = Number(String(raw).replace(/[^0-9.-]/g, ""));
+    return Number.isNaN(n) ? 0 : n;
+  }
+
+  if (typeHint === "date") {
+    const d = new Date(raw);
+    return Number.isNaN(d.getTime()) ? null : d;
+  }
+
+  return String(raw).toLowerCase();
+}
+
+function evaluateRuleV5(rule, policy) {
+  try {
+    const typeHint = inferType(rule.field_key);
+    const rawValue = resolvePolicyValue(policy, rule.field_key);
+    const value = normalizeValue(rawValue, typeHint);
+    const expected = normalizeValue(rule.expected_value, typeHint);
+
+    switch (rule.operator) {
+      case "equals":
+        return value === expected;
+
+      case "not_equals":
+        return value !== expected;
+
+      case "gte":
+        return Number(value) >= Number(expected);
+
+      case "lte":
+        return Number(value) <= Number(expected);
+
+      case "contains":
+        return String(value || "").includes(String(expected || ""));
+
+      case "in_list":
+        return String(expected || "")
+          .split(",")
+          .map((v) => v.trim().toLowerCase())
+          .includes(String(value || ""));
+
+      case "before":
+        return typeHint === "date" && value && expected && value < expected;
+
+      case "after":
+        return typeHint === "date" && value && expected && value > expected;
+
+      default:
+        return false;
+    }
+  } catch (err) {
+    console.error("[engine/run-v3 V5] evaluateRuleV5 error:", err);
+    return false;
+  }
+}
+
+function buildRuleLabel(rule) {
+  const val = rule.expected_value;
+  return `${rule.field_key} ${rule.operator} ${val}`;
+}
+
+// ---------------------------
+// MAIN HANDLER
+// ---------------------------
 export default async function handler(req, res) {
   if (req.method !== "POST") {
     res.setHeader("Allow", ["POST"]);
-    return res
-      .status(405)
-      .json({ ok: false, error: "POST only" });
+    return res.status(405).json({ ok: false, error: "POST only" });
   }
 
   try {
@@ -62,20 +162,26 @@ export default async function handler(req, res) {
     }
 
     // ---------------------------------------------------
-    // 1) Load vendor policies
+    // 1) Load vendor policies (real table: policies)
     // ---------------------------------------------------
     const policies = await sql`
       SELECT
         id,
         vendor_id,
-        coverage_type,
+        org_id,
         expiration_date,
+        effective_date,
+        coverage_type,
+        status,
+        vendor_name,
+        policy_number,
+        carrier,
         limit_each_occurrence,
         auto_limit,
         work_comp_limit,
         umbrella_limit
       FROM policies
-      WHERE vendor_id = ${vendorId}
+      WHERE vendor_id = ${vendorId} AND org_id = ${orgId}
       ORDER BY expiration_date ASC NULLS LAST;
     `;
 
@@ -93,25 +199,31 @@ export default async function handler(req, res) {
       });
     }
 
-    // Normalize policies by coverage_type
-    const policiesByType = {};
-    for (const p of policies) {
-      const t = (p.coverage_type || "").toLowerCase();
-      if (!t) continue;
-      if (!policiesByType[t]) policiesByType[t] = [];
-      policiesByType[t].push(p);
-    }
-
     // ---------------------------------------------------
-    // 2) Load org coverage requirements (requirements_v5)
+    // 2) Load org V5 rules (requirements_rules_v2)
     // ---------------------------------------------------
-    const requirements = await sql`
-      SELECT id, coverage_type, min_limit, severity, active
-      FROM requirements_v5
-      WHERE org_id = ${orgId} AND active = TRUE;
+    const rules = await sql`
+      SELECT
+        id,
+        org_id,
+        group_id,
+        field_key,
+        operator,
+        expected_value,
+        severity,
+        requirement_text,
+        is_active
+      FROM requirements_rules_v2
+      WHERE org_id = ${orgId}
+      ORDER BY id ASC;
     `;
 
-    if (!requirements.length) {
+    // Only active rules (if is_active exists), otherwise all
+    const activeRules = rules.filter((r) =>
+      r.is_active === null || r.is_active === undefined ? true : !!r.is_active
+    );
+
+    if (!activeRules.length) {
       return res.status(200).json({
         ok: true,
         vendorId,
@@ -121,111 +233,67 @@ export default async function handler(req, res) {
         totalRules: 0,
         failingRules: [],
         passingRules: [],
-        warning: "No active requirements defined for this org.",
+        warning: "No active V5 rules defined for this org.",
       });
     }
 
     const failures = [];
     const passes = [];
 
-    const now = new Date();
-
     // ---------------------------------------------------
-    // 3) Evaluate each requirement against policies
+    // 3) Evaluate each V5 rule against all policies
+    //    Rule passes if ANY policy satisfies it
     // ---------------------------------------------------
-    for (const req of requirements) {
-      const covType = (req.coverage_type || "").toLowerCase();
-      const severity = req.severity || "medium";
-      const minLimit = numericOrNull(req.min_limit);
+    for (const rule of activeRules) {
+      const severity = rule.severity || "medium";
 
-      const pols = policiesByType[covType] || [];
+      let passed = false;
+      let matchedPolicy = null;
 
-      if (!pols.length) {
-        failures.push({
-          requirementId: req.id,
-          coverageType: req.coverage_type,
-          severity,
-          message: `Missing ${req.coverage_type} coverage.`,
-        });
-        continue;
-      }
-
-      // Pick the best policy candidate (e.g., highest limit)
-      let primary = pols[0];
-      if (pols.length > 1) {
-        primary = pols.reduce((best, cur) => {
-          const bestLimit =
-            numericOrNull(best.limit_each_occurrence) || 0;
-          const curLimit =
-            numericOrNull(cur.limit_each_occurrence) || 0;
-          return curLimit > bestLimit ? cur : best;
-        }, primary);
-      }
-
-      const limit =
-        numericOrNull(primary.limit_each_occurrence) ||
-        numericOrNull(primary.auto_limit) ||
-        numericOrNull(primary.work_comp_limit) ||
-        numericOrNull(primary.umbrella_limit);
-
-      const messagesForReq = [];
-      let passed = true;
-
-      // Limit check
-      if (minLimit !== null && limit !== null && limit < minLimit) {
-        passed = false;
-        messagesForReq.push(
-          `${req.coverage_type} limit (${limit.toLocaleString()}) is below required minimum (${minLimit.toLocaleString()}).`
-        );
-      }
-
-      // Expiration check
-      if (primary.expiration_date) {
-        const exp = new Date(primary.expiration_date);
-        if (!isNaN(exp.getTime())) {
-          if (exp < now) {
-            passed = false;
-            messagesForReq.push(
-              `${req.coverage_type} policy is expired (${exp.toLocaleDateString()}).`
-            );
-          } else {
-            const daysLeft = Math.floor(
-              (exp.getTime() - now.getTime()) / (1000 * 60 * 60 * 24)
-            );
-            if (daysLeft <= 30) {
-              // Not a full failure, but we could tag as warning — for now, log as pass with note
-              messagesForReq.push(
-                `${req.coverage_type} policy expires soon (${daysLeft} day(s) left).`
-              );
-            }
-          }
+      for (const policy of policies) {
+        const ok = evaluateRuleV5(rule, policy);
+        if (ok) {
+          passed = true;
+          matchedPolicy = policy;
+          break;
         }
       }
 
+      const label =
+        rule.requirement_text || buildRuleLabel(rule) || "Unnamed rule";
+
       if (passed) {
         passes.push({
-          requirementId: req.id,
-          coverageType: req.coverage_type,
-          message:
-            messagesForReq.join(" ") ||
-            `${req.coverage_type} coverage meets requirements.`,
+          ruleId: rule.id,
+          groupId: rule.group_id,
+          severity,
+          fieldKey: rule.field_key,
+          operator: rule.operator,
+          expectedValue: rule.expected_value,
+          message: `Rule passed: ${label}`,
+          policyId: matchedPolicy?.id || null,
+          policyNumber: matchedPolicy?.policy_number || null,
         });
       } else {
         failures.push({
-          requirementId: req.id,
-          coverageType: req.coverage_type,
+          ruleId: rule.id,
+          groupId: rule.group_id,
           severity,
-          message:
-            messagesForReq.join(" ") ||
-            `${req.coverage_type} coverage does not meet requirements.`,
+          fieldKey: rule.field_key,
+          operator: rule.operator,
+          expectedValue: rule.expected_value,
+          message: `Rule failed: ${label} (no policy satisfied this condition)`,
         });
       }
     }
 
+    const globalScore = computeScoreFromFailures(failures);
+
     // ---------------------------------------------------
-    // 4) Write rule_results_v3 (unless dryRun = true)
+    // 4) Persist results if NOT dryRun
     // ---------------------------------------------------
     if (!dryRun) {
+      // 4a) rule_results_v3 — keep same behavior, now keyed to rule IDs
       await sql`
         DELETE FROM rule_results_v3
         WHERE vendor_id = ${vendorId} AND org_id = ${orgId};
@@ -244,7 +312,7 @@ export default async function handler(req, res) {
           VALUES (
             ${orgId},
             ${vendorId},
-            ${f.requirementId},
+            ${f.ruleId},
             FALSE,
             ${f.severity},
             ${f.message}
@@ -265,7 +333,7 @@ export default async function handler(req, res) {
           VALUES (
             ${orgId},
             ${vendorId},
-            ${p.requirementId},
+            ${p.ruleId},
             TRUE,
             NULL,
             ${p.message}
@@ -273,37 +341,66 @@ export default async function handler(req, res) {
         `;
       }
 
-      // optional: log to system_timeline
-      const globalScore = computeScoreFromFailures(failures);
+      // 4b) system_timeline logging (same style as before)
       await sql`
         INSERT INTO system_timeline (org_id, vendor_id, action, message, severity)
         VALUES (
           ${orgId},
           ${vendorId},
-          'rule_engine_v3_run',
-          ${'Rule Engine V3 evaluated. Score: ' + globalScore},
+          'rule_engine_v5_run',
+          ${"Rule Engine V5 evaluated. Score: " + globalScore},
           ${failures.length ? "warning" : "info"}
         )
       `;
+
+      // 4c) vendor_compliance_cache — best-effort UPSERT
+      // (wrapped in try/catch so mismatched columns won't break engine)
+      try {
+        // Adjust column names if your vendor_compliance_cache schema differs.
+        await sql`
+          INSERT INTO vendor_compliance_cache (
+            vendor_id,
+            org_id,
+            score,
+            last_run_at
+          )
+          VALUES (
+            ${vendorId},
+            ${orgId},
+            ${globalScore},
+            NOW()
+          )
+          ON CONFLICT (vendor_id)
+          DO UPDATE SET
+            score = EXCLUDED.score,
+            last_run_at = EXCLUDED.last_run_at;
+        `;
+      } catch (cacheErr) {
+        console.error(
+          "[engine/run-v3 V5] vendor_compliance_cache upsert failed (adjust columns if needed):",
+          cacheErr
+        );
+      }
     }
 
-    const globalScore = computeScoreFromFailures(failures);
-
+    // ---------------------------------------------------
+    // 5) Return response
+    // ---------------------------------------------------
     return res.status(200).json({
       ok: true,
       vendorId,
       orgId,
       globalScore,
       failedCount: failures.length,
-      totalRules: requirements.length,
+      totalRules: activeRules.length,
       failingRules: failures,
       passingRules: passes,
     });
   } catch (err) {
-    console.error("[engine/run-v3] ERROR:", err);
+    console.error("[engine/run-v3 V5] ERROR:", err);
     return res.status(500).json({
       ok: false,
-      error: err.message || "Rule Engine V3 failed.",
+      error: err.message || "Rule Engine V5 failed.",
     });
   }
 }
