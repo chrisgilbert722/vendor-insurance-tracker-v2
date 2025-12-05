@@ -1,5 +1,6 @@
 // pages/api/chat/support.js
-// Ultimate Multi-Mode Chat Engine (Vendor Mode, Wizard Mode, Explain Mode, Auto-Fix Mode, Org Brain Mode, Onboarding Checklist)
+// Ultimate Multi-Mode Chat Engine v7
+// Modes: Checklist, Wizard, Auto-Fix, Vendor, Org Brain, Explain Page, Normal Chat
 
 import { openai } from "../../../lib/openaiClient";
 import { sql } from "../../../lib/db";
@@ -20,89 +21,32 @@ export default async function handler(req, res) {
     const { messages, orgId, vendorId, path } = req.body || {};
 
     if (!messages || !Array.isArray(messages)) {
-      return res
-        .status(400)
-        .json({ ok: false, error: "Missing messages array." });
+      return res.status(400).json({
+        ok: false,
+        error: "Missing messages array.",
+      });
     }
 
     const lastMessage =
       messages[messages.length - 1]?.content?.toLowerCase() || "";
-
     // ================================================================
-    // ⭐ ONBOARDING CHECKLIST MODE
+    // ⭐ ORG BRAIN SUPER MODE — System Designer
     // ================================================================
-    const onboardingChecklistTriggers = [
-      "start checklist",
-      "where do i start",
-      "where do we start",
-      "help me get started",
-      "how do i onboard",
-      "i just signed up",
-      "what do i do first",
-      "begin onboarding",
-      "get started",
-      "start onboarding",
+    const orgBrainTriggers = [
+      "org brain",
+      "design system",
+      "optimize system",
+      "insurance requirements",
+      "industry:",
+      "rebuild system",
+      "design compliance",
+      "configure insurance",
+      "create rule groups",
     ];
 
-    if (
-      onboardingChecklistTriggers.some((t) =>
-        lastMessage.includes(t)
-      )
-    ) {
-      const checklist = `
-🧭 **AI Onboarding Checklist**
-
-Here’s the fastest path to finish your setup:
-
-1️⃣ **Upload Vendors**
-• Upload a CSV of vendors  
-• OR drag-and-drop COIs so AI can build the list  
-• OR add a few vendors manually  
-
-2️⃣ **AI Detects Your Industry**
-We auto-tune requirements for: Construction, Property Management, Healthcare, Retail, etc.
-
-3️⃣ **AI Builds Rule Groups**
-Expiration rules  
-Limit rules  
-Endorsement requirements  
-Missing coverage detection  
-
-4️⃣ **AI Generates Communication Templates**
-Vendor fix emails  
-Broker request emails  
-Renewal reminders  
-
-5️⃣ **Activate Your System**
-View your dashboard  
-Resolve critical alerts  
-Invite your team
-
-You can say:
-• "Upload vendors for me"  
-• "Explain rule groups"  
-• "Show renewal steps"  
-• "Help me with vendor COIs"
-
-I'm here with you the whole way.`;
-
-      return res.status(200).json({
-        ok: true,
-        reply: checklist,
-      });
-    }
-    // ================================================================
-    // ⭐ ORG BRAIN MODE DETECTION
-    // ================================================================
-    const isOrgBrain =
-      lastMessage.includes("org brain") ||
-      lastMessage.includes("design system") ||
-      lastMessage.includes("optimize system") ||
-      lastMessage.includes("rebuild system") ||
-      lastMessage.includes("industry:") ||
-      lastMessage.includes("design compliance") ||
-      lastMessage.includes("configure our compliance") ||
-      lastMessage.includes("design insurance");
+    const isOrgBrain = orgBrainTriggers.some((t) =>
+      lastMessage.includes(t)
+    );
 
     if (isOrgBrain && orgId) {
       try {
@@ -111,7 +55,10 @@ I'm here with you the whole way.`;
           {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ orgId, prompt: lastMessage }),
+            body: JSON.stringify({
+              orgId,
+              prompt: lastMessage,
+            }),
           }
         );
 
@@ -121,128 +68,128 @@ I'm here with you the whole way.`;
           return res.status(200).json({
             ok: true,
             reply:
-              "⚠️ Org Brain attempted to redesign your system, but encountered an issue:\n\n" +
+              "⚠️ Org Brain tried to rebuild your system but encountered an issue:\n" +
               (brainJson.error || "Unknown error."),
           });
         }
 
-        let reply = `🧠 **ORG BRAIN SYSTEM REBUILD COMPLETE**\n\n`;
-        reply += `**Summary:**\n${brainJson.summary}\n\n`;
+        // Format ORG BRAIN response
+        let reply = `🧠 **ORG BRAIN SYSTEM BLUEPRINT GENERATED**\n\n`;
+        reply += `### Summary\n${brainJson.summary}\n\n`;
+        reply += `### Rule Groups Created\n`;
 
-        reply += `**Rule Groups Created:**\n`;
         brainJson.ruleGroups.forEach((g) => {
-          reply += `\n### ${g.label} (${g.severity})\n${g.description}\n`;
-
+          reply += `\n#### ${g.label} (${g.severity})\n${g.description}\n`;
           g.rules.forEach((r) => {
             reply += `- **${r.type.toUpperCase()} — ${r.message}**  
-Field: *${r.field}*  
-Condition: *${r.condition}*  
-Value: *${r.value}*  
-Severity: *${r.severity}*\n`;
+Field: *${r.field}* | Condition: *${r.condition}* | Value: *${r.value}* | Severity: *${r.severity}*\n`;
           });
         });
 
-        reply += `\n**Templates Generated:**\n`;
+        reply += `\n### Communication Templates\n`;
         Object.entries(brainJson.templates || {}).forEach(([k, v]) => {
-          reply += `\n---\n**${k.replace(/([A-Z])/g, " $1")}**\n${v}\n`;
+          reply += `\n**${k.replace(/([A-Z])/g, " $1")}**\n${v}\n`;
         });
 
         return res.status(200).json({ ok: true, reply });
       } catch (err) {
-        console.error("[Org Brain from Chat ERROR]", err);
+        console.error("[Org Brain Chat ERROR]", err);
         return res.status(200).json({
           ok: true,
-          reply:
-            "❌ Org Brain encountered an unexpected problem. Try again later.",
+          reply: "❌ Org Brain encountered a system error.",
         });
       }
     }
-
     // ================================================================
-    // ⭐ AUTO-FIX MODE — Vendor-level automated remediation
+    // ⭐ AUTO-FIX MODE — Fully automated remediation
     // ================================================================
-    const isAutoFix = lastMessage.includes("auto-fix");
+    const autopFixTriggers = [
+      "auto-fix",
+      "autofix",
+      "fix vendor",
+      "generate fix plan",
+    ];
 
-    if (isAutoFix && vendorId) {
+    if (vendorId && autopFixTriggers.some((t) => lastMessage.includes(t))) {
       try {
-        const rules = await sql`
-          SELECT rr.passed, rr.message, rr.severity
-          FROM rule_results_v3 rr
-          WHERE rr.vendor_id = ${vendorId}
+        const vendorPolicies = await sql`
+          SELECT *
+          FROM policies
+          WHERE vendor_id = ${vendorId}
         `;
 
-        const failed = rules.filter((r) => !r.passed);
+        const ruleRows = await sql`
+          SELECT passed, message, severity
+          FROM rule_results_v3
+          WHERE vendor_id = ${vendorId}
+        `;
+
+        const failed = ruleRows.filter((r) => !r.passed);
 
         const failSummary =
           failed.length === 0
-            ? "This vendor currently has no rule failures."
+            ? "No compliance issues detected."
             : failed
                 .map((f) => `- **${f.message}** (${f.severity})`)
                 .join("\n");
 
-        const fixPrompt = `
-The user wants an Auto-Fix Plan for Vendor ID ${vendorId}.
-Here is the failing rule summary:
+        const prompt = `
+You are an insurance compliance remediation expert.
 
+Vendor ID: ${vendorId}
+Failing Rules:
 ${failSummary}
 
 Create:
-1. A short explanation of the vendor's risk condition.
-2. A vendor-facing Fix Plan message.
-3. A broker-facing request email listing missing or insufficient items.
-4. A JSON array of action steps.
-
-Return as plain text, structured with headers.
+1. A short explanation of the vendor’s overall risk.
+2. A vendor-facing Fix Plan email.
+3. A broker request email listing missing items.
+4. JSON array of bullet-point remediation steps.
 `;
 
         const completion = await openai.chat.completions.create({
           model: "gpt-4.1",
           temperature: 0,
           messages: [
-            {
-              role: "system",
-              content: "You are an insurance compliance remediation expert.",
-            },
-            { role: "user", content: fixPrompt },
+            { role: "system", content: "You fix COI compliance issues." },
+            { role: "user", content: prompt },
           ],
         });
 
-        const text = completion.choices[0].message.content;
+        const reply = completion.choices[0].message.content;
 
         return res.status(200).json({
           ok: true,
-          reply: `🚀 **AUTO-FIX PLAN GENERATED**\n\n${text}`,
+          reply: `🚀 **AUTO-FIX PLAN GENERATED**\n\n${reply}`,
         });
       } catch (err) {
-        console.error("[Auto-Fix Error]", err);
+        console.error("[AutoFix ERROR]", err);
         return res.status(200).json({
           ok: true,
-          reply:
-            "❌ Auto-Fix encountered a problem while generating remediation steps.",
+          reply: "❌ Auto-Fix mode failed.",
         });
       }
     }
-
     // ================================================================
-    // ⭐ EXPLAIN-THIS-PAGE MODE (❓)
+    // ⭐ EXPLAIN THIS PAGE MODE
     // ================================================================
-    const explainMode =
-      lastMessage.includes("explain this page") ||
-      lastMessage.includes("what is on this page") ||
-      lastMessage.includes("explain everything here");
+    const explainTriggers = [
+      "explain this page",
+      "what is on this page",
+      "explain everything here",
+      "what am i looking at",
+    ];
 
-    if (expl
-    if (explainMode) {
+    if (explainTriggers.some((t) => lastMessage.includes(t))) {
       const promptExplain = `
 Explain this UI page to the user in simple terms.
-Page path: ${path}
-Vendor context: ${vendorId ? "Vendor Detail Mode" : "Global Mode"}
+Page: ${path}
+Vendor context: ${vendorId ? "Vendor Detail" : "Global Dashboard"}
 
-Include:
-- What the panels mean
-- What KPIs represent
-- What actions should be taken next
-- Any warnings based on common workflows
+Explain:
+- What each panel means
+- How to use the page
+- What actions to take next
 `;
 
       const completion = await openai.chat.completions.create({
@@ -251,7 +198,7 @@ Include:
         messages: [
           {
             role: "system",
-            content: "You are an expert UI explainer and compliance strategist.",
+            content: "You explain UI pages with clarity and precision.",
           },
           { role: "user", content: promptExplain },
         ],
@@ -262,23 +209,76 @@ Include:
         reply: completion.choices[0].message.content,
       });
     }
+
     // ================================================================
-    // ⭐ NORMAL CHAT MODE (Fallback)
+    // ⭐ ONBOARDING CHECKLIST MODE
+    // ================================================================
+    const onboardingChecklistTriggers = [
+      "start checklist",
+      "where do i start",
+      "help me get started",
+      "how do i onboard",
+      "i just signed up",
+      "what do i do first",
+      "begin onboarding",
+    ];
+
+    if (onboardingChecklistTriggers.some((t) => lastMessage.includes(t))) {
+      const checklist = `
+🧭 **AI Onboarding Checklist**
+
+1️⃣ **Upload Vendors**
+• Upload CSV  
+• OR drag-and-drop COIs  
+• OR manually add vendors  
+
+2️⃣ **AI Detects Your Industry**
+Construction, Healthcare, Retail, Property Mgmt, etc.
+
+3️⃣ **AI Builds Rule Groups**
+Expiration rules  
+Limit rules  
+Endorsement checks  
+Missing coverage detection  
+
+4️⃣ **AI Generates Templates**
+Vendor fix messages  
+Broker request emails  
+Renewal reminders  
+
+5️⃣ **Activate Your System**
+View dashboard  
+Resolve alerts  
+Invite your team  
+
+Say:
+➡️ "Start step 1"  
+➡️ "Upload vendors"  
+➡️ "Explain rule groups"  
+➡️ "Show renewal steps"
+`;
+
+      return res.status(200).json({
+        ok: true,
+        reply: checklist,
+      });
+    }
+    // ================================================================
+    // ⭐ NORMAL CHAT MODE (fallback)
     // ================================================================
     const systemPrompt = `
-You are an elite insurance compliance AI assistant inside a vendor COI platform.
-You ALWAYS respond with:
-- Clear reasoning
-- Actionable steps
+You are an elite insurance compliance AI assistant.
+You respond with:
+- Accuracy
+- Steps the user should take
+- Real insurance logic
 - No hallucinations
-- Realistic insurance/compliance knowledge
-- Simple, direct answers
-- Keep answers short unless user asks for depth
 
-User context:
-- Org ID: ${orgId}
-- Vendor ID: ${vendorId || "None"}
-- Page: ${path}
+Context:
+Org: ${orgId}
+Vendor: ${vendorId || "None"}
+Page: ${path}
+User message: ${lastMessage}
 `;
 
     const completion = await openai.chat.completions.create({
@@ -286,10 +286,7 @@ User context:
       temperature: 0.4,
       messages: [
         { role: "system", content: systemPrompt },
-        ...messages.map((m) => ({
-          role: m.role,
-          content: m.content,
-        })),
+        ...messages.map((m) => ({ role: m.role, content: m.content })),
       ],
     });
 
@@ -304,4 +301,3 @@ User context:
     });
   }
 }
-// End of /pages/api/chat/support.js
