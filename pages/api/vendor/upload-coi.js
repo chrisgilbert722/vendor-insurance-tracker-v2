@@ -1,7 +1,7 @@
 // pages/api/vendor/upload-coi.js
-// Vendor Portal V4 — COI Upload + AI Parse + Alerts + Confirmation Email
+// Vendor Portal V4 — COI Upload + AI Parse + Alerts + Email Notifications
 // Supports:
-// • Vendor portal token (Option 2 ?token=...)
+// • Vendor portal token (?token=...)
 // • Admin upload (vendorId + orgId)
 
 import formidable from "formidable";
@@ -18,6 +18,7 @@ export const config = {
 export default async function handler(req, res) {
   try {
     if (req.method !== "POST") {
+      res.setHeader("Allow", ["POST"]);
       return res.status(405).json({ ok: false, error: "Use POST method." });
     }
 
@@ -93,7 +94,7 @@ export default async function handler(req, res) {
     else {
       return res.status(400).json({
         ok: false,
-        error: "Missing vendor identity: must provide token or vendorId + orgId",
+        error: "Missing vendor identity: must provide token OR vendorId + orgId.",
       });
     }
 
@@ -120,13 +121,12 @@ export default async function handler(req, res) {
 
     const fileUrl = urlData.publicUrl;
 
-    // Log upload event
     await sql`
       INSERT INTO system_timeline (org_id, vendor_id, action, message, severity)
       VALUES (
         ${orgId}, ${vendorId},
         'vendor_uploaded_coi',
-        ${'Vendor uploaded COI: ' + fileName},
+        ${'Uploaded COI: ' + fileName},
         'info'
       )
     `;
@@ -135,22 +135,33 @@ export default async function handler(req, res) {
     // 4) AI Extraction of COI
     // -------------------------------------------------------------
     let ai = null;
+
     try {
       ai = await openai.responses.parseCOI(fileUrl);
 
       await sql`
         INSERT INTO system_timeline (org_id, vendor_id, action, message, severity)
-        VALUES (${orgId}, ${vendorId}, 'ai_parse_success', 'AI parsed COI successfully', 'info')
+        VALUES (
+          ${orgId}, ${vendorId},
+          'ai_parse_success',
+          'AI successfully parsed COI',
+          'info'
+        )
       `;
     } catch (err) {
       console.error("[AI Parse ERROR]:", err);
 
+      ai = { error: true, message: "AI failed to parse COI." };
+
       await sql`
         INSERT INTO system_timeline (org_id, vendor_id, action, message, severity)
-        VALUES (${orgId}, ${vendorId}, 'ai_parse_failed', 'AI failed to parse COI', 'critical')
+        VALUES (
+          ${orgId}, ${vendorId},
+          'ai_parse_failed',
+          ${'AI failed to parse COI: ' + err.message},
+          'critical'
+        )
       `;
-
-      ai = { error: true, message: "Failed to parse COI" };
     }
 
     // -------------------------------------------------------------
@@ -169,7 +180,7 @@ export default async function handler(req, res) {
     }
 
     // -------------------------------------------------------------
-    // 6) Simple Alert Generator (V4-safe)
+    // 6) Simple Alert Generator (safe)
     // -------------------------------------------------------------
     const alerts = [];
 
@@ -205,21 +216,20 @@ export default async function handler(req, res) {
       }
     }
 
-    // Log alert count
     if (alerts.length) {
       await sql`
         INSERT INTO system_timeline (org_id, vendor_id, action, message, severity)
         VALUES (
           ${orgId}, ${vendorId},
           'coi_issues_detected',
-          ${alerts.length + ' issues detected during COI review'},
+          ${alerts.length + ' issue(s) detected'},
           'warning'
         )
       `;
     }
 
     // -------------------------------------------------------------
-    // 7) Compute status (fallback-safe)
+    // 7) Compute status
     // -------------------------------------------------------------
     const hasCritical = alerts.some((a) => a.severity === "critical");
     const hasMissing = alerts.some((a) => a.code === "missing_policy");
@@ -241,7 +251,7 @@ export default async function handler(req, res) {
     `;
 
     // -------------------------------------------------------------
-    // 8) Save AI + status → vendors
+    // 8) Save AI + status into vendors table
     // -------------------------------------------------------------
     await sql`
       UPDATE vendors
@@ -265,12 +275,18 @@ export default async function handler(req, res) {
     for (const a of alerts) {
       await sql`
         INSERT INTO vendor_alerts (vendor_id, severity, code, message, created_at)
-        VALUES (${vendorId}, ${a.severity}, ${a.code}, ${a.message}, NOW());
+        VALUES (
+          ${vendorId},
+          ${a.severity},
+          ${a.code},
+          ${a.message},
+          NOW()
+        );
       `;
     }
 
     // -------------------------------------------------------------
-    // 10) SEND VENDOR CONFIRMATION EMAIL  (NEW)
+    // 10) SEND VENDOR CONFIRMATION EMAIL (NEW)
     // -------------------------------------------------------------
     try {
       if (vendor?.email) {
@@ -280,9 +296,11 @@ export default async function handler(req, res) {
           body: `
 Hi ${vendor.vendor_name || "there"},
 
-We received your Certificate of Insurance and our automated system is now reviewing it.
+We successfully received your Certificate of Insurance.
 
-If anything else is required, you'll receive another message.
+Our automated system is now reviewing it.
+
+You will be notified if anything else is needed.
 
 Thank you!
 – Compliance Team
@@ -290,21 +308,85 @@ Thank you!
         });
 
         await sql`
-          INSERT INTO system_timeline (org_id, vendor_id, action, message, severity)
+          INSERT INTO system_timeline
+            (org_id, vendor_id, action, message, severity)
           VALUES (
-            ${orgId}, ${vendorId},
+            ${orgId},
+            ${vendorId},
             'vendor_upload_confirmation_sent',
-            ${'Upload confirmation email sent to vendor: ' + vendor.email},
+            ${'Vendor confirmation email sent to ' + vendor.email},
             'info'
           )
         `;
       }
     } catch (err) {
-      console.error("[upload-coi] Failed sending confirmation email:", err);
+      console.error("[upload-coi] Vendor email error:", err);
     }
 
     // -------------------------------------------------------------
-    // 11) RETURN FINAL PAYLOAD
+    // 11) SEND ADMIN NOTIFICATION EMAIL (NEW)
+    // -------------------------------------------------------------
+    try {
+      const ADMIN_EMAILS = process.env.ADMIN_NOTIFICATION_EMAILS
+        ? process.env.ADMIN_NOTIFICATION_EMAILS.split(",")
+        : ["admin@yourapp.com"]; // fallback
+
+      for (const adminEmail of ADMIN_EMAILS) {
+        if (!adminEmail) continue;
+        await sendEmail({
+          to: adminEmail.trim(),
+          subject: `New COI Uploaded — Vendor #${vendorId}`,
+          body: `
+A vendor has uploaded a new Certificate of Insurance.
+
+Vendor: ${vendor.vendor_name}
+Vendor ID: ${vendorId}
+Org ID: ${orgId}
+
+File URL:
+${fileUrl}
+
+Status after scan: ${status.toUpperCase()}
+
+Detected Alerts:
+${
+  alerts.length
+    ? alerts.map((a) => `• [${a.severity}] ${a.message}`).join("\n")
+    : "None"
+}
+
+This COI is available to review in the admin dashboard.
+          `,
+        });
+      }
+
+      await sql`
+        INSERT INTO system_timeline (org_id, vendor_id, action, message, severity)
+        VALUES (
+          ${orgId},
+          ${vendorId},
+          'admin_upload_notification_sent',
+          'Admin notified of COI upload',
+          'info'
+        )
+      `;
+    } catch (err) {
+      console.error("[upload-coi] Admin email error:", err);
+
+      await sql`
+        INSERT INTO system_timeline (org_id, vendor_id, action, message, severity)
+        VALUES (
+          ${orgId},
+          ${vendorId},
+          'admin_upload_notification_failed',
+          ${'Admin notification failed: ' + err.message},
+          'critical'
+        )
+      `;
+    }
+
+    // -------------------------------------------------------------
+    // 12) FINAL RETURN PAYLOAD
     // -------------------------------------------------------------
     return res.status(200).json({
       ok: true,
@@ -322,7 +404,11 @@ Thank you!
 
     await sql`
       INSERT INTO system_timeline (action, message, severity)
-      VALUES ('upload_error', ${err.message}, 'critical')
+      VALUES (
+        'upload_error',
+        ${err.message},
+        'critical'
+      )
     `;
 
     return res.status(500).json({
