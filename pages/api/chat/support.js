@@ -1,8 +1,8 @@
 // pages/api/chat/support.js
-// GOD MODE V12 — FULL AUTOPILOT ENGINE
+// GOD MODE V13 — FULL AUTOPILOT
 // Wizard + Persona + Auto Industry + Auto Rules + Auto Templates
 // + Auto Alerts + Notifications + Power Mode "Run Alerts Now"
-// + Timeline Logging (onboarding + manual alert scans)
+// + Vendor Email Commands + Timeline Logging
 
 import { openai } from "../../../lib/openaiClient";
 import { sql } from "../../../lib/db";
@@ -58,8 +58,7 @@ function personaWrap(rawReply, { powerMode, step, industry }) {
 // Helper: Industry detection
 // ================================
 async function runIndustryDetection(orgId) {
-  const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || "";
-  const res = await fetch(`${baseUrl}/api/intel/industry-auto-detect`, {
+  const res = await fetch("/api/intel/industry-auto-detect", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ orgId }),
@@ -73,8 +72,7 @@ async function runIndustryDetection(orgId) {
 // Helper: Auto rule build
 // ================================
 async function runAutoRuleBuild(orgId, industry) {
-  const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || "";
-  const res = await fetch(`${baseUrl}/api/rules/auto-build`, {
+  const res = await fetch("/api/rules/auto-build", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ orgId, industry, dryRun: false }),
@@ -86,8 +84,7 @@ async function runAutoRuleBuild(orgId, industry) {
 // Helper: Auto template generation + write to DB
 // ================================
 async function runAutoTemplateGen(orgId, industry) {
-  const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || "";
-  const res = await fetch(`${baseUrl}/api/templates/auto-generate`, {
+  const res = await fetch("/api/templates/auto-generate", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ orgId, industry, tone: "professional" }),
@@ -118,8 +115,7 @@ async function runAutoTemplateGen(orgId, industry) {
 // Helper: Auto alert configuration
 // ================================
 async function runAutoAlertConfig(orgId, industry, recipients) {
-  const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || "";
-  const res = await fetch(`${baseUrl}/api/alerts/auto-configure`, {
+  const res = await fetch("/api/alerts/auto-configure", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
@@ -135,14 +131,12 @@ async function runAutoAlertConfig(orgId, industry, recipients) {
 // Helper: Run alerts now (Power Mode) via cron endpoint
 // ================================
 async function runAlertsNow(orgId) {
-  const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || "";
-  const res = await fetch(`${baseUrl}/api/alerts/run-cron?orgId=${orgId}`, {
+  const res = await fetch(`/api/alerts/run-cron?orgId=${orgId}`, {
     method: "GET",
     headers: { "Content-Type": "application/json" },
   });
   return await res.json();
 }
-
 // ================================
 // GOD MODE AUTOPILOT WIZARD
 // ================================
@@ -164,7 +158,7 @@ async function routeWizard({ state, lastContent, onboardingComplete, orgId }) {
   if (powerMode) {
     return {
       reply: wrap(
-        "Onboarding is complete. You’re in **Power Mode** — ask about high-risk vendors, alerts, or run operations like **run alerts now**."
+        "Onboarding is complete. You’re in **Power Mode** — ask about risk, vendors, alerts, or run operations like **run alerts now**."
       ),
       nextState: { ...nextState, mode: "completed", completed: true },
     };
@@ -276,8 +270,7 @@ Paste your CSV again.
       }
 
       try {
-        const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || "";
-        const res = await fetch(`${baseUrl}/api/vendors/import-csv`, {
+        const res = await fetch("/api/vendors/import-csv", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ orgId, csvText }),
@@ -516,7 +509,6 @@ Ask me:
     }
   }
 }
-
 // ================================
 // MAIN HANDLER
 // ================================
@@ -583,6 +575,128 @@ You can say:
       });
     }
 
+    // ================= VENDOR EMAIL COMMAND ENGINE =================
+    const vendorEmailTriggers = [
+      "email vendor",
+      "send vendor",
+      "message vendor",
+    ];
+
+    if (orgId && vendorEmailTriggers.some((t) => lastMessage.includes(t))) {
+      const match = lastMessage.match(/vendor\s+(\d+)/);
+      if (!match) {
+        return res.status(200).json({
+          ok: true,
+          reply:
+            "I heard you want to email a vendor, but I couldn’t see which ID. Try: **email vendor 23 a renewal reminder**.",
+        });
+      }
+
+      const vendorIdParsed = parseInt(match[1], 10);
+      if (Number.isNaN(vendorIdParsed)) {
+        return res.status(200).json({
+          ok: true,
+          reply:
+            "I couldn’t understand that vendor ID. Try: **email vendor 23 a non-compliance notice**.",
+        });
+      }
+
+      // Decide which template_key to use
+      let templateKey = "renewal_reminder";
+      if (
+        lastMessage.includes("non-compliance") ||
+        lastMessage.includes("noncompliance") ||
+        lastMessage.includes("non compliance")
+      ) {
+        templateKey = "non_compliance_notice";
+      } else if (lastMessage.includes("broker")) {
+        templateKey = "broker_request";
+      } else if (lastMessage.includes("fix")) {
+        templateKey = "vendor_fix";
+      } else if (lastMessage.includes("welcome")) {
+        templateKey = "welcome_onboarding";
+      }
+
+      // Look up vendor
+      const vendors = await sql`
+        SELECT id, vendor_name, email
+        FROM vendors
+        WHERE id = ${vendorIdParsed} AND org_id = ${orgId}
+        LIMIT 1
+      `;
+
+      if (!vendors.length) {
+        return res.status(200).json({
+          ok: true,
+          reply: `I couldn’t find vendor ID **${vendorIdParsed}** for this org.`,
+        });
+      }
+
+      const vendor = vendors[0];
+      if (!vendor.email) {
+        return res.status(200).json({
+          ok: true,
+          reply: `Vendor **${
+            vendor.vendor_name || vendor.id
+          }** does not have an email address on file.`,
+        });
+      }
+
+      try {
+        const payload = {
+          orgId,
+          to: vendor.email,
+          templateKey,
+          bodyParams: {
+            VENDOR_NAME: vendor.vendor_name || `Vendor ${vendor.id}`,
+            OUR_ORG_NAME: "Your Organization",
+          },
+        };
+
+        const sendRes = await fetch("/api/notifications/send", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload),
+        });
+        const sendJson = await sendRes.json();
+
+        if (!sendJson.ok) {
+          return res.status(200).json({
+            ok: true,
+            reply:
+              "I tried to send the email, but the notification service reported an error: " +
+              (sendJson.error || "Unknown error."),
+          });
+        }
+
+        // Log to system timeline
+        await sql`
+          INSERT INTO system_timeline (org_id, vendor_id, action, message, severity)
+          VALUES (
+            ${orgId},
+            ${vendor.id},
+            'vendor_email_command',
+            ${'Sent ' + templateKey + ' email to ' + (vendor.vendor_name || 'Vendor ' + vendor.id)},
+            'info'
+          );
+        `;
+
+        return res.status(200).json({
+          ok: true,
+          reply: `✅ Email sent to **${
+            vendor.vendor_name || vendor.id
+          }** at **${vendor.email}** using template **${templateKey}**.`,
+        });
+      } catch (err) {
+        console.error("[Vendor Email Command ERROR]", err);
+        return res.status(200).json({
+          ok: true,
+          reply:
+            "❌ I tried to send the vendor email, but a system error occurred.",
+        });
+      }
+    }
+
     // ================= ORG BRAIN MODE =================
     const orgBrainTriggers = [
       "org brain",
@@ -595,15 +709,11 @@ You can say:
 
     if (orgId && orgBrainTriggers.some((t) => lastMessage.includes(t))) {
       try {
-        const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || "";
-        const resBrain = await fetch(
-          `${baseUrl}/api/org/ai-system-designer`,
-          {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ orgId, prompt: lastMessage }),
-          }
-        );
+        const resBrain = await fetch("/api/org/ai-system-designer", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ orgId, prompt: lastMessage }),
+        });
         const brain = await resBrain.json();
 
         if (!brain.ok) {
@@ -641,10 +751,6 @@ You can say:
 
     if (vendorId && autoFixTriggers.some((t) => lastMessage.includes(t))) {
       try {
-        const policies = await sql`
-          SELECT * FROM policies
-          WHERE vendor_id = ${vendorId}
-        `;
         const ruleRows = await sql`
           SELECT passed, message, severity
           FROM rule_results_v3
@@ -734,7 +840,6 @@ Explain:
         reply: completion.choices[0].message.content,
       });
     }
-
     // ================= WIZARD (GOD MODE) =================
     if (orgId) {
       const currentState =
@@ -831,4 +936,3 @@ User message: ${rawLastContent}
     });
   }
 }
-
