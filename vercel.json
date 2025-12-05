@@ -5,6 +5,10 @@
     {
       "path": "/api/cron/renewals",
       "schedule": "*/10 * * * *"
+    },
+    {
+      "path": "/api/alerts/run-cron?orgId=4",
+      "schedule": "0 8 * * *"
     }
   ]
 }
