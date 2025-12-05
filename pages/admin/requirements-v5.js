@@ -1,6 +1,7 @@
 // pages/admin/requirements-v5.js
 // ==========================================================
-// PHASE 5 — V5 ENGINE (FULL CLEAN VERSION)
+// REQUIREMENTS ENGINE V5 — FULL UPGRADE
+// AI Builder • AI Explain • Conflict Intelligence • V5 Core
 // ==========================================================
 
 import { useEffect, useState, useMemo, useRef } from "react";
@@ -10,23 +11,10 @@ import ToastV2 from "../../components/ToastV2";
 import { DndProvider, useDrag, useDrop } from "react-dnd";
 import { HTML5Backend } from "react-dnd-html5-backend";
 
+// -------------------------------
+// CONSTANTS
+// -------------------------------
 const ITEM_TYPE = "REQUIREMENT_RULE";
-
-const FIELD_OPTIONS = [
-  { key: "policy.coverage_type", label: "Coverage Type" },
-  { key: "policy.glEachOccurrence", label: "GL Each Occurrence" },
-  { key: "policy.glAggregate", label: "GL Aggregate" },
-  { key: "policy.expiration_date", label: "Expiration Date" },
-  { key: "policy.carrier", label: "Carrier Name" },
-];
-
-const OPERATOR_OPTIONS = [
-  { key: "equals", label: "Equals" },
-  { key: "not_equals", label: "Not Equals" },
-  { key: "gte", label: "≥ Greater or Equal" },
-  { key: "lte", label: "≤ Less or Equal" },
-  { key: "contains", label: "Contains" },
-];
 
 const SEVERITY_COLORS = {
   critical: "#ff4d6d",
@@ -37,59 +25,131 @@ const SEVERITY_COLORS = {
   low: "#22c55e",
 };
 
+// Fields mappable via AI and UI
+const FIELD_OPTIONS = [
+  { key: "policy.coverage_type", label: "Coverage Type", type: "string" },
+  { key: "policy.glEachOccurrence", label: "GL Each Occurrence", type: "number" },
+  { key: "policy.glAggregate", label: "GL Aggregate", type: "number" },
+  { key: "policy.expiration_date", label: "Expiration Date", type: "date" },
+  { key: "policy.carrier", label: "Carrier Name", type: "string" },
+];
+
+// Operators with added type awareness
+const OPERATOR_OPTIONS = [
+  { key: "equals", label: "Equals" },
+  { key: "not_equals", label: "Not Equals" },
+  { key: "gte", label: "≥ Greater or Equal" },
+  { key: "lte", label: "≤ Less or Equal" },
+  { key: "contains", label: "Contains" },
+  { key: "in_list", label: "In List" },
+  { key: "before", label: "Before (Date)" },
+  { key: "after", label: "After (Date)" },
+];
+
 // -------------------------------
-// Helper: operator label
+// V5: Operator Label Helper
 // -------------------------------
-function operatorLabel(key) {
-  return OPERATOR_OPTIONS.find((o) => o.key === key)?.label || key;
+function operatorLabel(op) {
+  return OPERATOR_OPTIONS.find((o) => o.key === op)?.label || op;
 }
 
 // -------------------------------
-// Helper: evaluation logic
+// V5: Safe Value Extraction (nested support)
+// Example: "policy.glEachOccurrence" → policy.glEachOccurrence
 // -------------------------------
-function evaluateRule(rule, policy) {
+function resolveValue(obj, path) {
   try {
-    const v = policy[rule.field_key];
+    return path.split(".").reduce((acc, key) => acc?.[key], obj);
+  } catch {
+    return undefined;
+  }
+}
+
+// -------------------------------
+// V5: Normalize Value for Comparison
+// Auto-casts numbers, dates, strings.
+// -------------------------------
+function normalizeValue(raw, typeHint) {
+  if (raw === null || raw === undefined) return null;
+
+  if (typeHint === "number") return Number(raw) || 0;
+  if (typeHint === "date") return new Date(raw);
+
+  // Convert everything else to lowercased string
+  return String(raw).toLowerCase();
+}
+
+// -------------------------------
+// V5: RULE EVALUATION CORE
+// Stronger, safer, predictable.
+// -------------------------------
+function evaluateRuleV5(rule, policy) {
+  try {
+    const fieldDef = FIELD_OPTIONS.find((f) => f.key === rule.field_key);
+    const typeHint = fieldDef?.type || "string";
+
+    const rawValue = resolveValue(policy, rule.field_key);
+    const value = normalizeValue(rawValue, typeHint);
+    const expected = normalizeValue(rule.expected_value, typeHint);
 
     switch (rule.operator) {
-      case "equals": return v == rule.expected_value;
-      case "not_equals": return v != rule.expected_value;
-      case "gte": return Number(v) >= Number(rule.expected_value);
-      case "lte": return Number(v) <= Number(rule.expected_value);
+      case "equals":
+        return value === expected;
+
+      case "not_equals":
+        return value !== expected;
+
+      case "gte":
+        return Number(value) >= Number(expected);
+
+      case "lte":
+        return Number(value) <= Number(expected);
+
       case "contains":
-        return String(v || "").toLowerCase().includes(String(rule.expected_value).toLowerCase());
+        return String(value || "").includes(String(expected));
+
+      case "in_list":
+        return String(expected)
+          .split(",")
+          .map((v) => v.trim().toLowerCase())
+          .includes(String(value));
+
+      case "before": // date
+        return typeHint === "date" && value < expected;
+
+      case "after": // date
+        return typeHint === "date" && value > expected;
+
       default:
         return false;
     }
-  } catch {
+  } catch (err) {
+    console.error("V5 evaluator error:", err);
     return false;
   }
 }
 
 // -------------------------------
-// Helper: conflict rule IDs
+// V5: Extract All Rule IDs That Conflict
 // -------------------------------
 function getConflictedRuleIds(conflicts) {
   const ids = new Set();
-  for (const c of conflicts) {
-    if (Array.isArray(c.rules)) c.rules.forEach((id) => ids.add(id));
-  }
+  for (const c of conflicts) (c.rules || []).forEach((id) => ids.add(id));
   return [...ids];
-}
-
-// -------------------------------
-// AI Builder stub (prevents crash)
-// -------------------------------
-async function handleAiBuildRules() {
-  console.log("AI Build Rules placeholder executed");
 }
 
 // -------------------------------
 // RULE CARD — Drag Component
 // -------------------------------
 function RuleCard({
-  rule, index, laneKey, onMoveRule,
-  onDeleteRule, onExplain, canEdit, conflictedRuleIds
+  rule,
+  index,
+  laneKey,
+  onMoveRule,
+  onDeleteRule,
+  onExplain,
+  canEdit,
+  conflictedRuleIds,
 }) {
   const ref = useRef(null);
   const isBad = conflictedRuleIds.includes(rule.id);
@@ -149,7 +209,7 @@ function RuleCard({
           }}
         >
           Explain
-          </button>
+        </button>
 
         {canEdit && (
           <button
@@ -175,9 +235,15 @@ function RuleCard({
 // LANE COLUMN
 // -------------------------------
 function LaneColumn({
-  laneKey, label, color, rules,
-  onMoveRule, onDeleteRule, onExplain, canEdit,
-  conflictedRuleIds
+  laneKey,
+  label,
+  color,
+  rules,
+  onMoveRule,
+  onDeleteRule,
+  onExplain,
+  canEdit,
+  conflictedRuleIds,
 }) {
   return (
     <div
@@ -202,7 +268,14 @@ function LaneColumn({
       </div>
 
       {rules.length === 0 && (
-        <div style={{ fontSize: 12, color: "#6b7280", padding: 8, textAlign: "center" }}>
+        <div
+          style={{
+            fontSize: 12,
+            color: "#6b7280",
+            padding: 8,
+            textAlign: "center",
+          }}
+        >
           No rules in this lane.
         </div>
       )}
@@ -223,6 +296,10 @@ function LaneColumn({
     </div>
   );
 }
+
+// ==========================================================
+// MAIN PAGE COMPONENT
+// ==========================================================
 export default function RequirementsV5Page() {
   const { isAdmin, isManager } = useRole();
   const { activeOrgId: orgId, loadingOrgs } = useOrg();
@@ -237,19 +314,25 @@ export default function RequirementsV5Page() {
   const [rules, setRules] = useState([]);
 
   const [toast, setToast] = useState({
-    open: false, message: "", type: "success"
+    open: false,
+    message: "",
+    type: "success",
   });
 
   const [samplePolicyText, setSamplePolicyText] = useState(`{
-  "policy.coverage_type": "General Liability",
-  "policy.glEachOccurrence": 1000000,
-  "policy.glAggregate": 2000000,
-  "policy.expiration_date": "2025-12-31",
-  "policy.carrier": "Sample Carrier"
+  "policy": {
+    "coverage_type": "General Liability",
+    "glEachOccurrence": 1000000,
+    "glAggregate": 2000000,
+    "expiration_date": "2025-12-31",
+    "carrier": "Sample Carrier"
+  }
 }`);
 
   const [evaluation, setEvaluation] = useState({
-    ok: false, error: "", results: {}
+    ok: false,
+    error: "",
+    results: {},
   });
 
   const [runningEngine, setRunningEngine] = useState(false);
@@ -286,8 +369,12 @@ export default function RequirementsV5Page() {
   // -------------------------------------
   useEffect(() => {
     if (loadingOrgs) return;
-    if (!orgId) return setLoading(false);
+    if (!orgId) {
+      setLoading(false);
+      return;
+    }
     loadGroups();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [orgId, loadingOrgs]);
 
   async function loadGroups() {
@@ -299,10 +386,15 @@ export default function RequirementsV5Page() {
 
       setGroups(json.groups || []);
       if (json.groups.length > 0) {
-        setActiveGroupId(json.groups[0].id);
-        await loadRulesForGroup(json.groups[0].id);
+        const firstId = json.groups[0].id;
+        setActiveGroupId(firstId);
+        await loadRulesForGroup(firstId);
+      } else {
+        setActiveGroupId(null);
+        setRules([]);
       }
     } catch (err) {
+      console.error(err);
       setError(err.message);
     } finally {
       setLoading(false);
@@ -310,13 +402,17 @@ export default function RequirementsV5Page() {
   }
 
   async function loadRulesForGroup(id) {
-    if (!id) return setRules([]);
+    if (!id) {
+      setRules([]);
+      return;
+    }
     try {
       const res = await fetch(`/api/requirements-v2/rules?groupId=${id}`);
       const json = await res.json();
       if (!json.ok) throw new Error(json.error);
       setRules(json.rules || []);
     } catch (err) {
+      console.error(err);
       setError(err.message);
     }
   }
@@ -332,15 +428,18 @@ export default function RequirementsV5Page() {
     try {
       setSaving(true);
       const res = await fetch(`/api/requirements-v2/groups?orgId=${orgId}`, {
-        method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name })
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name }),
       });
       const json = await res.json();
       if (!json.ok) throw new Error(json.error);
 
       setGroups((p) => [json.group, ...p]);
       setActiveGroupId(json.group.id);
+      await loadRulesForGroup(json.group.id);
     } catch (err) {
+      console.error(err);
       setToast({ open: true, type: "error", message: err.message });
     } finally {
       setSaving(false);
@@ -363,6 +462,7 @@ export default function RequirementsV5Page() {
       const json = await res.json();
       if (!json.ok) throw new Error(json.error);
     } catch (err) {
+      console.error(err);
       setToast({ open: true, type: "error", message: err.message });
       loadGroups();
     } finally {
@@ -386,13 +486,15 @@ export default function RequirementsV5Page() {
       setGroups(remain);
 
       if (remain.length) {
-        setActiveGroupId(remain[0].id);
-        loadRulesForGroup(remain[0].id);
+        const newActive = remain[0].id;
+        setActiveGroupId(newActive);
+        await loadRulesForGroup(newActive);
       } else {
         setActiveGroupId(null);
         setRules([]);
       }
     } catch (err) {
+      console.error(err);
       setToast({ open: true, type: "error", message: err.message });
     } finally {
       setSaving(false);
@@ -405,13 +507,16 @@ export default function RequirementsV5Page() {
   async function handleCreateRule() {
     if (!activeGroup || !canEdit) return;
 
-    const field_key = prompt("Field key:"); if (!field_key) return;
-    const expected_value = prompt("Expected value:"); if (!expected_value) return;
+    const field_key = prompt("Field key:");
+    if (!field_key) return;
+    const expected_value = prompt("Expected value:");
+    if (!expected_value) return;
 
     try {
       setSaving(true);
       const res = await fetch("/api/requirements-v2/rules", {
-        method: "POST", headers: { "Content-Type": "application/json" },
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           groupId: activeGroup.id,
           field_key,
@@ -425,6 +530,7 @@ export default function RequirementsV5Page() {
 
       setRules((p) => [...p, json.rule]);
     } catch (err) {
+      console.error(err);
       setToast({ open: true, type: "error", message: err.message });
     } finally {
       setSaving(false);
@@ -449,6 +555,7 @@ export default function RequirementsV5Page() {
       const json = await res.json();
       if (!json.ok) throw new Error(json.error);
     } catch (err) {
+      console.error(err);
       setToast({ open: true, type: "error", message: err.message });
       loadRulesForGroup(activeGroupId);
     } finally {
@@ -470,11 +577,13 @@ export default function RequirementsV5Page() {
 
       setRules((p) => p.filter((r) => r.id !== ruleId));
     } catch (err) {
+      console.error(err);
       setToast({ open: true, type: "error", message: err.message });
     } finally {
       setSaving(false);
     }
   }
+
   // -------------------------------------
   // DRAG & DROP MOVE
   // -------------------------------------
@@ -492,8 +601,8 @@ export default function RequirementsV5Page() {
   }
 
   // -------------------------------------
-  // ENGINE RUN
-  // -------------------------------------
+  // ENGINE RUN (V5 LOGGING, still uses run-v3 backend)
+// -------------------------------------
   async function handleRunEngine() {
     try {
       setRunningEngine(true);
@@ -531,6 +640,7 @@ export default function RequirementsV5Page() {
       setToast({ open: true, type: "success", message: msg });
     } catch (err) {
       const msg = err.message || "Engine failed.";
+      console.error(err);
 
       setEngineLog((prev) => [
         {
@@ -547,8 +657,8 @@ export default function RequirementsV5Page() {
   }
 
   // -------------------------------------
-  // SAMPLE POLICY EVALUATION
-  // -------------------------------------
+  // SAMPLE POLICY EVALUATION (V5)
+// -------------------------------------
   function handleEvaluateSamplePolicy() {
     setEvaluation({ ok: false, error: "", results: {} });
 
@@ -565,15 +675,88 @@ export default function RequirementsV5Page() {
 
     const results = {};
     for (const r of rules) {
-      results[r.id] = evaluateRule(r, parsed);
+      results[r.id] = evaluateRuleV5(r, parsed);
     }
 
     setEvaluation({ ok: true, error: "", results });
     setToast({ open: true, type: "success", message: "Sample evaluated." });
   }
+
   // -------------------------------------
-  // AI RULE SUGGESTION (UI-ONLY MOCK)
+  // V5 AI RULE BUILDER (real handler)
+// -------------------------------------
+  async function handleAiBuildRules() {
+    if (!aiInput.trim()) {
+      setToast({
+        open: true,
+        type: "error",
+        message: "Enter some text or paste requirements first.",
+      });
+      return;
+    }
+
+    if (!orgId) {
+      setToast({
+        open: true,
+        type: "error",
+        message: "No active org. Select or create an org first.",
+      });
+      return;
+    }
+
+    try {
+      setSaving(true);
+      setToast({
+        open: true,
+        type: "success",
+        message: "Sending to AI builder…",
+      });
+
+      const res = await fetch("/api/requirements-v5/ai-build", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          orgId,
+          groupId: activeGroupId,
+          text: aiInput,
+        }),
+      });
+
+      const json = await res.json();
+      if (!res.ok || !json.ok) {
+        throw new Error(json.error || "AI builder failed.");
+      }
+
+      if (activeGroupId) {
+        await loadRulesForGroup(activeGroupId);
+      } else {
+        await loadGroups();
+      }
+
+      setToast({
+        open: true,
+        type: "success",
+        message:
+          json.message ||
+          `AI created ${json.rules?.length || 0} rules from your input.`,
+      });
+    } catch (err) {
+      console.error("AI build error", err);
+      setToast({
+        open: true,
+        type: "error",
+        message:
+          err.message ||
+          "AI builder endpoint is not configured yet. Ask dev to implement /api/requirements-v5/ai-build.",
+      });
+    } finally {
+      setSaving(false);
+    }
+  }
+
   // -------------------------------------
+  // AI RULE SUGGEST (existing lightweight flow)
+// -------------------------------------
   function handleOpenAiSuggest() {
     if (!activeGroup) {
       return setToast({
@@ -627,6 +810,7 @@ export default function RequirementsV5Page() {
           message: "AI rule added.",
         });
       } catch (err) {
+        console.error(err);
         setToast({ open: true, type: "error", message: err.message });
       } finally {
         setSaving(false);
@@ -661,6 +845,7 @@ export default function RequirementsV5Page() {
       if (!json.ok) throw new Error(json.error || "Failed to explain rule.");
       setExplainText(json.explanation || "");
     } catch (err) {
+      console.error(err);
       setExplainText(
         "AI could not explain this rule.\n\n" + (err.message || "Unknown error.")
       );
@@ -688,6 +873,7 @@ export default function RequirementsV5Page() {
         message: "Conflict scan complete.",
       });
     } catch (err) {
+      console.error(err);
       setToast({
         open: true,
         type: "error",
@@ -697,6 +883,7 @@ export default function RequirementsV5Page() {
       setConflictLoading(false);
     }
   }
+
   // -------------------------------------
   // RENDER — PAGE LAYOUT
   // -------------------------------------
@@ -784,8 +971,7 @@ export default function RequirementsV5Page() {
             Define{" "}
             <span
               style={{
-                background:
-                  "linear-gradient(90deg,#38bdf8,#a5b4fc,#e5e7eb)",
+                background: "linear-gradient(90deg,#38bdf8,#a5b4fc,#e5e7eb)",
                 WebkitBackgroundClip: "text",
                 color: "transparent",
               }}
@@ -814,8 +1000,7 @@ export default function RequirementsV5Page() {
               color: "#9ca3af",
             }}
           >
-            Org:{" "}
-            <span style={{ color: "#e5e7eb" }}>{orgId || "none"}</span> ·
+            Org: <span style={{ color: "#e5e7eb" }}>{orgId || "none"}</span> ·
             Groups: <span style={{ color: "#e5e7eb" }}>{groups.length}</span> ·
             Active:{" "}
             <span style={{ color: "#e5e7eb" }}>
@@ -910,6 +1095,7 @@ Must include Additional Insured and Waiver of Subrogation."`}
             ⚡ Generate Rules (AI)
           </button>
         </div>
+
         {/* GRID WRAPPER */}
         <div
           style={{
@@ -1276,6 +1462,7 @@ Must include Additional Insured and Waiver of Subrogation."`}
               </div>
             </DndProvider>
           </div>
+
           {/* RIGHT PANEL — ENGINE + EVAL + AI SUGGEST + CONFLICT */}
           <div
             style={{
@@ -1710,6 +1897,7 @@ Must include Additional Insured and Waiver of Subrogation."`}
             )}
           </div>
         </div>
+
         {/* EXPLAIN RULE DRAWER */}
         {explainOpen && (
           <div
@@ -1821,129 +2009,129 @@ Must include Additional Insured and Waiver of Subrogation."`}
                 Conflict Analysis
               </div>
 
-              <button
-                onClick={() => setConflictOpen(false)}
-                style={{
-                  borderRadius: 999,
-                  padding: "4px 8px",
-                  fontSize: 12,
-                  background: "rgba(15,23,42,0.8)",
-                  border: "1px solid rgba(148,163,184,0.6)",
-                  color: "#9ca3af",
-                  cursor: "pointer",
-                }}
-              >
-                Close
-              </button>
+            <button
+              onClick={() => setConflictOpen(false)}
+              style={{
+                borderRadius: 999,
+                padding: "4px 8px",
+                fontSize: 12,
+                background: "rgba(15,23,42,0.8)",
+                border: "1px solid rgba(148,163,184,0.6)",
+                color: "#9ca3af",
+                cursor: "pointer",
+              }}
+            >
+              Close
+            </button>
+          </div>
+
+          {conflictLoading && (
+            <div style={{ color: "#cbd5f5", fontSize: 13 }}>
+              AI is analyzing all rules for conflicts…
             </div>
+          )}
 
-            {conflictLoading && (
-              <div style={{ color: "#cbd5f5", fontSize: 13 }}>
-                AI is analyzing all rules for conflicts…
-              </div>
-            )}
+          {!conflictLoading && conflicts.length === 0 && (
+            <div
+              style={{
+                fontSize: 13,
+                color: "#9ca3af",
+                padding: 12,
+                borderRadius: 12,
+                border: "1px solid rgba(55,65,81,0.6)",
+                background: "rgba(15,23,42,0.8)",
+              }}
+            >
+              ✅ No conflicts detected.
+            </div>
+          )}
 
-            {!conflictLoading && conflicts.length === 0 && (
+          {!conflictLoading &&
+            conflicts.length > 0 &&
+            conflicts.map((c, idx) => (
               <div
+                key={idx}
                 style={{
-                  fontSize: 13,
-                  color: "#9ca3af",
-                  padding: 12,
-                  borderRadius: 12,
-                  border: "1px solid rgba(55,65,81,0.6)",
-                  background: "rgba(15,23,42,0.8)",
+                  padding: 14,
+                  borderRadius: 14,
+                  marginBottom: 12,
+                  background:
+                    "linear-gradient(145deg,rgba(31,41,55,0.8),rgba(17,24,39,0.9))",
+                  border: "1px solid rgba(239,68,68,0.6)",
                 }}
               >
-                ✅ No conflicts detected.
-              </div>
-            )}
-
-            {!conflictLoading &&
-              conflicts.length > 0 &&
-              conflicts.map((c, idx) => (
                 <div
-                  key={idx}
                   style={{
-                    padding: 14,
-                    borderRadius: 14,
-                    marginBottom: 12,
-                    background:
-                      "linear-gradient(145deg,rgba(31,41,55,0.8),rgba(17,24,39,0.9))",
-                    border: "1px solid rgba(239,68,68,0.6)",
+                    color: "#fca5a5",
+                    fontWeight: 600,
+                    marginBottom: 6,
+                    fontSize: 14,
                   }}
                 >
-                  <div
-                    style={{
-                      color: "#fca5a5",
-                      fontWeight: 600,
-                      marginBottom: 6,
-                      fontSize: 14,
-                    }}
-                  >
-                    ⚠ Conflict #{idx + 1}
-                  </div>
-
-                  <div style={{ color: "#e5e7eb", fontSize: 13 }}>
-                    {c.summary}
-                  </div>
-
-                  <div
-                    style={{
-                      color: "#fcd34d",
-                      fontSize: 12,
-                      marginTop: 8,
-                      fontStyle: "italic",
-                    }}
-                  >
-                    Suggestion: {c.suggestion}
-                  </div>
+                  ⚠ Conflict #{idx + 1}
                 </div>
-              ))}
-          </div>
-        )}
-      </div>
 
-      {/* SAVING INDICATOR */}
-      {saving && (
-        <div
-          style={{
-            position: "fixed",
-            right: 18,
-            bottom: 18,
-            padding: "6px 12px",
-            borderRadius: 999,
-            background: "rgba(15,23,42,0.9)",
-            border: "1px solid rgba(148,163,184,0.7)",
-            color: "#e5e7eb",
-            fontSize: 12,
-            zIndex: 50,
-          }}
-        >
-          Saving…
+                <div style={{ color: "#e5e7eb", fontSize: 13 }}>
+                  {c.summary}
+                </div>
+
+                <div
+                  style={{
+                    color: "#fcd34d",
+                    fontSize: 12,
+                    marginTop: 8,
+                    fontStyle: "italic",
+                  }}
+                >
+                  Suggestion: {c.suggestion}
+                </div>
+              </div>
+            ))}
         </div>
       )}
-
-      {/* TOAST */}
-      <ToastV2
-        open={toast.open}
-        message={toast.message}
-        type={toast.type}
-        onClose={() =>
-          setToast((p) => ({
-            ...p,
-            open: false,
-          }))
-        }
-      />
-
-      {/* GLOBAL SPIN ANIMATION */}
-      <style jsx global>{`
-        @keyframes spin {
-          to {
-            transform: rotate(360deg);
-          }
-        }
-      `}</style>
     </div>
-  );
+
+    {/* SAVING INDICATOR */}
+    {saving && (
+      <div
+        style={{
+          position: "fixed",
+          right: 18,
+          bottom: 18,
+          padding: "6px 12px",
+          borderRadius: 999,
+          background: "rgba(15,23,42,0.9)",
+          border: "1px solid rgba(148,163,184,0.7)",
+          color: "#e5e7eb",
+          fontSize: 12,
+          zIndex: 50,
+        }}
+      >
+        Saving…
+      </div>
+    )}
+
+    {/* TOAST */}
+    <ToastV2
+      open={toast.open}
+      message={toast.message}
+      type={toast.type}
+      onClose={() =>
+        setToast((p) => ({
+          ...p,
+          open: false,
+        }))
+      }
+    />
+
+    {/* GLOBAL SPIN ANIMATION */}
+    <style jsx global>{`
+      @keyframes spin {
+        to {
+          transform: rotate(360deg);
+        }
+      }
+    `}</style>
+  </div>
+);
 }
