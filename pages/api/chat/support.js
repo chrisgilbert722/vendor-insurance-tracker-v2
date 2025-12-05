@@ -1,8 +1,8 @@
 // pages/api/chat/support.js
-// Ultimate Multi-Mode Chat Engine v10 — Full Autopilot
-// Org Brain, Auto-Fix, Explain Page, GOD MODE Wizard + Persona Engine,
-// CSV Import, COI Flow, Auto-Industry Detection, Auto-Rule Build,
-// Auto-Template Generation, Auto-Alert Configuration, Checklist, Normal Chat.
+// GOD MODE V12 — FULL AUTOPILOT ENGINE
+// Wizard + Persona + Auto Industry + Auto Rules + Auto Templates
+// + Auto Alerts + Notifications + Power Mode "Run Alerts Now"
+// + Timeline Logging (onboarding + manual alert scans)
 
 import { openai } from "../../../lib/openaiClient";
 import { sql } from "../../../lib/db";
@@ -15,7 +15,7 @@ export const config = {
 };
 
 // ================================
-// GLOBAL WIZARD STATE (IN-MEMORY)
+// In-memory wizard state per org
 // ================================
 const wizardStateByOrg = {};
 
@@ -32,19 +32,18 @@ function isWizardStartTrigger(lastContent, onboardingComplete) {
     "start onboarding",
     "run onboarding",
     "configure system",
-    "set up system",
-    "setup system",
+    "onboarding wizard",
     "help me get set up",
     "help me get setup",
-    "onboarding wizard",
     "full onboarding",
   ];
-
   return triggers.some((p) => t.includes(p));
 }
 
+// ================================
 // Persona wrapper
-function applyPersona(reply, { powerMode, step, industry }) {
+// ================================
+function personaWrap(rawReply, { powerMode, step, industry }) {
   const persona = getWizardPersona({
     mode: powerMode ? "power" : "onboarding",
     industry,
@@ -52,11 +51,11 @@ function applyPersona(reply, { powerMode, step, industry }) {
     powerMode,
     userRole: "admin",
   });
-  return persona.styleTransform(reply);
+  return persona.styleTransform(rawReply);
 }
 
 // ================================
-// HELPER CALLS TO OTHER ENDPOINTS
+// Helper: Industry detection
 // ================================
 async function runIndustryDetection(orgId) {
   const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || "";
@@ -70,6 +69,9 @@ async function runIndustryDetection(orgId) {
   return "general";
 }
 
+// ================================
+// Helper: Auto rule build
+// ================================
 async function runAutoRuleBuild(orgId, industry) {
   const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || "";
   const res = await fetch(`${baseUrl}/api/rules/auto-build`, {
@@ -80,6 +82,9 @@ async function runAutoRuleBuild(orgId, industry) {
   return await res.json();
 }
 
+// ================================
+// Helper: Auto template generation + write to DB
+// ================================
 async function runAutoTemplateGen(orgId, industry) {
   const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || "";
   const res = await fetch(`${baseUrl}/api/templates/auto-generate`, {
@@ -87,16 +92,19 @@ async function runAutoTemplateGen(orgId, industry) {
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ orgId, industry, tone: "professional" }),
   });
+
   const json = await res.json();
   if (!json.ok) return json;
 
-  // Overwrite-by-key: delete existing templates with same key, insert new
+  // Overwrite-by-key mode: delete existing templates with same key, then insert
   for (const key of Object.keys(json.templates || {})) {
     const t = json.templates[key];
+
     await sql`
       DELETE FROM templates
       WHERE org_id = ${orgId} AND key = ${key}
     `;
+
     await sql`
       INSERT INTO templates (org_id, key, subject, body)
       VALUES (${orgId}, ${key}, ${t.subject}, ${t.body})
@@ -106,6 +114,9 @@ async function runAutoTemplateGen(orgId, industry) {
   return json;
 }
 
+// ================================
+// Helper: Auto alert configuration
+// ================================
 async function runAutoAlertConfig(orgId, industry, recipients) {
   const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || "";
   const res = await fetch(`${baseUrl}/api/alerts/auto-configure`, {
@@ -119,8 +130,21 @@ async function runAutoAlertConfig(orgId, industry, recipients) {
   });
   return await res.json();
 }
+
 // ================================
-// GOD MODE WIZARD (FULL AUTOPILOT)
+// Helper: Run alerts now (Power Mode) via cron endpoint
+// ================================
+async function runAlertsNow(orgId) {
+  const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || "";
+  const res = await fetch(`${baseUrl}/api/alerts/run-cron?orgId=${orgId}`, {
+    method: "GET",
+    headers: { "Content-Type": "application/json" },
+  });
+  return await res.json();
+}
+
+// ================================
+// GOD MODE AUTOPILOT WIZARD
 // ================================
 async function routeWizard({ state, lastContent, onboardingComplete, orgId }) {
   const text = normalize(lastContent);
@@ -129,38 +153,43 @@ async function routeWizard({ state, lastContent, onboardingComplete, orgId }) {
   let step = state.step || null;
   let industry = state.industry || "general";
 
-  const personaWrap = (raw) =>
-    applyPersona(raw, { powerMode, step: nextState.step || step, industry });
+  const wrap = (raw) =>
+    personaWrap(raw, {
+      powerMode,
+      step: nextState.step || step,
+      industry,
+    });
 
-  // Already completed → Power Mode
+  // -------- POWER MODE (wizard already completed) --------
   if (powerMode) {
     return {
-      reply: personaWrap(
-        "Your onboarding is complete. I’m now in **Power Mode** — ask me about vendors, risk, alerts, renewals, or what to fix first."
+      reply: wrap(
+        "Onboarding is complete. You’re in **Power Mode** — ask about high-risk vendors, alerts, or run operations like **run alerts now**."
       ),
       nextState: { ...nextState, mode: "completed", completed: true },
     };
   }
 
-  // Not started yet → decide if we should start
+  // -------- START WIZARD --------
   if (!state.mode || state.mode === "idle") {
     if (!isWizardStartTrigger(lastContent, onboardingComplete)) {
       return { reply: null, nextState };
     }
+
     nextState.mode = "onboarding";
     nextState.step = "choose_source";
 
     return {
-      reply: personaWrap(`
+      reply: wrap(`
 🔥 Welcome to **GOD MODE Onboarding**.
 
-I’ll configure your entire compliance system for you.
+I’ll configure your system for you.
 
 How do you want to start?
 
-1) **CSV** of vendors  
-2) **COI PDFs**  
-3) **Manual vendor entry**
+• CSV of vendors  
+• COI PDFs  
+• Manual vendor entry  
 
 Reply: "CSV", "COIs", or "manual entry".
 `),
@@ -168,21 +197,21 @@ Reply: "CSV", "COIs", or "manual entry".
     };
   }
 
-  // Active wizard
+  // -------- ACTIVE WIZARD FLOW --------
   switch (state.step) {
     // ---------------- choose_source ----------------
     case "choose_source": {
-      if (text.includes("csv") || text.includes("excel")) {
+      if (text.includes("csv")) {
         nextState.source = "csv";
         nextState.step = "csv_paste";
         return {
-          reply: personaWrap(`
+          reply: wrap(`
 📝 Great — paste your CSV here (with header row).
 
 Example:
 
-\`vendor_name,email,category
-ABC Plumbing,info@abc.com,Plumbing\`
+vendor_name,email,category  
+ABC Plumbing,info@abc.com,Plumbing
 
 I’ll import vendors automatically.
 `),
@@ -190,47 +219,35 @@ I’ll import vendors automatically.
         };
       }
 
-      if (
-        text.includes("coi") ||
-        text.includes("certificate") ||
-        text.includes("pdf")
-      ) {
+      if (text.includes("coi") || text.includes("pdf")) {
         nextState.source = "coi";
         nextState.step = "coi_wait_upload";
         return {
-          reply: personaWrap(`
-📄 Upload COIs in your COI Upload screen.
+          reply: wrap(`
+📄 Upload your COIs in the COI Upload screen.
 
-Once uploaded, say: **"COIs uploaded"** or **"done"**.
+When done, say: **"COIs uploaded"**.
 `),
           nextState,
         };
       }
 
-      if (
-        text.includes("manual") ||
-        text.includes("type") ||
-        text.includes("enter")
-      ) {
+      if (text.includes("manual")) {
         nextState.source = "manual";
         nextState.step = "manual_wait_vendors";
         return {
-          reply: personaWrap(`
+          reply: wrap(`
 ✍️ Add vendors manually in the Vendors screen.
 
-When you’re done, say: **"vendors added"** or **"done"**.
+Then say: **"vendors added"**.
 `),
           nextState,
         };
       }
 
       return {
-        reply: personaWrap(`
-To start, reply with:
-
-- "CSV"
-- "COIs"
-- or "manual entry"
+        reply: wrap(`
+To begin, reply with **"CSV"**, **"COIs"**, or **"manual entry"**.
 `),
         nextState,
       };
@@ -238,86 +255,67 @@ To start, reply with:
 
     // ---------------- csv_paste ----------------
     case "csv_paste": {
-      if (!orgId) {
-        return {
-          reply: personaWrap(
-            "I’m missing your org ID, so I can’t import. Please refresh."
-          ),
-          nextState,
-        };
-      }
-
       const csvText = lastContent || "";
       const looksLikeCsv =
         csvText.includes(",") && csvText.includes("\n");
 
       if (!looksLikeCsv) {
         return {
-          reply: personaWrap(`
+          reply: wrap(`
 I was expecting CSV text.
 
 Example:
 
-\`vendor_name,email,category
-ABC Plumbing,info@abc.com,Plumbing\`
+vendor_name,email,category  
+ABC Plumbing,info@abc.com,Plumbing
 
-Paste your CSV and I’ll import it.
+Paste your CSV again.
 `),
           nextState,
         };
       }
 
       try {
-        // Import CSV
         const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || "";
-        const importRes = await fetch(
-          `${baseUrl}/api/vendors/import-csv`,
-          {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ orgId, csvText }),
-          }
-        );
-        const importJson = await importRes.json();
-        if (!importJson.ok) {
+        const res = await fetch(`${baseUrl}/api/vendors/import-csv`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ orgId, csvText }),
+        });
+        const json = await res.json();
+
+        if (!json.ok) {
           return {
-            reply: personaWrap(
-              `⚠️ CSV import failed: ${importJson.error || "Unknown error"}`
+            reply: wrap(
+              `⚠️ CSV import failed: ${json.error || "Unknown error"}`
             ),
             nextState,
           };
         }
 
-        // Industry detection
+        // Auto industry/rules/templates
         industry = await runIndustryDetection(orgId);
         nextState.industry = industry;
-
-        // Auto-build rules
         await runAutoRuleBuild(orgId, industry);
-
-        // Auto-generate templates
         await runAutoTemplateGen(orgId, industry);
 
         nextState.step = "alerts_intro";
 
         return {
-          reply: personaWrap(`
-✅ Vendors imported  
+          reply: wrap(`
+🔥 Vendors imported  
 🏭 Industry detected: **${industry}**  
 🧠 Rules generated  
-✉️ Email templates created  
+✉️ Templates created  
 
-Now: **who should receive alerts?**  
-Example: "send to risk@mycompany.com"
+Now tell me **who should receive alerts**.
 `),
           nextState,
         };
       } catch (err) {
-        console.error("[Wizard CSV ERROR]", err);
+        console.error("[Wizard CSV Error]", err);
         return {
-          reply: personaWrap(
-            "❌ CSV import failed due to a system error. Try again."
-          ),
+          reply: wrap("❌ System error while importing CSV."),
           nextState,
         };
       }
@@ -332,14 +330,14 @@ Example: "send to risk@mycompany.com"
 
       if (!saidDone) {
         return {
-          reply: personaWrap(
+          reply: wrap(
             `Upload COIs first, then say **"COIs uploaded"**.`
           ),
           nextState,
         };
       }
 
-      // Industry + rules + templates
+      // Auto pipeline
       industry = await runIndustryDetection(orgId);
       nextState.industry = industry;
       await runAutoRuleBuild(orgId, industry);
@@ -348,11 +346,11 @@ Example: "send to risk@mycompany.com"
       nextState.step = "alerts_intro";
 
       return {
-        reply: personaWrap(`
-📄 COIs uploaded  
-🏭 Industry detected: **${industry}**  
+        reply: wrap(`
+📑 COIs processed  
+🏭 Industry: **${industry}**  
 🧠 Rules generated  
-✉️ Templates generated  
+✉️ Templates created  
 
 Who should receive alerts?
 `),
@@ -362,15 +360,13 @@ Who should receive alerts?
 
     // ---------------- manual_wait_vendors ----------------
     case "manual_wait_vendors": {
-      const saidDone =
-        text.includes("vendors added") ||
-        text.includes("added vendors") ||
-        text.includes("done");
+      const done =
+        text.includes("vendors added") || text.includes("done");
 
-      if (!saidDone) {
+      if (!done) {
         return {
-          reply: personaWrap(
-            `Add vendors manually, then say **"vendors added"**.`
+          reply: wrap(
+            `After adding vendors manually, say **"vendors added"**.`
           ),
           nextState,
         };
@@ -384,23 +380,24 @@ Who should receive alerts?
       nextState.step = "alerts_intro";
 
       return {
-        reply: personaWrap(`
+        reply: wrap(`
 🧾 Vendors added  
 🏭 Industry: **${industry}**  
 🧠 Rules generated  
-✉️ Templates generated  
+✉️ Templates created  
 
-Who should receive alerts?
+Now: who should receive alerts?
 `),
         nextState,
       };
     }
+
     // ---------------- alerts_intro ----------------
     case "alerts_intro": {
       if (!lastContent || lastContent.length < 3) {
         return {
-          reply: personaWrap(
-            `Tell me who should receive alerts. Example: "send to risk@mycompany.com"`
+          reply: wrap(
+            `Tell me who should receive alerts. Example: "send to risk@mycompany.com".`
           ),
           nextState,
         };
@@ -417,9 +414,9 @@ Who should receive alerts?
 
       if (!alertJson.ok) {
         return {
-          reply: personaWrap(
-            `⚠️ I tried to configure alerts but hit an error: ${
-              alertJson.error || "Unknown"
+          reply: wrap(
+            `⚠️ I tried to configure alerts, but hit an error: ${
+              alertJson.error || "Unknown error"
             }. We can still finish onboarding.`
           ),
           nextState,
@@ -429,15 +426,19 @@ Who should receive alerts?
       nextState.step = "wrap_up";
 
       return {
-        reply: personaWrap(`
-🔔 Alert engine configured:
+        reply: wrap(`
+🔔 **Alert Engine Configured**
 
-- Renewal alerts (30/60/90 days)
-- Non-compliance alerts
-- Industry-specific alerts
-- Recipients: **${recipients}**
+• Renewal alerts (30/60/90 days)  
+• Non-compliance alerts  
+• Industry-specific alerts  
+• Email delivery using your templates  
+• Recipients: **${recipients}**
 
-If this looks good, say **"finish onboarding"**.
+🕒 **Daily Automation Enabled**  
+A scheduled job runs this alert engine every morning at **8:00am**.
+
+If everything looks good, say **"finish onboarding"**.
 `),
         nextState,
       };
@@ -454,30 +455,50 @@ If this looks good, say **"finish onboarding"**.
 
       if (!confirm) {
         return {
-          reply: personaWrap(
-            `If everything is set, say **"finish onboarding"**.`
+          reply: wrap(
+            `If you're ready, say **"finish onboarding"** to lock everything in.`
           ),
           nextState,
         };
       }
 
-      nextState.mode = "completed";
       nextState.completed = true;
+      nextState.mode = "completed";
       nextState.step = "completed";
 
+      // Timeline log: onboarding completed
+      await sql`
+        INSERT INTO system_timeline (org_id, action, message, severity)
+        VALUES (
+          ${orgId},
+          'onboarding_completed',
+          'AI Onboarding Wizard completed full configuration and enabled daily automation.',
+          'success'
+        );
+      `;
+
       return {
-        reply: personaWrap(`
-🎉 Onboarding complete.
+        reply: wrap(`
+🎉 **Onboarding Complete — GOD MODE Active**
 
 Configured:
 
-- Vendors imported  
-- Industry detected  
-- Rules generated  
-- Templates generated  
-- Alerts configured  
+• Vendors imported  
+• Industry detected  
+• Rules generated  
+• Templates generated  
+• Alerts configured  
+• Email delivery live  
+• Daily automation scheduled  
 
-You’re now in **Power Mode**. Ask me about high-risk vendors, non-compliance, or what to fix first.
+You are now in **Power Mode**.
+
+Ask me:
+
+• "run alerts now"  
+• "show non-compliant vendors"  
+• "explain this dashboard"  
+• "who is highest risk right now?"
 `),
         nextState,
       };
@@ -485,11 +506,10 @@ You’re now in **Power Mode**. Ask me about high-risk vendors, non-compliance, 
 
     // ---------------- default ----------------
     default: {
-      nextState.mode = "onboarding";
       nextState.step = "choose_source";
       return {
-        reply: personaWrap(
-          `Let’s restart. Reply "CSV", "COIs", or "manual entry".`
+        reply: wrap(
+          `Let’s restart onboarding. Reply with "CSV", "COIs", or "manual entry".`
         ),
         nextState,
       };
@@ -516,15 +536,52 @@ export default async function handler(req, res) {
     } = req.body || {};
 
     if (!Array.isArray(messages) || messages.length === 0) {
-      return res.status(400).json({
-        ok: false,
-        error: "Missing messages array.",
-      });
+      return res
+        .status(400)
+        .json({ ok: false, error: "Missing messages array." });
     }
 
     const rawLastContent =
       messages[messages.length - 1]?.content || "";
     const lastMessage = rawLastContent.toLowerCase();
+
+    // ================= RUN ALERTS NOW (POWER MODE) =================
+    const runAlertsTriggers = [
+      "run alerts now",
+      "run alerts",
+      "trigger alerts",
+      "scan alerts",
+      "evaluate alerts",
+    ];
+
+    if (orgId && runAlertsTriggers.some((t) => lastMessage.includes(t))) {
+      const result = await runAlertsNow(orgId);
+
+      // Timeline log: manual alert scan
+      await sql`
+        INSERT INTO system_timeline (org_id, action, message, severity)
+        VALUES (
+          ${orgId},
+          'manual_alert_scan',
+          ${'Manual alert scan executed. Alerts: ' + (result.alertsCreated || 0) + ', Emails: ' + (result.emailsSent || 0)},
+          'info'
+        );
+      `;
+
+      return res.status(200).json({
+        ok: true,
+        reply: `🕒 **Manual Alert Scan Complete**
+
+Alerts Created: ${result.alertsCreated || 0}  
+Emails Sent: ${result.emailsSent || 0}  
+
+You can say:
+• "show alerts"
+• "show high risk vendors"
+• "explain this dashboard"
+`,
+      });
+    }
 
     // ================= ORG BRAIN MODE =================
     const orgBrainTriggers = [
@@ -539,7 +596,7 @@ export default async function handler(req, res) {
     if (orgId && orgBrainTriggers.some((t) => lastMessage.includes(t))) {
       try {
         const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || "";
-        const brainRes = await fetch(
+        const resBrain = await fetch(
           `${baseUrl}/api/org/ai-system-designer`,
           {
             method: "POST",
@@ -547,26 +604,29 @@ export default async function handler(req, res) {
             body: JSON.stringify({ orgId, prompt: lastMessage }),
           }
         );
-        const brain = await brainRes.json();
+        const brain = await resBrain.json();
 
         if (!brain.ok) {
           return res.status(200).json({
             ok: true,
             reply:
-              "⚠️ Org Brain hit an error: " +
-              (brain.error || "Unknown."),
+              "⚠️ Org Brain failed: " + (brain.error || "Unknown error."),
           });
         }
 
         return res.status(200).json({
           ok: true,
-          reply: `🧠 ORG BRAIN RESULT\n\n${JSON.stringify(brain, null, 2)}`,
+          reply: `🧠 ORG BRAIN BLUEPRINT\n\n${JSON.stringify(
+            brain,
+            null,
+            2
+          )}`,
         });
       } catch (err) {
         console.error("[Org Brain ERROR]", err);
         return res.status(200).json({
           ok: true,
-          reply: "❌ Org Brain failed.",
+          reply: "❌ Org Brain crashed unexpectedly.",
         });
       }
     }
@@ -581,12 +641,10 @@ export default async function handler(req, res) {
 
     if (vendorId && autoFixTriggers.some((t) => lastMessage.includes(t))) {
       try {
-        const vendorPolicies = await sql`
-          SELECT *
-          FROM policies
+        const policies = await sql`
+          SELECT * FROM policies
           WHERE vendor_id = ${vendorId}
         `;
-
         const ruleRows = await sql`
           SELECT passed, message, severity
           FROM rule_results_v3
@@ -608,10 +666,10 @@ Failing Rules:
 ${failSummary}
 
 Create:
-1) Short explanation of risk
+1) Short explanation of overall risk
 2) Vendor-facing fix email
 3) Broker request email
-4) JSON array of steps
+4) JSON array of concrete remediation steps
 `;
 
         const completion = await openai.chat.completions.create({
@@ -633,7 +691,7 @@ Create:
         console.error("[AutoFix ERROR]", err);
         return res.status(200).json({
           ok: true,
-          reply: "❌ Auto-Fix failed.",
+          reply: "❌ Auto-Fix failed due to a system error.",
         });
       }
     }
@@ -654,7 +712,7 @@ Page: ${path}
 Vendor context: ${vendorId ? "Vendor Detail" : "Global Dashboard"}
 
 Explain:
-- What panels mean
+- What the panels mean
 - How to use the page
 - What actions to take next
 `;
@@ -676,6 +734,7 @@ Explain:
         reply: completion.choices[0].message.content,
       });
     }
+
     // ================= WIZARD (GOD MODE) =================
     if (orgId) {
       const currentState =
@@ -704,7 +763,7 @@ Explain:
       }
     }
 
-    // ================= CHECKLIST MODE (LITE) =================
+    // ================= CHECKLIST (LITE) =================
     const checklistTriggers = [
       "start checklist",
       "where do i start",
@@ -719,28 +778,27 @@ Explain:
       const checklist = `
 🧭 AI Onboarding Checklist
 
-1) Upload or paste vendors (CSV, COIs, or manual)
-2) Let AI detect your industry
-3) Let AI auto-build rules
-4) Let AI generate templates
-5) Let AI configure alerts
+1) Upload or paste vendors (CSV, COIs, or manual)  
+2) Let AI detect your industry  
+3) Let AI auto-build rules  
+4) Let AI generate templates  
+5) Let AI configure alerts  
 6) Use Power Mode to manage risk
 
 You can say:
-- "start wizard"
-- "upload vendors"
-- "explain rules"
-- "show my alerts"
+• "start wizard"
+• "run alerts now"
+• "explain this page"
 `;
       return res.status(200).json({ ok: true, reply: checklist });
     }
 
-    // ================= NORMAL CHAT (FALLBACK) =================
+    // ================= NORMAL CHAT FALLBACK =================
     const systemPrompt = `
 You are an elite insurance compliance AI assistant.
 
 You:
-- Explain things clearly
+- Explain clearly
 - Suggest exact next steps
 - Use real insurance logic
 - Do not hallucinate details
@@ -773,3 +831,4 @@ User message: ${rawLastContent}
     });
   }
 }
+
