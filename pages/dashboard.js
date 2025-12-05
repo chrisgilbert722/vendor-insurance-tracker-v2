@@ -1,22 +1,22 @@
-// pages/dashboard.js — Dashboard V4 (Fully Live Data)
+// pages/dashboard.js — Dashboard V5 (Rule Engine Edition • Cinematic Cockpit)
 import { useEffect, useState } from "react";
 import VendorDrawer from "../components/VendorDrawer";
 import { useRole } from "../lib/useRole";
 import { useOrg } from "../context/OrgContext";
 import EliteStatusPill from "../components/elite/EliteStatusPill";
 
-// ONBOARDING COCKPIT COMPONENTS
+// Onboarding Cockpit
 import OnboardingHeroCard from "../components/onboarding/OnboardingHeroCard";
 import OnboardingBanner from "../components/onboarding/OnboardingBanner";
 
-// LIVE CHARTS
+// Charts
 import ComplianceTrajectoryChart from "../components/charts/ComplianceTrajectoryChart";
 import PassFailDonutChart from "../components/charts/PassFailDonutChart";
 import ExpiringCertsHeatmap from "../components/charts/ExpiringCertsHeatmap";
 import SeverityDistributionChart from "../components/charts/SeverityDistributionChart";
 import RiskTimelineChart from "../components/charts/RiskTimelineChart";
 
-// WEAPON PACK COMPONENTS
+// Weapon Pack
 import AlertTimelineChart from "../components/charts/AlertTimelineChart";
 import TopAlertTypes from "../components/charts/TopAlertTypes";
 import AlertAgingKpis from "../components/kpis/AlertAgingKpis";
@@ -24,18 +24,16 @@ import SlaBreachWidget from "../components/kpis/SlaBreachWidget";
 import CriticalVendorWatchlist from "../components/panels/CriticalVendorWatchlist";
 import AlertHeatSignature from "../components/charts/AlertHeatSignature";
 
-// 🔥 RENEWAL INTELLIGENCE V3 (Drop 2)
+// Renewal Intelligence V3
 import RenewalHeatmap from "../components/renewals/RenewalHeatmap";
 import RenewalBacklog from "../components/renewals/RenewalBacklog";
-
-// 🔥 RENEWAL INTELLIGENCE V3 (Drop 3)
 import RenewalSlaWidget from "../components/renewals/RenewalSlaWidget";
 import RenewalCalendar from "../components/renewals/RenewalCalendar";
 import RenewalAiSummary from "../components/renewals/RenewalAiSummary";
 
-/* ===========================
+/* ============================================================
    ELECTRIC NEON THEME
-=========================== */
+============================================================ */
 const GP = {
   bg: "#020617",
   panel: "rgba(15,23,42,0.98)",
@@ -51,19 +49,23 @@ const GP = {
   textMuted: "#6b7280",
 };
 
+/* ============================================================
+   EXPIRATION / RISK HELPERS
+============================================================ */
 function parseExpiration(dateStr) {
   if (!dateStr) return null;
   const [mm, dd, yyyy] = dateStr.split("/");
-  const d = new Date(`${yyyy}-${mm}-${dd}T00:00:00`);
-  return Number.isNaN(d.getTime()) ? null : d;
+  const d = new Date(`${yyyy}-${mm}-${dd}`);
+  return isNaN(d.getTime()) ? null : d;
 }
 function computeDaysLeft(dateStr) {
   const d = parseExpiration(dateStr);
-  return d ? Math.floor((d - new Date()) / 86400000) : null;
+  return d ? Math.floor((d - Date.now()) / 86400000) : null;
 }
 function computeRisk(p) {
   const daysLeft = computeDaysLeft(p.expiration_date);
   const flags = [];
+
   if (daysLeft === null) {
     return {
       daysLeft: null,
@@ -73,8 +75,10 @@ function computeRisk(p) {
       tier: "Unknown",
     };
   }
+
   let severity = "ok";
   let score = 95;
+
   if (daysLeft < 0) {
     severity = "expired";
     score = 20;
@@ -88,6 +92,7 @@ function computeRisk(p) {
     score = 70;
     flags.push("Expires ≤90 days");
   }
+
   const tier =
     severity === "expired"
       ? "Severe Risk"
@@ -96,8 +101,10 @@ function computeRisk(p) {
       : severity === "warning"
       ? "Moderate Risk"
       : "Healthy";
+
   return { daysLeft, severity, score, flags, tier };
 }
+
 function badgeStyle(level) {
   switch (level) {
     case "expired":
@@ -108,7 +115,7 @@ function badgeStyle(level) {
       };
     case "critical":
       return {
-        background: "rgba(248,181,82,0.18)",
+        background: "rgba(250,204,21,0.18)",
         color: "#fef3c7",
         border: "1px solid rgba(250,204,21,0.9)",
       };
@@ -132,28 +139,37 @@ function badgeStyle(level) {
       };
   }
 }
+
+/* ============================================================
+   AI RISK (Existing AI + Elite + Requirements)
+============================================================ */
 function computeAiRisk({ risk, elite, compliance }) {
   if (!risk) return { score: 0, tier: "Unknown" };
+
   let base = typeof risk.score === "number" ? risk.score : 0;
   let eliteFactor = 1.0;
   if (elite && !elite.loading && !elite.error) {
     if (elite.overall === "fail") eliteFactor = 0.4;
     else if (elite.overall === "warn") eliteFactor = 0.7;
   }
+
   let complianceFactor = 1.0;
   if (compliance && compliance.failing?.length > 0) complianceFactor = 0.5;
-  else if (compliance && compliance.missing?.length > 0)
-    complianceFactor = 0.7;
+  else if (compliance && compliance.missing?.length > 0) complianceFactor = 0.7;
+
   let score = Math.round(base * eliteFactor * complianceFactor);
   score = Math.max(0, Math.min(score, 100));
+
   let tier = "Unknown";
   if (score >= 85) tier = "Elite Safe";
   else if (score >= 70) tier = "Preferred";
   else if (score >= 55) tier = "Watch";
   else if (score >= 35) tier = "High Risk";
   else tier = "Severe";
+
   return { score, tier };
 }
+
 function renderComplianceBadge(vendorId, complianceMap) {
   const data = complianceMap[vendorId];
   const base = {
@@ -164,6 +180,7 @@ function renderComplianceBadge(vendorId, complianceMap) {
     fontSize: 11,
     fontWeight: 600,
   };
+
   if (!data || data.loading)
     return (
       <span
@@ -176,6 +193,7 @@ function renderComplianceBadge(vendorId, complianceMap) {
         Checking…
       </span>
     );
+
   if (data.error)
     return (
       <span
@@ -189,6 +207,7 @@ function renderComplianceBadge(vendorId, complianceMap) {
         Error
       </span>
     );
+
   if (data.missing?.length > 0)
     return (
       <span
@@ -202,6 +221,7 @@ function renderComplianceBadge(vendorId, complianceMap) {
         Missing
       </span>
     );
+
   if (data.failing?.length > 0)
     return (
       <span
@@ -215,6 +235,7 @@ function renderComplianceBadge(vendorId, complianceMap) {
         Non-compliant
       </span>
     );
+
   return (
     <span
       style={{
@@ -229,48 +250,115 @@ function renderComplianceBadge(vendorId, complianceMap) {
   );
 }
 
-/* ===========================
-   MAIN DASHBOARD
-=========================== */
+/* ============================================================
+   RULE ENGINE V3 HELPERS
+============================================================ */
+function computeV3Tier(score) {
+  if (score >= 85) return "Elite Safe";
+  if (score >= 70) return "Preferred";
+  if (score >= 55) return "Watch";
+  if (score >= 35) return "High Risk";
+  return "Severe";
+}
+
+function summarizeEngineHealth(engineMap) {
+  const vendors = Object.values(engineMap).filter(
+    (v) => v.loaded && !v.error && typeof v.globalScore === "number"
+  );
+
+  if (!vendors.length) {
+    return { avg: 0, fails: 0, critical: 0, total: 0 };
+  }
+
+  let totalScore = 0;
+  let fails = 0;
+  let critical = 0;
+
+  vendors.forEach((v) => {
+    totalScore += v.globalScore ?? 0;
+    if (v.failedCount > 0) fails++;
+    if (v.failingRules?.some((r) => r.severity === "critical")) critical++;
+  });
+
+  return {
+    avg: Math.round(totalScore / vendors.length),
+    fails,
+    critical,
+    total: vendors.length,
+  };
+}
+/* ============================================================
+   MAIN DASHBOARD COMPONENT
+============================================================ */
 export default function Dashboard() {
   const { isAdmin, isManager } = useRole();
   const { activeOrgId } = useOrg();
 
-  // 🔥 NEW — Onboarding state
+  /* --------------------
+     STATE
+  -------------------- */
   const [onboardingComplete, setOnboardingComplete] = useState(true);
   const [showHero, setShowHero] = useState(false);
   const [bannerDismissed, setBannerDismissed] = useState(false);
 
-  // 🔥 NEW — Fetch onboarding status from backend
+  const [dashboard, setDashboard] = useState(null);
+  const [dashboardLoading, setDashboardLoading] = useState(true);
+
+  const [policies, setPolicies] = useState([]);
+  const [loadingPolicies, setLoadingPolicies] = useState(true);
+
+  const [filterText, setFilterText] = useState("");
+
+  const [complianceMap, setComplianceMap] = useState({});
+  const [eliteMap, setEliteMap] = useState({});
+  const [engineMap, setEngineMap] = useState({});
+
+  const [eliteSummary, setEliteSummary] = useState({
+    pass: 0,
+    warn: 0,
+    fail: 0,
+  });
+
+  const [alertSummary, setAlertSummary] = useState(null);
+  const [showAlerts, setShowAlerts] = useState(false);
+
+  const [drawerOpen, setDrawerOpen] = useState(false);
+  const [drawerVendor, setDrawerVendor] = useState(null);
+  const [drawerPolicies, setDrawerPolicies] = useState([]);
+
+  const [systemTimeline, setSystemTimeline] = useState([]);
+  const [systemTimelineLoading, setSystemTimelineLoading] = useState(true);
+
+  /* ============================================================
+     ONBOARDING STATUS
+  ============================================================ */
   useEffect(() => {
-    async function fetchStatus() {
-      if (!activeOrgId) return;
+    if (!activeOrgId) return;
+
+    (async () => {
       try {
-        const res = await fetch(
-          `/api/onboarding/status?orgId=${encodeURIComponent(activeOrgId)}`
-        );
+        const res = await fetch(`/api/onboarding/status?orgId=${activeOrgId}`);
         const json = await res.json();
         if (json.ok) {
           const done = !!json.onboardingComplete;
           setOnboardingComplete(done);
-          setShowHero(!done); // show hero while not complete
+          setShowHero(!done);
         }
       } catch (err) {
         console.error("[dashboard] onboarding status error:", err);
       }
-    }
-    fetchStatus();
+    })();
   }, [activeOrgId]);
 
-  // 🔥 NEW — Banner dismiss state (localStorage)
+  /* ============================================================
+     ONBOARDING BANNER: LOCAL DISMISS
+  ============================================================ */
   useEffect(() => {
     try {
       const stored = localStorage.getItem("onboardingBannerDismissed");
-      if (stored === "true") {
-        setBannerDismissed(true);
-      }
-    } catch (err) {
-      console.error("[dashboard] localStorage error:", err);
+      if (stored === "true") setBannerDismissed(true);
+    } catch {
+      // ignore
     }
   }, []);
 
@@ -278,18 +366,16 @@ export default function Dashboard() {
     setBannerDismissed(true);
     try {
       localStorage.setItem("onboardingBannerDismissed", "true");
-    } catch (err) {
-      console.error("[dashboard] localStorage set error:", err);
-    }
-    // Optional: trigger chatbot checklist here if you want
-    // window.dispatchEvent(new CustomEvent("onboarding_chat_forceChecklist"));
+    } catch {}
   };
 
   const handleStartOnboarding = () => {
     window.location.href = "/onboarding/start";
   };
 
-  // 🔥 NEW — Auto-open chatbot checklist after 10s idle if onboarding incomplete
+  /* ============================================================
+     IDLE → AUTO-OPEN CHECKLIST IF ONBOARDING INCOMPLETE
+  ============================================================ */
   useEffect(() => {
     if (onboardingComplete) return;
 
@@ -300,10 +386,9 @@ export default function Dashboard() {
       lastActivity = Date.now();
     };
 
-    window.addEventListener("click", markActivity);
-    window.addEventListener("keydown", markActivity);
-    window.addEventListener("scroll", markActivity);
-    window.addEventListener("mousemove", markActivity);
+    ["click", "keydown", "scroll", "mousemove"].forEach((ev) =>
+      window.addEventListener(ev, markActivity)
+    );
 
     idleTimer = setInterval(() => {
       if (Date.now() - lastActivity >= 10000) {
@@ -316,122 +401,107 @@ export default function Dashboard() {
 
     return () => {
       clearInterval(idleTimer);
-      window.removeEventListener("click", markActivity);
-      window.removeEventListener("keydown", markActivity);
-      window.removeEventListener("scroll", markActivity);
-      window.removeEventListener("mousemove", markActivity);
+      ["click", "keydown", "scroll", "mousemove"].forEach((ev) =>
+        window.removeEventListener(ev, markActivity)
+      );
     };
   }, [onboardingComplete]);
 
-  // ===== EXISTING STATE =====
-  const [dashboard, setDashboard] = useState(null);
-  const [dashboardLoading, setDashboardLoading] = useState(true);
-
-  const [policies, setPolicies] = useState([]);
-  const [loadingPolicies, setLoadingPolicies] = useState(true);
-
-  const [filterText, setFilterText] = useState("");
-
-  const [complianceMap, setComplianceMap] = useState({});
-  const [eliteMap, setEliteMap] = useState({});
-  const [eliteSummary, setEliteSummary] = useState({
-    pass: 0,
-    warn: 0,
-    fail: 0,
-  });
-
-  const [showAlerts, setShowAlerts] = useState(false);
-  const [alertSummary, setAlertSummary] = useState(null);
-
-  const [drawerOpen, setDrawerOpen] = useState(false);
-  const [drawerVendor, setDrawerVendor] = useState(null);
-  const [drawerPolicies, setDrawerPolicies] = useState([]);
-
-  // System Timeline
-  const [systemTimeline, setSystemTimeline] = useState([]);
-  const [systemTimelineLoading, setSystemTimelineLoading] = useState(true);
-
-  // Rule Engine V3 map (per vendor)
-  const [engineMap, setEngineMap] = useState({});
-
-  // Derived metrics
-  const avgScore = dashboard?.globalScore ?? 0;
-  const totalVendors = dashboard?.vendorCount ?? 0;
-  const alertsCount = alertSummary?.total ?? 0;
-  /* LOAD DASHBOARD METRICS */
+  /* ============================================================
+     LOAD DASHBOARD METRICS
+  ============================================================ */
   useEffect(() => {
     if (!activeOrgId) return;
-    async function loadDashboard() {
+
+    (async () => {
       try {
         setDashboardLoading(true);
         const res = await fetch(`/api/dashboard/metrics?orgId=${activeOrgId}`);
-        const data = await res.json();
-        if (data.ok) setDashboard(data.overview);
+        const json = await res.json();
+        if (json.ok) setDashboard(json.overview);
       } catch (err) {
         console.error("[dashboard] metrics error:", err);
       } finally {
         setDashboardLoading(false);
       }
-    }
-    loadDashboard();
+    })();
   }, [activeOrgId]);
 
-  /* LOAD POLICIES */
+  /* ============================================================
+     LOAD POLICIES
+  ============================================================ */
   useEffect(() => {
-    async function load() {
+    (async () => {
       try {
         const res = await fetch("/api/get-policies");
-        const data = await res.json();
-        if (data.ok) setPolicies(data.policies);
+        const json = await res.json();
+        if (json.ok) setPolicies(json.policies);
       } catch (err) {
         console.error("[dashboard] policies error:", err);
       } finally {
         setLoadingPolicies(false);
       }
-    }
-    load();
+    })();
   }, []);
 
-  /* LOAD COMPLIANCE */
+  /* ============================================================
+     LOAD REQUIREMENTS COMPLIANCE
+  ============================================================ */
   useEffect(() => {
     if (!policies.length || !activeOrgId) return;
+
     const vendorIds = [...new Set(policies.map((p) => p.vendor_id))];
+
     vendorIds.forEach((vendorId) => {
-      if (complianceMap[vendorId]?.loading === false) return;
-      setComplianceMap((prev) => ({ ...prev, [vendorId]: { loading: true } }));
+      const existing = complianceMap[vendorId];
+      if (existing && !existing.loading) return;
+
+      setComplianceMap((prev) => ({
+        ...prev,
+        [vendorId]: { loading: true },
+      }));
+
       fetch(`/api/requirements/check?vendorId=${vendorId}&orgId=${activeOrgId}`)
         .then((res) => res.json())
-        .then((data) => {
+        .then((json) => {
           setComplianceMap((prev) => ({
             ...prev,
-            [vendorId]: data.ok
+            [vendorId]: json.ok
               ? {
                   loading: false,
-                  summary: data.summary,
-                  missing: data.missing || [],
-                  failing: data.failing || [],
-                  passing: data.passing || [],
+                  summary: json.summary,
+                  missing: json.missing || [],
+                  failing: json.failing || [],
+                  passing: json.passing || [],
                 }
-              : { loading: false, error: data.error },
+              : { loading: false, error: json.error || "Load error" },
           }));
         })
-        .catch(() => {
+        .catch((err) => {
+          console.error("[requirements] load fail:", err);
           setComplianceMap((prev) => ({
             ...prev,
             [vendorId]: { loading: false, error: "Failed to load" },
           }));
         });
     });
-  }, [policies, activeOrgId, complianceMap]);
+  }, [policies, activeOrgId]);
 
-  /* LOAD ELITE ENGINE */
+  /* ============================================================
+     LOAD ELITE ENGINE
+  ============================================================ */
   useEffect(() => {
     if (!policies.length) return;
+
     const vendorIds = [...new Set(policies.map((p) => p.vendor_id))];
+
     vendorIds.forEach((vendorId) => {
-      if (eliteMap[vendorId]?.loading === false) return;
+      const existing = eliteMap[vendorId];
+      if (existing && !existing.loading) return;
+
       const primary = policies.find((p) => p.vendor_id === vendorId);
       if (!primary) return;
+
       const coidata = {
         expirationDate: primary.expiration_date,
         generalLiabilityLimit: primary.limit_each_occurrence,
@@ -439,167 +509,216 @@ export default function Dashboard() {
         workCompLimit: primary.work_comp_limit,
         policyType: primary.coverage_type,
       };
-      setEliteMap((prev) => ({ ...prev, [vendorId]: { loading: true } }));
+
+      setEliteMap((prev) => ({
+        ...prev,
+        [vendorId]: { loading: true },
+      }));
+
       fetch("/api/elite/evaluate", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ coidata }),
       })
         .then((res) => res.json())
-        .then((data) => {
+        .then((json) => {
           setEliteMap((prev) => ({
             ...prev,
-            [vendorId]: data.ok
-              ? { loading: false, overall: data.overall, rules: data.rules }
-              : { loading: false, error: data.error },
+            [vendorId]: json.ok
+              ? { loading: false, overall: json.overall, rules: json.rules }
+              : { loading: false, error: json.error },
           }));
         })
-        .catch(() => {
+        .catch((err) => {
+          console.error("[elite] fail:", err);
           setEliteMap((prev) => ({
             ...prev,
             [vendorId]: { loading: false, error: "Failed to load" },
           }));
         });
     });
-  }, [policies, eliteMap]);
+  }, [policies]);
 
-  /* LOAD RULE ENGINE V3 PER VENDOR */
+  /* ============================================================
+     RULE ENGINE V3 — FULLY INTEGRATED
+  ============================================================ */
   useEffect(() => {
     if (!policies.length || !activeOrgId) return;
+
     const vendorIds = [...new Set(policies.map((p) => p.vendor_id))];
 
     vendorIds.forEach((vendorId) => {
       const existing = engineMap[vendorId];
-      if (existing && existing.loaded && existing.loading === false) return;
+      if (existing && existing.loaded && !existing.error) return;
 
       setEngineMap((prev) => ({
         ...prev,
-        [vendorId]: { ...(prev[vendorId] || {}), loading: true },
+        [vendorId]: {
+          loading: true,
+          loaded: false,
+          globalScore: null,
+          failedCount: 0,
+          totalRules: 0,
+          failingRules: [],
+          passingRules: [],
+        },
       }));
 
       fetch("/api/engine/run-v3", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ vendorId, orgId: activeOrgId }),
+        body: JSON.stringify({
+          vendorId,
+          orgId: activeOrgId,
+          dryRun: false,
+        }),
       })
         .then((res) => res.json())
         .then((json) => {
-          setEngineMap((prev) => ({
-            ...prev,
-            [vendorId]: json.ok
-              ? {
-                  loading: false,
-                  loaded: true,
-                  globalScore: json.globalScore,
-                  failedCount: json.failedCount,
-                }
-              : {
-                  loading: false,
-                  loaded: true,
-                  error: json.error || "Rule Engine V3 error",
-                },
-          }));
-        })
-        .catch(() => {
+          if (!json.ok) {
+            setEngineMap((prev) => ({
+              ...prev,
+              [vendorId]: {
+                loading: false,
+                loaded: true,
+                error: json.error || "Rule Engine V3 error",
+              },
+            }));
+            return;
+          }
+
           setEngineMap((prev) => ({
             ...prev,
             [vendorId]: {
               loading: false,
               loaded: true,
-              error: "Failed to run Rule Engine V3",
+              globalScore: json.globalScore,
+              failedCount: json.failedCount,
+              totalRules: json.totalRules,
+              failingRules: json.failingRules,
+              passingRules: json.passingRules,
+            },
+          }));
+        })
+        .catch((err) => {
+          console.error("[engineV3] fail:", err);
+          setEngineMap((prev) => ({
+            ...prev,
+            [vendorId]: {
+              loading: false,
+              loaded: true,
+              error: "Failed to evaluate vendor",
             },
           }));
         });
     });
-  }, [policies, activeOrgId, engineMap]);
+  }, [policies, activeOrgId]);
 
-  /* ELITE SUMMARY */
+  /* ============================================================
+     SUMMARIZE ELITE ENGINE
+  ============================================================ */
   useEffect(() => {
     let pass = 0,
       warn = 0,
       fail = 0;
+
     Object.values(eliteMap).forEach((e) => {
       if (!e || e.loading || e.error) return;
       if (e.overall === "pass") pass++;
       else if (e.overall === "warn") warn++;
       else if (e.overall === "fail") fail++;
     });
+
     setEliteSummary({ pass, warn, fail });
   }, [eliteMap]);
 
-  /* LOAD ALERT SUMMARY V3 */
+  /* ============================================================
+     LOAD ALERT SUMMARY V3
+  ============================================================ */
   useEffect(() => {
     if (!activeOrgId) return;
 
-    async function loadAlertSummary() {
+    const loadAlerts = async () => {
       try {
         const res = await fetch(
-          `/api/alerts/summary-v3?orgId=${encodeURIComponent(activeOrgId)}`
+          `/api/alerts/summary-v3?orgId=${activeOrgId}`
         );
         const json = await res.json();
-        if (json.ok) {
-          setAlertSummary(json);
-        } else {
-          console.error("[dashboard] alert summary error:", json.error);
-        }
+        if (json.ok) setAlertSummary(json);
       } catch (err) {
-        console.error("[dashboard] alert summary error:", err);
+        console.error("[alerts summary] fail:", err);
       }
-    }
+    };
 
-    loadAlertSummary();
-    const interval = setInterval(loadAlertSummary, 15000);
+    loadAlerts();
+    const interval = setInterval(loadAlerts, 15000);
     return () => clearInterval(interval);
   }, [activeOrgId]);
 
-  /* LOAD SYSTEM TIMELINE */
+  /* ============================================================
+     SYSTEM TIMELINE (GLOBAL EVENTS)
+  ============================================================ */
   useEffect(() => {
-    async function loadTimeline() {
+    const loadTimeline = async () => {
       try {
         setSystemTimelineLoading(true);
         const res = await fetch("/api/admin/timeline");
-        const data = await res.json();
-        if (data.ok) setSystemTimeline(data.timeline);
+        const json = await res.json();
+        if (json.ok) setSystemTimeline(json.timeline);
       } catch (err) {
-        console.error("[dashboard] system timeline load error:", err);
+        console.error("[system timeline] fail:", err);
       } finally {
         setSystemTimelineLoading(false);
       }
-    }
+    };
+
     loadTimeline();
-    const interval = setInterval(loadTimeline, 10000);
-    return () => clearInterval(interval);
+    const int = setInterval(loadTimeline, 10000);
+    return () => clearInterval(int);
   }, []);
 
-  /* DRAWER HANDLERS */
+  /* ============================================================
+     DRAWER HANDLERS
+  ============================================================ */
   const openDrawer = (vendorId) => {
-    const vp = policies.filter((p) => p.vendor_id === vendorId);
+    const vendorPolicies = policies.filter((p) => p.vendor_id === vendorId);
     setDrawerVendor({
       id: vendorId,
-      name: vp[0]?.vendor_name || "Vendor",
+      name: vendorPolicies[0]?.vendor_name || "Vendor",
+      engine: engineMap[vendorId],
     });
-    setDrawerPolicies(vp);
+    setDrawerPolicies(vendorPolicies);
     setDrawerOpen(true);
   };
+
   const closeDrawer = () => {
     setDrawerOpen(false);
     setDrawerVendor(null);
     setDrawerPolicies([]);
   };
 
-  /* FILTERED POLICIES */
+  /* ============================================================
+     FILTER POLICIES
+  ============================================================ */
   const filtered = policies.filter((p) => {
     const t = filterText.toLowerCase();
     return (
       !t ||
       p.vendor_name?.toLowerCase().includes(t) ||
+      p.coverage_type?.toLowerCase().includes(t) ||
       p.policy_number?.toLowerCase().includes(t) ||
-      p.carrier?.toLowerCase().includes(t) ||
-      p.coverage_type?.toLowerCase().includes(t)
+      p.carrier?.toLowerCase().includes(t)
     );
   });
+  /* ============================================================
+     DERIVED METRICS
+  ============================================================ */
+  const avgScore = dashboard?.globalScore ?? 0;
+  const totalVendors = dashboard?.vendorCount ?? 0;
+  const alertsCount = alertSummary?.total ?? 0;
 
-  // Derive a compact list of top vendors by alert severity/total for the panel
+  const engineHealth = summarizeEngineHealth(engineMap);
+
   const alertVendorsList = alertSummary
     ? Object.values(alertSummary.vendors || {}).sort((a, b) => {
         if (b.critical !== a.critical) return b.critical - a.critical;
@@ -607,6 +726,10 @@ export default function Dashboard() {
         return b.total - a.total;
       })
     : [];
+
+  /* ============================================================
+     MAIN RENDER
+  ============================================================ */
   return (
     <div
       style={{
@@ -623,14 +746,12 @@ export default function Dashboard() {
       ================================= */}
       {!onboardingComplete && (
         <>
-          {/* FULL CINEMATIC HERO — shown while showHero is true */}
           {showHero && (
             <div style={{ marginBottom: 32 }}>
               <OnboardingHeroCard onStart={handleStartOnboarding} />
             </div>
           )}
 
-          {/* SMALL BANNER — appears if hero hidden OR after refresh */}
           {!showHero && !bannerDismissed && (
             <div style={{ marginBottom: 22 }}>
               <OnboardingBanner
@@ -642,14 +763,15 @@ export default function Dashboard() {
         </>
       )}
 
-      {/* ======= EXISTING COCKPIT HERO BELOW THIS POINT ======= */}
-      {/* HERO COMMAND PANEL */}
+      {/* ================================
+          HERO COMMAND PANEL (CINEMATIC COCKPIT)
+      ================================= */}
       <div
         className="cockpit-hero cockpit-pulse"
         style={{
           borderRadius: 28,
           padding: 22,
-          marginBottom: 30,
+          marginBottom: 20,
           border: "1px solid rgba(148,163,184,0.45)",
           background:
             "radial-gradient(circle at top left,rgba(15,23,42,0.98),rgba(15,23,42,0.92))",
@@ -674,7 +796,7 @@ export default function Dashboard() {
               color: "rgba(148,163,184,0.7)",
             }}
           >
-            DASHBOARD V4 • GLOBAL COMPLIANCE ENGINE
+            DASHBOARD V5 • GLOBAL COMPLIANCE ENGINE
           </div>
 
           <h1
@@ -702,7 +824,7 @@ export default function Dashboard() {
             }}
           >
             Live AI-powered oversight across all vendors, policies, expirations,
-            and risk engines. This is your command center.
+            and rule engines. This is your command center.
           </p>
 
           {/* AI Summary Pill */}
@@ -954,7 +1076,130 @@ export default function Dashboard() {
           </div>
         </div>
       </div>
-      {/* ALERTS V3 PANEL (TOGGLE) */}
+
+      {/* ================================
+          🧠 RULE ENGINE V3 HEALTH WIDGET
+      ================================= */}
+      <div
+        style={{
+          marginBottom: 24,
+          borderRadius: 20,
+          padding: 14,
+          border: "1px solid rgba(55,65,81,0.9)",
+          background:
+            "linear-gradient(135deg,rgba(15,23,42,0.98),rgba(15,23,42,0.96))",
+          boxShadow: "0 10px 30px rgba(15,23,42,0.85)",
+          display: "flex",
+          alignItems: "center",
+          gap: 18,
+          justifyContent: "space-between",
+        }}
+      >
+        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+          <div
+            style={{
+              width: 32,
+              height: 32,
+              borderRadius: "999px",
+              background:
+                "radial-gradient(circle at 30% 0,#22c55e,#38bdf8,#0f172a)",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              boxShadow:
+                "0 0 18px rgba(56,189,248,0.6),0 0 28px rgba(34,197,94,0.45)",
+            }}
+          >
+            🧠
+          </div>
+          <div>
+            <div
+              style={{
+                fontSize: 12,
+                textTransform: "uppercase",
+                letterSpacing: "0.16em",
+                color: GP.textSoft,
+              }}
+            >
+              Rule Engine V3
+            </div>
+            <div style={{ fontSize: 14, color: GP.text }}>
+              Avg Score:{" "}
+              <strong
+                style={{
+                  color:
+                    engineHealth.total === 0
+                      ? GP.textSoft
+                      : engineHealth.avg >= 85
+                      ? GP.neonGreen
+                      : engineHealth.avg >= 70
+                      ? GP.neonGold
+                      : GP.neonRed,
+                }}
+              >
+                {engineHealth.total ? engineHealth.avg : "—"}
+              </strong>{" "}
+              · Vendors Evaluated:{" "}
+              <strong>{engineHealth.total || 0}</strong> · Failing Vendors:{" "}
+              <strong style={{ color: GP.neonRed }}>
+                {engineHealth.fails || 0}
+              </strong>
+            </div>
+          </div>
+        </div>
+
+        <div
+          style={{
+            display: "flex",
+            gap: 14,
+            alignItems: "center",
+            fontSize: 11,
+            color: GP.textSoft,
+          }}
+        >
+          <div>
+            Critical Findings:{" "}
+            <strong style={{ color: GP.neonRed }}>
+              {engineHealth.critical || 0}
+            </strong>
+          </div>
+          <div
+            style={{
+              padding: "4px 10px",
+              borderRadius: 999,
+              border:
+                engineHealth.total === 0
+                  ? "1px solid rgba(148,163,184,0.6)"
+                  : engineHealth.critical > 0 || engineHealth.fails > 0
+                  ? "1px solid rgba(250,204,21,0.8)"
+                  : "1px solid rgba(34,197,94,0.8)",
+              color:
+                engineHealth.total === 0
+                  ? GP.textSoft
+                  : engineHealth.critical > 0 || engineHealth.fails > 0
+                  ? GP.neonGold
+                  : GP.neonGreen,
+              background:
+                engineHealth.total === 0
+                  ? "rgba(15,23,42,0.9)"
+                  : engineHealth.critical > 0 || engineHealth.fails > 0
+                  ? "rgba(250,204,21,0.12)"
+                  : "rgba(34,197,94,0.12)",
+            }}
+          >
+            {engineHealth.total === 0
+              ? "Not evaluated"
+              : engineHealth.critical > 0
+              ? "Needs attention"
+              : engineHealth.fails > 0
+              ? "Some vendors failing"
+              : "Healthy"}
+          </div>
+        </div>
+      </div>
+      {/* ================================
+          ALERTS V3 PANEL (TOGGLE)
+      ================================= */}
       {showAlerts && (
         <div
           style={{
@@ -966,6 +1211,7 @@ export default function Dashboard() {
             boxShadow: "0 16px 40px rgba(15,23,42,0.9)",
           }}
         >
+          {/* HEADER ROW */}
           <div
             style={{
               display: "flex",
@@ -997,12 +1243,12 @@ export default function Dashboard() {
             </div>
           </div>
 
+          {/* SEVERITY COUNTS */}
           {alertSummary && (
             <div
               style={{
                 display: "grid",
-                gridTemplateColumns:
-                  "repeat(auto-fit,minmax(140px,1fr))",
+                gridTemplateColumns: "repeat(auto-fit,minmax(140px,1fr))",
                 gap: 10,
                 marginBottom: 12,
               }}
@@ -1030,6 +1276,7 @@ export default function Dashboard() {
             </div>
           )}
 
+          {/* VENDOR LIST WITH ALERTS */}
           {alertSummary && alertVendorsList.length > 0 && (
             <div
               style={{
@@ -1070,16 +1317,17 @@ export default function Dashboard() {
                     <th style={{ ...th, fontSize: 11 }}>Latest</th>
                   </tr>
                 </thead>
+
                 <tbody>
                   {alertVendorsList.slice(0, 12).map((v) => (
                     <tr
                       key={v.vendorId}
+                      onClick={() => openDrawer(v.vendorId)}
                       style={{
                         cursor: "pointer",
                         background:
                           "linear-gradient(90deg,rgba(15,23,42,0.98),rgba(15,23,42,0.94))",
                       }}
-                      onClick={() => openDrawer(v.vendorId)}
                     >
                       <td style={td}>{v.vendorId}</td>
                       <td style={td}>{v.total}</td>
@@ -1115,6 +1363,7 @@ export default function Dashboard() {
             </div>
           )}
 
+          {/* EMPTY STATE */}
           {!alertSummary && (
             <div style={{ fontSize: 12, color: GP.textSoft, marginTop: 8 }}>
               Loading alert summary…
@@ -1122,8 +1371,9 @@ export default function Dashboard() {
           )}
         </div>
       )}
-
-      {/* TELEMETRY CHARTS */}
+      {/* ================================
+          TELEMETRY CHARTS (TOP ROW)
+      ================================= */}
       <div
         className="cockpit-telemetry"
         style={{
@@ -1138,12 +1388,16 @@ export default function Dashboard() {
         <PassFailDonutChart overview={dashboard} />
       </div>
 
-      {/* SECONDARY BASE CHARTS */}
+      {/* ================================
+          EXPIRING CERTIFICATES + SEVERITY INTELLIGENCE
+      ================================= */}
       <ExpiringCertsHeatmap policies={policies} />
       <SeverityDistributionChart overview={dashboard} />
       <RiskTimelineChart policies={policies} />
 
-      {/* ALERT WEAPON PACK */}
+      {/* ================================
+          ALERT INTELLIGENCE WEAPON PACK
+      ================================= */}
       <AlertTimelineChart orgId={activeOrgId} />
       <TopAlertTypes orgId={activeOrgId} />
       <AlertAgingKpis orgId={activeOrgId} />
@@ -1151,15 +1405,21 @@ export default function Dashboard() {
       <CriticalVendorWatchlist orgId={activeOrgId} />
       <AlertHeatSignature orgId={activeOrgId} />
 
-      {/* RENEWAL INTELLIGENCE V3 — HEATMAP + BACKLOG */}
+      {/* ================================
+          RENEWAL INTELLIGENCE V3 • BLOCK 1
+          Heatmap + Backlog
+      ================================= */}
       <RenewalHeatmap range={90} />
       <RenewalBacklog />
 
-      {/* 🔥 NEW — RENEWAL INTELLIGENCE V3 DROP 3 BLOCK */}
+      {/* ================================
+          RENEWAL INTELLIGENCE V3 • BLOCK 2
+          SLA Tracker • Calendar • AI Summary
+      ================================= */}
       <div
         style={{
           marginTop: 24,
-          marginBottom: 24,
+          marginBottom: 32,
           display: "grid",
           gridTemplateColumns:
             "minmax(0,1.2fr) minmax(0,1.2fr) minmax(0,1.6fr)",
@@ -1170,8 +1430,9 @@ export default function Dashboard() {
         <RenewalCalendar range={60} />
         <RenewalAiSummary orgId={activeOrgId} />
       </div>
-
-      {/* SYSTEM TIMELINE (GLOBAL EVENTS) */}
+      {/* ================================
+          SYSTEM TIMELINE (GLOBAL EVENTS)
+      ================================= */}
       <div
         style={{
           marginTop: 16,
@@ -1197,15 +1458,18 @@ export default function Dashboard() {
           System Timeline (Automated Compliance Events)
         </h2>
 
+        {/* LOADING */}
         {systemTimelineLoading ? (
           <div style={{ fontSize: 13, color: GP.textSoft }}>
             Loading system events…
           </div>
-        ) : systemTimeline.length === 0 ? (
+        ) : /* EMPTY */
+        systemTimeline.length === 0 ? (
           <div style={{ fontSize: 13, color: GP.textSoft }}>
             No system events recorded yet.
           </div>
         ) : (
+          /* TIMELINE LIST */
           <div
             style={{
               display: "flex",
@@ -1227,6 +1491,7 @@ export default function Dashboard() {
                   boxShadow: "0 2px 6px rgba(0,0,0,0.25)",
                 }}
               >
+                {/* ACTION NAME */}
                 <div
                   style={{
                     fontSize: 11,
@@ -1244,10 +1509,12 @@ export default function Dashboard() {
                   {item.action.replace(/_/g, " ")}
                 </div>
 
+                {/* MESSAGE */}
                 <div style={{ fontSize: 13, color: GP.text }}>
                   {item.message}
                 </div>
 
+                {/* VENDOR */}
                 <div
                   style={{
                     fontSize: 11,
@@ -1261,6 +1528,7 @@ export default function Dashboard() {
                   </span>
                 </div>
 
+                {/* TIME */}
                 <div
                   style={{
                     fontSize: 11,
@@ -1275,7 +1543,9 @@ export default function Dashboard() {
           </div>
         )}
       </div>
-      {/* POLICIES TABLE */}
+      {/* ================================
+          POLICIES TABLE
+      ================================= */}
       <h2
         style={{
           marginTop: 32,
@@ -1288,6 +1558,7 @@ export default function Dashboard() {
         Policies
       </h2>
 
+      {/* SEARCH BAR */}
       <input
         type="text"
         placeholder="Search vendors, carriers, policy #, coverage…"
@@ -1306,18 +1577,21 @@ export default function Dashboard() {
         }}
       />
 
+      {/* LOADING */}
       {loadingPolicies && (
         <div style={{ fontSize: 13, color: GP.textSoft }}>
           Loading policies…
         </div>
       )}
 
+      {/* NO RESULTS */}
       {!loadingPolicies && filtered.length === 0 && (
         <div style={{ fontSize: 13, color: GP.textSoft }}>
           No matching policies.
         </div>
       )}
 
+      {/* TABLE */}
       {!loadingPolicies && filtered.length > 0 && (
         <>
           <div
@@ -1355,24 +1629,21 @@ export default function Dashboard() {
                   <th style={th}>Flags</th>
                 </tr>
               </thead>
+
               <tbody>
                 {filtered.map((p) => {
                   const risk = computeRisk(p);
                   const flags = risk.flags || [];
+
                   const elite = eliteMap[p.vendor_id];
                   const compliance = complianceMap[p.vendor_id];
                   const ai = computeAiRisk({ risk, elite, compliance });
                   const engine = engineMap[p.vendor_id];
 
-                  let v3Tier = "Unknown";
-                  if (engine && typeof engine.globalScore === "number") {
-                    const s = engine.globalScore;
-                    if (s >= 85) v3Tier = "Elite Safe";
-                    else if (s >= 70) v3Tier = "Preferred";
-                    else if (s >= 55) v3Tier = "Watch";
-                    else if (s >= 35) v3Tier = "High Risk";
-                    else v3Tier = "Severe";
-                  }
+                  const v3Tier =
+                    engine && typeof engine.globalScore === "number"
+                      ? computeV3Tier(engine.globalScore)
+                      : "Unknown";
 
                   return (
                     <tr
@@ -1384,11 +1655,22 @@ export default function Dashboard() {
                           "linear-gradient(90deg,rgba(15,23,42,0.98),rgba(15,23,42,0.92))",
                       }}
                     >
+                      {/* Vendor */}
                       <td style={td}>{p.vendor_name || "—"}</td>
+
+                      {/* Policy # */}
                       <td style={td}>{p.policy_number}</td>
+
+                      {/* Carrier */}
                       <td style={td}>{p.carrier}</td>
+
+                      {/* Coverage */}
                       <td style={td}>{p.coverage_type}</td>
+
+                      {/* Expiration */}
                       <td style={td}>{p.expiration_date || "—"}</td>
+
+                      {/* Days Left */}
                       <td style={td}>{risk.daysLeft ?? "—"}</td>
 
                       {/* Status Badge */}
@@ -1405,7 +1687,7 @@ export default function Dashboard() {
                             risk.severity.slice(1)}
                       </td>
 
-                      {/* Expiration Risk Tier */}
+                      {/* Risk Tier */}
                       <td style={{ ...td, textAlign: "center" }}>
                         <span
                           style={{
@@ -1474,7 +1756,7 @@ export default function Dashboard() {
                           <span style={{ fontSize: 11, color: GP.neonRed }}>
                             Error
                           </span>
-                        ) : typeof engine.globalScore === "number" ? (
+                        ) : (
                           <div
                             style={{
                               display: "flex",
@@ -1506,19 +1788,15 @@ export default function Dashboard() {
                               {v3Tier}
                             </span>
                           </div>
-                        ) : (
-                          <span style={{ fontSize: 11, color: GP.textMuted }}>
-                            —
-                          </span>
                         )}
                       </td>
 
-                      {/* COMPLIANCE BADGE */}
+                      {/* Compliance Badge */}
                       <td style={{ ...td, textAlign: "center" }}>
                         {renderComplianceBadge(p.vendor_id, complianceMap)}
                       </td>
 
-                      {/* ELITE ENGINE STATUS */}
+                      {/* Elite Engine Status */}
                       <td style={{ ...td, textAlign: "center" }}>
                         {elite && !elite.loading && !elite.error ? (
                           <EliteStatusPill status={elite.overall} />
@@ -1533,7 +1811,7 @@ export default function Dashboard() {
                         )}
                       </td>
 
-                      {/* FLAGS */}
+                      {/* Flags */}
                       <td style={{ ...td, textAlign: "center" }}>
                         {flags.length > 0 ? (
                           <span title={flags.join("\n")} style={{ cursor: "help" }}>
@@ -1550,7 +1828,7 @@ export default function Dashboard() {
             </table>
           </div>
 
-          {/* DRAWER */}
+          {/* DRAWER - VENDOR DETAILS */}
           {drawerOpen && drawerVendor && (
             <VendorDrawer
               vendor={drawerVendor}
@@ -1563,6 +1841,7 @@ export default function Dashboard() {
     </div>
   );
 }
+
 /* =======================================
    SEVERITY BOX COMPONENT
 ======================================= */
@@ -1580,7 +1859,7 @@ function SeverityBox({ label, count, color }) {
       <div
         style={{
           fontSize: 11,
-          color: color,
+          color,
           marginBottom: 2,
           fontWeight: 600,
         }}
@@ -1591,7 +1870,7 @@ function SeverityBox({ label, count, color }) {
         style={{
           fontSize: 18,
           fontWeight: 700,
-          color: color,
+          color,
         }}
       >
         {count}
@@ -1629,7 +1908,7 @@ function MiniKpi({ label, value, color, icon }) {
 }
 
 /* =======================================
-   TABLE HEADER + CELL STYLES
+   TABLE HEAD + CELL STYLES
 ======================================= */
 const th = {
   padding: "10px 12px",
