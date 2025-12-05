@@ -1,89 +1,113 @@
 // pages/api/vendor/fix-issue.js
+// Vendor Portal V4 — Resolve Issue Endpoint
+// Vendors use this API to mark alerts/issues as fixed.
+// Logs resolution to system_timeline and updates vendor_alerts.
+
 import { sql } from "../../../lib/db";
-import { logVendorActivity } from "../../../lib/vendorActivity";
+
+export const config = {
+  api: {
+    bodyParser: { sizeLimit: "1mb" },
+  },
+};
 
 export default async function handler(req, res) {
   if (req.method !== "POST") {
+    res.setHeader("Allow", ["POST"]);
     return res.status(405).json({ ok: false, error: "POST only" });
   }
 
   try {
-    const { vendorId, orgId, code } = req.body;
+    const { token, code } = req.body || {};
 
-    if (!vendorId || !orgId || !code) {
+    if (!token || !code) {
       return res.status(400).json({
         ok: false,
-        error: "Missing vendorId, orgId or code",
+        error: "Missing token or alert code.",
       });
     }
 
-    /* ============================================================
-       1) Log vendor fix action
-    ============================================================ */
-    await logVendorActivity(
-      vendorId,
-      "fix_issue",
-      `Vendor marked issue resolved: ${code}`,
-      "info"
-    );
+    // -------------------------------------------------------
+    // 1) Verify vendor via vendor_portal_tokens
+    // -------------------------------------------------------
+    const portalRows = await sql`
+      SELECT vendor_id, org_id, expires_at
+      FROM vendor_portal_tokens
+      WHERE token = ${token}
+      LIMIT 1
+    `;
 
-    /* ============================================================
-       2) Remove alert from vendor_alerts
-    ============================================================ */
+    if (!portalRows.length) {
+      return res.status(404).json({
+        ok: false,
+        error: "Invalid vendor token.",
+      });
+    }
+
+    const { vendor_id: vendorId, org_id: orgId, expires_at } = portalRows[0];
+
+    // Token expired?
+    if (expires_at && new Date(expires_at) < new Date()) {
+      return res.status(410).json({
+        ok: false,
+        error: "This vendor link has expired.",
+      });
+    }
+
+    // -------------------------------------------------------
+    // 2) Update vendor_alerts: mark issue as resolved
+    // -------------------------------------------------------
+    const updateResult = await sql`
+      UPDATE vendor_alerts
+      SET resolved = TRUE,
+          resolved_at = NOW()
+      WHERE vendor_id = ${vendorId}
+        AND code = ${code}
+        AND (resolved IS NOT TRUE)
+      RETURNING id;
+    `;
+
+    const resolvedRow = updateResult[0];
+
+    if (!resolvedRow) {
+      // Either already resolved or not found
+      return res.status(200).json({
+        ok: true,
+        alreadyResolved: true,
+        message: "Issue already resolved or not found.",
+      });
+    }
+
+    // -------------------------------------------------------
+    // 3) Log resolution into system_timeline
+    // -------------------------------------------------------
     await sql`
-      DELETE FROM vendor_alerts
-      WHERE vendor_id = ${vendorId} AND code = ${code};
-    `;
-
-    /* ============================================================
-       3) Reload remaining alerts
-    ============================================================ */
-    const remaining = await sql`
-      SELECT severity FROM vendor_alerts
-      WHERE vendor_id = ${vendorId};
-    `;
-
-    let newStatus = "compliant";
-
-    const hasCritical = remaining.some((a) => a.severity === "critical");
-    const hasMedium = remaining.some((a) => a.severity === "medium");
-    const hasHigh = remaining.some((a) => a.severity === "high");
-
-    if (hasCritical) newStatus = "non_compliant";
-    else if (hasHigh || hasMedium) newStatus = "pending";
-
-    /* ============================================================
-       4) Update vendor status
-    ============================================================ */
-    await sql`
-      UPDATE vendors
-      SET compliance_status = ${newStatus}, updated_at = NOW()
-      WHERE id = ${vendorId};
-    `;
-
-    /* ============================================================
-       5) Log status change
-    ============================================================ */
-    await logVendorActivity(
-      vendorId,
-      "status_update",
-      `Vendor status updated to ${newStatus}`,
-      newStatus === "compliant" ? "info" : "warning"
-    );
-
-    return res.json({ ok: true, status: newStatus });
-  } catch (err) {
-    console.error("[fix-issue] ERROR:", err);
-
-    try {
-      await logVendorActivity(
-        null,
-        "error",
-        `fix-issue failed: ${err.message}`,
-        "critical"
+      INSERT INTO system_timeline (org_id, vendor_id, action, message, severity)
+      VALUES (
+        ${orgId},
+        ${vendorId},
+        'vendor_issue_resolved',
+        ${'Vendor resolved issue: ' + code},
+        'info'
       );
-    } catch (_) {}
+    `;
 
-    return res.status(500).json({ ok: false, error: err.message });
+    // -------------------------------------------------------
+    // 4) Return success response
+    // -------------------------------------------------------
+    return res.status(200).json({
+      ok: true,
+      vendorId,
+      orgId,
+      resolved: true,
+      code,
+      message: "Issue marked as resolved.",
+    });
+  } catch (err) {
+    console.error("[vendor/fix-issue] ERROR:", err);
+    return res.status(500).json({
+      ok: false,
+      error: err.message || "Fix issue API failed.",
+    });
   }
 }
