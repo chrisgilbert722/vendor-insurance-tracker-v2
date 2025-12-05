@@ -1,68 +1,41 @@
 // pages/api/engine/run-v3.js
-// Neon-based Rule Engine V3 (per-vendor evaluator with group scoring)
+// Rule Engine V3 — Coverage Requirements Evaluator
+//
+// POST /api/engine/run-v3
+// Body: { vendorId, orgId, dryRun?: boolean }
+//
+// Does:
+// 1) Load vendor's policies
+// 2) Load org's requirements_v5
+// 3) Evaluate missing coverage, low limits, expired policies
+// 4) Writes rule_results_v3 (unless dryRun)
+// 5) Returns globalScore (0–100) + failing details
 
 import { sql } from "../../../lib/db";
-import { supabase } from "../../../lib/supabaseClient";
 
-// Coverage Normalization + Endorsement Matrix + Limit Engine
-import { normalizeCOI } from "../../../lib/normalizeCOI";
-import { checkMissingEndorsements } from "../../../lib/endorsementMatrix";
-import { checkCoverageLimits } from "../../../lib/limitEngine";
+export const config = {
+  api: {
+    bodyParser: { sizeLimit: "1mb" },
+  },
+};
 
-/* ============================================================
-   HELPER: Flatten policies.extracted JSON into one object
-============================================================ */
-function buildPolicyObj(policies = []) {
-  const obj = {};
-  for (const p of policies) {
-    let extracted = p.extracted || {};
-    if (typeof extracted === "string") {
-      try {
-        extracted = JSON.parse(extracted);
-      } catch {
-        extracted = {};
-      }
-    }
-    if (extracted && typeof extracted === "object") {
-      Object.assign(obj, extracted);
-    }
-  }
-  return obj;
+function numericOrNull(v) {
+  if (v === null || v === undefined) return null;
+  const n = Number(v);
+  return Number.isNaN(n) ? null : n;
 }
 
-/* ============================================================
-   HELPER: Severity weighting + group score
-============================================================ */
-function severityToWeight(severity) {
-  switch (severity) {
-    case "critical":
-      return 1.0;
-    case "high":
-      return 0.7;
-    case "medium":
-      return 0.4;
-    case "low":
-      return 0.2;
-    default:
-      return 0.3;
-  }
-}
-
-function computeGroupScore(ruleResults, groupSeverity) {
-  if (!ruleResults || ruleResults.length === 0) {
-    // No rules in this group — treat as neutral / pass
-    return 100;
-  }
-
+function computeScoreFromFailures(failures = []) {
+  // Start from 100, subtract weight per failure by severity
   let score = 100;
-  const groupWeight = severityToWeight(groupSeverity || "medium");
 
-  for (const r of ruleResults) {
-    if (r.passed) continue;
-    const ruleWeight = severityToWeight(r.severity || "medium");
-    // Each failing rule can subtract up to ~15 points scaled by severities
-    const penalty = 15 * ruleWeight * groupWeight;
-    score -= penalty;
+  for (const f of failures) {
+    const sev = (f.severity || "").toLowerCase();
+    if (sev === "critical") score -= 35;
+    else if (sev === "high") score -= 25;
+    else if (sev === "medium") score -= 15;
+    else if (sev === "low") score -= 5;
+    else score -= 5;
   }
 
   if (score < 0) score = 0;
@@ -70,339 +43,267 @@ function computeGroupScore(ruleResults, groupSeverity) {
   return Math.round(score);
 }
 
-/* ============================================================
-   RULE ENGINE V3 EVALUATOR (Neon)
-============================================================ */
 export default async function handler(req, res) {
   if (req.method !== "POST") {
-    return res.status(405).json({ ok: false, error: "POST only" });
+    res.setHeader("Allow", ["POST"]);
+    return res
+      .status(405)
+      .json({ ok: false, error: "POST only" });
   }
 
   try {
-    const { vendorId, orgId } = req.body;
+    const { vendorId, orgId, dryRun } = req.body || {};
 
     if (!vendorId || !orgId) {
       return res.status(400).json({
         ok: false,
-        error: "Missing vendorId or orgId in body.",
+        error: "Missing vendorId or orgId.",
       });
     }
 
-    /* --------------------------------------------------------
-       1) LOAD POLICY DATA (from Supabase)
-    --------------------------------------------------------- */
-    const { data: policies, error: pErr } = await supabase
-      .from("policies")
-      .select("id, extracted")
-      .eq("vendor_id", vendorId);
-
-    if (pErr) {
-      console.error("[RULE V3] Error loading policies from Supabase:", pErr);
-      return res
-        .status(500)
-        .json({ ok: false, error: "Failed to load policies." });
-    }
-
-    const hasPolicies = policies && policies.length > 0;
-    const policyObj = hasPolicies ? buildPolicyObj(policies) : {};
-
-    /* --------------------------------------------------------
-       2) LOAD RULE GROUPS + RULES (from Neon)
-    --------------------------------------------------------- */
-    const groups = await sql`
-      SELECT id, org_id, label, description, severity, active
-      FROM rule_groups
-      WHERE org_id = ${orgId} AND active = TRUE
-      ORDER BY id ASC;
+    // ---------------------------------------------------
+    // 1) Load vendor policies
+    // ---------------------------------------------------
+    const policies = await sql`
+      SELECT
+        id,
+        vendor_id,
+        coverage_type,
+        expiration_date,
+        limit_each_occurrence,
+        auto_limit,
+        work_comp_limit,
+        umbrella_limit
+      FROM policies
+      WHERE vendor_id = ${vendorId}
+      ORDER BY expiration_date ASC NULLS LAST;
     `;
 
-    if (!groups.length) {
+    if (!policies.length) {
       return res.status(200).json({
         ok: true,
-        message: "No active rule groups for this org.",
-        results: [],
-        failed: 0,
-        groupResults: [],
-        globalScore: 100,
+        vendorId,
+        orgId,
+        globalScore: 0,
+        failedCount: 0,
+        totalRules: 0,
+        failingRules: [],
+        passingRules: [],
+        warning: "No policies found for vendor.",
       });
     }
 
-    const rules = await sql`
-      SELECT id, group_id, type, field, condition, value, message, severity, active
-      FROM rules_v3
-      WHERE group_id IN (
-        SELECT id FROM rule_groups WHERE org_id = ${orgId} AND active = TRUE
-      )
-      AND active = TRUE
-      ORDER BY id ASC;
+    // Normalize policies by coverage_type
+    const policiesByType = {};
+    for (const p of policies) {
+      const t = (p.coverage_type || "").toLowerCase();
+      if (!t) continue;
+      if (!policiesByType[t]) policiesByType[t] = [];
+      policiesByType[t].push(p);
+    }
+
+    // ---------------------------------------------------
+    // 2) Load org coverage requirements (requirements_v5)
+    // ---------------------------------------------------
+    const requirements = await sql`
+      SELECT id, coverage_type, min_limit, severity, active
+      FROM requirements_v5
+      WHERE org_id = ${orgId} AND active = TRUE;
     `;
 
-    if (!rules.length) {
+    if (!requirements.length) {
       return res.status(200).json({
         ok: true,
-        message: "No active rules for this org.",
-        results: [],
-        failed: 0,
-        groupResults: [],
+        vendorId,
+        orgId,
         globalScore: 100,
+        failedCount: 0,
+        totalRules: 0,
+        failingRules: [],
+        passingRules: [],
+        warning: "No active requirements defined for this org.",
       });
     }
 
-    /* --------------------------------------------------------
-       3) COVERAGE NORMALIZATION + ENDORSEMENT MATRIX + LIMITS
-    --------------------------------------------------------- */
-    const normalized = normalizeCOI(policyObj);
+    const failures = [];
+    const passes = [];
 
-    // Later: make this configurable per org / rule group
-    const profileType = "standard_construction";
+    const now = new Date();
 
-    // Missing endorsements
-    const missingEndorsements = checkMissingEndorsements(
-      normalized,
-      profileType
-    );
+    // ---------------------------------------------------
+    // 3) Evaluate each requirement against policies
+    // ---------------------------------------------------
+    for (const req of requirements) {
+      const covType = (req.coverage_type || "").toLowerCase();
+      const severity = req.severity || "medium";
+      const minLimit = numericOrNull(req.min_limit);
 
-    // Auto-generated alerts (missing coverage / endorsements / limits)
-    const autoGeneratedAlerts = [];
+      const pols = policiesByType[covType] || [];
 
-    // Missing GL
-    if (!normalized.has_gl) {
-      autoGeneratedAlerts.push({
-        code: "MISSING_GL",
-        message: "General Liability coverage is missing.",
-        severity: "critical",
-      });
-    }
-
-    // Missing Auto
-    if (!normalized.has_auto) {
-      autoGeneratedAlerts.push({
-        code: "MISSING_AUTO",
-        message: "Automobile Liability coverage is missing.",
-        severity: "high",
-      });
-    }
-
-    // Missing WC
-    if (!normalized.has_wc) {
-      autoGeneratedAlerts.push({
-        code: "MISSING_WC",
-        message: "Workers Compensation coverage is missing.",
-        severity: "high",
-      });
-    }
-
-    // Missing required endorsements
-    if (missingEndorsements.length > 0) {
-      autoGeneratedAlerts.push({
-        code: "MISSING_ENDORSEMENTS",
-        message: `Missing required endorsements: ${missingEndorsements.join(
-          ", "
-        )}`,
-        severity: "high",
-      });
-    }
-
-    // NEW: limit failures (GL, Auto, WC, combined)
-    const limitFailures = checkCoverageLimits(normalized, profileType);
-    autoGeneratedAlerts.push(...limitFailures);
-
-    /* --------------------------------------------------------
-       4) EVALUATE RULES (V3-style with group metadata)
-    --------------------------------------------------------- */
-    const results = [];
-
-    for (const rule of rules) {
-      let passed = true;
-
-      const field = rule.field; // e.g. "gl_limit" or original AI keys
-      const cond = rule.condition; // 'gte', 'exists', 'missing', etc.
-      const val = rule.value;
-
-      const actual =
-        policyObj[field] !== undefined
-          ? policyObj[field]
-          : normalized[field] !== undefined
-          ? normalized[field]
-          : undefined;
-
-      switch (rule.type) {
-        case "coverage":
-          if (cond === "exists") {
-            passed =
-              actual !== undefined && actual !== null && actual !== "";
-          }
-          if (cond === "missing") {
-            passed =
-              actual === undefined || actual === null || actual === "";
-          }
-          break;
-
-        case "limit": {
-          const numeric = Number(actual || 0);
-          const limit = Number(val || 0);
-          if (cond === "gte") passed = numeric >= limit;
-          if (cond === "lte") passed = numeric <= limit;
-          break;
-        }
-
-        case "endorsement": {
-          const endorsements = Array.isArray(normalized.endorsements)
-            ? normalized.endorsements
-            : [];
-          const target = String(val || "").toUpperCase();
-          if (cond === "requires") {
-            passed = endorsements.includes(target);
-          }
-          if (cond === "missing") {
-            passed = !endorsements.includes(target);
-          }
-          break;
-        }
-
-        case "date": {
-          const date = actual ? new Date(actual) : null;
-          const compare = val ? new Date(val) : null;
-          if (
-            !date ||
-            !compare ||
-            Number.isNaN(date.getTime()) ||
-            Number.isNaN(compare.getTime())
-          ) {
-            passed = false;
-          } else {
-            if (cond === "before") passed = date < compare;
-            if (cond === "after") passed = date > compare;
-          }
-          break;
-        }
-
-        case "custom":
-          // Placeholder for AI-powered / JS-expression rules
-          passed = true;
-          break;
-
-        default:
-          passed = true;
+      if (!pols.length) {
+        failures.push({
+          requirementId: req.id,
+          coverageType: req.coverage_type,
+          severity,
+          message: `Missing ${req.coverage_type} coverage.`,
+        });
+        continue;
       }
 
-      results.push({
-        ruleId: rule.id,
-        groupId: rule.group_id,
-        passed,
-        message: rule.message,
-        severity: rule.severity,
-        field,
-        condition: cond,
-        actual,
-        expected: val,
-      });
-    }
+      // Pick the best policy candidate (e.g., highest limit)
+      let primary = pols[0];
+      if (pols.length > 1) {
+        primary = pols.reduce((best, cur) => {
+          const bestLimit =
+            numericOrNull(best.limit_each_occurrence) || 0;
+          const curLimit =
+            numericOrNull(cur.limit_each_occurrence) || 0;
+          return curLimit > bestLimit ? cur : best;
+        }, primary);
+      }
 
-    /* --------------------------------------------------------
-       4B) GROUP-LEVEL RESULTS + GLOBAL SCORE (V3)
-    --------------------------------------------------------- */
-    const groupResults = groups.map((g) => {
-      const groupRuleResults = results.filter((r) => r.groupId === g.id);
-      const failedRules = groupRuleResults.filter((r) => !r.passed);
-      const passed = failedRules.length === 0;
-      const score = computeGroupScore(groupRuleResults, g.severity);
+      const limit =
+        numericOrNull(primary.limit_each_occurrence) ||
+        numericOrNull(primary.auto_limit) ||
+        numericOrNull(primary.work_comp_limit) ||
+        numericOrNull(primary.umbrella_limit);
 
-      return {
-        groupId: g.id,
-        label: g.label,
-        description: g.description,
-        severity: g.severity,
-        passed,
-        score,
-        failedRuleIds: failedRules.map((fr) => fr.ruleId),
-      };
-    });
+      const messagesForReq = [];
+      let passed = true;
 
-    let globalScore = 100;
-    if (groupResults.length > 0) {
-      const total = groupResults.reduce((sum, gr) => sum + gr.score, 0);
-      globalScore = Math.round(total / groupResults.length);
-    }
-
-    /* --------------------------------------------------------
-       5) WRITE RULE RESULTS (Neon)
-    --------------------------------------------------------- */
-    await sql`
-      DELETE FROM rule_results_v3
-      WHERE vendor_id = ${vendorId};
-    `;
-
-    for (const r of results) {
-      await sql`
-        INSERT INTO rule_results_v3 (vendor_id, rule_id, passed, message, severity)
-        VALUES (
-          ${vendorId},
-          ${r.ruleId},
-          ${r.passed},
-          ${r.message},
-          ${r.severity}
+      // Limit check
+      if (minLimit !== null && limit !== null && limit < minLimit) {
+        passed = false;
+        messagesForReq.push(
+          `${req.coverage_type} limit (${limit.toLocaleString()}) is below required minimum (${minLimit.toLocaleString()}).`
         );
-      `;
+      }
+
+      // Expiration check
+      if (primary.expiration_date) {
+        const exp = new Date(primary.expiration_date);
+        if (!isNaN(exp.getTime())) {
+          if (exp < now) {
+            passed = false;
+            messagesForReq.push(
+              `${req.coverage_type} policy is expired (${exp.toLocaleDateString()}).`
+            );
+          } else {
+            const daysLeft = Math.floor(
+              (exp.getTime() - now.getTime()) / (1000 * 60 * 60 * 24)
+            );
+            if (daysLeft <= 30) {
+              // Not a full failure, but we could tag as warning — for now, log as pass with note
+              messagesForReq.push(
+                `${req.coverage_type} policy expires soon (${daysLeft} day(s) left).`
+              );
+            }
+          }
+        }
+      }
+
+      if (passed) {
+        passes.push({
+          requirementId: req.id,
+          coverageType: req.coverage_type,
+          message:
+            messagesForReq.join(" ") ||
+            `${req.coverage_type} coverage meets requirements.`,
+        });
+      } else {
+        failures.push({
+          requirementId: req.id,
+          coverageType: req.coverage_type,
+          severity,
+          message:
+            messagesForReq.join(" ") ||
+            `${req.coverage_type} coverage does not meet requirements.`,
+        });
+      }
     }
 
-    /* --------------------------------------------------------
-       6) GENERATE ALERTS (auto + rule failures)
-    --------------------------------------------------------- */
-
-    // Remove old alerts
-    await sql`
-      DELETE FROM vendor_alerts
-      WHERE vendor_id = ${vendorId};
-    `;
-
-    // Insert auto-generated alerts
-    for (const a of autoGeneratedAlerts) {
+    // ---------------------------------------------------
+    // 4) Write rule_results_v3 (unless dryRun = true)
+    // ---------------------------------------------------
+    if (!dryRun) {
       await sql`
-        INSERT INTO vendor_alerts (vendor_id, org_id, code, message, severity)
+        DELETE FROM rule_results_v3
+        WHERE vendor_id = ${vendorId} AND org_id = ${orgId};
+      `;
+
+      for (const f of failures) {
+        await sql`
+          INSERT INTO rule_results_v3 (
+            org_id,
+            vendor_id,
+            requirement_id,
+            passed,
+            severity,
+            message
+          )
+          VALUES (
+            ${orgId},
+            ${vendorId},
+            ${f.requirementId},
+            FALSE,
+            ${f.severity},
+            ${f.message}
+          )
+        `;
+      }
+
+      for (const p of passes) {
+        await sql`
+          INSERT INTO rule_results_v3 (
+            org_id,
+            vendor_id,
+            requirement_id,
+            passed,
+            severity,
+            message
+          )
+          VALUES (
+            ${orgId},
+            ${vendorId},
+            ${p.requirementId},
+            TRUE,
+            NULL,
+            ${p.message}
+          )
+        `;
+      }
+
+      // optional: log to system_timeline
+      const globalScore = computeScoreFromFailures(failures);
+      await sql`
+        INSERT INTO system_timeline (org_id, vendor_id, action, message, severity)
         VALUES (
-          ${vendorId},
           ${orgId},
-          ${a.code},
-          ${a.message},
-          ${a.severity}
-        );
-      `;
-    }
-
-    // Insert rule-based failures
-    const failed = results.filter((r) => !r.passed);
-
-    for (const f of failed) {
-      await sql`
-        INSERT INTO vendor_alerts (vendor_id, org_id, code, message, severity)
-        VALUES (
           ${vendorId},
-          ${orgId},
-          ${"RULE_" + f.ruleId},
-          ${f.message},
-          ${f.severity}
-        );
+          'rule_engine_v3_run',
+          ${'Rule Engine V3 evaluated. Score: ' + globalScore},
+          ${failures.length ? "warning" : "info"}
+        )
       `;
     }
+
+    const globalScore = computeScoreFromFailures(failures);
 
     return res.status(200).json({
       ok: true,
       vendorId,
       orgId,
-      rulesEvaluated: results.length,
-      failedCount: failed.length + autoGeneratedAlerts.length,
-      results,
-      autoGeneratedAlerts,
-      groupResults,
       globalScore,
+      failedCount: failures.length,
+      totalRules: requirements.length,
+      failingRules: failures,
+      passingRules: passes,
     });
   } catch (err) {
-    console.error("[RULE ENGINE V3 Neon ERROR]", err);
+    console.error("[engine/run-v3] ERROR:", err);
     return res.status(500).json({
       ok: false,
       error: err.message || "Rule Engine V3 failed.",
     });
   }
 }
- 
