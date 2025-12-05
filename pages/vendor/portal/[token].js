@@ -1,5 +1,6 @@
-// SECTION 1/4 — imports, helpers, state, effects, handlers
 // pages/vendor/portal/[token].js
+// Vendor Portal V4 — Advanced UI: Upload + AI + Timeline + Fix Mode + Assistant
+
 import { useEffect, useState } from "react";
 import { useRouter } from "next/router";
 
@@ -63,6 +64,27 @@ function getTimelineBucket(createdAtStr) {
   return "Older";
 }
 
+// Derive a status if backend doesn't provide one
+function computeDerivedStatus(status, alerts, policies) {
+  if (status && status.state && status.label) return status;
+
+  const normAlerts = Array.isArray(alerts) ? alerts : [];
+  const hasCritical = normAlerts.some((a) => {
+    const sev = String(a.severity || "").toLowerCase();
+    return sev === "critical" || sev === "high";
+  });
+
+  if (hasCritical) {
+    return { state: "non_compliant", label: "Non-Compliant" };
+  }
+
+  if (Array.isArray(policies) && policies.length > 0) {
+    return { state: "compliant", label: "Compliant" };
+  }
+
+  return { state: "pending", label: "Pending Review" };
+}
+
 export default function VendorPortal() {
   const router = useRouter();
   const { token } = router.query;
@@ -123,6 +145,7 @@ export default function VendorPortal() {
 
   /* ============================================================
      LOAD PORTAL DATA
+     (UI-only update: still calls /api/vendor/portal?token=)
   ============================================================ */
   useEffect(() => {
     if (!token) return;
@@ -172,7 +195,6 @@ export default function VendorPortal() {
 
     loadTimeline();
   }, [token]);
-
   const filteredTimeline = timeline.filter((item) => {
     const action = (item.action || "").toLowerCase();
 
@@ -240,7 +262,7 @@ export default function VendorPortal() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           vendorId: vendorData.vendor.id,
-          orgId: vendorData.org.id,
+          orgId: vendorData.org?.id || vendorData.orgId || vendorData.org_id,
           code,
         }),
       });
@@ -422,7 +444,6 @@ export default function VendorPortal() {
       }
     }
   }
-
   /* ============================================================
      LOADING + ERROR UI
   ============================================================ */
@@ -464,8 +485,15 @@ export default function VendorPortal() {
     );
   }
 
-  const { vendor, org, requirements, alerts, status, ai } = vendorData;
-// SECTION 2/4 — top-level layout + LEFT column (upload + AI summary)
+  const { vendor, org, requirements, alerts, status, ai, policies } = vendorData;
+
+  const vendorName =
+    vendor?.vendor_name || vendor?.name || "Your Company";
+  const orgName =
+    org?.name || vendorData.orgName || "Your Customer";
+
+  const derivedStatus = computeDerivedStatus(status, alerts, policies || []);
+
   /* ============================================================
      MAIN UI
   ============================================================ */
@@ -503,11 +531,11 @@ export default function VendorPortal() {
               color: "transparent",
             }}
           >
-            {vendor?.name}
+            {vendorName}
           </h1>
 
           <div style={{ fontSize: 13, color: GP.textSoft }}>
-            For {org?.name}
+            For {orgName}
           </div>
         </div>
 
@@ -527,14 +555,14 @@ export default function VendorPortal() {
               fontSize: 15,
               fontWeight: 600,
               color:
-                status?.state === "compliant"
+                derivedStatus.state === "compliant"
                   ? GP.neonGreen
-                  : status?.state === "pending"
+                  : derivedStatus.state === "pending"
                   ? GP.neonGold
                   : GP.neonRed,
             }}
           >
-            {status?.label}
+            {derivedStatus.label}
           </div>
         </div>
       </div>
@@ -772,7 +800,6 @@ export default function VendorPortal() {
             </div>
           )}
         </div>
-// SECTION 3/4 — RIGHT column: Smart Suggestions + Fix Issues + Requirements + Timeline
         {/* RIGHT SIDE — Smart Suggestions + Fix Issues + Requirements + Timeline + Assistant */}
         <div>
           {/* SMART SUGGESTIONS PANEL */}
@@ -925,27 +952,29 @@ export default function VendorPortal() {
             )}
           </div>
 
-          {/* REQUIREMENTS BLOCK */}
-          <div
-            style={{
-              borderRadius: 20,
-              padding: isMobile ? 16 : 18,
-              border: `1px solid ${GP.border}`,
-              background: "rgba(15,23,42,0.92)",
-              marginBottom: 24,
-            }}
-          >
-            <h3 style={{ marginTop: 0, fontSize: isMobile ? 16 : 18 }}>
-              Coverage Requirements
-            </h3>
-            <ul style={{ paddingLeft: 18, fontSize: 13 }}>
-              {(requirements?.coverages || []).map((c, i) => (
-                <li key={i} style={{ marginBottom: 4 }}>
-                  <strong>{c.name}</strong> {c.limit && `— ${c.limit}`}
-                </li>
-              ))}
-            </ul>
-          </div>
+          {/* REQUIREMENTS BLOCK — gracefully skip if not provided */}
+          {requirements?.coverages?.length > 0 && (
+            <div
+              style={{
+                borderRadius: 20,
+                padding: isMobile ? 16 : 18,
+                border: `1px solid ${GP.border}`,
+                background: "rgba(15,23,42,0.92)",
+                marginBottom: 24,
+              }}
+            >
+              <h3 style={{ marginTop: 0, fontSize: isMobile ? 16 : 18 }}>
+                Coverage Requirements
+              </h3>
+              <ul style={{ paddingLeft: 18, fontSize: 13 }}>
+                {(requirements.coverages || []).map((c, i) => (
+                  <li key={i} style={{ marginBottom: 4 }}>
+                    <strong>{c.name}</strong> {c.limit && `— ${c.limit}`}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
 
           {/* ACTIVITY TIMELINE PANEL */}
           <div
@@ -1137,10 +1166,9 @@ export default function VendorPortal() {
                             border: "1px solid rgba(148,163,184,0.28)",
                             display: "flex",
                             gap: 10,
-                            animationDelay: `${(groupIndex * 80) + i * 40}ms`,
+                            animationDelay: `${groupIndex * 80 + i * 40}ms`,
                           }}
                         >
-                          {/* ICON COLUMN */}
                           <div
                             style={{
                               fontSize: 18,
@@ -1152,7 +1180,6 @@ export default function VendorPortal() {
                             {getTimelineIcon(item)}
                           </div>
 
-                          {/* TEXT COLUMN */}
                           <div style={{ flex: 1 }}>
                             <div
                               style={{
@@ -1193,7 +1220,7 @@ export default function VendorPortal() {
               ))
             )}
           </div>
-// SECTION 4/4 — AI Assistant panel + global styles + closing
+
           {/* AI ASSISTANT PANEL */}
           <div
             style={{
@@ -1382,6 +1409,7 @@ export default function VendorPortal() {
         </div>
       </div>
 
+      {/* GLOBAL ANIMATIONS FOR TIMELINE */}
       <style jsx global>{`
         @keyframes vpFadeSlideIn {
           0% {
