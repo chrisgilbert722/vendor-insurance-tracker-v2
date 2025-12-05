@@ -1,4 +1,4 @@
-// components/Layout.js — Updated with Explain-This-Page Mode + Vendor-Aware Chatbot
+// components/Layout.js — Updated for GOD MODE Wizard (passes onboardingComplete to Chat Panel)
 import { useRouter } from "next/router";
 import Sidebar from "./Sidebar";
 import Header from "./Header";
@@ -16,8 +16,7 @@ export default function Layout({ children }) {
   const router = useRouter();
   const pathname = router.pathname;
 
-  const orgContext = useOrg();
-  const orgId = orgContext?.activeOrgId || null;
+  const { activeOrgId, onboardingComplete } = useOrg(); // ⭐ NEW: pull onboardingComplete
 
   const { isAdmin, isManager, isViewer } = useRole();
 
@@ -101,7 +100,8 @@ export default function Layout({ children }) {
           height: 44,
           borderRadius: "999px",
           border: "1px solid rgba(250,204,21,0.9)",
-          background: "radial-gradient(circle at top left,#facc15,#eab308,#854d0e)",
+          background:
+            "radial-gradient(circle at top left,#facc15,#eab308,#854d0e)",
           color: "#1e1e1e",
           fontSize: 20,
           display: "flex",
@@ -114,11 +114,12 @@ export default function Layout({ children }) {
         ❓
       </button>
 
-      {/* Chatbot */}
+      {/* ⭐ GLOBAL CHAT PANEL — NOW WIZARD-AWARE ⭐ */}
       <SupportChatPanel
-        orgId={orgId}
+        orgId={activeOrgId}
         vendorId={vendorId}
         pathname={pathname}
+        onboardingComplete={onboardingComplete}  // ⭐ NEW: critical for GOD MODE
       />
     </div>
   );
