@@ -1,200 +1,195 @@
 // pages/api/vendor/portal.js
+// Vendor Portal V4 — Fully Upgraded API
+// Returns vendor info, alerts, policies, AI extraction, requirements (fallback), status (derived).
+
 import { sql } from "../../../lib/db";
-import { logVendorActivity } from "../../../lib/vendorActivity";
+
+export const config = {
+  api: {
+    bodyParser: { sizeLimit: "2mb" },
+  },
+};
 
 export default async function handler(req, res) {
+  if (req.method !== "GET") {
+    res.setHeader("Allow", ["GET"]);
+    return res.status(405).json({ ok: false, error: "GET only" });
+  }
+
   try {
     const { token } = req.query;
 
     if (!token) {
-      return res
-        .status(400)
-        .json({ ok: false, error: "Missing token" });
+      return res.status(400).json({ ok: false, error: "Missing vendor token." });
     }
 
-    /* ==========================================================
-       1) Look up vendor via magic_link_token
-    ========================================================== */
-    const vendorRows = await sql`
-      SELECT
-        v.id,
-        v.name,
-        v.email,
-        v.org_id,
-        v.compliance_status,
-        v.last_uploaded_coi,
-        v.last_coi_json,
-        o.name AS org_name
-      FROM vendors v
-      JOIN organizations o ON o.id = v.org_id
-      WHERE v.magic_link_token = ${token}
-      LIMIT 1;
+    // ----------------------------------------------------------
+    // 1) Find vendor + org from portal token
+    // ----------------------------------------------------------
+    const portalRows = await sql`
+      SELECT vendor_id, org_id, expires_at
+      FROM vendor_portal_tokens
+      WHERE token = ${token}
+      LIMIT 1
     `;
 
-    if (vendorRows.length === 0) {
-      return res
-        .status(404)
-        .json({ ok: false, error: "Invalid or expired vendor link." });
+    if (!portalRows.length) {
+      return res.status(404).json({
+        ok: false,
+        error: "Invalid vendor portal link.",
+      });
     }
 
-    const v = vendorRows[0];
+    const { vendor_id: vendorId, org_id: orgId, expires_at } = portalRows[0];
 
-    /* ==========================================================
-       ⭐⭐⭐ D4 LOG: Vendor opened portal
-    ========================================================== */
-    try {
-      await logVendorActivity(
-        v.id,
-        "portal_open",
-        `Vendor opened portal for org ${v.org_id}`,
-        "info"
-      );
-    } catch (err) {
-      console.warn("[portal] failed to log portal_open:", err);
+    // Expired?
+    if (expires_at && new Date(expires_at) < new Date()) {
+      return res.status(410).json({
+        ok: false,
+        error: "This vendor portal link has expired.",
+      });
     }
 
-    /* ==========================================================
-       2) Load coverage requirements
-    ========================================================== */
-    let requirements = { coverages: [] };
+    // ----------------------------------------------------------
+    // 2) Load vendor
+    // ----------------------------------------------------------
+    const vendorRows = await sql`
+      SELECT id, vendor_name, email, phone, category
+      FROM vendors
+      WHERE id = ${vendorId}
+      LIMIT 1
+    `;
 
-    try {
-      const reqRows = await sql`
-        SELECT coverage_type, min_limit, severity
-        FROM requirements_v5
-        WHERE org_id = ${v.org_id};
-      `;
-
-      requirements.coverages = reqRows.map((r) => ({
-        name: r.coverage_type,
-        limit: r.min_limit ? `$${r.min_limit}` : null,
-        severity: r.severity || "medium",
-      }));
-    } catch (err) {
-      console.warn("[vendor/portal] requirements_v5 query failed:", err);
+    if (!vendorRows.length) {
+      return res.status(404).json({
+        ok: false,
+        error: "Vendor not found.",
+      });
     }
 
-    /* ==========================================================
-       3) Load vendor alerts (issues)
-    ========================================================== */
-    let alerts = [];
+    const vendor = vendorRows[0];
+
+    // ----------------------------------------------------------
+    // 3) Load policies
+    // ----------------------------------------------------------
+    const policyRows = await sql`
+      SELECT
+        id,
+        policy_number,
+        carrier,
+        coverage_type,
+        expiration_date,
+        limit_each_occurrence,
+        auto_limit,
+        work_comp_limit,
+        umbrella_limit
+      FROM policies
+      WHERE vendor_id = ${vendorId}
+      ORDER BY expiration_date ASC NULLS LAST
+    `;
+
+    // ----------------------------------------------------------
+    // 4) Load alerts
+    // ----------------------------------------------------------
+    const alertRows = await sql`
+      SELECT
+        code,
+        label,
+        message,
+        severity,
+        created_at
+      FROM vendor_alerts
+      WHERE vendor_id = ${vendorId}
+      ORDER BY severity DESC, created_at DESC
+      LIMIT 50
+    `;
+
+    // ----------------------------------------------------------
+    // 5) Load AI extraction (optional)
+    // ----------------------------------------------------------
+    let aiData = null;
 
     try {
-      const alertRows = await sql`
-        SELECT id, severity, code, message, created_at
-        FROM vendor_alerts
-        WHERE vendor_id = ${v.id}
+      const aiRows = await sql`
+        SELECT ai_json
+        FROM vendor_ai_cache
+        WHERE vendor_id = ${vendorId}
         ORDER BY created_at DESC
-        LIMIT 20;
+        LIMIT 1
       `;
-
-      alerts = alertRows.map((a) => ({
-        id: a.id,
-        severity: a.severity,
-        code: a.code,
-        message: a.message,
-        createdAt: a.created_at,
-        label: a.code?.replace(/_/g, " ").toUpperCase(),
-      }));
-    } catch (err) {
-      console.warn("[vendor/portal] vendor_alerts query failed:", err);
+      if (aiRows.length) {
+        aiData = aiRows[0].ai_json;
+      }
+    } catch {
+      // optional table — ignore missing
     }
 
-    /* ==========================================================
-       4) Compute status description
-    ========================================================== */
-    let statusState = v.compliance_status || "pending";
+    // ----------------------------------------------------------
+    // 6) Derive status (your portal needs this)
+    // ----------------------------------------------------------
+    function deriveStatus(alerts, policies) {
+      if (alerts?.some(a => ["critical", "high"].includes(String(a.severity).toLowerCase()))) {
+        return { state: "non_compliant", label: "Non-Compliant" };
+      }
 
-    let statusLabel = "Pending Review";
-    let statusDescription = "We have not yet reviewed your COI.";
+      if (Array.isArray(policies) && policies.length > 0) {
+        return { state: "compliant", label: "Compliant" };
+      }
 
-    if (statusState === "compliant") {
-      statusLabel = "Compliant";
-      statusDescription = "Your coverage meets all active requirements.";
-    } else if (statusState === "non_compliant") {
-      statusLabel = "Non-Compliant";
-      statusDescription =
-        "There are issues with your coverage that must be addressed.";
-    } else if (statusState === "pending") {
-      statusLabel = "Pending COI Upload";
-      statusDescription = "Please upload your latest COI to begin review.";
+      return { state: "pending", label: "Pending Review" };
     }
 
-    const status = {
-      state: statusState,
-      label: statusLabel,
-      description: statusDescription,
+    const status = deriveStatus(alertRows, policyRows);
+
+    // ----------------------------------------------------------
+    // 7) Requirements fallback (until Rule Engine V3 powers it)
+    // ----------------------------------------------------------
+    const requirements = {
+      coverages: [] // Safe fallback so UI never breaks
     };
 
-    /* ==========================================================
-       5) Extract last AI parse
-    ========================================================== */
-    let ai = null;
-
+    // ----------------------------------------------------------
+    // 8) Optional: update token usage timestamp
+    // ----------------------------------------------------------
     try {
-      if (v.last_coi_json) {
-        ai =
-          typeof v.last_coi_json === "string"
-            ? JSON.parse(v.last_coi_json)
-            : v.last_coi_json;
-      }
+      await sql`
+        UPDATE vendor_portal_tokens
+        SET used_at = NOW()
+        WHERE token = ${token}
+      `;
     } catch (err) {
-      console.warn("[vendor/portal] Parse last_coi_json failed:", err);
+      console.warn("[vendor/portal] failed updating used_at:", err);
     }
 
-    /* ==========================================================
-       ⭐⭐⭐ D4 LOG: policy snapshot viewed
-       Triggered when AI exists (first portal render after upload)
-    ========================================================== */
-    if (ai) {
-      try {
-        await logVendorActivity(
-          v.id,
-          "policy_snapshot_viewed",
-          "Vendor viewed extracted policy snapshot",
-          "info"
-        );
-      } catch (err) {
-        console.warn(
-          "[vendor/portal] failed to log policy_snapshot_viewed:",
-          err
-        );
-      }
-    }
-
-    /* ==========================================================
-       6) Build + return payload
-    ========================================================== */
+    // ----------------------------------------------------------
+    // 9) Return vendor portal data (V4-compatible)
+    // ----------------------------------------------------------
     return res.status(200).json({
       ok: true,
-      vendor: {
-        id: v.id,
-        name: v.name,
-        email: v.email,
-        lastUploadedCoi: v.last_uploaded_coi,
-      },
+
+      // For UI
+      vendor,
       org: {
-        id: v.org_id,
-        name: v.org_name,
+        id: orgId,
+        name: "Your Customer" // Safe placeholder; customize later
       },
+
+      // Data the UI expects:
+      alerts: alertRows,
+      policies: policyRows,
+      ai: aiData,
       requirements,
       status,
-      alerts,
-      ai,
+
+      // For internal use if needed
+      vendorId,
+      orgId
     });
   } catch (err) {
     console.error("[vendor/portal] ERROR:", err);
-
-    // Log catastrophic fail
-    try {
-      await logVendorActivity(
-        null,
-        "error",
-        `Portal load failed: ${err.message}`,
-        "critical"
-      );
-    } catch (_) {}
-
-    return res.status(500).json({ ok: false, error: err.message });
+    return res.status(500).json({
+      ok: false,
+      error: err.message || "Vendor portal failed.",
+    });
   }
 }
