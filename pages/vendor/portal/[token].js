@@ -1,5 +1,5 @@
 // pages/vendor/portal/[token].js
-// Vendor Portal V4 — Advanced UI: Upload + AI + Timeline + Fix Mode + Assistant
+// Vendor Portal V6 — COI Upload + Multi-Doc Upload + Viewer + Fix Mode + Timeline + Assistant
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/router";
@@ -48,7 +48,7 @@ function getTimelineBucket(createdAtStr) {
   yesterdayStart.setDate(yesterdayStart.getDate() - 1);
 
   const weekStart = new Date(todayStart);
-  const dayOfWeek = weekStart.getDay(); // 0 = Sunday
+  const dayOfWeek = weekStart.getDay();
   weekStart.setDate(weekStart.getDate() - dayOfWeek);
 
   const lastWeekStart = new Date(weekStart);
@@ -93,11 +93,21 @@ export default function VendorPortal() {
   const [vendorData, setVendorData] = useState(null);
   const [error, setError] = useState("");
 
-  // Upload state
+  // COI Upload state
   const [uploading, setUploading] = useState(false);
   const [uploadError, setUploadError] = useState("");
   const [uploadSuccess, setUploadSuccess] = useState("");
   const [selectedFile, setSelectedFile] = useState(null);
+
+  // Multi-document upload state
+  const [docType, setDocType] = useState("w9");
+  const [selectedDoc, setSelectedDoc] = useState(null);
+  const [docUploading, setDocUploading] = useState(false);
+  const [docUploadError, setDocUploadError] = useState("");
+  const [docUploadSuccess, setDocUploadSuccess] = useState("");
+
+  // Documents viewer
+  const [vendorDocuments, setVendorDocuments] = useState([]);
 
   // Fix Mode
   const [resolvedCodes, setResolvedCodes] = useState([]);
@@ -127,7 +137,6 @@ export default function VendorPortal() {
 
   // Responsive
   const [isMobile, setIsMobile] = useState(false);
-
   /* ============================================================
      RESPONSIVE DETECTION
   ============================================================ */
@@ -144,8 +153,7 @@ export default function VendorPortal() {
   }, []);
 
   /* ============================================================
-     LOAD PORTAL DATA
-     (UI-only update: still calls /api/vendor/portal?token=)
+     LOAD PORTAL DATA (vendor, alerts, policies, ai, requirements)
   ============================================================ */
   useEffect(() => {
     if (!token) return;
@@ -175,6 +183,27 @@ export default function VendorPortal() {
   }, [token]);
 
   /* ============================================================
+     LOAD VENDOR DOCUMENTS
+  ============================================================ */
+  useEffect(() => {
+    if (!token) return;
+
+    async function loadDocs() {
+      try {
+        const res = await fetch(`/api/vendor/documents?token=${token}`);
+        const json = await res.json();
+        if (json.ok) {
+          setVendorDocuments(json.documents || []);
+        }
+      } catch (err) {
+        console.error("[vendor docs] failed:", err);
+      }
+    }
+
+    loadDocs();
+  }, [token]);
+
+  /* ============================================================
      LOAD ACTIVITY TIMELINE
   ============================================================ */
   useEffect(() => {
@@ -195,6 +224,7 @@ export default function VendorPortal() {
 
     loadTimeline();
   }, [token]);
+
   const filteredTimeline = timeline.filter((item) => {
     const action = (item.action || "").toLowerCase();
 
@@ -244,7 +274,6 @@ export default function VendorPortal() {
       ),
     }))
     .filter((group) => group.items.length > 0);
-
   /* ============================================================
      FIX MODE — PERSIST RESOLUTION
   ============================================================ */
@@ -260,11 +289,7 @@ export default function VendorPortal() {
       await fetch("/api/vendor/fix-issue", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          vendorId: vendorData.vendor.id,
-          orgId: vendorData.org?.id || vendorData.orgId || vendorData.org_id,
-          code,
-        }),
+        body: JSON.stringify({ token, code }),
       });
 
       const res = await fetch(`/api/vendor/portal?token=${token}`);
@@ -276,7 +301,7 @@ export default function VendorPortal() {
   }
 
   /* ============================================================
-     FILE HANDLING
+     COI FILE HANDLING
   ============================================================ */
   function handleFileInput(e) {
     const f = e.target.files?.[0];
@@ -306,7 +331,7 @@ export default function VendorPortal() {
   }
 
   /* ============================================================
-     UPLOAD + AI PARSE FLOW
+     COI UPLOAD + AI PARSE FLOW
   ============================================================ */
   async function handleUpload() {
     if (!selectedFile) {
@@ -347,6 +372,71 @@ export default function VendorPortal() {
       setUploadError(err.message || "Upload failed.");
     } finally {
       setUploading(false);
+    }
+  }
+
+  /* ============================================================
+     MULTI-DOC FILE HANDLING
+  ============================================================ */
+  function handleDocInput(e) {
+    const f = e.target.files?.[0];
+    if (!f) return;
+
+    const ext = f.name.toLowerCase().split(".").pop();
+    const allowed = ["pdf", "png", "jpg", "jpeg"];
+    if (!allowed.includes(ext)) {
+      setDocUploadError("Only PDF, PNG, JPG, JPEG allowed.");
+      return;
+    }
+
+    setSelectedDoc(f);
+    setDocUploadError("");
+    setDocUploadSuccess("");
+  }
+
+  async function handleDocUpload() {
+    if (!selectedDoc) {
+      setDocUploadError("Please choose a document first.");
+      return;
+    }
+
+    try {
+      setDocUploading(true);
+      setDocUploadError("");
+      setDocUploadSuccess("");
+
+      const fd = new FormData();
+      fd.append("file", selectedDoc);
+      fd.append("token", token);
+      fd.append("docType", docType);
+
+      const res = await fetch("/api/vendor/upload-doc", {
+        method: "POST",
+        body: fd,
+      });
+      const json = await res.json();
+      if (!json.ok) throw new Error(json.error || "Document upload failed");
+
+      setDocUploadSuccess(`Uploaded ${docType.toUpperCase()} successfully!`);
+
+      // Reload documents + timeline for live feedback
+      try {
+        const docsRes = await fetch(`/api/vendor/documents?token=${token}`);
+        const docsJson = await docsRes.json();
+        if (docsJson.ok) setVendorDocuments(docsJson.documents || []);
+
+        const tRes = await fetch(`/api/vendor/timeline?token=${token}`);
+        const tJson = await tRes.json();
+        if (tJson.ok) setTimeline(tJson.timeline || []);
+      } catch (err) {
+        console.error("[doc upload] refresh failed:", err);
+      }
+
+      setSelectedDoc(null);
+    } catch (err) {
+      setDocUploadError(err.message || "Document upload failed.");
+    } finally {
+      setDocUploading(false);
     }
   }
 
@@ -393,20 +483,13 @@ export default function VendorPortal() {
     setAssistantLoading(true);
     setAssistantInput("");
 
-    const newMessages = [
-      ...assistantMessages,
-      { role: "user", text: question },
-    ];
-    setAssistantMessages(newMessages);
+    setAssistantMessages((prev) => [...prev, { role: "user", text: question }]);
 
     try {
       const res = await fetch("/api/vendor/assistant", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          token,
-          question,
-        }),
+        body: JSON.stringify({ token, question }),
       });
 
       const json = await res.json();
@@ -487,10 +570,8 @@ export default function VendorPortal() {
 
   const { vendor, org, requirements, alerts, status, ai, policies } = vendorData;
 
-  const vendorName =
-    vendor?.vendor_name || vendor?.name || "Your Company";
-  const orgName =
-    org?.name || vendorData.orgName || "Your Customer";
+  const vendorName = vendor?.vendor_name || vendor?.name || "Your Company";
+  const orgName = org?.name || vendorData.orgName || "Your Customer";
 
   const derivedStatus = computeDerivedStatus(status, alerts, policies || []);
 
@@ -534,9 +615,7 @@ export default function VendorPortal() {
             {vendorName}
           </h1>
 
-          <div style={{ fontSize: 13, color: GP.textSoft }}>
-            For {orgName}
-          </div>
+          <div style={{ fontSize: 13, color: GP.textSoft }}>For {orgName}</div>
         </div>
 
         {/* STATUS PILL */}
@@ -579,9 +658,9 @@ export default function VendorPortal() {
           gap: 24,
         }}
       >
-        {/* LEFT SIDE — Upload + AI Summary */}
+        {/* LEFT SIDE — COI Upload + Multi-doc Upload + AI Summary */}
         <div>
-          {/* UPLOAD PANEL */}
+          {/* COI UPLOAD PANEL */}
           <div
             style={{
               borderRadius: 20,
@@ -669,6 +748,137 @@ export default function VendorPortal() {
               }}
             >
               {uploading ? "Uploading & Analyzing…" : "Upload & Analyze COI →"}
+            </button>
+          </div>
+
+          {/* MULTI-DOCUMENT UPLOAD PANEL */}
+          <div
+            style={{
+              marginTop: 24,
+              borderRadius: 20,
+              padding: isMobile ? 16 : 20,
+              border: `1px solid ${GP.border}`,
+              background: "rgba(15,23,42,0.92)",
+            }}
+          >
+            <h3 style={{ marginTop: 0, fontSize: isMobile ? 16 : 18 }}>
+              Upload Additional Documents
+            </h3>
+            <div
+              style={{
+                fontSize: 12,
+                color: GP.textSoft,
+                marginBottom: 12,
+                lineHeight: 1.45,
+              }}
+            >
+              Upload W-9s, business licenses, contracts, endorsements, or other documents
+              used to verify your compliance.
+            </div>
+
+            {/* Document Type Select */}
+            <label style={{ fontSize: 12, marginBottom: 6, display: "block" }}>
+              Document Type
+            </label>
+            <select
+              value={docType}
+              onChange={(e) => setDocType(e.target.value)}
+              style={{
+                padding: "8px 10px",
+                borderRadius: 10,
+                border: `1px solid ${GP.border}`,
+                background: "rgba(2,6,23,0.8)",
+                color: GP.text,
+                fontSize: 12,
+                marginBottom: 12,
+                outline: "none",
+                width: "100%",
+              }}
+            >
+              <option value="w9">W-9 Form</option>
+              <option value="license">Business License</option>
+              <option value="contract">Contract</option>
+              <option value="endorsement">Endorsement</option>
+              <option value="other">Other Document</option>
+            </select>
+
+            {/* File Picker */}
+            <input
+              id="multiDocUpload"
+              type="file"
+              accept=".pdf,.png,.jpg,.jpeg"
+              style={{ display: "none" }}
+              onChange={handleDocInput}
+            />
+            <label htmlFor="multiDocUpload">
+              <div
+                style={{
+                  padding: "8px 16px",
+                  borderRadius: 999,
+                  background: "linear-gradient(90deg,#38bdf8,#0ea5e9)",
+                  cursor: "pointer",
+                  display: "inline-block",
+                  fontSize: 13,
+                }}
+              >
+                Choose File
+              </div>
+            </label>
+
+            {selectedDoc && (
+              <div style={{ marginTop: 10, fontSize: 12, color: GP.neonBlue }}>
+                Selected: {selectedDoc.name}
+              </div>
+            )}
+
+            {docUploadError && (
+              <div
+                style={{
+                  marginTop: 10,
+                  padding: 10,
+                  borderRadius: 8,
+                  background: "rgba(127,29,29,0.8)",
+                  border: "1px solid #f87171",
+                  color: "#fecaca",
+                  fontSize: 12,
+                }}
+              >
+                {docUploadError}
+              </div>
+            )}
+
+            {docUploadSuccess && (
+              <div
+                style={{
+                  marginTop: 10,
+                  padding: 10,
+                  borderRadius: 8,
+                  background: "rgba(16,185,129,0.2)",
+                  border: "1px solid #4ade80",
+                  color: "#bbf7d0",
+                  fontSize: 12,
+                }}
+              >
+                {docUploadSuccess}
+              </div>
+            )}
+
+            <button
+              onClick={handleDocUpload}
+              disabled={docUploading}
+              style={{
+                marginTop: 18,
+                padding: "10px 18px",
+                borderRadius: 999,
+                border: `1px solid ${GP.neonBlue}`,
+                background: "linear-gradient(90deg,#38bdf8,#0ea5e9)",
+                color: "#e5f2ff",
+                cursor: docUploading ? "not-allowed" : "pointer",
+                fontSize: 13,
+                width: "100%",
+              }}
+            >
+              {docUploading ? "Uploading Document…" : "Upload Document →"}
             </button>
           </div>
 
@@ -800,8 +1010,111 @@ export default function VendorPortal() {
             </div>
           )}
         </div>
-        {/* RIGHT SIDE — Smart Suggestions + Fix Issues + Requirements + Timeline + Assistant */}
+        {/* RIGHT SIDE — Docs Viewer + Smart Suggestions + Fix Issues + Requirements + Timeline + Assistant */}
         <div>
+          {/* DOCUMENT VIEWER PANEL */}
+          <div
+            style={{
+              borderRadius: 20,
+              padding: isMobile ? 16 : 18,
+              border: `1px solid ${GP.border}`,
+              background: "rgba(15,23,42,0.96)",
+              marginBottom: 24,
+            }}
+          >
+            <h3 style={{ marginTop: 0, fontSize: isMobile ? 16 : 18 }}>
+              Uploaded Documents
+            </h3>
+            <div style={{ fontSize: 12, color: GP.textSoft, marginBottom: 12 }}>
+              W-9s, licenses, contracts, endorsements, and other documents you've uploaded.
+            </div>
+
+            {vendorDocuments.length === 0 ? (
+              <div style={{ fontSize: 13, color: GP.textSoft }}>
+                No additional documents uploaded yet.
+              </div>
+            ) : (
+              <div
+                style={{
+                  maxHeight: 240,
+                  overflowY: "auto",
+                  paddingRight: 6,
+                }}
+              >
+                {vendorDocuments.map((doc) => (
+                  <div
+                    key={doc.id}
+                    style={{
+                      padding: 12,
+                      borderRadius: 14,
+                      background: "rgba(2,6,23,0.6)",
+                      border: "1px solid rgba(148,163,184,0.25)",
+                      marginBottom: 14,
+                    }}
+                  >
+                    <div
+                      style={{
+                        display: "flex",
+                        justifyContent: "space-between",
+                        alignItems: "center",
+                        marginBottom: 4,
+                      }}
+                    >
+                      <div
+                        style={{
+                          fontSize: 14,
+                          fontWeight: 600,
+                          textTransform: "uppercase",
+                          color: GP.neonBlue,
+                        }}
+                      >
+                        {doc.document_type}
+                      </div>
+                      <a
+                        href={doc.file_url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        style={{
+                          padding: "4px 10px",
+                          borderRadius: 999,
+                          fontSize: 11,
+                          textDecoration: "none",
+                          color: "#0b1120",
+                          background: "linear-gradient(90deg,#38bdf8,#0ea5e9)",
+                        }}
+                      >
+                        View File →
+                      </a>
+                    </div>
+                    <div
+                      style={{ fontSize: 11, color: GP.textSoft, marginBottom: 6 }}
+                    >
+                      Uploaded: {new Date(doc.uploaded_at).toLocaleString()}
+                    </div>
+                    {doc.ai_json?.summary ? (
+                      <div
+                        style={{
+                          fontSize: 12,
+                          color: GP.textSoft,
+                          background: "rgba(15,23,42,0.7)",
+                          borderRadius: 10,
+                          padding: 10,
+                          lineHeight: 1.45,
+                        }}
+                      >
+                        {doc.ai_json.summary}
+                      </div>
+                    ) : (
+                      <div style={{ fontSize: 12, color: GP.textSoft }}>
+                        No AI summary available.
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
           {/* SMART SUGGESTIONS PANEL */}
           <div
             style={{
@@ -948,7 +1261,9 @@ export default function VendorPortal() {
                 );
               })
             ) : (
-              <div style={{ color: GP.textSoft, fontSize: 13 }}>No issues detected.</div>
+              <div style={{ color: GP.textSoft, fontSize: 13 }}>
+                No issues detected.
+              </div>
             )}
           </div>
 
@@ -975,7 +1290,6 @@ export default function VendorPortal() {
               </ul>
             </div>
           )}
-
           {/* ACTIVITY TIMELINE PANEL */}
           <div
             style={{
@@ -987,7 +1301,9 @@ export default function VendorPortal() {
               marginBottom: 24,
             }}
           >
-            <h3 style={{ marginTop: 0, fontSize: isMobile ? 16 : 18 }}>Recent Activity</h3>
+            <h3 style={{ marginTop: 0, fontSize: isMobile ? 16 : 18 }}>
+              Recent Activity
+            </h3>
 
             {/* SEARCH + FILTER ROW */}
             <div
