@@ -1,5 +1,5 @@
 // components/chat/SupportChatPanel.js
-// Ultimate AI Assistant v6 — Global, Vendor, Wizard, Explain, Auto-Fix, Org Brain, Onboarding Checklist
+// Ultimate AI Assistant v7 — Now Wizard-Aware (GOD MODE Ready)
 
 import { useState, useEffect } from "react";
 
@@ -10,7 +10,12 @@ const GP = {
   textSoft: "#9ca3af",
 };
 
-export default function SupportChatPanel({ orgId, vendorId, pathname }) {
+export default function SupportChatPanel({
+  orgId,
+  vendorId,
+  pathname,
+  onboardingComplete,   // ⭐ NEW — wizard needs this
+}) {
   const isWizard = pathname?.startsWith("/onboarding");
 
   const [open, setOpen] = useState(false);
@@ -27,7 +32,9 @@ export default function SupportChatPanel({ orgId, vendorId, pathname }) {
   const [input, setInput] = useState("");
   const [sending, setSending] = useState(false);
 
-  // Explain-This-Page listener (❓)
+  /* =====================================================
+     🔥 Explain This Page Listener
+  ===================================================== */
   useEffect(() => {
     const handler = () => {
       sendMessage(
@@ -38,35 +45,37 @@ export default function SupportChatPanel({ orgId, vendorId, pathname }) {
 
     window.addEventListener("explain_page", handler);
     return () => window.removeEventListener("explain_page", handler);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, messages]);
 
-  // 🔥 Onboarding Checklist listener
+
+  /* =====================================================
+     🔥 Auto-Checklist Trigger (Dashboard Idle)
+  ===================================================== */
   useEffect(() => {
     const openChecklist = () => {
       if (!open) setOpen(true);
       sendMessage("start checklist");
     };
 
-    window.addEventListener(
-      "onboarding_chat_forceChecklist",
-      openChecklist
-    );
-
+    window.addEventListener("onboarding_chat_forceChecklist", openChecklist);
     return () =>
       window.removeEventListener(
         "onboarding_chat_forceChecklist",
         openChecklist
       );
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, messages]);
 
+
+  /* =====================================================
+     🔥 Unified Send Message Handler
+  ===================================================== */
   async function sendMessage(forcedText = null) {
     const content = forcedText || input.trim();
     if (!content) return;
 
     const userMessage = { role: "user", content };
     setMessages((prev) => [...prev, userMessage]);
+
     if (!forcedText) setInput("");
 
     try {
@@ -80,11 +89,13 @@ export default function SupportChatPanel({ orgId, vendorId, pathname }) {
           orgId: orgId || null,
           vendorId: vendorId || null,
           path: pathname,
+
+          // ⭐ CRITICAL — Wizard now receives onboardingComplete
+          onboardingComplete: onboardingComplete ?? true,
         }),
       });
 
       const json = await res.json();
-      if (!json.ok) throw new Error(json.error || "Chat failed");
 
       const aiMessage = {
         role: "assistant",
@@ -94,11 +105,13 @@ export default function SupportChatPanel({ orgId, vendorId, pathname }) {
       setMessages((prev) => [...prev, aiMessage]);
     } catch (err) {
       console.error("[ChatBot ERROR]:", err);
+
       setMessages((prev) => [
         ...prev,
         {
           role: "assistant",
-          content: "❌ Something went wrong while processing your request.",
+          content:
+            "❌ Something went wrong while processing your request.",
         },
       ]);
     } finally {
@@ -106,15 +119,23 @@ export default function SupportChatPanel({ orgId, vendorId, pathname }) {
     }
   }
 
+
+  /* =====================================================
+     🔥 ENTER Key Handler
+  ===================================================== */
   function handleKeyDown(e) {
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
       if (!sending) sendMessage();
     }
   }
+
+  /* =====================================================
+     UI Rendering
+  ===================================================== */
   return (
     <>
-      {/* Floating Chat Toggle Button */}
+      {/* Floating Toggle Button */}
       <button
         onClick={() => setOpen((o) => !o)}
         style={{
@@ -141,7 +162,6 @@ export default function SupportChatPanel({ orgId, vendorId, pathname }) {
         {open ? "✖️" : "💬"}
       </button>
 
-      {/* Chat Panel */}
       {open && (
         <div
           style={{
@@ -191,7 +211,7 @@ export default function SupportChatPanel({ orgId, vendorId, pathname }) {
             </div>
           </div>
 
-          {/* Quick Action Buttons */}
+          {/* Actions */}
           <div
             style={{
               padding: 8,
@@ -202,199 +222,41 @@ export default function SupportChatPanel({ orgId, vendorId, pathname }) {
               gap: 6,
             }}
           >
-            {/* Wizard Mode */}
+            {/* Wizard Quick Actions */}
             {isWizard && (
               <>
-                <button
-                  style={quickBtn}
-                  onClick={() => sendMessage("Create an example vendor CSV.")}
-                >
-                  📝 Example CSV
-                </button>
-                <button
-                  style={quickBtn}
-                  onClick={() =>
-                    sendMessage("Explain the rules the wizard generated.")
-                  }
-                >
-                  📘 Explain Rules
-                </button>
-                <button
-                  style={quickBtn}
-                  onClick={() =>
-                    sendMessage("Generate a vendor welcome onboarding email.")
-                  }
-                >
-                  ✉️ Welcome Email
-                </button>
-                <button
-                  style={quickBtn}
-                  onClick={() =>
-                    sendMessage("Help me choose the right insurance coverages.")
-                  }
-                >
-                  🛡️ Coverage Guide
-                </button>
-                <button
-                  style={quickBtn}
-                  onClick={() => sendMessage("Fix my CSV formatting.")}
-                >
-                  🛠️ Fix CSV
-                </button>
+                <button style={quickBtn} onClick={() => sendMessage("Create an example vendor CSV.")}>📝 Example CSV</button>
+                <button style={quickBtn} onClick={() => sendMessage("Explain the rules the wizard generated.")}>📘 Explain Rules</button>
+                <button style={quickBtn} onClick={() => sendMessage("Generate a vendor welcome onboarding email.")}>✉️ Welcome Email</button>
+                <button style={quickBtn} onClick={() => sendMessage("Help me choose the right insurance coverages.")}>🛡️ Coverage Guide</button>
+                <button style={quickBtn} onClick={() => sendMessage("Fix my CSV formatting.")}>🛠️ Fix CSV</button>
               </>
             )}
 
             {/* Vendor Mode */}
             {!isWizard && vendorId && (
               <>
-                <button
-                  style={quickBtn}
-                  onClick={() =>
-                    sendMessage("Explain this vendor's risk score.")
-                  }
-                >
-                  ⚠️ Risk Score
-                </button>
-                <button
-                  style={quickBtn}
-                  onClick={() =>
-                    sendMessage("Why did this vendor fail compliance?")
-                  }
-                >
-                  📘 Rule Failures
-                </button>
-                <button
-                  style={quickBtn}
-                  onClick={() =>
-                    sendMessage("Explain this vendor’s alerts.")
-                  }
-                >
-                  🔔 Alerts
-                </button>
-                <button
-                  style={quickBtn}
-                  onClick={() =>
-                    sendMessage("Explain this vendor’s renewal prediction.")
-                  }
-                >
-                  🔮 Prediction
-                </button>
-                <button
-                  style={quickBtn}
-                  onClick={() =>
-                    sendMessage(
-                      "Generate an email to the broker requesting updated COI with missing items listed."
-                    )
-                  }
-                >
-                  📧 Broker Email
-                </button>
-                <button
-                  style={quickBtn}
-                  onClick={() =>
-                    sendMessage(
-                      "Generate a fix request email listing missing or incorrect insurance items."
-                    )
-                  }
-                >
-                  🛠️ Fix Email
-                </button>
-                <button
-                  style={{
-                    ...quickBtn,
-                    border: "1px solid rgba(248,113,113,0.9)",
-                    color: "#fecaca",
-                  }}
-                  onClick={() =>
-                    sendMessage(
-                      "Auto-fix this vendor: summarize all issues, propose a step-by-step remediation plan, and generate vendor and broker email templates."
-                    )
-                  }
-                >
-                  🚀 Auto-Fix Vendor
-                </button>
+                <button style={quickBtn} onClick={() => sendMessage("Explain this vendor's risk score.")}>⚠️ Risk Score</button>
+                <button style={quickBtn} onClick={() => sendMessage("Why did this vendor fail compliance?")}>📘 Rule Failures</button>
+                <button style={quickBtn} onClick={() => sendMessage("Explain this vendor’s alerts.")}>🔔 Alerts</button>
+                <button style={quickBtn} onClick={() => sendMessage("Explain this vendor’s renewal prediction.")}>🔮 Prediction</button>
+                <button style={quickBtn} onClick={() => sendMessage("Generate an email to the broker requesting updated COI with missing items listed.")}>📧 Broker Email</button>
+                <button style={quickBtn} onClick={() => sendMessage("Generate a fix request email listing missing or incorrect insurance items.")}>🛠️ Fix Email</button>
               </>
             )}
 
-            {/* Global Mode + Org Brain + Checklist */}
+            {/* Global Quick Actions */}
             {!isWizard && !vendorId && (
               <>
-                <button
-                  style={quickBtn}
-                  onClick={() => sendMessage("Show me all high-risk vendors.")}
-                >
-                  🔥 High-Risk Vendors
-                </button>
-                <button
-                  style={quickBtn}
-                  onClick={() =>
-                    sendMessage("Explain the renewal prediction model.")
-                  }
-                >
-                  🔮 Prediction Help
-                </button>
-                <button
-                  style={quickBtn}
-                  onClick={() => sendMessage("How do I upload a COI?")}
-                >
-                  📄 COI Help
-                </button>
-
-                {/* ORG BRAIN buttons */}
-                <button
-                  style={quickBtn}
-                  onClick={() =>
-                    sendMessage(
-                      "Design a complete insurance compliance program for our organization using Org Brain."
-                    )
-                  }
-                >
-                  🧠 Design System
-                </button>
-                <button
-                  style={quickBtn}
-                  onClick={() =>
-                    sendMessage(
-                      "Optimize our compliance system to reduce high-risk vendors and improve renewal rates."
-                    )
-                  }
-                >
-                  ⚙️ Optimize System
-                </button>
-                <button
-                  style={quickBtn}
-                  onClick={() =>
-                    sendMessage(
-                      "Rebuild our compliance system using construction industry standards."
-                    )
-                  }
-                >
-                  🏗️ Industry: Construction
-                </button>
-                <button
-                  style={quickBtn}
-                  onClick={() =>
-                    sendMessage(
-                      "Rebuild our compliance system using healthcare industry insurance standards."
-                    )
-                  }
-                >
-                  🏥 Industry: Healthcare
-                </button>
-                <button
-                  style={quickBtn}
-                  onClick={() => sendMessage("What can Org Brain do?")}
-                >
-                  🔍 What can Org Brain do?
-                </button>
-
-                {/* 🔥 Start Checklist CTA */}
-                <button
-                  style={quickBtn}
-                  onClick={() => sendMessage("start checklist")}
-                >
-                  ✅ Start Checklist
-                </button>
+                <button style={quickBtn} onClick={() => sendMessage("Show me all high-risk vendors.")}>🔥 High-Risk Vendors</button>
+                <button style={quickBtn} onClick={() => sendMessage("Explain the renewal prediction model.")}>🔮 Prediction Help</button>
+                <button style={quickBtn} onClick={() => sendMessage("How do I upload a COI?")}>📄 COI Help</button>
+                <button style={quickBtn} onClick={() => sendMessage("Design a complete insurance compliance program for our organization using Org Brain.")}>🧠 Design System</button>
+                <button style={quickBtn} onClick={() => sendMessage("Optimize our compliance system to reduce high-risk vendors and improve renewal rates.")}>⚙️ Optimize System</button>
+                <button style={quickBtn} onClick={() => sendMessage("Rebuild our compliance system using construction industry standards.")}>🏗️ Industry: Construction</button>
+                <button style={quickBtn} onClick={() => sendMessage("Rebuild our compliance system using healthcare industry insurance standards.")}>🏥 Industry: Healthcare</button>
+                <button style={quickBtn} onClick={() => sendMessage("What can Org Brain do?")}>🔍 What can Org Brain do?</button>
+                <button style={quickBtn} onClick={() => sendMessage("start checklist")}>✅ Start Checklist</button>
               </>
             )}
           </div>
@@ -445,7 +307,6 @@ export default function SupportChatPanel({ orgId, vendorId, pathname }) {
               );
             })}
 
-            {/* Cinematic loader */}
             {sending && (
               <div
                 style={{
@@ -457,13 +318,7 @@ export default function SupportChatPanel({ orgId, vendorId, pathname }) {
                   color: GP.textSoft,
                 }}
               >
-                <div
-                  style={{
-                    display: "flex",
-                    alignItems: "center",
-                    gap: 4,
-                  }}
-                >
+                <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
                   <div
                     style={{
                       width: 8,
@@ -534,6 +389,7 @@ export default function SupportChatPanel({ orgId, vendorId, pathname }) {
                 minHeight: 38,
               }}
             />
+
             <button
               onClick={() => sendMessage()}
               disabled={sending || !input.trim()}
@@ -566,7 +422,7 @@ const quickBtn = {
   border: "1px solid rgba(56,189,248,0.5)",
   background: "rgba(15,23,42,0.9)",
   fontSize: 11,
-  color: "#e5e7eb",
+  color: "#e5e7ebb",
   cursor: "pointer",
   whiteSpace: "nowrap",
 };
