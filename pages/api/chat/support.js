@@ -1,8 +1,8 @@
 // pages/api/chat/support.js
-// GOD MODE V13 — FULL AUTOPILOT
+// GOD MODE V14 — FULL AUTOPILOT ENGINE
 // Wizard + Persona + Auto Industry + Auto Rules + Auto Templates
-// + Auto Alerts + Notifications + Power Mode "Run Alerts Now"
-// + Vendor Email Commands + Timeline Logging
+// + Auto Alerts + Notifications + Power Mode Commands
+// + Vendor Email Ops + Vendor Risk Explainer + Timeline Logging
 
 import { openai } from "../../../lib/openaiClient";
 import { sql } from "../../../lib/db";
@@ -158,7 +158,7 @@ async function routeWizard({ state, lastContent, onboardingComplete, orgId }) {
   if (powerMode) {
     return {
       reply: wrap(
-        "Onboarding is complete. You’re in **Power Mode** — ask about risk, vendors, alerts, or run operations like **run alerts now**."
+        "Onboarding is complete. You’re in **Power Mode** — ask about high-risk vendors, alerts, or run operations like **run alerts now**."
       ),
       nextState: { ...nextState, mode: "completed", completed: true },
     };
@@ -537,7 +537,9 @@ export default async function handler(req, res) {
       messages[messages.length - 1]?.content || "";
     const lastMessage = rawLastContent.toLowerCase();
 
-    // ================= RUN ALERTS NOW (POWER MODE) =================
+    // =====================================================
+    // POWER MODE — RUN ALERTS NOW
+    // =====================================================
     const runAlertsTriggers = [
       "run alerts now",
       "run alerts",
@@ -549,13 +551,16 @@ export default async function handler(req, res) {
     if (orgId && runAlertsTriggers.some((t) => lastMessage.includes(t))) {
       const result = await runAlertsNow(orgId);
 
-      // Timeline log: manual alert scan
+      // Timeline log entry
       await sql`
         INSERT INTO system_timeline (org_id, action, message, severity)
         VALUES (
           ${orgId},
           'manual_alert_scan',
-          ${'Manual alert scan executed. Alerts: ' + (result.alertsCreated || 0) + ', Emails: ' + (result.emailsSent || 0)},
+          ${'Manual alert scan executed. Alerts: ' +
+          (result.alertsCreated || 0) +
+          ', Emails: ' +
+          (result.emailsSent || 0)},
           'info'
         );
       `;
@@ -565,17 +570,20 @@ export default async function handler(req, res) {
         reply: `🕒 **Manual Alert Scan Complete**
 
 Alerts Created: ${result.alertsCreated || 0}  
-Emails Sent: ${result.emailsSent || 0}  
+Emails Sent: ${result.emailsSent || 0}
 
 You can say:
 • "show alerts"
-• "show high risk vendors"
-• "explain this dashboard"
+• "explain this vendor"
+• "email vendor 12 a renewal reminder"
+• "who is highest risk?"
 `,
       });
     }
 
-    // ================= VENDOR EMAIL COMMAND ENGINE =================
+    // =====================================================
+    // POWER MODE — VENDOR EMAIL COMMAND ENGINE
+    // =====================================================
     const vendorEmailTriggers = [
       "email vendor",
       "send vendor",
@@ -583,56 +591,45 @@ You can say:
     ];
 
     if (orgId && vendorEmailTriggers.some((t) => lastMessage.includes(t))) {
-      const match = lastMessage.match(/vendor\s+(\d+)/);
-      if (!match) {
+      // 1) Parse vendor ID
+      let targetVendorId = vendorId || null;
+      const idMatch = lastMessage.match(/vendor\s+(\d+)/);
+      if (!targetVendorId && idMatch) {
+        const parsed = parseInt(idMatch[1], 10);
+        if (!Number.isNaN(parsed)) targetVendorId = parsed;
+      }
+
+      if (!targetVendorId) {
         return res.status(200).json({
           ok: true,
           reply:
-            "I heard you want to email a vendor, but I couldn’t see which ID. Try: **email vendor 23 a renewal reminder**.",
+            "I heard you want to email a vendor, but no vendor ID was provided. Try: **email vendor 23 a renewal reminder**.",
         });
       }
 
-      const vendorIdParsed = parseInt(match[1], 10);
-      if (Number.isNaN(vendorIdParsed)) {
-        return res.status(200).json({
-          ok: true,
-          reply:
-            "I couldn’t understand that vendor ID. Try: **email vendor 23 a non-compliance notice**.",
-        });
-      }
-
-      // Decide which template_key to use
+      // 2) Determine template type from human language
       let templateKey = "renewal_reminder";
-      if (
-        lastMessage.includes("non-compliance") ||
-        lastMessage.includes("noncompliance") ||
-        lastMessage.includes("non compliance")
-      ) {
-        templateKey = "non_compliance_notice";
-      } else if (lastMessage.includes("broker")) {
-        templateKey = "broker_request";
-      } else if (lastMessage.includes("fix")) {
-        templateKey = "vendor_fix";
-      } else if (lastMessage.includes("welcome")) {
-        templateKey = "welcome_onboarding";
-      }
+      if (lastMessage.includes("non-compliance")) templateKey = "non_compliance_notice";
+      else if (lastMessage.includes("broker")) templateKey = "broker_request";
+      else if (lastMessage.includes("fix")) templateKey = "vendor_fix";
+      else if (lastMessage.includes("welcome")) templateKey = "welcome_onboarding";
 
-      // Look up vendor
-      const vendors = await sql`
+      // 3) Load vendor
+      const vendorRows = await sql`
         SELECT id, vendor_name, email
         FROM vendors
-        WHERE id = ${vendorIdParsed} AND org_id = ${orgId}
+        WHERE id = ${targetVendorId} AND org_id = ${orgId}
         LIMIT 1
       `;
 
-      if (!vendors.length) {
+      if (!vendorRows.length) {
         return res.status(200).json({
           ok: true,
-          reply: `I couldn’t find vendor ID **${vendorIdParsed}** for this org.`,
+          reply: `I couldn’t find vendor ID **${targetVendorId}** for this org.`,
         });
       }
 
-      const vendor = vendors[0];
+      const vendor = vendorRows[0];
       if (!vendor.email) {
         return res.status(200).json({
           ok: true,
@@ -642,6 +639,7 @@ You can say:
         });
       }
 
+      // 4) Send notification email
       try {
         const payload = {
           orgId,
@@ -650,6 +648,7 @@ You can say:
           bodyParams: {
             VENDOR_NAME: vendor.vendor_name || `Vendor ${vendor.id}`,
             OUR_ORG_NAME: "Your Organization",
+            ALERT_MESSAGE: "Compliance update",
           },
         };
 
@@ -669,7 +668,7 @@ You can say:
           });
         }
 
-        // Log to system timeline
+        // Log timeline
         await sql`
           INSERT INTO system_timeline (org_id, vendor_id, action, message, severity)
           VALUES (
@@ -683,21 +682,161 @@ You can say:
 
         return res.status(200).json({
           ok: true,
-          reply: `✅ Email sent to **${
-            vendor.vendor_name || vendor.id
-          }** at **${vendor.email}** using template **${templateKey}**.`,
+          reply: `✅ Email sent to **${vendor.vendor_name || vendor.id}** at **${
+            vendor.email
+          }** using template **${templateKey}**.`,
         });
       } catch (err) {
         console.error("[Vendor Email Command ERROR]", err);
         return res.status(200).json({
           ok: true,
-          reply:
-            "❌ I tried to send the vendor email, but a system error occurred.",
+          reply: "❌ I tried to send the vendor email, but a system error occurred.",
         });
       }
     }
 
-    // ================= ORG BRAIN MODE =================
+    // =====================================================
+    // POWER MODE — VENDOR RISK EXPLAINER ENGINE
+    // =====================================================
+    const vendorRiskTriggers = [
+      "explain this vendor",
+      "explain vendor",
+      "vendor risk",
+      "why is vendor",
+      "why is this vendor",
+      "what is this vendor's risk",
+      "what is this vendors risk",
+      "why are they failing",
+      "why is this vendor failing",
+    ];
+
+    if (orgId && vendorRiskTriggers.some((t) => lastMessage.includes(t))) {
+      // 1) Determine vendor ID
+      let targetVendorId = vendorId || null;
+      const idMatch = lastMessage.match(/vendor\s+(\d+)/);
+      if (!targetVendorId && idMatch) {
+        const parsed = parseInt(idMatch[1], 10);
+        if (!Number.isNaN(parsed)) targetVendorId = parsed;
+      }
+
+      if (!targetVendorId) {
+        return res.status(200).json({
+          ok: true,
+          reply: `I can explain a vendor’s risk, but I need a vendor ID. Try **explain vendor 23**.`,
+        });
+      }
+
+      // 2) Load vendor
+      const vendorRows = await sql`
+        SELECT id, vendor_name, email
+        FROM vendors
+        WHERE id = ${targetVendorId} AND org_id = ${orgId}
+        LIMIT 1
+      `;
+
+      if (!vendorRows.length) {
+        return res.status(200).json({
+          ok: true,
+          reply: `I couldn’t find vendor ID **${targetVendorId}** for this org.`,
+        });
+      }
+
+      const vendor = vendorRows[0];
+
+      // 3) Load policies
+      const policyRows = await sql`
+        SELECT *
+        FROM policies
+        WHERE vendor_id = ${vendor.id}
+      `;
+
+      // 4) Load rule engine results
+      const ruleRows = await sql`
+        SELECT passed, message, severity
+        FROM rule_results_v3
+        WHERE vendor_id = ${vendor.id}
+      `;
+
+      // 5) Load alerts
+      const alertRows = await sql`
+        SELECT code, message, severity, created_at
+        FROM vendor_alerts
+        WHERE vendor_id = ${vendor.id}
+        ORDER BY created_at DESC
+        LIMIT 20
+      `;
+
+      // 6) Build AI prompt
+      const riskPrompt = `
+You are an expert insurance compliance analyst.
+
+Analyze this vendor's risk profile and explain it clearly, with action steps.
+
+Vendor:
+${JSON.stringify(vendor, null, 2)}
+
+Policies:
+${JSON.stringify(policyRows, null, 2)}
+
+Rule Engine Results (rule_results_v3):
+${JSON.stringify(ruleRows, null, 2)}
+
+Alerts (vendor_alerts):
+${JSON.stringify(alertRows, null, 2)}
+
+Please respond with:
+
+1) A short high-level summary of the vendor's overall risk (1–2 sentences)
+2) Key issues / reasons they are failing or at risk
+3) What this means in practical terms for the organization
+4) Concrete remediation steps to request from the vendor (bullet points)
+5) Which email template to send first (renewal_reminder, non_compliance_notice, broker_request, vendor_fix, welcome_onboarding) and why
+`;
+
+      try {
+        const completion = await openai.chat.completions.create({
+          model: "gpt-4.1",
+          temperature: 0.2,
+          messages: [
+            {
+              role: "system",
+              content:
+                "You are an elite insurance compliance risk analyst. You explain vendor risk and remediation clearly and practically.",
+            },
+            { role: "user", content: riskPrompt },
+          ],
+        });
+
+        const aiReply = completion.choices[0].message.content;
+
+        // Log timeline entry
+        await sql`
+          INSERT INTO system_timeline (org_id, vendor_id, action, message, severity)
+          VALUES (
+            ${orgId},
+            ${vendor.id},
+            'vendor_risk_explained',
+            ${'AI generated risk explanation for vendor ' + (vendor.vendor_name || vendor.id)},
+            'info'
+          );
+        `;
+
+        return res.status(200).json({
+          ok: true,
+          reply: aiReply,
+        });
+      } catch (err) {
+        console.error("[Vendor Risk Explainer ERROR]", err);
+        return res.status(200).json({
+          ok: true,
+          reply:
+            "❌ I tried to analyze this vendor's risk, but a system error occurred.",
+        });
+      }
+    }
+    // =====================================================
+    // ORG BRAIN MODE — System Designer
+    // =====================================================
     const orgBrainTriggers = [
       "org brain",
       "design system",
@@ -705,6 +844,9 @@ You can say:
       "industry:",
       "rebuild system",
       "configure insurance",
+      "create rule groups",
+      "rebuild rules",
+      "insurance requirements",
     ];
 
     if (orgId && orgBrainTriggers.some((t) => lastMessage.includes(t))) {
@@ -712,28 +854,35 @@ You can say:
         const resBrain = await fetch("/api/org/ai-system-designer", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ orgId, prompt: lastMessage }),
+          body: JSON.stringify({
+            orgId,
+            prompt: lastMessage,
+          }),
         });
+
         const brain = await resBrain.json();
 
         if (!brain.ok) {
           return res.status(200).json({
             ok: true,
             reply:
-              "⚠️ Org Brain failed: " + (brain.error || "Unknown error."),
+              "⚠️ Org Brain encountered an issue: " +
+              (brain.error || "Unknown error."),
           });
         }
 
         return res.status(200).json({
           ok: true,
-          reply: `🧠 ORG BRAIN BLUEPRINT\n\n${JSON.stringify(
-            brain,
-            null,
-            2
-          )}`,
+          reply:
+            `🧠 **ORG BRAIN SYSTEM BLUEPRINT**\n\n` +
+            JSON.stringify(brain.summary, null, 2) +
+            `\n\n**Rule Groups:**\n` +
+            JSON.stringify(brain.ruleGroups, null, 2) +
+            `\n\n**Templates:**\n` +
+            JSON.stringify(brain.templates, null, 2),
         });
       } catch (err) {
-        console.error("[Org Brain ERROR]", err);
+        console.error("[Org Brain Chat ERROR]", err);
         return res.status(200).json({
           ok: true,
           reply: "❌ Org Brain crashed unexpectedly.",
@@ -741,12 +890,16 @@ You can say:
       }
     }
 
-    // ================= AUTO-FIX MODE =================
+    // =====================================================
+    // AUTO-FIX MODE — Fully automated remediation engine
+    // =====================================================
     const autoFixTriggers = [
       "auto-fix",
       "autofix",
       "fix vendor",
       "generate fix plan",
+      "create fix plan",
+      "remediation plan",
     ];
 
     if (vendorId && autoFixTriggers.some((t) => lastMessage.includes(t))) {
@@ -758,32 +911,34 @@ You can say:
         `;
 
         const failed = ruleRows.filter((r) => !r.passed);
+
         const failSummary =
           failed.length === 0
             ? "No compliance issues detected."
             : failed
-                .map((f) => `- ${f.message} (${f.severity})`)
+                .map((f) => `• ${f.message} (${f.severity})`)
                 .join("\n");
 
-        const prompt = `
-Vendor ID: ${vendorId}
+        const autoFixPrompt = `
+You are an insurance compliance remediation expert.
 
+Vendor ID: ${vendorId}
 Failing Rules:
 ${failSummary}
 
 Create:
-1) Short explanation of overall risk
-2) Vendor-facing fix email
-3) Broker request email
-4) JSON array of concrete remediation steps
+1. A short explanation of the vendor’s overall risk.
+2. A vendor-facing Fix Plan email.
+3. A broker request email listing missing or incorrect items.
+4. JSON array of actionable remediation steps.
 `;
 
         const completion = await openai.chat.completions.create({
           model: "gpt-4.1",
-          temperature: 0,
+          temperature: 0.1,
           messages: [
-            { role: "system", content: "You fix COI compliance issues." },
-            { role: "user", content: prompt },
+            { role: "system", content: "You fix COI compliance issues precisely." },
+            { role: "user", content: autoFixPrompt },
           ],
         });
 
@@ -791,47 +946,53 @@ Create:
 
         return res.status(200).json({
           ok: true,
-          reply: `🚀 AUTO-FIX PLAN\n\n${reply}`,
+          reply: `🚀 **AUTO-FIX PLAN GENERATED**\n\n${reply}`,
         });
       } catch (err) {
         console.error("[AutoFix ERROR]", err);
         return res.status(200).json({
           ok: true,
-          reply: "❌ Auto-Fix failed due to a system error.",
+          reply: "❌ Auto-Fix mode failed due to a system error.",
         });
       }
     }
 
-    // ================= EXPLAIN PAGE MODE =================
+    // =====================================================
+    // EXPLAIN THIS PAGE MODE — UI interpreter
+    // =====================================================
     const explainTriggers = [
       "explain this page",
       "what is on this page",
       "explain everything here",
       "what am i looking at",
+      "explain this screen",
+      "what does this page mean",
     ];
 
     if (explainTriggers.some((t) => lastMessage.includes(t))) {
-      const promptExplain = `
+      const explainPrompt = `
 Explain this UI page to the user in simple terms.
 
 Page: ${path}
-Vendor context: ${vendorId ? "Vendor Detail" : "Global Dashboard"}
+Vendor context: ${vendorId ? "Vendor Detail Page" : "Global Dashboard"}
 
 Explain:
-- What the panels mean
-- How to use the page
-- What actions to take next
+- What each panel represents
+- What the metrics mean
+- What actions the user should take next
+- Any risk signals the user should pay attention to
 `;
 
       const completion = await openai.chat.completions.create({
         model: "gpt-4.1",
-        temperature: 0.3,
+        temperature: 0.2,
         messages: [
           {
             role: "system",
-            content: "You explain UI pages clearly and concisely.",
+            content:
+              "You are an expert UI guide that explains application screens clearly.",
           },
-          { role: "user", content: promptExplain },
+          { role: "user", content: explainPrompt },
         ],
       });
 
@@ -840,7 +1001,9 @@ Explain:
         reply: completion.choices[0].message.content,
       });
     }
-    // ================= WIZARD (GOD MODE) =================
+    // =====================================================
+    // GOD MODE WIZARD — EXECUTION HOOK
+    // =====================================================
     if (orgId) {
       const currentState =
         wizardStateByOrg[orgId] || {
@@ -860,6 +1023,7 @@ Explain:
 
       wizardStateByOrg[orgId] = nextState;
 
+      // If wizard handled message — we stop here
       if (wizardReply) {
         return res.status(200).json({
           ok: true,
@@ -868,7 +1032,9 @@ Explain:
       }
     }
 
-    // ================= CHECKLIST (LITE) =================
+    // =====================================================
+    // CHECKLIST MODE (Lite fallback)
+    // =====================================================
     const checklistTriggers = [
       "start checklist",
       "where do i start",
@@ -877,28 +1043,39 @@ Explain:
       "i just signed up",
       "what do i do first",
       "begin onboarding",
+      "start onboarding checklist",
     ];
 
     if (checklistTriggers.some((t) => lastMessage.includes(t))) {
       const checklist = `
-🧭 AI Onboarding Checklist
+🧭 **AI Onboarding Checklist**
 
-1) Upload or paste vendors (CSV, COIs, or manual)  
-2) Let AI detect your industry  
-3) Let AI auto-build rules  
-4) Let AI generate templates  
-5) Let AI configure alerts  
-6) Use Power Mode to manage risk
+1) Upload or paste vendors  
+   • CSV  
+   • COIs  
+   • Manual entry  
+
+2) AI detects your industry  
+3) AI auto-builds rules  
+4) AI generates templates  
+5) AI configures alert engine  
+6) Use Power Mode to operate the system  
 
 You can say:
-• "start wizard"
-• "run alerts now"
-• "explain this page"
+• "start wizard"  
+• "run alerts now"  
+• "explain this page"  
+• "explain vendor 12"  
 `;
-      return res.status(200).json({ ok: true, reply: checklist });
+      return res.status(200).json({
+        ok: true,
+        reply: checklist,
+      });
     }
 
-    // ================= NORMAL CHAT FALLBACK =================
+    // =====================================================
+    // NORMAL CHAT — FALLBACK MODE
+    // =====================================================
     const systemPrompt = `
 You are an elite insurance compliance AI assistant.
 
@@ -906,7 +1083,8 @@ You:
 - Explain clearly
 - Suggest exact next steps
 - Use real insurance logic
-- Do not hallucinate details
+- Provide practical actions
+- Never hallucinate details
 
 Org: ${orgId}
 Vendor: ${vendorId || "None"}
@@ -927,7 +1105,11 @@ User message: ${rawLastContent}
     });
 
     const reply = completion.choices[0].message.content;
-    return res.status(200).json({ ok: true, reply });
+
+    return res.status(200).json({
+      ok: true,
+      reply,
+    });
   } catch (err) {
     console.error("[Support Chat ERROR]", err);
     return res.status(500).json({
@@ -936,3 +1118,21 @@ User message: ${rawLastContent}
     });
   }
 }
+// =====================================================
+// END OF GOD MODE V14 — support.js
+// =====================================================
+
+// Nothing else needed here — the main handler above
+// completes the full routing flow for:
+//
+// ✔ GOD MODE Autopilot Wizard
+// ✔ Vendor Email Engine
+// ✔ Vendor Risk Explainer
+// ✔ Run Alerts Now (Power Mode)
+// ✔ Org Brain System Designer
+// ✔ Auto-Fix Mode
+// ✔ Explain Page Mode
+// ✔ Checklist Fallback
+// ✔ Normal Chat with Insurance-Aware Context
+//
+// File exported cleanly above.
