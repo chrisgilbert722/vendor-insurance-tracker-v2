@@ -1,4 +1,4 @@
-// context/OrgContext.js — STABLE DEFAULT (Fixes React 310)
+// context/OrgContext.js — Updated for Global Onboarding State + GOD MODE Wizard
 import { createContext, useContext, useState, useEffect } from "react";
 import { supabase } from "../lib/supabaseClient";
 
@@ -7,6 +7,8 @@ const OrgContext = createContext({
   orgs: [],
   activeOrgId: null,
   loadingOrgs: true,
+  onboardingComplete: true,      // NEW
+  setOnboardingComplete: () => {}, // NEW
   switchOrg: () => {}
 });
 
@@ -15,17 +17,16 @@ export function OrgProvider({ children }) {
   const [activeOrgId, setActiveOrgId] = useState(null);
   const [loadingOrgs, setLoadingOrgs] = useState(true);
 
+  // ⭐ NEW — Global onboarding flag
+  const [onboardingComplete, setOnboardingComplete] = useState(true);
+
   useEffect(() => {
     async function load() {
       try {
-        let {
-          data: { session },
-        } = await supabase.auth.getSession();
+        let { data: { session } } = await supabase.auth.getSession();
 
         if (!session) {
-          const {
-            data: { user },
-          } = await supabase.auth.getUser();
+          const { data: { user } } = await supabase.auth.getUser();
           if (user) session = { user };
         }
 
@@ -76,6 +77,8 @@ export function OrgProvider({ children }) {
         orgs,
         activeOrgId,
         loadingOrgs,
+        onboardingComplete,       // NEW
+        setOnboardingComplete,    // NEW
         switchOrg,
       }}
     >
