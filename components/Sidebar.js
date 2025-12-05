@@ -1,4 +1,4 @@
-// components/Sidebar.js — Tactical Neon Rail V10 (Onboarding-Aware + AI Setup Center)
+// components/Sidebar.js — Tactical Neon Rail V10 (Cleaned for GOD MODE)
 import React, { useEffect, useState } from "react";
 import { useOrg } from "../context/OrgContext";
 
@@ -6,7 +6,7 @@ export default function Sidebar({ pathname, isAdmin, isManager, isViewer }) {
   const { activeOrgId } = useOrg() || {};
   const [onboardingComplete, setOnboardingComplete] = useState(true);
 
-  // Fetch onboarding status so we know whether to show "Onboard" or "AI Setup"
+  // Fetch onboarding status for AI Setup visibility
   useEffect(() => {
     async function fetchStatus() {
       if (!activeOrgId) return;
@@ -128,16 +128,6 @@ export default function Sidebar({ pathname, isAdmin, isManager, isViewer }) {
           label="AI Rules"
           icon="⚙️"
           active={pathname === "/admin/rules/ai-builder"}
-        />
-      )}
-
-      {/* ⭐ ONBOARD (ONLY WHILE ONBOARDING INCOMPLETE) ⭐ */}
-      {!onboardingComplete && (
-        <RailLink
-          href="/onboarding"
-          label="Onboard"
-          icon="🎉"
-          active={pathname.startsWith("/onboarding")}
         />
       )}
 
