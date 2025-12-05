@@ -1,25 +1,25 @@
 // pages/api/vendor/upload-doc.js
-// MULTI-DOCUMENT UPLOAD ENGINE — Vendor Portal V4 + Admin
+// MULTI-DOCUMENT UPLOAD ENGINE — Vendor Portal V4/V5 + Admin
 //
 // Supports:
-// - Vendor Portal Token (?token=...)
-// - Admin Upload (vendorId + orgId)
+// ✔ Vendor Portal Token (?token=...)
+// ✔ Admin Upload (vendorId + orgId)
 //
 // Handles:
-// - W9
-// - Business License
-// - Contracts
-// - Other docs
+// ✔ W9
+// ✔ Business License
+// ✔ Contracts (auto-rule processing)
+// ✔ Endorsements
+// ✔ Other documents
 //
-// Adds:
+// Provides:
 // ✔ Supabase Storage Upload
 // ✔ Document Classification
-// ✔ Normalization (W9 / License / Contracts)
-// ✔ system_timeline logging
+// ✔ Normalization (W9 / License / Contract)
 // ✔ AI Summary (GPT-4.1)
-// ✔ Vendor + Admin Email Notifications (optional env variable)
-// ✔ Consistent vendor_documents table insert
-// ✔ Contract auto-processing → Rule Engine V3
+// ✔ system_timeline Logging
+// ✔ Vendor + Admin Email Notifications (Optional)
+// ✔ vendor_documents insert
 //
 
 import formidable from "formidable";
@@ -48,7 +48,7 @@ export default async function handler(req, res) {
 
     form.parse(req, async (err, fields, files) => {
       if (err) {
-        console.error("[upload-doc] parse error", err);
+        console.error("[upload-doc] parse error:", err);
         return res.status(500).json({ ok: false, error: "Upload parse failed." });
       }
 
@@ -68,11 +68,10 @@ export default async function handler(req, res) {
 
       const ext = filename.toLowerCase().split(".").pop();
       const allowed = ["pdf", "png", "jpg", "jpeg"];
-
       if (!allowed.includes(ext)) {
         return res.status(400).json({
           ok: false,
-          error: "Only PDF, PNG, JPG and JPEG allowed.",
+          error: "Only PDF, PNG, JPG, JPEG are allowed.",
         });
       }
 
@@ -88,7 +87,6 @@ export default async function handler(req, res) {
           WHERE token = ${token}
           LIMIT 1
         `;
-
         if (!tokenRows.length)
           return res.status(404).json({ ok: false, error: "Invalid vendor link." });
 
@@ -103,7 +101,6 @@ export default async function handler(req, res) {
           WHERE id = ${t.vendor_id}
           LIMIT 1
         `;
-
         if (!vendorRows.length)
           return res.status(404).json({ ok: false, error: "Vendor not found." });
 
@@ -129,7 +126,7 @@ export default async function handler(req, res) {
       const orgId = vendor.org_id;
 
       // ---------------------------------------------------------
-      // 2) Upload → Supabase Storage
+      // 2) Upload file → Supabase Storage
       // ---------------------------------------------------------
       const buffer = fs.readFileSync(filepath);
       const bucket = "vendor-docs";
@@ -142,17 +139,16 @@ export default async function handler(req, res) {
         });
 
       if (uploadErr) {
-        console.error("[upload-doc] supabase upload error", uploadErr);
+        console.error("[upload-doc] storage error:", uploadErr);
         return res.status(500).json({
           ok: false,
-          error: "Failed to upload to storage.",
+          error: "Failed to upload document to storage.",
         });
       }
 
       const { data: urlData } = supabase.storage.from(bucket).getPublicUrl(uploadPath);
       const fileUrl = urlData.publicUrl;
 
-      // Timeline Log
       await sql`
         INSERT INTO system_timeline (org_id, vendor_id, action, message, severity)
         VALUES (
@@ -165,9 +161,10 @@ export default async function handler(req, res) {
       `;
 
       // ---------------------------------------------------------
-      // 3) Document Classification
+      // 3) Classification
       // ---------------------------------------------------------
-      const docType = (docTypeHint || classifyDocument({ filename, mimetype })) || "other";
+      const docType =
+        (docTypeHint || classifyDocument({ filename, mimetype })) || "other";
 
       if (docType === "coi") {
         return res.status(400).json({
@@ -177,7 +174,7 @@ export default async function handler(req, res) {
       }
 
       // ---------------------------------------------------------
-      // 4) AI Summary (generic)
+      // 4) AI Summary (GPT-4.1)
       // ---------------------------------------------------------
       let aiSummary = null;
 
@@ -187,10 +184,10 @@ export default async function handler(req, res) {
           temperature: 0.2,
           max_tokens: 300,
           messages: [
-            { role: "system", content: "Summarize vendor documents for compliance." },
+            { role: "system", content: "Summarize vendor compliance documents." },
             {
               role: "user",
-              content: `A vendor uploaded a ${docType}:\n${fileUrl}\n\nProvide key insights.`,
+              content: `A vendor uploaded a ${docType} document:\n${fileUrl}\n\nSummarize key information and relevance to compliance.`,
             },
           ],
         });
@@ -208,18 +205,22 @@ export default async function handler(req, res) {
           )
         `;
       } catch (err) {
-        console.error("[AI Summary ERROR]", err);
+        console.error("[AI SUMMARY ERROR]", err);
       }
 
       // ---------------------------------------------------------
-      // 5) Normalize document (W9 / License / Contract)
+      // 5) Normalization (W9 / License / Contract logic)
       // ---------------------------------------------------------
       let normalized = null;
 
-      if (docType === "w9") normalized = normalizeW9({});
-      else if (docType === "license") normalized = normalizeLicense({});
-      else if (docType === "contract") normalized = normalizeContract({});
-      else normalized = { raw: true, docType };
+      try {
+        if (docType === "w9") normalized = normalizeW9({});
+        else if (docType === "license") normalized = normalizeLicense({});
+        else if (docType === "contract") normalized = normalizeContract({});
+        else normalized = { raw: true, docType };
+      } catch (e) {
+        normalized = { error: "Normalization failed", docType };
+      }
 
       // ---------------------------------------------------------
       // 6) Insert into vendor_documents
@@ -247,7 +248,7 @@ export default async function handler(req, res) {
       const documentId = inserted[0]?.id;
 
       // ---------------------------------------------------------
-      // 7) Auto-process CONTRACTS → Rule Engine V3
+      // 7) Auto-process CONTRACT → Rule Engine V3
       // ---------------------------------------------------------
       if (docType === "contract") {
         try {
@@ -265,7 +266,7 @@ export default async function handler(req, res) {
             VALUES (
               ${orgId},
               ${vendorId},
-              'contract_auto_process',
+              'contract_auto_process_triggered',
               'Contract auto-processing triggered.',
               'info'
             )
@@ -276,7 +277,7 @@ export default async function handler(req, res) {
       }
 
       // ---------------------------------------------------------
-      // 8) Notify ADMIN (optional)
+      // 8) Notify Admin(s)
       // ---------------------------------------------------------
       try {
         const ADMINS = process.env.ADMIN_NOTIFICATION_EMAILS
@@ -300,10 +301,10 @@ Document URL:
 ${fileUrl}
 
 AI Summary:
-${aiSummary || "None"}
+${aiSummary || "No summary generated."}
 
-This document is now available to review in your admin dashboard.
-          `,
+You can review this document in your admin dashboard.
+            `,
           });
         }
       } catch (err) {
