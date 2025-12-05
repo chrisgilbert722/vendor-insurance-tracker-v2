@@ -281,39 +281,45 @@ export default function Dashboard() {
     } catch (err) {
       console.error("[dashboard] localStorage set error:", err);
     }
+    // Optional: trigger chatbot checklist here if you want
+    // window.dispatchEvent(new CustomEvent("onboarding_chat_forceChecklist"));
   };
 
   const handleStartOnboarding = () => {
     window.location.href = "/onboarding/start";
   };
 
-  // 🔥 NEW — Auto-open chatbot after 10s idle if onboarding incomplete
+  // 🔥 NEW — Auto-open chatbot checklist after 10s idle if onboarding incomplete
   useEffect(() => {
     if (onboardingComplete) return;
 
     let idleTimer;
-    let hasInteracted = false;
+    let lastActivity = Date.now();
 
-    const markInteraction = () => {
-      hasInteracted = true;
+    const markActivity = () => {
+      lastActivity = Date.now();
     };
 
-    window.addEventListener("click", markInteraction);
-    window.addEventListener("keydown", markInteraction);
-    window.addEventListener("scroll", markInteraction);
+    window.addEventListener("click", markActivity);
+    window.addEventListener("keydown", markActivity);
+    window.addEventListener("scroll", markActivity);
+    window.addEventListener("mousemove", markActivity);
 
-    idleTimer = setTimeout(() => {
-      if (!hasInteracted) {
-        // Fire a custom event that SupportChatPanel listens for
-        window.dispatchEvent(new CustomEvent("onboarding_chat_suggest"));
+    idleTimer = setInterval(() => {
+      if (Date.now() - lastActivity >= 10000) {
+        window.dispatchEvent(
+          new CustomEvent("onboarding_chat_forceChecklist")
+        );
+        clearInterval(idleTimer);
       }
-    }, 10000); // 10 seconds
+    }, 1000);
 
     return () => {
-      clearTimeout(idleTimer);
-      window.removeEventListener("click", markInteraction);
-      window.removeEventListener("keydown", markInteraction);
-      window.removeEventListener("scroll", markInteraction);
+      clearInterval(idleTimer);
+      window.removeEventListener("click", markActivity);
+      window.removeEventListener("keydown", markActivity);
+      window.removeEventListener("scroll", markActivity);
+      window.removeEventListener("mousemove", markActivity);
     };
   }, [onboardingComplete]);
 
@@ -352,6 +358,255 @@ export default function Dashboard() {
   const avgScore = dashboard?.globalScore ?? 0;
   const totalVendors = dashboard?.vendorCount ?? 0;
   const alertsCount = alertSummary?.total ?? 0;
+  /* LOAD DASHBOARD METRICS */
+  useEffect(() => {
+    if (!activeOrgId) return;
+    async function loadDashboard() {
+      try {
+        setDashboardLoading(true);
+        const res = await fetch(`/api/dashboard/metrics?orgId=${activeOrgId}`);
+        const data = await res.json();
+        if (data.ok) setDashboard(data.overview);
+      } catch (err) {
+        console.error("[dashboard] metrics error:", err);
+      } finally {
+        setDashboardLoading(false);
+      }
+    }
+    loadDashboard();
+  }, [activeOrgId]);
+
+  /* LOAD POLICIES */
+  useEffect(() => {
+    async function load() {
+      try {
+        const res = await fetch("/api/get-policies");
+        const data = await res.json();
+        if (data.ok) setPolicies(data.policies);
+      } catch (err) {
+        console.error("[dashboard] policies error:", err);
+      } finally {
+        setLoadingPolicies(false);
+      }
+    }
+    load();
+  }, []);
+
+  /* LOAD COMPLIANCE */
+  useEffect(() => {
+    if (!policies.length || !activeOrgId) return;
+    const vendorIds = [...new Set(policies.map((p) => p.vendor_id))];
+    vendorIds.forEach((vendorId) => {
+      if (complianceMap[vendorId]?.loading === false) return;
+      setComplianceMap((prev) => ({ ...prev, [vendorId]: { loading: true } }));
+      fetch(`/api/requirements/check?vendorId=${vendorId}&orgId=${activeOrgId}`)
+        .then((res) => res.json())
+        .then((data) => {
+          setComplianceMap((prev) => ({
+            ...prev,
+            [vendorId]: data.ok
+              ? {
+                  loading: false,
+                  summary: data.summary,
+                  missing: data.missing || [],
+                  failing: data.failing || [],
+                  passing: data.passing || [],
+                }
+              : { loading: false, error: data.error },
+          }));
+        })
+        .catch(() => {
+          setComplianceMap((prev) => ({
+            ...prev,
+            [vendorId]: { loading: false, error: "Failed to load" },
+          }));
+        });
+    });
+  }, [policies, activeOrgId, complianceMap]);
+
+  /* LOAD ELITE ENGINE */
+  useEffect(() => {
+    if (!policies.length) return;
+    const vendorIds = [...new Set(policies.map((p) => p.vendor_id))];
+    vendorIds.forEach((vendorId) => {
+      if (eliteMap[vendorId]?.loading === false) return;
+      const primary = policies.find((p) => p.vendor_id === vendorId);
+      if (!primary) return;
+      const coidata = {
+        expirationDate: primary.expiration_date,
+        generalLiabilityLimit: primary.limit_each_occurrence,
+        autoLimit: primary.auto_limit,
+        workCompLimit: primary.work_comp_limit,
+        policyType: primary.coverage_type,
+      };
+      setEliteMap((prev) => ({ ...prev, [vendorId]: { loading: true } }));
+      fetch("/api/elite/evaluate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ coidata }),
+      })
+        .then((res) => res.json())
+        .then((data) => {
+          setEliteMap((prev) => ({
+            ...prev,
+            [vendorId]: data.ok
+              ? { loading: false, overall: data.overall, rules: data.rules }
+              : { loading: false, error: data.error },
+          }));
+        })
+        .catch(() => {
+          setEliteMap((prev) => ({
+            ...prev,
+            [vendorId]: { loading: false, error: "Failed to load" },
+          }));
+        });
+    });
+  }, [policies, eliteMap]);
+
+  /* LOAD RULE ENGINE V3 PER VENDOR */
+  useEffect(() => {
+    if (!policies.length || !activeOrgId) return;
+    const vendorIds = [...new Set(policies.map((p) => p.vendor_id))];
+
+    vendorIds.forEach((vendorId) => {
+      const existing = engineMap[vendorId];
+      if (existing && existing.loaded && existing.loading === false) return;
+
+      setEngineMap((prev) => ({
+        ...prev,
+        [vendorId]: { ...(prev[vendorId] || {}), loading: true },
+      }));
+
+      fetch("/api/engine/run-v3", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ vendorId, orgId: activeOrgId }),
+      })
+        .then((res) => res.json())
+        .then((json) => {
+          setEngineMap((prev) => ({
+            ...prev,
+            [vendorId]: json.ok
+              ? {
+                  loading: false,
+                  loaded: true,
+                  globalScore: json.globalScore,
+                  failedCount: json.failedCount,
+                }
+              : {
+                  loading: false,
+                  loaded: true,
+                  error: json.error || "Rule Engine V3 error",
+                },
+          }));
+        })
+        .catch(() => {
+          setEngineMap((prev) => ({
+            ...prev,
+            [vendorId]: {
+              loading: false,
+              loaded: true,
+              error: "Failed to run Rule Engine V3",
+            },
+          }));
+        });
+    });
+  }, [policies, activeOrgId, engineMap]);
+
+  /* ELITE SUMMARY */
+  useEffect(() => {
+    let pass = 0,
+      warn = 0,
+      fail = 0;
+    Object.values(eliteMap).forEach((e) => {
+      if (!e || e.loading || e.error) return;
+      if (e.overall === "pass") pass++;
+      else if (e.overall === "warn") warn++;
+      else if (e.overall === "fail") fail++;
+    });
+    setEliteSummary({ pass, warn, fail });
+  }, [eliteMap]);
+
+  /* LOAD ALERT SUMMARY V3 */
+  useEffect(() => {
+    if (!activeOrgId) return;
+
+    async function loadAlertSummary() {
+      try {
+        const res = await fetch(
+          `/api/alerts/summary-v3?orgId=${encodeURIComponent(activeOrgId)}`
+        );
+        const json = await res.json();
+        if (json.ok) {
+          setAlertSummary(json);
+        } else {
+          console.error("[dashboard] alert summary error:", json.error);
+        }
+      } catch (err) {
+        console.error("[dashboard] alert summary error:", err);
+      }
+    }
+
+    loadAlertSummary();
+    const interval = setInterval(loadAlertSummary, 15000);
+    return () => clearInterval(interval);
+  }, [activeOrgId]);
+
+  /* LOAD SYSTEM TIMELINE */
+  useEffect(() => {
+    async function loadTimeline() {
+      try {
+        setSystemTimelineLoading(true);
+        const res = await fetch("/api/admin/timeline");
+        const data = await res.json();
+        if (data.ok) setSystemTimeline(data.timeline);
+      } catch (err) {
+        console.error("[dashboard] system timeline load error:", err);
+      } finally {
+        setSystemTimelineLoading(false);
+      }
+    }
+    loadTimeline();
+    const interval = setInterval(loadTimeline, 10000);
+    return () => clearInterval(interval);
+  }, []);
+
+  /* DRAWER HANDLERS */
+  const openDrawer = (vendorId) => {
+    const vp = policies.filter((p) => p.vendor_id === vendorId);
+    setDrawerVendor({
+      id: vendorId,
+      name: vp[0]?.vendor_name || "Vendor",
+    });
+    setDrawerPolicies(vp);
+    setDrawerOpen(true);
+  };
+  const closeDrawer = () => {
+    setDrawerOpen(false);
+    setDrawerVendor(null);
+    setDrawerPolicies([]);
+  };
+
+  /* FILTERED POLICIES */
+  const filtered = policies.filter((p) => {
+    const t = filterText.toLowerCase();
+    return (
+      !t ||
+      p.vendor_name?.toLowerCase().includes(t) ||
+      p.policy_number?.toLowerCase().includes(t) ||
+      p.carrier?.toLowerCase().includes(t) ||
+      p.coverage_type?.toLowerCase().includes(t)
+    );
+  });
+
+  // Derive a compact list of top vendors by alert severity/total for the panel
+  const alertVendorsList = alertSummary
+    ? Object.values(alertSummary.vendors || {}).sort((a, b) => {
+        if (b.critical !== a.critical) return b.critical - a.critical;
+        if (b.high !== a.high) return b.high - a.high;
+        return b.total - a.total;
+      })
+    : [];
   return (
     <div
       style={{
@@ -362,21 +617,20 @@ export default function Dashboard() {
         color: GP.text,
       }}
     >
-
       {/* ================================
           🔥 ONBOARDING COCKPIT LAYER
           (only shows if onboarding incomplete)
       ================================= */}
       {!onboardingComplete && (
         <>
-          {/* FULL CINEMATIC HERO — shown first time only */}
+          {/* FULL CINEMATIC HERO — shown while showHero is true */}
           {showHero && (
             <div style={{ marginBottom: 32 }}>
               <OnboardingHeroCard onStart={handleStartOnboarding} />
             </div>
           )}
 
-          {/* SMALL BANNER — appears if hero dismissed OR after refresh */}
+          {/* SMALL BANNER — appears if hero hidden OR after refresh */}
           {!showHero && !bannerDismissed && (
             <div style={{ marginBottom: 22 }}>
               <OnboardingBanner
@@ -858,7 +1112,6 @@ export default function Dashboard() {
                   ))}
                 </tbody>
               </table>
-
             </div>
           )}
 
@@ -897,6 +1150,7 @@ export default function Dashboard() {
       <SlaBreachWidget orgId={activeOrgId} />
       <CriticalVendorWatchlist orgId={activeOrgId} />
       <AlertHeatSignature orgId={activeOrgId} />
+
       {/* RENEWAL INTELLIGENCE V3 — HEATMAP + BACKLOG */}
       <RenewalHeatmap range={90} />
       <RenewalBacklog />
@@ -907,7 +1161,8 @@ export default function Dashboard() {
           marginTop: 24,
           marginBottom: 24,
           display: "grid",
-          gridTemplateColumns: "minmax(0,1.2fr) minmax(0,1.2fr) minmax(0,1.6fr)",
+          gridTemplateColumns:
+            "minmax(0,1.2fr) minmax(0,1.2fr) minmax(0,1.6fr)",
           gap: 16,
         }}
       >
@@ -915,6 +1170,7 @@ export default function Dashboard() {
         <RenewalCalendar range={60} />
         <RenewalAiSummary orgId={activeOrgId} />
       </div>
+
       {/* SYSTEM TIMELINE (GLOBAL EVENTS) */}
       <div
         style={{
@@ -1304,10 +1560,9 @@ export default function Dashboard() {
           )}
         </>
       )}
-    </div> {/* END MAIN DASHBOARD WRAPPER */}
+    </div>
   );
 }
-
 /* =======================================
    SEVERITY BOX COMPONENT
 ======================================= */
