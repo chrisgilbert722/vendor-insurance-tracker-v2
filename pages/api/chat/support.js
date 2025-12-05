@@ -41,16 +41,17 @@ function isWizardStartTrigger(lastContent, onboardingComplete) {
   return triggers.some((phrase) => t.includes(phrase));
 }
 
-function routeWizard({ state, lastContent, onboardingComplete }) {
+// NOTE: routeWizard is async now because it can call backend endpoints (CSV import)
+async function routeWizard({ state, lastContent, onboardingComplete, orgId }) {
   const text = normalize(lastContent);
-  const nextState = { ...state };
+  const nextState = { ...state, orgId };
 
   // If wizard is completed, always answer in Power Mode voice
   if (state.mode === "completed" || state.completed) {
     return {
       reply:
         "🎉 Your onboarding is already marked complete. You’re in **Power Mode** now — ask me about vendors, renewals, alerts, or how to improve your rule engine.",
-      nextState: { ...state, mode: "completed", completed: true },
+      nextState: { ...nextState, mode: "completed", completed: true },
     };
   }
 
@@ -60,7 +61,7 @@ function routeWizard({ state, lastContent, onboardingComplete }) {
       // Caller will fall back to other modes
       return {
         reply: null,
-        nextState: state,
+        nextState,
       };
     }
 
@@ -107,21 +108,21 @@ Reply with: **"CSV"**, **"COIs"**, or **"manual entry"**.
 
         if (saidCsv) {
           nextState.source = "csv";
-          nextState.step = "csv_wait_upload";
+          nextState.step = "csv_paste";
           return {
             reply: `
 ✅ Great — we’ll start with a **CSV of vendors**.
 
-**Step 1 – Prepare CSV**
-- One vendor per row  
-- Columns: \`vendor_name\`, \`email\`, \`category\` (optional: \`status\`, \`notes\`)
+**Step 1 – Paste CSV here**
+Paste your CSV (including the header row) directly into this chat.
 
-**Step 2 – Upload**
-- Use your **Vendor Import / CSV upload** screen
-- Drop the CSV there
+Example:
 
-Once it’s uploaded, say: **"CSV uploaded"** or **"done"**.
-            `,
+\`vendor_name,email,category
+ABC Plumbing,info@abc.com,Plumbing
+XYZ HVAC,contact@xyzhvac.com,HVAC\`
+
+As soon as you paste it, I’ll parse and import your vendors automatically.`,
             nextState,
           };
         }
@@ -133,12 +134,11 @@ Once it’s uploaded, say: **"CSV uploaded"** or **"done"**.
             reply: `
 ✅ Perfect — we’ll start from **COI PDFs**.
 
-1) Gather your current COI PDFs  
-2) Use your **COI upload / drag-and-drop** panel  
-3) Drop the PDFs so AI can scan them
+1) Go to your **COI upload / drag-and-drop** screen  
+2) Upload your COI PDFs there so the system can scan them  
+3) When you’re done, come back here and say: **"COIs uploaded"** or **"done"**.
 
-Once you’ve uploaded them, say: **"COIs uploaded"** or **"done"**.
-            `,
+I’ll then move you forward to rules & requirements.`,
             nextState,
           };
         }
@@ -155,8 +155,7 @@ Open your **Vendors** screen and add vendors with at least:
 - Email  
 - Category (e.g., HVAC, Plumbing, GC, IT, etc.)
 
-Once you’ve added a first batch, say: **"vendors added"** or **"done"**.
-            `,
+Once you’ve added a first batch, say: **"vendors added"** or **"done"**.`,
             nextState,
           };
         }
@@ -169,40 +168,93 @@ To start onboarding, tell me how you want to begin:
 2) **COI PDFs**  
 3) **Manual entry**
 
-Reply with: **"CSV"**, **"COIs"**, or **"manual entry"**.
-          `,
+Reply with: **"CSV"**, **"COIs"**, or **"manual entry"**.`,
           nextState,
         };
       }
 
-      case "csv_wait_upload": {
-        const saidDone =
-          text.includes("csv uploaded") ||
-          text.includes("upload complete") ||
-          text.includes("done") ||
-          text.includes("uploaded");
-
-        if (!saidDone) {
+      // CSV: user pastes actual CSV text into chat
+      case "csv_paste": {
+        if (!orgId) {
           return {
             reply:
-              "I’m waiting on your CSV. Once it’s uploaded, say **\"CSV uploaded\"** or **\"done\"** and I’ll move on.",
+              "I see CSV text, but I’m missing your org ID, so I can’t import it. Please refresh and try again.",
             nextState,
           };
         }
 
-        nextState.step = "rules_intro";
-        return {
-          reply: `
-🔥 Awesome — I’ll treat the CSV as your starting vendor list.
+        const csvText = lastContent || "";
 
-Next we’ll handle **rules / requirements** so your system knows how to judge vendors.
+        // quick sanity check: CSV usually has commas & newlines
+        const looksLikeCsv =
+          csvText.includes(",") && csvText.includes("\n");
+
+        if (!looksLikeCsv) {
+          return {
+            reply: `
+I was expecting CSV text with a header row.
+
+Example:
+
+\`vendor_name,email,category
+ABC Plumbing,info@abc.com,Plumbing
+XYZ HVAC,contact@xyzhvac.com,HVAC\`
+
+Please paste your vendor CSV here and I’ll import it automatically.`,
+            nextState,
+          };
+        }
+
+        try {
+          const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || "";
+          const importRes = await fetch(
+            `${baseUrl}/api/vendors/import-csv`,
+            {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                orgId,
+                csvText,
+              }),
+            }
+          );
+
+          const importJson = await importRes.json();
+
+          if (!importJson.ok) {
+            return {
+              reply: `⚠️ I tried to import your CSV but hit an error:\n${
+                importJson.error || "Unknown error."
+              }`,
+              nextState,
+            };
+          }
+
+          nextState.step = "rules_intro";
+
+          return {
+            reply: `
+🔥 **CSV successfully imported!**
+
+- Vendors created: **${importJson.created}**
+- Rows skipped: **${importJson.skipped}**
+
+Now let’s configure your **rules & requirements** so your system knows how to judge vendors.
 
 Do you want me to:
 
-- **\"auto-build rules\"** (standard industry rules), or  
-- **\"use existing rules\"** if you’ve already configured them?`,
-          nextState,
-        };
+- **"auto-build rules"** (recommended), or  
+- **"use existing rules"** if you’ve already set them up?`,
+            nextState,
+          };
+        } catch (err) {
+          console.error("[Wizard CSV Import ERROR]", err);
+          return {
+            reply:
+              "❌ I tried to import your CSV but the import endpoint failed. Please try again or check the CSV format.",
+            nextState,
+          };
+        }
       }
 
       case "coi_wait_upload": {
@@ -215,22 +267,25 @@ Do you want me to:
         if (!saidDone) {
           return {
             reply:
-              "I’m waiting on your COI PDFs. Once they’re uploaded, say **\"COIs uploaded\"** or **\"done\"** and I’ll move on.",
+              'I’m waiting on your COI PDFs. Once you’ve uploaded them in the **COI upload screen**, say **"COIs uploaded"** or **"done"** and I’ll move on.',
             nextState,
           };
         }
 
+        // For now we assume your existing COI upload flow has already
+        // processed the PDFs and stored vendors/policies.
+        // Wizard just advances to rules configuration.
         nextState.step = "rules_intro";
         return {
           reply: `
-🔥 COIs received — I’ll treat them as your live certificates.
+🔥 COIs uploaded — I’ll treat them as your live certificates.
 
 Next we’ll tune your **rules / requirements** so the system knows how to judge each COI.
 
 Do you want me to:
 
-- **\"auto-build rules\"** from standard COI requirements, or  
-- **\"use existing rules\"** if they’re already set up?`,
+- **"auto-build rules"** from standard COI requirements, or  
+- **"use existing rules"** if they’re already set up?`,
           nextState,
         };
       }
@@ -258,8 +313,8 @@ Now we’ll handle **rules** so each vendor can be scored automatically.
 
 Say:
 
-- **\"auto-build rules\"** to let me generate standard rules, or  
-- **\"use existing rules\"** if you’ve already configured them.`,
+- **"auto-build rules"** to let me generate standard rules, or  
+- **"use existing rules"** if you’ve already configured them.`,
           nextState,
         };
       }
@@ -287,8 +342,8 @@ Next, let’s handle **communication templates**.
 
 Do you want me to:
 
-- **\"use default templates\"** for expiring / non-compliant vendors, or  
-- **\"we’ll customize later\"** if your team will rewrite them later?`,
+- **"use default templates"** for expiring / non-compliant vendors, or  
+- **"we’ll customize later"** if your team will rewrite them later?`,
             nextState,
           };
         }
@@ -304,8 +359,8 @@ Now, templates.
 
 Say:
 
-- **\"use default templates\"** to apply standard messaging, or  
-- **\"we’ll customize later\"** if you’ll adjust the wording later.`,
+- **"use default templates"** to apply standard messaging, or  
+- **"we’ll customize later"** if you’ll adjust the wording later.`,
             nextState,
           };
         }
@@ -314,8 +369,8 @@ Say:
           reply: `
 To move forward, say:
 
-- **\"auto-build rules\"** to let me generate rules, or  
-- **\"use existing rules\"** if you want to keep what you have.`,
+- **"auto-build rules"** to let me generate rules, or  
+- **"use existing rules"** if you want to keep what you have.`,
           nextState,
         };
       }
@@ -355,8 +410,8 @@ Reply with something like:
           reply: `
 Tell me:
 
-- **\"use default templates\"** if you want standard messaging, or  
-- **\"we’ll customize later\"** if your team will rewrite the emails.`,
+- **"use default templates"** if you want standard messaging, or  
+- **"we’ll customize later"** if your team will rewrite the emails.`,
           nextState,
         };
       }
@@ -380,7 +435,7 @@ Tell me:
 
 Final step: I’ll mark onboarding as **complete** and move you into **Power Mode**.
 
-If everything looks good, say **\"finish onboarding\"** or **\"looks good\"**.`,
+If everything looks good, say **"finish onboarding"** or **"looks good"**.`,
           nextState,
         };
       }
@@ -397,7 +452,7 @@ If everything looks good, say **\"finish onboarding\"** or **\"looks good\"**.`,
         if (!confirm) {
           return {
             reply:
-              "If everything looks good, say **\"finish onboarding\"** or **\"looks good\"** and I’ll mark your system as fully configured.",
+              'If everything looks good, say **"finish onboarding"** or **"looks good"** and I’ll mark your system as fully configured.',
             nextState,
           };
         }
@@ -449,7 +504,7 @@ Reply with: **"CSV"**, **"COIs"**, or **"manual entry"**.`,
   // Fallback: no wizard reply — let caller use other modes
   return {
     reply: null,
-    nextState: state,
+    nextState,
   };
 }
 
@@ -669,8 +724,6 @@ Explain:
 
     // ================================================================
     // ⭐ GOD MODE WIZARD — Conversational Onboarding Brain
-    // (only if orgId present AND either onboarding is incomplete
-    //  or user explicitly asks to start the wizard)
     // ================================================================
     if (orgId) {
       const currentState =
@@ -681,10 +734,11 @@ Explain:
           completed: onboardingComplete !== false,
         };
 
-      const { reply: wizardReply, nextState } = routeWizard({
+      const { reply: wizardReply, nextState } = await routeWizard({
         state: currentState,
         lastContent: rawLastContent,
         onboardingComplete,
+        orgId,
       });
 
       wizardStateByOrg[orgId] = nextState;
@@ -716,8 +770,8 @@ Explain:
 🧭 **AI Onboarding Checklist**
 
 1️⃣ **Upload Vendors**
-• Upload CSV  
-• OR drag-and-drop COIs  
+• Paste CSV into this chat  
+• OR drag-and-drop COIs in the upload screen  
 • OR manually add vendors  
 
 2️⃣ **AI Detects Your Industry**
