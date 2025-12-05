@@ -1,6 +1,7 @@
 // pages/api/alerts/run-cron.js
-// ALERT ENGINE CRON RUNNER — GOD MODE
-// Evaluates alert_rules for an org, creates vendor_alerts, and sends emails using templates.
+// ALERT ENGINE CRON RUNNER — GOD MODE + TIMELINE LOGGING
+// Evaluates alert_rules for an org, creates vendor_alerts,
+// sends notifications, and logs events into system_timeline.
 
 import { sql } from "../../../lib/db";
 
@@ -10,17 +11,6 @@ export const config = {
   },
 };
 
-/**
- * GET /api/alerts/run-cron?orgId=...
- *
- * Intended to be called by Vercel Cron or manually (Power Mode "run alerts now").
- *
- * 1) Loads alert_rules for the org
- * 2) Loads vendors + policies + failing rule counts
- * 3) Evaluates each alert_rule
- * 4) Creates rows in vendor_alerts (APPEND)
- * 5) Sends emails using /api/notifications/send when applicable
- */
 export default async function handler(req, res) {
   if (req.method !== "GET") {
     res.setHeader("Allow", ["GET"]);
@@ -40,9 +30,6 @@ export default async function handler(req, res) {
     }
 
     const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || "";
-    if (!baseUrl) {
-      console.warn("[alerts/run-cron] Missing NEXT_PUBLIC_BASE_URL");
-    }
 
     // ============================================================
     // 1) LOAD ALERT RULES
@@ -53,18 +40,28 @@ export default async function handler(req, res) {
       WHERE org_id = ${orgId} AND active = true
     `;
 
+    // No rules? Timeline log + exit
     if (!alertRules.length) {
+      await sql`
+        INSERT INTO system_timeline (org_id, action, message, severity)
+        VALUES (
+          ${orgId},
+          'daily_alert_scan',
+          'No active alert rules found. Nothing to evaluate.',
+          'info'
+        );
+      `;
       return res.status(200).json({
         ok: true,
         orgId,
-        message: "No active alert_rules for this org.",
+        message: "No active alert rules.",
         alertsCreated: 0,
         emailsSent: 0,
       });
     }
 
     // ============================================================
-    // 2) LOAD VENDORS + POLICIES
+    // 2) LOAD VENDORS
     // ============================================================
     const vendors = await sql`
       SELECT id, vendor_name
@@ -73,81 +70,82 @@ export default async function handler(req, res) {
     `;
 
     if (!vendors.length) {
+      await sql`
+        INSERT INTO system_timeline (org_id, action, message, severity)
+        VALUES (
+          ${orgId},
+          'daily_alert_scan',
+          'No vendors found for org. Nothing to evaluate.',
+          'info'
+        );
+      `;
       return res.status(200).json({
         ok: true,
         orgId,
-        message: "No vendors found; nothing to evaluate.",
+        message: "No vendors found.",
         alertsCreated: 0,
         emailsSent: 0,
       });
     }
 
     const vendorIds = vendors.map((v) => v.id);
+    const vendorIndex = {};
+    vendors.forEach((v) => {
+      vendorIndex[v.id] = v.vendor_name || `Vendor ${v.id}`;
+    });
 
+    // ============================================================
+    // 3) LOAD POLICIES (for expiration rules)
+    // ============================================================
     const policies = await sql`
       SELECT vendor_id, expiration_date
       FROM policies
       WHERE vendor_id = ANY(${vendorIds})
     `;
 
-    // Map vendor -> earliest expiration date
-    const policyMap = {};
+    const earliestExpiration = {};
     for (const p of policies) {
       if (!p.expiration_date) continue;
-      const key = p.vendor_id;
       const d = new Date(p.expiration_date);
       if (Number.isNaN(d.getTime())) continue;
-      if (!policyMap[key] || d < policyMap[key]) {
-        policyMap[key] = d;
+      if (!earliestExpiration[p.vendor_id] || d < earliestExpiration[p.vendor_id]) {
+        earliestExpiration[p.vendor_id] = d;
       }
     }
 
     // ============================================================
-    // 3) LOAD NON-COMPLIANT INFO (rule_results_v3)
+    // 4) LOAD NON-COMPLIANT COUNT (rule_results_v3)
     // ============================================================
     const nonCompliantRows = await sql`
-      SELECT vendor_id, COUNT(*) AS failing_count
+      SELECT vendor_id, COUNT(*)::int AS failing
       FROM rule_results_v3
       WHERE org_id = ${orgId} AND passed = false
       GROUP BY vendor_id
     `;
 
     const nonCompliantMap = {};
-    for (const r of nonCompliantRows) {
-      nonCompliantMap[r.vendor_id] = Number(r.failing_count) || 0;
-    }
-
-    // Build helpful vendor index
-    const vendorIndex = {};
-    for (const v of vendors) {
-      vendorIndex[v.id] = v.vendor_name || `Vendor ${v.id}`;
-    }
+    nonCompliantRows.forEach((r) => {
+      nonCompliantMap[r.vendor_id] = r.failing;
+    });
 
     const now = new Date();
     const alertsToInsert = [];
-    const emailsToSend = [];
-
-    // ============================================================
-    // 4) EVALUATION HELPERS
-    // ============================================================
 
     function daysUntil(dateObj) {
       if (!dateObj) return null;
-      const diffMs = dateObj.getTime() - now.getTime();
-      return Math.floor(diffMs / 86400000); // ms → days
+      return Math.floor((dateObj - now) / 86400000);
     }
 
     function shouldTrigger(rule, vendorId) {
-      const condition = String(rule.condition || "").toLowerCase();
+      const condition = String(rule.condition).toLowerCase();
 
       // expiration<=X
       if (condition.startsWith("expiration<=")) {
-        const parts = condition.split("<=");
-        const thresholdDays = parseInt(parts[1], 10);
-        const exp = policyMap[vendorId] || null;
+        const threshold = parseInt(condition.split("<=")[1], 10);
+        const exp = earliestExpiration[vendorId];
         if (!exp) return false;
-        const dLeft = daysUntil(exp);
-        return dLeft !== null && dLeft <= thresholdDays;
+        const left = daysUntil(exp);
+        return left !== null && left <= threshold;
       }
 
       // non_compliant
@@ -155,7 +153,6 @@ export default async function handler(req, res) {
         return (nonCompliantMap[vendorId] || 0) > 0;
       }
 
-      // more advanced conditions (endorsements, etc.) could be added later
       return false;
     }
 
@@ -166,36 +163,40 @@ export default async function handler(req, res) {
       for (const vid of vendorIds) {
         if (!shouldTrigger(rule, vid)) continue;
 
-        const vendorName = vendorIndex[vid] || `Vendor ${vid}`;
-
-        const code = rule.condition;
-        const message = rule.label;
-
         alertsToInsert.push({
           vendorId: vid,
           orgId,
-          code,
-          message,
+          code: rule.condition,
+          message: rule.label,
           severity: rule.severity,
           templateKey: rule.template_key,
           recipients: rule.recipient_emails || [],
-          vendorName,
+          vendorName: vendorIndex[vid] || `Vendor ${vid}`,
         });
       }
     }
 
     if (!alertsToInsert.length) {
+      await sql`
+        INSERT INTO system_timeline (org_id, action, message, severity)
+        VALUES (
+          ${orgId},
+          'daily_alert_scan',
+          'Alert scan completed — no alerts triggered.',
+          'info'
+        );
+      `;
       return res.status(200).json({
         ok: true,
         orgId,
-        message: "No alerts triggered for this run.",
+        message: "No alerts triggered.",
         alertsCreated: 0,
         emailsSent: 0,
       });
     }
 
     // ============================================================
-    // 6) WRITE ALERTS TO vendor_alerts (APPEND MODE)
+    // 6) INSERT ALERTS
     // ============================================================
     let alertsCreated = 0;
     for (const a of alertsToInsert) {
@@ -207,22 +208,19 @@ export default async function handler(req, res) {
     }
 
     // ============================================================
-    // 7) SEND EMAILS VIA /api/notifications/send
+    // 7) SEND EMAILS (via notifications/send)
     // ============================================================
     let emailsSent = 0;
 
     for (const a of alertsToInsert) {
       const templateKey = a.templateKey;
-      const recipients = Array.isArray(a.recipients)
-        ? a.recipients
-        : [];
+      const recipients = Array.isArray(a.recipients) ? a.recipients : [];
 
-      if (!templateKey || !recipients.length) {
-        continue; // nothing to send
-      }
+      if (!templateKey || !recipients.length) continue;
 
       for (const email of recipients) {
         if (!email) continue;
+
         try {
           const payload = {
             orgId,
@@ -230,40 +228,47 @@ export default async function handler(req, res) {
             templateKey,
             bodyParams: {
               VENDOR_NAME: a.vendorName,
-              OUR_ORG_NAME: "Your Organization",
               ALERT_CODE: a.code,
               ALERT_MESSAGE: a.message,
               SEVERITY: a.severity,
+              OUR_ORG_NAME: "Your Organization",
             },
           };
 
-          const sendRes = await fetch(
-            `${baseUrl}/api/notifications/send`,
-            {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify(payload),
-            }
-          );
+          const sendRes = await fetch(`${baseUrl}/api/notifications/send`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(payload),
+          });
+
           const sendJson = await sendRes.json();
-          if (sendJson.ok) {
-            emailsSent++;
-          } else {
-            console.error(
-              "[alerts/run-cron] Email send failed:",
-              sendJson.error
-            );
-          }
+          if (sendJson.ok) emailsSent++;
         } catch (err) {
-          console.error("[alerts/run-cron] Email send error:", err);
+          console.error("[alerts/run-cron] Email error:", err);
         }
       }
     }
 
+    // ============================================================
+    // 8) TIMELINE LOG ENTRY (BIG WIN)
+    // ============================================================
+    await sql`
+      INSERT INTO system_timeline (org_id, action, message, severity)
+      VALUES (
+        ${orgId},
+        'daily_alert_scan',
+        ${'Daily alert scan completed. Alerts: ' + alertsCreated + ', Emails: ' + emailsSent},
+        'info'
+      );
+    `;
+
+    // ============================================================
+    // RETURN SUMMARY
+    // ============================================================
     return res.status(200).json({
       ok: true,
       orgId,
-      message: `Alert cron run complete.`,
+      message: "Alert cron run complete.",
       alertsCreated,
       emailsSent,
     });
@@ -271,7 +276,7 @@ export default async function handler(req, res) {
     console.error("[alerts/run-cron] ERROR:", err);
     return res.status(500).json({
       ok: false,
-      error: err.message || "Alert cron runner failed.",
+      error: err.message || "Alert cron failed.",
     });
   }
 }
