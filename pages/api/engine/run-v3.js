@@ -1,19 +1,21 @@
 // pages/api/engine/run-v3.js
 // ============================================================
-// Rule Engine V5 Backend (running behind the old run-v3 route)
+// RULE ENGINE V5 — COVERAGE REQUIREMENTS EVALUATOR + ALERT PIPELINE
 //
 // POST /api/engine/run-v3
 // Body: { vendorId, orgId, dryRun?: boolean }
 //
 // Does:
-// 1) Load vendor's policies (policies table)
-// 2) Load org's V5 rules (requirements_rules_v2)
-// 3) Evaluate each rule against ALL policies
+// 1) Load vendor policies (policies table)
+// 2) Load org V5 rules (requirements_rules_v2)
+// 3) Evaluate each rule across ALL policies
 //    - A rule PASSES if ANY policy satisfies it
 // 4) Writes rule_results_v3 (unless dryRun)
-// 5) Tries to update vendor_compliance_cache (wrapped in try/catch)
-// 6) Logs to system_timeline
-// 7) Returns globalScore (0–100) + passing/failing rule details
+// 5) Logs to system_timeline
+// 6) Updates vendor_compliance_cache (best effort)
+// 7) V5 ALERT PIPELINE:
+//    - Resolves old engine alerts for this vendor/org
+//    - Creates new alerts in alerts table for each failing rule
 // ============================================================
 
 import { sql } from "../../../lib/db";
@@ -24,11 +26,10 @@ export const config = {
   },
 };
 
-// ---------------------------
-// UTILITIES
-// ---------------------------
+/* ============================================================
+   SCORE HELPER (same scale you already use)
+============================================================ */
 function computeScoreFromFailures(failures = []) {
-  // Same scoring model as your original V3 engine
   let score = 100;
 
   for (const f of failures) {
@@ -44,6 +45,10 @@ function computeScoreFromFailures(failures = []) {
   if (score > 100) score = 100;
   return Math.round(score);
 }
+
+/* ============================================================
+   V5 RULE EVALUATION HELPERS
+============================================================ */
 
 // Guess type from field_key
 function inferType(fieldKey) {
@@ -64,14 +69,13 @@ function resolvePolicyValue(policy, fieldKey) {
     key = key.split(".").slice(1).join(".");
   }
 
-  // Explicit mappings from V5 UI field options → DB columns
+  // Explicit mappings based on your schema
   if (key === "coverage_type") return policy.coverage_type;
   if (key === "expiration_date") return policy.expiration_date;
   if (key === "effective_date") return policy.effective_date;
   if (key === "carrier") return policy.carrier;
   if (key === "glEachOccurrence") return policy.limit_each_occurrence;
-  // glAggregate is not in schema yet; adjust if you add it
-  if (key === "glAggregate") return policy.gl_aggregate;
+  if (key === "glAggregate") return policy.gl_aggregate; // if you ever add this
 
   // Fallback: try direct column name
   return policy[key];
@@ -103,36 +107,28 @@ function evaluateRuleV5(rule, policy) {
     switch (rule.operator) {
       case "equals":
         return value === expected;
-
       case "not_equals":
         return value !== expected;
-
       case "gte":
         return Number(value) >= Number(expected);
-
       case "lte":
         return Number(value) <= Number(expected);
-
       case "contains":
         return String(value || "").includes(String(expected || ""));
-
       case "in_list":
         return String(expected || "")
           .split(",")
           .map((v) => v.trim().toLowerCase())
           .includes(String(value || ""));
-
       case "before":
         return typeHint === "date" && value && expected && value < expected;
-
       case "after":
         return typeHint === "date" && value && expected && value > expected;
-
       default:
         return false;
     }
   } catch (err) {
-    console.error("[engine/run-v3 V5] evaluateRuleV5 error:", err);
+    console.error("[engine/run-v3] evaluateRuleV5 error:", err);
     return false;
   }
 }
@@ -142,9 +138,9 @@ function buildRuleLabel(rule) {
   return `${rule.field_key} ${rule.operator} ${val}`;
 }
 
-// ---------------------------
-// MAIN HANDLER
-// ---------------------------
+/* ============================================================
+   MAIN HANDLER
+============================================================ */
 export default async function handler(req, res) {
   if (req.method !== "POST") {
     res.setHeader("Allow", ["POST"]);
@@ -162,7 +158,7 @@ export default async function handler(req, res) {
     }
 
     // ---------------------------------------------------
-    // 1) Load vendor policies (real table: policies)
+    // 1) Load vendor policies
     // ---------------------------------------------------
     const policies = await sql`
       SELECT
@@ -218,7 +214,6 @@ export default async function handler(req, res) {
       ORDER BY id ASC;
     `;
 
-    // Only active rules (if is_active exists), otherwise all
     const activeRules = rules.filter((r) =>
       r.is_active === null || r.is_active === undefined ? true : !!r.is_active
     );
@@ -237,13 +232,12 @@ export default async function handler(req, res) {
       });
     }
 
+    // ---------------------------------------------------
+    // 3) Evaluate rules across policies
+    // ---------------------------------------------------
     const failures = [];
     const passes = [];
 
-    // ---------------------------------------------------
-    // 3) Evaluate each V5 rule against all policies
-    //    Rule passes if ANY policy satisfies it
-    // ---------------------------------------------------
     for (const rule of activeRules) {
       const severity = rule.severity || "medium";
 
@@ -290,15 +284,16 @@ export default async function handler(req, res) {
     const globalScore = computeScoreFromFailures(failures);
 
     // ---------------------------------------------------
-    // 4) Persist results if NOT dryRun
+    // 4) Persist results + alerts (if NOT dryRun)
     // ---------------------------------------------------
     if (!dryRun) {
-      // 4a) rule_results_v3 — keep same behavior, now keyed to rule IDs
+      // 4a) wipe existing rule_results_v3 for this vendor/org
       await sql`
         DELETE FROM rule_results_v3
         WHERE vendor_id = ${vendorId} AND org_id = ${orgId};
       `;
 
+      // 4b) insert failing rule results
       for (const f of failures) {
         await sql`
           INSERT INTO rule_results_v3 (
@@ -320,6 +315,7 @@ export default async function handler(req, res) {
         `;
       }
 
+      // 4c) insert passing rule results
       for (const p of passes) {
         await sql`
           INSERT INTO rule_results_v3 (
@@ -341,7 +337,7 @@ export default async function handler(req, res) {
         `;
       }
 
-      // 4b) system_timeline logging (same style as before)
+      // 4d) system_timeline log
       await sql`
         INSERT INTO system_timeline (org_id, vendor_id, action, message, severity)
         VALUES (
@@ -353,10 +349,8 @@ export default async function handler(req, res) {
         )
       `;
 
-      // 4c) vendor_compliance_cache — best-effort UPSERT
-      // (wrapped in try/catch so mismatched columns won't break engine)
+      // 4e) vendor_compliance_cache — best-effort
       try {
-        // Adjust column names if your vendor_compliance_cache schema differs.
         await sql`
           INSERT INTO vendor_compliance_cache (
             vendor_id,
@@ -377,14 +371,90 @@ export default async function handler(req, res) {
         `;
       } catch (cacheErr) {
         console.error(
-          "[engine/run-v3 V5] vendor_compliance_cache upsert failed (adjust columns if needed):",
+          "[engine/run-v3] vendor_compliance_cache upsert failed (check columns):",
           cacheErr
         );
+      }
+
+      // ---------------------------------------------------
+      // 4f) V5 ALERT PIPELINE
+      //
+      // Strategy:
+      // - Resolve existing engine alerts for this vendor/org
+      // - Insert a fresh set of alerts for each failing rule
+      // ---------------------------------------------------
+
+      try {
+        // Resolve prior engine alerts of type 'coverage_rule_failure'
+        await sql`
+          UPDATE alerts
+          SET status = 'resolved'
+          WHERE vendor_id = ${vendorId}
+            AND org_id = ${orgId}
+            AND type = 'coverage_rule_failure'
+            AND status = 'open';
+        `;
+
+        // Insert new alerts for each failing rule
+        for (const f of failures) {
+          const severity = (f.severity || "medium").toLowerCase();
+          const ruleLabel = `${f.fieldKey} ${f.operator} ${f.expectedValue}`;
+          const message = f.message || `Rule failed: ${ruleLabel}`;
+          const title = "Coverage requirement not met";
+          const code = `RULE_${(severity || "medium").toUpperCase()}_${String(
+            f.fieldKey || "field"
+          )
+            .replace(/[^A-Za-z0-9]/g, "_")
+            .toUpperCase()}`;
+
+          await sql`
+            INSERT INTO alerts (
+              created_at,
+              is_read,
+              extracted,
+              vendor_id,
+              policy_id,
+              org_id,
+              rule_label,
+              file_url,
+              status,
+              type,
+              message,
+              severity,
+              title
+            )
+            VALUES (
+              NOW(),
+              FALSE,
+              ${JSON.stringify({
+                engine_version: "v5",
+                rule_id: f.ruleId,
+                group_id: f.groupId,
+                field_key: f.fieldKey,
+                operator: f.operator,
+                expected_value: f.expectedValue,
+              })}::jsonb,
+              ${vendorId},
+              ${null},   -- could attach a specific policy_id later
+              ${orgId},
+              ${ruleLabel},
+              ${null},
+              ${"open"},
+              ${"coverage_rule_failure"},
+              ${message},
+              ${severity},
+              ${title}
+            );
+          `;
+        }
+      } catch (alertErr) {
+        console.error("[engine/run-v3] alert pipeline failed:", alertErr);
+        // do not throw, engine result should still succeed
       }
     }
 
     // ---------------------------------------------------
-    // 5) Return response
+    // 5) Response payload
     // ---------------------------------------------------
     return res.status(200).json({
       ok: true,
@@ -397,7 +467,7 @@ export default async function handler(req, res) {
       passingRules: passes,
     });
   } catch (err) {
-    console.error("[engine/run-v3 V5] ERROR:", err);
+    console.error("[engine/run-v3] ERROR:", err);
     return res.status(500).json({
       ok: false,
       error: err.message || "Rule Engine V5 failed.",
