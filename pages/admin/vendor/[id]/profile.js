@@ -65,7 +65,6 @@ export default function AdminVendorProfile() {
 
     load();
   }, [id]);
-
   /* ============================================================
      EMAIL SENDER — calls /api/email/send
   ============================================================ */
@@ -208,6 +207,7 @@ export default function AdminVendorProfile() {
     requirements,
     timeline,
     portalToken,
+    documents = [],
   } = overview;
 
   const criticalAlerts = alerts.filter((a) => a.severity === "critical");
@@ -215,7 +215,6 @@ export default function AdminVendorProfile() {
   const infoAlerts = alerts.filter(
     (a) => a.severity === "info" || !a.severity
   );
-
   return (
     <div
       style={{
@@ -548,6 +547,180 @@ export default function AdminVendorProfile() {
               )}
             </div>
 
+            {/* DOCUMENT INTELLIGENCE PANEL */}
+            <div
+              style={{
+                borderRadius: 16,
+                padding: 16,
+                border: `1px solid ${GP.border}`,
+                background: "rgba(15,23,42,0.96)",
+                marginBottom: 18,
+              }}
+            >
+              <h3
+                style={{
+                  marginTop: 0,
+                  marginBottom: 8,
+                  fontSize: 15,
+                  color: GP.neonBlue,
+                }}
+              >
+                Document Intelligence
+              </h3>
+
+              {(!documents || documents.length === 0) ? (
+                <div style={{ fontSize: 13, color: GP.textSoft }}>
+                  No documents uploaded yet.
+                </div>
+              ) : (
+                <div
+                  style={{
+                    display: "grid",
+                    gridTemplateColumns: "repeat(auto-fit,minmax(260px,1fr))",
+                    gap: 12,
+                  }}
+                >
+                  {documents.map((doc) => {
+                    const ai = doc.ai_json || {};
+                    const summary = ai.summary || "No summary available.";
+                    const normalized = ai.normalized || {};
+                    const docType =
+                      doc.document_type ||
+                      doc.doc_type ||
+                      "other";
+
+                    const fileUrl = doc.file_url || doc.url || null;
+                    const uploadedAt =
+                      doc.uploaded_at || doc.created_at || null;
+
+                    let typeColor = GP.neonBlue;
+                    if (docType === "contract") typeColor = GP.neonPurple;
+                    else if (docType === "license") typeColor = GP.neonGreen;
+                    else if (docType === "w9") typeColor = GP.neonGold;
+                    else if (docType === "endorsement") typeColor = GP.neonRed;
+                    else if (docType === "binder") typeColor = GP.neonBlue;
+
+                    return (
+                      <div
+                        key={doc.id}
+                        style={{
+                          borderRadius: 14,
+                          padding: 12,
+                          background: "rgba(2,6,23,0.9)",
+                          border: "1px solid rgba(51,65,85,0.8)",
+                          boxShadow: "0 4px 14px rgba(0,0,0,0.45)",
+                          fontSize: 12,
+                          color: GP.textSoft,
+                        }}
+                      >
+                        <div
+                          style={{
+                            fontSize: 13,
+                            fontWeight: 600,
+                            marginBottom: 6,
+                            color: typeColor,
+                          }}
+                        >
+                          {docType.toUpperCase()}
+                        </div>
+
+                        {/* FILE LINK */}
+                        {fileUrl && (
+                          <a
+                            href={fileUrl}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            style={{
+                              fontSize: 11,
+                              color: GP.neonBlue,
+                              textDecoration: "underline",
+                              display: "inline-block",
+                              marginBottom: 6,
+                            }}
+                          >
+                            View Document →
+                          </a>
+                        )}
+
+                        {/* AI SUMMARY */}
+                        <div style={{ marginTop: 6, marginBottom: 6 }}>
+                          <div
+                            style={{
+                              fontWeight: 600,
+                              fontSize: 12,
+                              marginBottom: 4,
+                              color: GP.neonGold,
+                            }}
+                          >
+                            AI Summary
+                          </div>
+                          <div
+                            style={{
+                              whiteSpace: "pre-wrap",
+                              lineHeight: 1.35,
+                              color: GP.textSoft,
+                            }}
+                          >
+                            {summary}
+                          </div>
+                        </div>
+
+                        {/* NORMALIZED FIELDS */}
+                        {normalized &&
+                          typeof normalized === "object" &&
+                          Object.keys(normalized).length > 0 && (
+                            <div style={{ marginTop: 8 }}>
+                              <div
+                                style={{
+                                  fontWeight: 600,
+                                  fontSize: 12,
+                                  marginBottom: 4,
+                                  color: GP.neonGreen,
+                                }}
+                              >
+                                Extracted Data
+                              </div>
+
+                              <div
+                                style={{
+                                  display: "grid",
+                                  gridTemplateColumns: "minmax(0,1fr)",
+                                  gap: 4,
+                                }}
+                              >
+                                {Object.entries(normalized).map(
+                                  ([key, value]) => (
+                                    <div key={key} style={{ fontSize: 11 }}>
+                                      <strong style={{ color: GP.text }}>
+                                        {key}:{" "}
+                                      </strong>
+                                      {typeof value === "object"
+                                        ? JSON.stringify(value)
+                                        : String(value)}
+                                    </div>
+                                  )
+                                )}
+                              </div>
+                            </div>
+                          )}
+
+                        {/* UPLOADED AT */}
+                        <div
+                          style={{
+                            marginTop: 10,
+                            fontSize: 11,
+                            opacity: 0.7,
+                          }}
+                        >
+                          Uploaded: {formatDateTime(uploadedAt)}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+
             {/* TIMELINE PANEL */}
             <div
               style={{
@@ -627,7 +800,6 @@ export default function AdminVendorProfile() {
               )}
             </div>
           </div>
-
           {/* RIGHT COLUMN */}
           <div>
             {/* COMPLIANCE SNAPSHOT PANEL */}
@@ -669,9 +841,9 @@ export default function AdminVendorProfile() {
                 ) : (
                   <>
                     This vendor has{" "}
-                      <strong style={{ color: GP.neonRed }}>
-                        {criticalAlerts.length} critical
-                      </strong>{" "}
+                    <strong style={{ color: GP.neonRed }}>
+                      {criticalAlerts.length} critical
+                    </strong>{" "}
                     and{" "}
                     <strong style={{ color: GP.neonGold }}>
                       {highAlerts.length} high severity
