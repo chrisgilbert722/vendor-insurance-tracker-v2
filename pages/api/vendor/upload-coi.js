@@ -1,6 +1,6 @@
 // pages/api/vendor/upload-coi.js
 // V5 Upload → AI Parse → Store → Auto-Run Engine → Notify
-// The COI upload endpoint now feeds the V5 intelligence system.
+// Now also feeds Document → Alert Intelligence V2.
 // ===============================================================
 
 import formidable from "formidable";
@@ -9,6 +9,9 @@ import { sql } from "../../../lib/db";
 import { supabase } from "../../../lib/supabaseClient";
 import { openai } from "../../../lib/openaiClient";
 import { sendEmail } from "../../../lib/sendEmail";
+
+// NEW: Document → Alert Intelligence V2 engine
+import { runDocumentAlertIntelligenceV2 } from "../../../lib/documentAlertIntelligenceV2";
 
 export const config = {
   api: { bodyParser: false },
@@ -43,7 +46,7 @@ export default async function handler(req, res) {
     }
 
     // -------------------------------------------------------------
-    // 2) Resolve vendor + org
+    // 2) Resolve vendor + org  (NOW INCLUDES requirements_json)
     // -------------------------------------------------------------
     let vendor = null;
 
@@ -65,7 +68,7 @@ export default async function handler(req, res) {
       }
 
       const vendorRows = await sql`
-        SELECT id, vendor_name, email, phone, category
+        SELECT id, vendor_name, email, phone, category, org_id, requirements_json
         FROM vendors
         WHERE id = ${t.vendor_id}
         LIMIT 1
@@ -73,13 +76,14 @@ export default async function handler(req, res) {
       if (!vendorRows.length)
         return res.status(404).json({ ok: false, error: "Vendor not found." });
 
+      // org_id from token remains the source of truth, but we also have vendor.org_id
       vendor = { ...vendorRows[0], org_id: t.org_id };
     }
 
     else if (vendorIdField && orgIdField) {
       // Admin Upload Flow
       const vendorRows = await sql`
-        SELECT id, vendor_name, email, phone, category, org_id
+        SELECT id, vendor_name, email, phone, category, org_id, requirements_json
         FROM vendors
         WHERE id = ${vendorIdField} AND org_id = ${orgIdField}
       `;
@@ -98,6 +102,7 @@ export default async function handler(req, res) {
 
     const vendorId = vendor.id;
     const orgId = vendor.org_id;
+    const requirementsProfile = vendor.requirements_json || {};
 
     // -------------------------------------------------------------
     // 3) Upload PDF → Supabase storage
@@ -160,7 +165,46 @@ export default async function handler(req, res) {
     `;
 
     // -------------------------------------------------------------
-    // 6) AUTO-RUN RULE ENGINE V5  (the big upgrade)
+    // 6) Document → Alert Intelligence V2 (NEW)
+    // -------------------------------------------------------------
+    let intelResult = null;
+    try {
+      // Normalize AI output into a document object the engine understands
+      const docForIntel = {
+        // Common fields your engine expects
+        carrier: ai?.carrier ?? ai?.carrier_name ?? null,
+        policyNumber: ai?.policy_number ?? ai?.policyNumber ?? null,
+        coverageType: ai?.coverage_type ?? ai?.coverageType ?? null,
+        effectiveDate: ai?.effective_date ?? ai?.effectiveDate ?? null,
+        expirationDate: ai?.expiration_date ?? ai?.expirationDate ?? null,
+        // Include full parsed payload + file URL for context
+        ...ai,
+        fileUrl,
+      };
+
+      intelResult = await runDocumentAlertIntelligenceV2({
+        orgId,
+        vendorId,
+        document: docForIntel,
+        requirementsProfile,
+        source: token ? "vendor_portal_upload" : "admin_upload",
+      });
+
+      await sql`
+        INSERT INTO system_timeline (org_id, vendor_id, action, message, severity)
+        VALUES (${orgId}, ${vendorId}, 'document_intel_v2_success', 'Document Intelligence V2 analysis complete', 'info')
+      `;
+    } catch (err) {
+      console.error("[Document Intelligence V2 ERROR]:", err);
+
+      await sql`
+        INSERT INTO system_timeline (org_id, vendor_id, action, message, severity)
+        VALUES (${orgId}, ${vendorId}, 'document_intel_v2_failed', ${'Intelligence V2 error: ' + err.message}, 'critical')
+      `;
+    }
+
+    // -------------------------------------------------------------
+    // 7) AUTO-RUN RULE ENGINE V5  (unchanged)
     // -------------------------------------------------------------
     try {
       await fetch(`${process.env.NEXT_PUBLIC_BASE_URL || ''}/api/engine/run-v3`, {
@@ -187,7 +231,7 @@ export default async function handler(req, res) {
     }
 
     // -------------------------------------------------------------
-    // 7) SEND VENDOR CONFIRMATION EMAIL
+    // 8) SEND VENDOR CONFIRMATION EMAIL
     // -------------------------------------------------------------
     try {
       if (vendor?.email) {
@@ -216,7 +260,7 @@ Thank you!
     }
 
     // -------------------------------------------------------------
-    // 8) SEND ADMIN NOTIFICATION EMAIL
+    // 9) SEND ADMIN NOTIFICATION EMAIL
     // -------------------------------------------------------------
     try {
       const ADMIN_EMAILS = process.env.ADMIN_NOTIFICATION_EMAILS
@@ -239,7 +283,7 @@ Org ID: ${orgId}
 COI URL:
 ${fileUrl}
 
-This COI has been automatically processed by the V5 Rule Engine.
+This COI has been automatically processed by the V5 Rule Engine and Document Intelligence V2.
           `,
         });
       }
@@ -248,7 +292,7 @@ This COI has been automatically processed by the V5 Rule Engine.
     }
 
     // -------------------------------------------------------------
-    // 9) FINAL RETURN PAYLOAD
+    // 10) FINAL RETURN PAYLOAD
     // -------------------------------------------------------------
     return res.status(200).json({
       ok: true,
@@ -256,6 +300,7 @@ This COI has been automatically processed by the V5 Rule Engine.
       orgId,
       fileUrl,
       ai,
+      intelligence: intelResult,
       engine: "auto-run V5 executed",
       mode: token ? "vendor_portal" : "admin",
     });
@@ -274,3 +319,4 @@ This COI has been automatically processed by the V5 Rule Engine.
     });
   }
 }
+
