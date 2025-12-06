@@ -1,4 +1,12 @@
 // pages/admin/vendor/[id]/fix.js
+// ============================================================
+// Vendor Fix Cockpit V5 — Cinematic Neon
+// - Shows Elite Engine, AI Risk, V5 Rule Engine summary
+// - Generates AI-driven Fix Plan (via /api/vendor/fix-plan)
+// - Sends Fix Emails & downloads Fix PDFs
+// - Fully backwards-compatible with your existing APIs
+// ============================================================
+
 import { useRouter } from "next/router";
 import { useEffect, useState } from "react";
 import EliteComplianceBlock from "../../../../components/elite/EliteComplianceBlock";
@@ -9,7 +17,7 @@ import { useOrg } from "../../../../context/OrgContext";
 =========================== */
 function parseExpiration(dateStr) {
   if (!dateStr) return null;
-  const parts = dateStr.split("/");
+  const parts = String(dateStr).split("/");
   if (parts.length !== 3) return null;
   const [mm, dd, yyyy] = parts;
   if (!mm || !dd || !yyyy) return null;
@@ -27,7 +35,8 @@ function computeExpirationRisk(policy) {
     return { daysLeft: null, severity: "unknown", baseScore: 0 };
   }
   const daysLeft = computeDaysLeft(policy.expiration_date);
-  if (daysLeft === null) return { daysLeft: null, severity: "unknown", baseScore: 0 };
+  if (daysLeft === null)
+    return { daysLeft: null, severity: "unknown", baseScore: 0 };
 
   if (daysLeft < 0) return { daysLeft, severity: "expired", baseScore: 20 };
   if (daysLeft <= 30) return { daysLeft, severity: "critical", baseScore: 40 };
@@ -99,12 +108,15 @@ export default function VendorFixPage() {
   const [sendError, setSendError] = useState("");
   const [sendSuccess, setSendSuccess] = useState("");
 
-  // Rule Engine V3 state
+  // Rule Engine V5 state (backend: /api/engine/run-v3)
   const [engineLoading, setEngineLoading] = useState(false);
   const [engineError, setEngineError] = useState("");
-  const [engineSummary, setEngineSummary] = useState(null); // { globalScore, failedCount, rulesEvaluated, ... }
-  const [engineGroups, setEngineGroups] = useState([]); // groupResults from API
+  const [engineSummary, setEngineSummary] = useState(null); // { globalScore, failedCount, totalRules }
+  const [failingRules, setFailingRules] = useState([]); // array of failing V5 rules
 
+  /* ============================================================
+     LOAD VENDOR + POLICIES + COMPLIANCE + ELITE
+  ============================================================ */
   useEffect(() => {
     if (!id) return;
 
@@ -115,29 +127,35 @@ export default function VendorFixPage() {
 
         const res = await fetch(`/api/vendors/${id}`);
         const data = await res.json();
-        if (!data.ok) throw new Error(data.error);
+        if (!data.ok) throw new Error(data.error || "Failed to load vendor.");
 
         setVendor(data.vendor);
         setOrg(data.organization);
         setPolicies(data.policies || []);
 
         if (data.vendor?.org_id) {
-          await loadCompliance(data.vendor.id, data.vendor.org_id, data.policies || []);
+          await loadComplianceAndElite(
+            data.vendor.id,
+            data.vendor.org_id,
+            data.policies || []
+          );
         } else {
           setLoadingCompliance(false);
         }
       } catch (err) {
-        setError(err.message);
+        console.error("[VendorFixPage] load error:", err);
+        setError(err.message || "Failed to load vendor.");
         setLoadingCompliance(false);
       } finally {
         setLoadingVendor(false);
       }
     }
 
-    async function loadCompliance(vendorId, orgId, vendorPolicies) {
+    async function loadComplianceAndElite(vendorId, orgId, vendorPolicies) {
       try {
         setLoadingCompliance(true);
 
+        // legacy requirements/check — still useful for summary
         const res = await fetch(
           `/api/requirements/check?vendorId=${vendorId}&orgId=${orgId}`
         );
@@ -173,17 +191,20 @@ export default function VendorFixPage() {
           }
         }
       } catch (err) {
-        setCompliance({ error: err.message });
+        console.error("[VendorFixPage] compliance/elite error:", err);
+        setCompliance({ error: err.message || "Compliance check failed." });
       } finally {
         setLoadingCompliance(false);
       }
     }
 
     loadAll();
-  }, [id]);
+  }, [id, activeOrgId]);
 
-  // Rule Engine V3 runner
-  async function runRuleEngineV3(vendorIdArg, orgIdArg) {
+  /* ============================================================
+     RUN RULE ENGINE V5 (backend: /api/engine/run-v3)
+  ============================================================ */
+  async function runRuleEngineV5(vendorIdArg, orgIdArg) {
     const finalVendorId = vendorIdArg || vendor?.id;
     const finalOrgId = orgIdArg || org?.id || activeOrgId;
 
@@ -193,7 +214,7 @@ export default function VendorFixPage() {
       setEngineLoading(true);
       setEngineError("");
       setEngineSummary(null);
-      setEngineGroups([]);
+      setFailingRules([]);
 
       const res = await fetch("/api/engine/run-v3", {
         method: "POST",
@@ -201,13 +222,14 @@ export default function VendorFixPage() {
         body: JSON.stringify({
           vendorId: finalVendorId,
           orgId: finalOrgId,
+          dryRun: false,
         }),
       });
 
       const json = await res.json();
 
       if (!res.ok || !json.ok) {
-        throw new Error(json.error || "Rule Engine V3 failed.");
+        throw new Error(json.error || "Rule Engine V5 failed.");
       }
 
       setEngineSummary({
@@ -215,26 +237,29 @@ export default function VendorFixPage() {
         orgId: json.orgId,
         globalScore: json.globalScore,
         failedCount: json.failedCount,
-        rulesEvaluated: json.rulesEvaluated,
+        totalRules: json.totalRules,
       });
 
-      setEngineGroups(Array.isArray(json.groupResults) ? json.groupResults : []);
+      setFailingRules(Array.isArray(json.failingRules) ? json.failingRules : []);
     } catch (err) {
-      console.error("[fix.js] Rule Engine V3 error:", err);
-      setEngineError(err.message || "Failed to run Rule Engine V3.");
+      console.error("[VendorFixPage] Rule Engine V5 error:", err);
+      setEngineError(err.message || "Failed to run Rule Engine V5.");
     } finally {
       setEngineLoading(false);
     }
   }
 
-  // Auto-run Rule Engine V3 when vendor + org context is known
+  // Auto-run Rule Engine V5 when vendor+org context is ready
   useEffect(() => {
     if (vendor && (org?.id || activeOrgId)) {
-      runRuleEngineV3(vendor.id, org?.id);
+      runRuleEngineV5(vendor.id, org?.id);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [vendor, org, activeOrgId]);
 
+  /* ============================================================
+     LOAD FIX PLAN (legacy /api/vendor/fix-plan)
+  ============================================================ */
   async function loadFixPlan() {
     if (!vendor || !org) return;
     try {
@@ -256,12 +281,16 @@ export default function VendorFixPage() {
       setFixBody(data.vendorEmailBody || "");
       setFixInternalNotes(data.internalNotes || "");
     } catch (err) {
-      setFixError(err.message);
+      console.error("[VendorFixPage] fix plan error:", err);
+      setFixError(err.message || "Failed to generate fix plan.");
     } finally {
       setFixLoading(false);
     }
   }
 
+  /* ============================================================
+     SEND FIX EMAIL
+  ============================================================ */
   async function sendFixEmail() {
     if (!vendor || !org || !fixSubject || !fixBody) return;
     try {
@@ -282,14 +311,18 @@ export default function VendorFixPage() {
       const data = await res.json();
       if (!data.ok) throw new Error(data.error);
 
-      setSendSuccess(`Email sent to ${data.sentTo}`);
+      setSendSuccess(data.message || `Email sent to ${data.sentTo}`);
     } catch (err) {
-      setSendError(err.message);
+      console.error("[VendorFixPage] send email error:", err);
+      setSendError(err.message || "Failed to send email.");
     } finally {
       setSendLoading(false);
     }
   }
 
+  /* ============================================================
+     DOWNLOAD FIX PLAN PDF
+  ============================================================ */
   async function downloadPDF() {
     try {
       const res = await fetch("/api/vendor/fix-plan-pdf", {
@@ -321,6 +354,9 @@ export default function VendorFixPage() {
     }
   }
 
+  /* ============================================================
+     DOWNLOAD ENTERPRISE REPORT PDF
+  ============================================================ */
   async function downloadEnterprisePDF() {
     try {
       const res = await fetch("/api/vendor/enterprise-report-pdf", {
@@ -358,6 +394,9 @@ export default function VendorFixPage() {
     }
   }
 
+  /* ============================================================
+     LOADING / ERROR STATES
+  ============================================================ */
   if (loadingVendor) {
     return (
       <div
@@ -414,6 +453,9 @@ export default function VendorFixPage() {
     compliance,
   });
 
+  /* ============================================================
+     MAIN UI
+  ============================================================ */
   return (
     <div
       style={{
@@ -442,732 +484,711 @@ export default function VendorFixPage() {
         }}
       />
 
-      {/* Header */}
-      <div style={{ position: "relative", zIndex: 2, marginBottom: 18 }}>
-        <div
-          style={{
-            fontSize: 12,
-            color: "#9ca3af",
-            marginBottom: 8,
-            display: "flex",
-            gap: 8,
-            alignItems: "center",
-          }}
-        >
-          <a href="/vendors" style={{ color: "#93c5fd" }}>
-            Vendors
-          </a>
-          <span>/</span>
-          <a href={`/admin/vendor/${vendor.id}`} style={{ color: "#93c5fd" }}>
-            {vendor.name}
-          </a>
-          <span>/</span>
-          <span>Fix Plan</span>
-        </div>
-
-        <h1
-          style={{
-            fontSize: 26,
-            fontWeight: 600,
-            margin: 0,
-          }}
-        >
-          Fix Plan & Elite Risk for{" "}
-          <span
-            style={{
-              background:
-                "linear-gradient(90deg,#38bdf8,#a5b4fc,#e5e7eb)",
-              WebkitBackgroundClip: "text",
-              color: "transparent",
-            }}
-          >
-            {vendor.name}
-          </span>
-        </h1>
-
-        {org && (
-          <p
-            style={{
-              fontSize: 13,
-              color: "#9ca3af",
-              marginTop: 4,
-            }}
-          >
-            Org:{" "}
-            <span style={{ color: "#e5e7eb" }}>{org.name || "Unknown"}</span>
-          </p>
-        )}
-      </div>
-
-      {/* TOP ROW: COMPLIANCE + AI RISK + ELITE */}
-      <div
-        style={{
-          position: "relative",
-          zIndex: 2,
-          display: "grid",
-          gridTemplateColumns: "minmax(0,2.1fr) minmax(0,1.4fr)",
-          gap: 18,
-          marginBottom: 18,
-        }}
-      >
-        {/* Left: Compliance + Elite + AI Risk */}
-        <div
-          style={{
-            borderRadius: 24,
-            padding: 16,
-            background:
-              "radial-gradient(circle at top left,rgba(15,23,42,0.97),rgba(15,23,42,0.92))",
-            border: "1px solid rgba(148,163,184,0.6)",
-            boxShadow: "0 24px 60px rgba(15,23,42,0.98)",
-          }}
-        >
+      <div style={{ position: "relative", zIndex: 2 }}>
+        {/* Header */}
+        <div style={{ marginBottom: 18 }}>
           <div
             style={{
-              fontSize: 11,
-              textTransform: "uppercase",
-              letterSpacing: 1.2,
+              fontSize: 12,
               color: "#9ca3af",
               marginBottom: 8,
+              display: "flex",
+              gap: 8,
+              alignItems: "center",
             }}
           >
-            Compliance Summary
+            <a href="/vendors" style={{ color: "#93c5fd" }}>
+              Vendors
+            </a>
+            <span>/</span>
+            <a
+              href={`/admin/vendor/${vendor.id}`}
+              style={{ color: "#93c5fd" }}
+            >
+              {vendor.name}
+            </a>
+            <span>/</span>
+            <span>Fix Plan</span>
           </div>
 
-          {loadingCompliance && (
-            <div style={{ fontSize: 13, color: "#9ca3af" }}>
-              Checking compliance…
-            </div>
-          )}
-
-          {compliance?.error && (
-            <div style={{ color: "#fecaca", fontSize: 12 }}>
-              ❌ {compliance.error}
-            </div>
-          )}
-
-          {!loadingCompliance && compliance && !compliance.error && (
-            <>
-              <div
-                style={{
-                  fontSize: 13,
-                  fontWeight: 500,
-                  color: "#e5e7eb",
-                  marginBottom: 12,
-                }}
-              >
-                {compliance.summary}
-              </div>
-
-              <div
-                style={{
-                  display: "grid",
-                  gridTemplateColumns: "minmax(0,1fr) minmax(0,1fr)",
-                  gap: 16,
-                }}
-              >
-                {/* Elite */}
-                <div
-                  style={{
-                    borderRadius: 16,
-                    padding: 12,
-                    background: "rgba(15,23,42,0.96)",
-                    border: "1px solid rgba(51,65,85,0.9)",
-                  }}
-                >
-                  <div
-                    style={{
-                      fontSize: 11,
-                      textTransform: "uppercase",
-                      letterSpacing: 1.1,
-                      color: "#9ca3af",
-                      marginBottom: 6,
-                    }}
-                  >
-                    Elite Rule Engine
-                  </div>
-                  <EliteComplianceBlock
-                    coidata={{
-                      expirationDate: primaryPolicy?.expiration_date,
-                      generalLiabilityLimit:
-                        primaryPolicy?.limit_each_occurrence,
-                      autoLimit: primaryPolicy?.auto_limit,
-                      workCompLimit: primaryPolicy?.work_comp_limit,
-                      policyType: primaryPolicy?.coverage_type,
-                    }}
-                  />
-                </div>
-
-                {/* AI Risk */}
-                <div
-                  style={{
-                    borderRadius: 16,
-                    padding: 12,
-                    background: "rgba(15,23,42,0.96)",
-                    border: "1px solid rgba(51,65,85,0.9)",
-                  }}
-                >
-                  <div
-                    style={{
-                      fontSize: 11,
-                      textTransform: "uppercase",
-                      letterSpacing: 1.1,
-                      color: "#9ca3af",
-                      marginBottom: 6,
-                    }}
-                  >
-                    AI Underwriting Risk Score
-                  </div>
-
-                  <div
-                    style={{
-                      display: "flex",
-                      alignItems: "center",
-                      gap: 12,
-                      marginBottom: 8,
-                    }}
-                  >
-                    <div
-                      style={{
-                        fontSize: 28,
-                        fontWeight: 700,
-                        color:
-                          aiRisk.score >= 80
-                            ? "#22c55e"
-                            : aiRisk.score >= 60
-                            ? "#facc15"
-                            : "#fb7185",
-                      }}
-                    >
-                      {aiRisk.score}
-                    </div>
-                    <div>
-                      <div
-                        style={{
-                          fontSize: 12,
-                          fontWeight: 600,
-                          color: "#e5e7eb",
-                        }}
-                      >
-                        {aiRisk.tier}
-                      </div>
-                      <div
-                        style={{
-                          marginTop: 4,
-                          height: 4,
-                          width: 110,
-                          borderRadius: 999,
-                          background: "#020617",
-                          overflow: "hidden",
-                        }}
-                      >
-                        <div
-                          style={{
-                            width: `${Math.min(aiRisk.score, 100)}%`,
-                            height: "100%",
-                            background:
-                              aiRisk.score >= 80
-                                ? "#22c55e"
-                                : aiRisk.score >= 60
-                                ? "#facc15"
-                                : "#fb7185",
-                          }}
-                        />
-                      </div>
-                    </div>
-                  </div>
-
-                  {primaryPolicy && (
-                    <div
-                      style={{
-                        fontSize: 11,
-                        color: "#9ca3af",
-                      }}
-                    >
-                      <div>
-                        <strong>Primary Policy:</strong>{" "}
-                        {primaryPolicy.coverage_type || "—"}
-                      </div>
-                      <div>
-                        <strong>Expires:</strong>{" "}
-                        {primaryPolicy.expiration_date || "—"} (
-                        {aiRisk.exp.daysLeft ?? "—"} days left)
-                      </div>
-                    </div>
-                  )}
-                </div>
-              </div>
-            </>
-          )}
-        </div>
-
-        {/* Right: AI Fix Plan */}
-        <div
-          style={{
-            borderRadius: 24,
-            padding: 16,
-            background:
-              "radial-gradient(circle at top right,rgba(15,23,42,0.96),rgba(15,23,42,1))",
-            border: "1px solid rgba(148,163,184,0.55)",
-            boxShadow: "0 22px 55px rgba(15,23,42,0.98)",
-          }}
-        >
-          <div
+          <h1
             style={{
-              display: "flex",
-              justifyContent: "space-between",
-              gap: 10,
-              alignItems: "center",
-              marginBottom: 8,
+              fontSize: 26,
+              fontWeight: 600,
+              margin: 0,
             }}
           >
-            <div>
-              <div
-                style={{
-                  fontSize: 11,
-                  textTransform: "uppercase",
-                  letterSpacing: 1.2,
-                  color: "#9ca3af",
-                }}
-              >
-                AI Fix Plan
-              </div>
-              <div style={{ fontSize: 12, color: "#e5e7eb" }}>
-                Hybrid G+Legal vendor remediation steps.
-              </div>
-            </div>
-
-            <button
-              onClick={loadFixPlan}
-              disabled={fixLoading}
+            Fix Plan & Elite Risk for{" "}
+            <span
               style={{
-                borderRadius: 999,
-                padding: "7px 12px",
-                border: "1px solid rgba(59,130,246,0.9)",
                 background:
-                  "radial-gradient(circle at top left,#3b82f6,#1d4ed8,#0f172a)",
-                color: "#e5f2ff",
-                fontSize: 11,
-                fontWeight: 500,
-                cursor: fixLoading ? "not-allowed" : "pointer",
+                  "linear-gradient(90deg,#38bdf8,#a5b4fc,#e5e7eb)",
+                WebkitBackgroundClip: "text",
+                color: "transparent",
               }}
             >
-              {fixLoading ? "Generating…" : "Generate Fix Plan"}
-            </button>
-          </div>
+              {vendor.name}
+            </span>
+          </h1>
 
-          {fixError && (
+          {org && (
+            <p
+              style={{
+                fontSize: 13,
+                color: "#9ca3af",
+                marginTop: 4,
+              }}
+            >
+              Org:{" "}
+              <span style={{ color: "#e5e7eb" }}>{org.name || "Unknown"}</span>
+            </p>
+          )}
+        </div>
+
+        {/* TOP ROW: Compliance + AI Risk + Elite + Fix Plan */}
+        <div
+          style={{
+            display: "grid",
+            gridTemplateColumns: "minmax(0,2.1fr) minmax(0,1.4fr)",
+            gap: 18,
+            marginBottom: 18,
+          }}
+        >
+          {/* LEFT: Compliance + Elite + AI Risk */}
+          <div
+            style={{
+              borderRadius: 24,
+              padding: 16,
+              background:
+                "radial-gradient(circle at top left,rgba(15,23,42,0.97),rgba(15,23,42,0.92))",
+              border: "1px solid rgba(148,163,184,0.6)",
+              boxShadow: "0 24px 60px rgba(15,23,42,0.98)",
+            }}
+          >
             <div
               style={{
-                fontSize: 12,
-                color: "#fecaca",
+                fontSize: 11,
+                textTransform: "uppercase",
+                letterSpacing: 1.2,
+                color: "#9ca3af",
                 marginBottom: 8,
               }}
             >
-              {fixError}
+              Compliance Summary
             </div>
-          )}
 
-          {fixSteps.length > 0 && (
-            <>
-              <div
-                style={{
-                  fontSize: 11,
-                  textTransform: "uppercase",
-                  letterSpacing: 1.1,
-                  color: "#9ca3af",
-                  marginTop: 8,
-                  marginBottom: 4,
-                }}
-              >
-                Action Steps
+            {loadingCompliance && (
+              <div style={{ fontSize: 13, color: "#9ca3af" }}>
+                Checking compliance…
               </div>
-              <ol
-                style={{
-                  paddingLeft: 18,
-                  marginTop: 0,
-                  fontSize: 12,
-                  color: "#e5e7eb",
-                }}
-              >
-                {fixSteps.map((s, i) => (
-                  <li key={i} style={{ marginBottom: 4 }}>
-                    {s}
-                  </li>
-                ))}
-              </ol>
-            </>
-          )}
+            )}
 
-          {fixSubject && (
-            <>
-              <div
-                style={{
-                  fontSize: 11,
-                  textTransform: "uppercase",
-                  letterSpacing: 1.1,
-                  color: "#9ca3af",
-                  marginTop: 10,
-                  marginBottom: 4,
-                }}
-              >
-                Vendor Email Subject
+            {compliance?.error && (
+              <div style={{ color: "#fecaca", fontSize: 12 }}>
+                ❌ {compliance.error}
               </div>
-              <div
-                style={{
-                  borderRadius: 10,
-                  padding: 8,
-                  background: "rgba(15,23,42,0.96)",
-                  border: "1px solid rgba(51,65,85,0.9)",
-                  fontSize: 12,
-                  color: "#e5e7eb",
-                }}
-              >
-                {fixSubject}
-              </div>
-            </>
-          )}
+            )}
 
-          {fixBody && (
-            <>
-              <div
-                style={{
-                  fontSize: 11,
-                  textTransform: "uppercase",
-                  letterSpacing: 1.1,
-                  color: "#9ca3af",
-                  marginTop: 10,
-                  marginBottom: 4,
-                }}
-              >
-                Vendor Email Body
-              </div>
-              <textarea
-                readOnly
-                value={fixBody}
-                style={{
-                  width: "100%",
-                  minHeight: 120,
-                  borderRadius: 10,
-                  padding: 8,
-                  border: "1px solid rgba(51,65,85,0.9)",
-                  background: "rgba(15,23,42,0.98)",
-                  color: "#e5e7eb",
-                  fontSize: 12,
-                  fontFamily: "system-ui",
-                  resize: "vertical",
-                  whiteSpace: "pre-wrap",
-                }}
-              />
-
-              <button
-                onClick={sendFixEmail}
-                disabled={sendLoading}
-                style={{
-                  width: "100%",
-                  marginTop: 10,
-                  borderRadius: 999,
-                  padding: "8px 14px",
-                  border: "1px solid rgba(22,163,74,0.9)",
-                  background:
-                    "radial-gradient(circle at top left,#22c55e,#16a34a,#052e16)",
-                  color: "#ecfdf5",
-                  fontSize: 12,
-                  fontWeight: 500,
-                  cursor: sendLoading ? "not-allowed" : "pointer",
-                }}
-              >
-                {sendLoading ? "Sending…" : "📬 Send Fix Email"}
-              </button>
-
-              {sendError && (
+            {!loadingCompliance && compliance && !compliance.error && (
+              <>
                 <div
                   style={{
-                    fontSize: 12,
-                    color: "#fecaca",
-                    marginTop: 6,
+                    fontSize: 13,
+                    fontWeight: 500,
+                    color: "#e5e7eb",
+                    marginBottom: 12,
                   }}
                 >
-                  {sendError}
+                  {compliance.summary}
                 </div>
-              )}
 
-              {sendSuccess && (
                 <div
                   style={{
-                    fontSize: 12,
-                    color: "#bbf7d0",
-                    marginTop: 6,
+                    display: "grid",
+                    gridTemplateColumns: "minmax(0,1fr) minmax(0,1fr)",
+                    gap: 16,
                   }}
                 >
-                  {sendSuccess}
+                  {/* Elite Engine */}
+                  <div
+                    style={{
+                      borderRadius: 16,
+                      padding: 12,
+                      background: "rgba(15,23,42,0.96)",
+                      border: "1px solid rgba(51,65,85,0.9)",
+                    }}
+                  >
+                    <div
+                      style={{
+                        fontSize: 11,
+                        textTransform: "uppercase",
+                        letterSpacing: 1.1,
+                        color: "#9ca3af",
+                        marginBottom: 6,
+                      }}
+                    >
+                      Elite Rule Engine
+                    </div>
+                    <EliteComplianceBlock
+                      coidata={{
+                        expirationDate: primaryPolicy?.expiration_date,
+                        generalLiabilityLimit:
+                          primaryPolicy?.limit_each_occurrence,
+                        autoLimit: primaryPolicy?.auto_limit,
+                        workCompLimit: primaryPolicy?.work_comp_limit,
+                        policyType: primaryPolicy?.coverage_type,
+                      }}
+                    />
+                  </div>
+
+                  {/* AI Risk */}
+                  <div
+                    style={{
+                      borderRadius: 16,
+                      padding: 12,
+                      background: "rgba(15,23,42,0.96)",
+                      border: "1px solid rgba(51,65,85,0.9)",
+                    }}
+                  >
+                    <div
+                      style={{
+                        fontSize: 11,
+                        textTransform: "uppercase",
+                        letterSpacing: 1.1,
+                        color: "#9ca3af",
+                        marginBottom: 6,
+                      }}
+                    >
+                      AI Underwriting Risk Score
+                    </div>
+
+                    <div
+                      style={{
+                        display: "flex",
+                        alignItems: "center",
+                        gap: 12,
+                        marginBottom: 8,
+                      }}
+                    >
+                      <div
+                        style={{
+                          fontSize: 28,
+                          fontWeight: 700,
+                          color:
+                            aiRisk.score >= 80
+                              ? "#22c55e"
+                              : aiRisk.score >= 60
+                              ? "#facc15"
+                              : "#fb7185",
+                        }}
+                      >
+                        {aiRisk.score}
+                      </div>
+                      <div>
+                        <div
+                          style={{
+                            fontSize: 12,
+                            fontWeight: 600,
+                            color: "#e5e7eb",
+                          }}
+                        >
+                          {aiRisk.tier}
+                        </div>
+                        <div
+                          style={{
+                            marginTop: 4,
+                            height: 4,
+                            width: 110,
+                            borderRadius: 999,
+                            background: "#020617",
+                            overflow: "hidden",
+                          }}
+                        >
+                          <div
+                            style={{
+                              width: `${Math.min(aiRisk.score, 100)}%`,
+                              height: "100%",
+                              background:
+                                aiRisk.score >= 80
+                                  ? "#22c55e"
+                                  : aiRisk.score >= 60
+                                  ? "#facc15"
+                                  : "#fb7185",
+                            }}
+                          />
+                        </div>
+                      </div>
+                    </div>
+
+                    {primaryPolicy && (
+                      <div
+                        style={{
+                          fontSize: 11,
+                          color: "#9ca3af",
+                        }}
+                      >
+                        <div>
+                          <strong>Primary Policy:</strong>{" "}
+                          {primaryPolicy.coverage_type || "—"}
+                        </div>
+                        <div>
+                          <strong>Expires:</strong>{" "}
+                          {primaryPolicy.expiration_date || "—"} (
+                          {aiRisk.exp.daysLeft ?? "—"} days left)
+                        </div>
+                      </div>
+                    )}
+                  </div>
                 </div>
-              )}
-
-              <button
-                onClick={downloadPDF}
-                style={{
-                  width: "100%",
-                  marginTop: 10,
-                  borderRadius: 999,
-                  padding: "8px 14px",
-                  border: "1px solid rgba(59,130,246,0.9)",
-                  background:
-                    "radial-gradient(circle at top left,#2563eb,#1d4ed8,#0f172a)",
-                  color: "#eff6ff",
-                  fontSize: 12,
-                  fontWeight: 500,
-                  cursor: "pointer",
-                }}
-              >
-                📄 Download Fix Plan (PDF)
-              </button>
-
-              <button
-                onClick={downloadEnterprisePDF}
-                style={{
-                  width: "100%",
-                  marginTop: 10,
-                  borderRadius: 999,
-                  padding: "8px 14px",
-                  border: "1px solid rgba(148,163,184,0.8)",
-                  background:
-                    "radial-gradient(circle at top left,#111827,#020617,#000000)",
-                  color: "#e5e7eb",
-                  fontSize: 12,
-                  fontWeight: 500,
-                  cursor: "pointer",
-                }}
-              >
-                🧾 Download Enterprise Compliance Report (PDF)
-              </button>
-            </>
-          )}
-
-          {fixInternalNotes && (
-            <>
-              <div
-                style={{
-                  fontSize: 11,
-                  textTransform: "uppercase",
-                  letterSpacing: 1.1,
-                  color: "#9ca3af",
-                  marginTop: 10,
-                  marginBottom: 4,
-                }}
-              >
-                Internal Notes
-              </div>
-              <div
-                style={{
-                  borderRadius: 10,
-                  padding: 8,
-                  border: "1px solid rgba(51,65,85,0.9)",
-                  background: "rgba(15,23,42,0.98)",
-                  fontSize: 12,
-                  color: "#e5e7eb",
-                  whiteSpace: "pre-wrap",
-                }}
-              >
-                {fixInternalNotes}
-              </div>
-            </>
-          )}
-        </div>
-      </div>
-
-      {/* RULE ENGINE V3 PANEL */}
-      <div
-        style={{
-          position: "relative",
-          zIndex: 2,
-          marginTop: 16,
-          marginBottom: 16,
-          display: "grid",
-          gridTemplateColumns: "minmax(0,1.2fr) minmax(0,2fr)",
-          gap: 16,
-        }}
-      >
-        {/* LEFT: Global Score */}
-        <div
-          style={{
-            borderRadius: 16,
-            padding: 14,
-            border: "1px solid rgba(51,65,85,0.9)",
-            background: "rgba(15,23,42,0.98)",
-          }}
-        >
-          <div
-            style={{
-              fontSize: 12,
-              textTransform: "uppercase",
-              letterSpacing: "0.12em",
-              color: "#9ca3af",
-              marginBottom: 8,
-            }}
-          >
-            Rule Engine V3 · Vendor Risk
+              </>
+            )}
           </div>
 
-          {engineLoading && (
-            <div style={{ fontSize: 13, color: "#9ca3af" }}>
-              Running rule engine…
-            </div>
-          )}
-
-          {engineError && !engineLoading && (
-            <div style={{ fontSize: 13, color: "#fca5a5" }}>{engineError}</div>
-          )}
-
-          {engineSummary && !engineLoading && !engineError && (
-            <div>
-              <div
-                style={{
-                  fontSize: 28,
-                  fontWeight: 700,
-                  marginBottom: 4,
-                  background:
-                    engineSummary.globalScore >= 80
-                      ? "linear-gradient(120deg,#22c55e,#bef264)"
-                      : engineSummary.globalScore >= 60
-                      ? "linear-gradient(120deg,#facc15,#fde68a)"
-                      : "linear-gradient(120deg,#fb7185,#fecaca)",
-                  WebkitBackgroundClip: "text",
-                  color: "transparent",
-                }}
-              >
-                {engineSummary.globalScore}
-              </div>
-              <div style={{ fontSize: 11, color: "#9ca3af" }}>Global Score</div>
-
-              <div
-                style={{
-                  marginTop: 8,
-                  fontSize: 11,
-                  color: "#9ca3af",
-                }}
-              >
-                Rules evaluated:{" "}
-                <strong>{engineSummary.rulesEvaluated}</strong> · Failing groups:{" "}
-                <strong>{engineSummary.failedCount}</strong>
-              </div>
-
-              <button
-                onClick={() => runRuleEngineV3(vendor.id, org?.id)}
-                style={{
-                  marginTop: 10,
-                  padding: "6px 12px",
-                  borderRadius: 999,
-                  border: "1px solid rgba(75,85,99,0.9)",
-                  background: "rgba(15,23,42,0.9)",
-                  color: "#e5e7eb",
-                  fontSize: 12,
-                  cursor: "pointer",
-                }}
-              >
-                🔁 Re-run engine
-              </button>
-            </div>
-          )}
-        </div>
-
-        {/* RIGHT: Group breakdown */}
-        <div
-          style={{
-            borderRadius: 16,
-            padding: 14,
-            border: "1px solid rgba(51,65,85,0.9)",
-            background: "rgba(15,23,42,0.98)",
-            maxHeight: 260,
-            overflowY: "auto",
-          }}
-        >
+          {/* RIGHT: AI Fix Plan */}
           <div
             style={{
-              fontSize: 12,
-              textTransform: "uppercase",
-              letterSpacing: "0.12em",
-              color: "#9ca3af",
-              marginBottom: 8,
+              borderRadius: 24,
+              padding: 16,
+              background:
+                "radial-gradient(circle at top right,rgba(15,23,42,0.96),rgba(15,23,42,1))",
+              border: "1px solid rgba(148,163,184,0.55)",
+              boxShadow: "0 22px 55px rgba(15,23,42,0.98)",
             }}
           >
-            Rule Groups
-          </div>
-
-          {engineGroups.length === 0 && !engineLoading && !engineError && (
-            <div style={{ fontSize: 13, color: "#9ca3af" }}>
-              No rule groups evaluated.
-            </div>
-          )}
-
-          {engineGroups.map((g) => {
-            const isFail = !g.passed;
-            const color = isFail ? "#fb7185" : "#22c55e";
-            const bg = isFail
-              ? "rgba(248,113,113,0.12)"
-              : "rgba(34,197,94,0.12)";
-
-            return (
-              <div
-                key={g.groupId}
-                style={{
-                  borderRadius: 12,
-                  padding: "8px 10px",
-                  marginBottom: 8,
-                  border: `1px solid ${color}55`,
-                  background: bg,
-                }}
-              >
-                <div
-                  style={{
-                    display: "flex",
-                    justifyContent: "space-between",
-                    alignItems: "center",
-                    marginBottom: 4,
-                  }}
-                >
-                  <div
-                    style={{
-                      fontSize: 13,
-                      fontWeight: 600,
-                      color,
-                    }}
-                  >
-                    {g.label}
-                  </div>
-                  <div
-                    style={{
-                      fontSize: 12,
-                      fontWeight: 600,
-                      color,
-                    }}
-                  >
-                    {g.score}
-                  </div>
-                </div>
-                {g.description && (
-                  <div
-                    style={{
-                      fontSize: 11,
-                      color: "#e5e7eb",
-                      marginBottom: 4,
-                    }}
-                  >
-                    {g.description}
-                  </div>
-                )}
+            <div
+              style={{
+                display: "flex",
+                justifyContent: "space-between",
+                gap: 10,
+                alignItems: "center",
+                marginBottom: 8,
+              }}
+            >
+              <div>
                 <div
                   style={{
                     fontSize: 11,
+                    textTransform: "uppercase",
+                    letterSpacing: 1.2,
+                    color: "#9ca3af",
+                  }}
+                >
+                  AI Fix Plan
+                </div>
+                <div style={{ fontSize: 12, color: "#e5e7eb" }}>
+                  Curated remediation steps for this vendor&apos;s COI.
+                </div>
+              </div>
+
+              <button
+                onClick={loadFixPlan}
+                disabled={fixLoading}
+                style={{
+                  borderRadius: 999,
+                  padding: "7px 12px",
+                  border: "1px solid rgba(59,130,246,0.9)",
+                  background:
+                    "radial-gradient(circle at top left,#3b82f6,#1d4ed8,#0f172a)",
+                  color: "#e5f2ff",
+                  fontSize: 11,
+                  fontWeight: 500,
+                  cursor: fixLoading ? "not-allowed" : "pointer",
+                }}
+              >
+                {fixLoading ? "Generating…" : "⚡ Generate Fix Plan"}
+              </button>
+            </div>
+
+            {fixError && (
+              <div
+                style={{
+                  fontSize: 12,
+                  color: "#fecaca",
+                  marginBottom: 8,
+                }}
+              >
+                {fixError}
+              </div>
+            )}
+
+            {fixSteps.length > 0 && (
+              <>
+                <div
+                  style={{
+                    fontSize: 11,
+                    textTransform: "uppercase",
+                    letterSpacing: 1.1,
+                    color: "#9ca3af",
+                    marginTop: 8,
+                    marginBottom: 4,
+                  }}
+                >
+                  Action Steps
+                </div>
+                <ol
+                  style={{
+                    paddingLeft: 18,
+                    marginTop: 0,
+                    fontSize: 12,
                     color: "#e5e7eb",
                   }}
                 >
-                  Status:{" "}
-                  <strong>{g.passed ? "PASS" : "FAIL"}</strong> · Severity:{" "}
-                  <strong>{g.severity || "medium"}</strong>
+                  {fixSteps.map((s, i) => (
+                    <li key={i} style={{ marginBottom: 4 }}>
+                      {s}
+                    </li>
+                  ))}
+                </ol>
+              </>
+            )}
+
+            {fixSubject && (
+              <>
+                <div
+                  style={{
+                    fontSize: 11,
+                    textTransform: "uppercase",
+                    letterSpacing: 1.1,
+                    color: "#9ca3af",
+                    marginTop: 10,
+                    marginBottom: 4,
+                  }}
+                >
+                  Vendor Email Subject
                 </div>
+                <div
+                  style={{
+                    borderRadius: 10,
+                    padding: 8,
+                    background: "rgba(15,23,42,0.96)",
+                    border: "1px solid rgba(51,65,85,0.9)",
+                    fontSize: 12,
+                    color: "#e5e7eb",
+                  }}
+                >
+                  {fixSubject}
+                </div>
+              </>
+            )}
+
+            {fixBody && (
+              <>
+                <div
+                  style={{
+                    fontSize: 11,
+                    textTransform: "uppercase",
+                    letterSpacing: 1.1,
+                    color: "#9ca3af",
+                    marginTop: 10,
+                    marginBottom: 4,
+                  }}
+                >
+                  Vendor Email Body
+                </div>
+                <textarea
+                  readOnly
+                  value={fixBody}
+                  style={{
+                    width: "100%",
+                    minHeight: 120,
+                    borderRadius: 10,
+                    padding: 8,
+                    border: "1px solid rgba(51,65,85,0.9)",
+                    background: "rgba(15,23,42,0.98)",
+                    color: "#e5e7eb",
+                    fontSize: 12,
+                    fontFamily: "system-ui",
+                    resize: "vertical",
+                    whiteSpace: "pre-wrap",
+                  }}
+                />
+
+                <button
+                  onClick={sendFixEmail}
+                  disabled={sendLoading}
+                  style={{
+                    width: "100%",
+                    marginTop: 10,
+                    borderRadius: 999,
+                    padding: "8px 14px",
+                    border: "1px solid rgba(22,163,74,0.9)",
+                    background:
+                      "radial-gradient(circle at top left,#22c55e,#16a34a,#052e16)",
+                    color: "#ecfdf5",
+                    fontSize: 12,
+                    fontWeight: 500,
+                    cursor: sendLoading ? "not-allowed" : "pointer",
+                  }}
+                >
+                  {sendLoading ? "Sending…" : "📬 Send Fix Email"}
+                </button>
+
+                {sendError && (
+                  <div
+                    style={{
+                      fontSize: 12,
+                      color: "#fecaca",
+                      marginTop: 6,
+                    }}
+                  >
+                    {sendError}
+                  </div>
+                )}
+
+                {sendSuccess && (
+                  <div
+                    style={{
+                      fontSize: 12,
+                      color: "#bbf7d0",
+                      marginTop: 6,
+                    }}
+                  >
+                    {sendSuccess}
+                  </div>
+                )}
+
+                <button
+                  onClick={downloadPDF}
+                  style={{
+                    width: "100%",
+                    marginTop: 10,
+                    borderRadius: 999,
+                    padding: "8px 14px",
+                    border: "1px solid rgba(59,130,246,0.9)",
+                    background:
+                      "radial-gradient(circle at top left,#2563eb,#1d4ed8,#0f172a)",
+                    color: "#eff6ff",
+                    fontSize: 12,
+                    fontWeight: 500,
+                    cursor: "pointer",
+                  }}
+                >
+                  📄 Download Fix Plan (PDF)
+                </button>
+
+                <button
+                  onClick={downloadEnterprisePDF}
+                  style={{
+                    width: "100%",
+                    marginTop: 10,
+                    borderRadius: 999,
+                    padding: "8px 14px",
+                    border: "1px solid rgba(148,163,184,0.8)",
+                    background:
+                      "radial-gradient(circle at top left,#111827,#020617,#000000)",
+                    color: "#e5e7eb",
+                    fontSize: 12,
+                    fontWeight: 500,
+                    cursor: "pointer",
+                  }}
+                >
+                  🧾 Download Enterprise Compliance Report (PDF)
+                </button>
+              </>
+            )}
+
+            {fixInternalNotes && (
+              <>
+                <div
+                  style={{
+                    fontSize: 11,
+                    textTransform: "uppercase",
+                    letterSpacing: 1.1,
+                    color: "#9ca3af",
+                    marginTop: 10,
+                    marginBottom: 4,
+                  }}
+                >
+                  Internal Notes
+                </div>
+                <div
+                  style={{
+                    borderRadius: 10,
+                    padding: 8,
+                    border: "1px solid rgba(51,65,85,0.9)",
+                    background: "rgba(15,23,42,0.98)",
+                    fontSize: 12,
+                    color: "#e5e7eb",
+                    whiteSpace: "pre-wrap",
+                  }}
+                >
+                  {fixInternalNotes}
+                </div>
+              </>
+            )}
+          </div>
+        </div>
+
+        {/* RULE ENGINE V5 PANEL */}
+        <div
+          style={{
+            marginTop: 16,
+            marginBottom: 16,
+            display: "grid",
+            gridTemplateColumns: "minmax(0,1.2fr) minmax(0,2fr)",
+            gap: 16,
+          }}
+        >
+          {/* LEFT: Global Score */}
+          <div
+            style={{
+              borderRadius: 16,
+              padding: 14,
+              border: "1px solid rgba(51,65,85,0.9)",
+              background: "rgba(15,23,42,0.98)",
+            }}
+          >
+            <div
+              style={{
+                fontSize: 12,
+                textTransform: "uppercase",
+                letterSpacing: "0.12em",
+                color: "#9ca3af",
+                marginBottom: 8,
+              }}
+            >
+              Rule Engine V5 · Vendor Risk
+            </div>
+
+            {engineLoading && (
+              <div style={{ fontSize: 13, color: "#9ca3af" }}>
+                Running rule engine…
               </div>
-            );
-          })}
+            )}
+
+            {engineError && !engineLoading && (
+              <div style={{ fontSize: 13, color: "#fca5a5" }}>
+                {engineError}
+              </div>
+            )}
+
+            {engineSummary && !engineLoading && !engineError && (
+              <div>
+                <div
+                  style={{
+                    fontSize: 28,
+                    fontWeight: 700,
+                    marginBottom: 4,
+                    background:
+                      engineSummary.globalScore >= 80
+                        ? "linear-gradient(120deg,#22c55e,#bef264)"
+                        : engineSummary.globalScore >= 60
+                        ? "linear-gradient(120deg,#facc15,#fde68a)"
+                        : "linear-gradient(120deg,#fb7185,#fecaca)",
+                    WebkitBackgroundClip: "text",
+                    color: "transparent",
+                  }}
+                >
+                  {engineSummary.globalScore}
+                </div>
+                <div style={{ fontSize: 11, color: "#9ca3af" }}>
+                  Global Score (V5 rules)
+                </div>
+
+                <div
+                  style={{
+                    marginTop: 8,
+                    fontSize: 11,
+                    color: "#9ca3af",
+                  }}
+                >
+                  Rules evaluated:{" "}
+                  <strong>{engineSummary.totalRules}</strong> · Failing rules:{" "}
+                  <strong>{engineSummary.failedCount}</strong>
+                </div>
+
+                <button
+                  onClick={() => runRuleEngineV5(vendor.id, org?.id)}
+                  style={{
+                    marginTop: 10,
+                    padding: "6px 12px",
+                    borderRadius: 999,
+                    border: "1px solid rgba(75,85,99,0.9)",
+                    background: "rgba(15,23,42,0.9)",
+                    color: "#e5e7eb",
+                    fontSize: 12,
+                    cursor: "pointer",
+                  }}
+                >
+                  🔁 Re-run engine
+                </button>
+              </div>
+            )}
+          </div>
+
+          {/* RIGHT: Failing rules list (V5) */}
+          <div
+            style={{
+              borderRadius: 16,
+              padding: 14,
+              border: "1px solid rgba(51,65,85,0.9)",
+              background: "rgba(15,23,42,0.98)",
+              maxHeight: 260,
+              overflowY: "auto",
+            }}
+          >
+            <div
+              style={{
+                fontSize: 12,
+                textTransform: "uppercase",
+                letterSpacing: "0.12em",
+                color: "#9ca3af",
+                marginBottom: 8,
+              }}
+            >
+              Failing Rules (V5 Engine)
+            </div>
+
+            {!engineLoading &&
+              !engineError &&
+              failingRules.length === 0 && (
+                <div style={{ fontSize: 13, color: "#9ca3af" }}>
+                  No failing V5 rules — vendor appears compliant.
+                </div>
+              )}
+
+            {failingRules.map((r, idx) => {
+              const sevColor =
+                (r.severity || "").toLowerCase() === "critical"
+                  ? "#fecaca"
+                  : (r.severity || "").toLowerCase() === "high"
+                  ? "#fef3c7"
+                  : "#bfdbfe";
+
+              const borderColor =
+                (r.severity || "").toLowerCase() === "critical"
+                  ? "rgba(248,113,113,0.7)"
+                  : (r.severity || "").toLowerCase() === "high"
+                  ? "rgba(250,204,21,0.8)"
+                  : "rgba(59,130,246,0.7)";
+
+              return (
+                <div
+                  key={idx}
+                  style={{
+                    borderRadius: 10,
+                    padding: 8,
+                    border: `1px solid ${borderColor}`,
+                    background: "rgba(15,23,42,0.95)",
+                    marginBottom: 8,
+                    fontSize: 12,
+                  }}
+                >
+                  <div
+                    style={{
+                      fontWeight: 600,
+                      marginBottom: 4,
+                      color: sevColor,
+                    }}
+                  >
+                    [{(r.severity || "rule").toUpperCase()}]{" "}
+                    {r.fieldKey} {r.operator} {String(r.expectedValue)}
+                  </div>
+                  <div style={{ color: "#e5e7eb" }}>{r.message}</div>
+                </div>
+              );
+            })}
+          </div>
         </div>
       </div>
     </div>
