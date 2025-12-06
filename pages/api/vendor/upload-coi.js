@@ -1,8 +1,7 @@
 // pages/api/vendor/upload-coi.js
-// Vendor Portal V4 — COI Upload + AI Parse + Alerts + Email Notifications
-// Supports:
-// • Vendor portal token (?token=...)
-// • Admin upload (vendorId + orgId)
+// V5 Upload → AI Parse → Store → Auto-Run Engine → Notify
+// The COI upload endpoint now feeds the V5 intelligence system.
+// ===============================================================
 
 import formidable from "formidable";
 import fs from "fs";
@@ -33,30 +32,31 @@ export default async function handler(req, res) {
     const orgIdField = fields.orgId?.[0] || null;
 
     const file = files.file?.[0];
-    if (!file) {
+    if (!file)
       return res.status(400).json({ ok: false, error: "No file uploaded." });
-    }
+
     if (!file.originalFilename.toLowerCase().endsWith(".pdf")) {
-      return res.status(400).json({ ok: false, error: "Only PDF files allowed." });
+      return res.status(400).json({
+        ok: false,
+        error: "Only PDF files allowed.",
+      });
     }
 
     // -------------------------------------------------------------
-    // 2) Resolve vendor + org (Portal Token Flow OR Admin Flow)
+    // 2) Resolve vendor + org
     // -------------------------------------------------------------
     let vendor = null;
 
     if (token) {
-      // Vendor Portal Token Flow
+      // Vendor Portal Flow
       const tokenRows = await sql`
         SELECT vendor_id, org_id, expires_at
         FROM vendor_portal_tokens
         WHERE token = ${token}
         LIMIT 1
       `;
-
-      if (!tokenRows.length) {
+      if (!tokenRows.length)
         return res.status(404).json({ ok: false, error: "Invalid vendor token." });
-      }
 
       const t = tokenRows[0];
 
@@ -70,10 +70,8 @@ export default async function handler(req, res) {
         WHERE id = ${t.vendor_id}
         LIMIT 1
       `;
-
-      if (!vendorRows.length) {
+      if (!vendorRows.length)
         return res.status(404).json({ ok: false, error: "Vendor not found." });
-      }
 
       vendor = { ...vendorRows[0], org_id: t.org_id };
     }
@@ -85,16 +83,16 @@ export default async function handler(req, res) {
         FROM vendors
         WHERE id = ${vendorIdField} AND org_id = ${orgIdField}
       `;
-      if (!vendorRows.length) {
+      if (!vendorRows.length)
         return res.status(404).json({ ok: false, error: "Vendor not found." });
-      }
+
       vendor = vendorRows[0];
     }
 
     else {
       return res.status(400).json({
         ok: false,
-        error: "Missing vendor identity: must provide token OR vendorId + orgId.",
+        error: "Missing token OR vendorId + orgId.",
       });
     }
 
@@ -123,30 +121,19 @@ export default async function handler(req, res) {
 
     await sql`
       INSERT INTO system_timeline (org_id, vendor_id, action, message, severity)
-      VALUES (
-        ${orgId}, ${vendorId},
-        'vendor_uploaded_coi',
-        ${'Uploaded COI: ' + fileName},
-        'info'
-      )
+      VALUES (${orgId}, ${vendorId}, 'vendor_uploaded_coi', ${'Uploaded COI: ' + fileName}, 'info')
     `;
 
     // -------------------------------------------------------------
-    // 4) AI Extraction of COI
+    // 4) AI Extraction of COI → Safe wrapper
     // -------------------------------------------------------------
     let ai = null;
-
     try {
       ai = await openai.responses.parseCOI(fileUrl);
 
       await sql`
         INSERT INTO system_timeline (org_id, vendor_id, action, message, severity)
-        VALUES (
-          ${orgId}, ${vendorId},
-          'ai_parse_success',
-          'AI successfully parsed COI',
-          'info'
-        )
+        VALUES (${orgId}, ${vendorId}, 'ai_parse_success', 'AI parsed COI', 'info')
       `;
     } catch (err) {
       console.error("[AI Parse ERROR]:", err);
@@ -155,103 +142,12 @@ export default async function handler(req, res) {
 
       await sql`
         INSERT INTO system_timeline (org_id, vendor_id, action, message, severity)
-        VALUES (
-          ${orgId}, ${vendorId},
-          'ai_parse_failed',
-          ${'AI failed to parse COI: ' + err.message},
-          'critical'
-        )
+        VALUES (${orgId}, ${vendorId}, 'ai_parse_failed', ${'AI failed: ' + err.message}, 'critical')
       `;
     }
 
     // -------------------------------------------------------------
-    // 5) Load Requirements (fallback empty)
-    // -------------------------------------------------------------
-    let requirements = [];
-    try {
-      const reqRows = await sql`
-        SELECT coverage_type, severity, min_limit
-        FROM requirements_v5
-        WHERE org_id = ${orgId}
-      `;
-      requirements = reqRows || [];
-    } catch (_) {
-      requirements = [];
-    }
-
-    // -------------------------------------------------------------
-    // 6) Simple Alert Generator (safe)
-    // -------------------------------------------------------------
-    const alerts = [];
-
-    for (const req of requirements) {
-      const match = ai?.policies?.find(
-        (p) =>
-          p.type?.toLowerCase() === req.coverage_type?.toLowerCase()
-      );
-
-      if (!match) {
-        alerts.push({
-          code: "missing_policy",
-          severity: req.severity || "high",
-          message: `Missing ${req.coverage_type} coverage.`,
-        });
-        continue;
-      }
-
-      if (req.min_limit && Number(match.limit) < Number(req.min_limit)) {
-        alerts.push({
-          code: "low_limit",
-          severity: "medium",
-          message: `${req.coverage_type} limit below required minimum.`,
-        });
-      }
-
-      if (match.expired) {
-        alerts.push({
-          code: "expired_policy",
-          severity: "critical",
-          message: `${req.coverage_type} policy is expired.`,
-        });
-      }
-    }
-
-    if (alerts.length) {
-      await sql`
-        INSERT INTO system_timeline (org_id, vendor_id, action, message, severity)
-        VALUES (
-          ${orgId}, ${vendorId},
-          'coi_issues_detected',
-          ${alerts.length + ' issue(s) detected'},
-          'warning'
-        )
-      `;
-    }
-
-    // -------------------------------------------------------------
-    // 7) Compute status
-    // -------------------------------------------------------------
-    const hasCritical = alerts.some((a) => a.severity === "critical");
-    const hasMissing = alerts.some((a) => a.code === "missing_policy");
-
-    const status = hasCritical
-      ? "non_compliant"
-      : hasMissing
-      ? "pending"
-      : "compliant";
-
-    await sql`
-      INSERT INTO system_timeline (org_id, vendor_id, action, message, severity)
-      VALUES (
-        ${orgId}, ${vendorId},
-        'coi_status_updated',
-        ${'Status updated to ' + status},
-        ${status === "compliant" ? "info" : "warning"}
-      )
-    `;
-
-    // -------------------------------------------------------------
-    // 8) Save AI + status into vendors table
+    // 5) Save COI metadata + vendor fields
     // -------------------------------------------------------------
     await sql`
       UPDATE vendors
@@ -259,34 +155,39 @@ export default async function handler(req, res) {
         last_uploaded_coi = ${fileUrl},
         last_uploaded_at = NOW(),
         last_coi_json = ${ai},
-        compliance_status = ${status},
         updated_at = NOW()
       WHERE id = ${vendorId};
     `;
 
     // -------------------------------------------------------------
-    // 9) Rewrite vendor_alerts
+    // 6) AUTO-RUN RULE ENGINE V5  (the big upgrade)
     // -------------------------------------------------------------
-    await sql`
-      DELETE FROM vendor_alerts
-      WHERE vendor_id = ${vendorId};
-    `;
+    try {
+      await fetch(`${process.env.NEXT_PUBLIC_BASE_URL || ''}/api/engine/run-v3`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          vendorId,
+          orgId,
+          dryRun: false,
+        }),
+      });
 
-    for (const a of alerts) {
       await sql`
-        INSERT INTO vendor_alerts (vendor_id, severity, code, message, created_at)
-        VALUES (
-          ${vendorId},
-          ${a.severity},
-          ${a.code},
-          ${a.message},
-          NOW()
-        );
+        INSERT INTO system_timeline (org_id, vendor_id, action, message, severity)
+        VALUES (${orgId}, ${vendorId}, 'engine_v5_auto_run', 'V5 engine auto-evaluation complete', 'info')
+      `;
+    } catch (err) {
+      console.error("[AUTO ENGINE RUN ERROR]:", err);
+
+      await sql`
+        INSERT INTO system_timeline (org_id, vendor_id, action, message, severity)
+        VALUES (${orgId}, ${vendorId}, 'engine_v5_auto_run_failed', ${err.message}, 'critical')
       `;
     }
 
     // -------------------------------------------------------------
-    // 10) SEND VENDOR CONFIRMATION EMAIL (NEW)
+    // 7) SEND VENDOR CONFIRMATION EMAIL
     // -------------------------------------------------------------
     try {
       if (vendor?.email) {
@@ -300,93 +201,54 @@ We successfully received your Certificate of Insurance.
 
 Our automated system is now reviewing it.
 
-You will be notified if anything else is needed.
-
 Thank you!
 – Compliance Team
           `,
         });
 
         await sql`
-          INSERT INTO system_timeline
-            (org_id, vendor_id, action, message, severity)
-          VALUES (
-            ${orgId},
-            ${vendorId},
-            'vendor_upload_confirmation_sent',
-            ${'Vendor confirmation email sent to ' + vendor.email},
-            'info'
-          )
+          INSERT INTO system_timeline (org_id, vendor_id, action, message, severity)
+          VALUES (${orgId}, ${vendorId}, 'vendor_email_sent', ${'Confirmation sent to ' + vendor.email}, 'info')
         `;
       }
     } catch (err) {
-      console.error("[upload-coi] Vendor email error:", err);
+      console.error("[Vendor Email Error]:", err);
     }
 
     // -------------------------------------------------------------
-    // 11) SEND ADMIN NOTIFICATION EMAIL (NEW)
+    // 8) SEND ADMIN NOTIFICATION EMAIL
     // -------------------------------------------------------------
     try {
       const ADMIN_EMAILS = process.env.ADMIN_NOTIFICATION_EMAILS
         ? process.env.ADMIN_NOTIFICATION_EMAILS.split(",")
-        : ["admin@yourapp.com"]; // fallback
+        : ["admin@yourapp.com"];
 
       for (const adminEmail of ADMIN_EMAILS) {
         if (!adminEmail) continue;
+
         await sendEmail({
           to: adminEmail.trim(),
           subject: `New COI Uploaded — Vendor #${vendorId}`,
           body: `
-A vendor has uploaded a new Certificate of Insurance.
+A vendor uploaded a new COI.
 
 Vendor: ${vendor.vendor_name}
 Vendor ID: ${vendorId}
 Org ID: ${orgId}
 
-File URL:
+COI URL:
 ${fileUrl}
 
-Status after scan: ${status.toUpperCase()}
-
-Detected Alerts:
-${
-  alerts.length
-    ? alerts.map((a) => `• [${a.severity}] ${a.message}`).join("\n")
-    : "None"
-}
-
-This COI is available to review in the admin dashboard.
+This COI has been automatically processed by the V5 Rule Engine.
           `,
         });
       }
-
-      await sql`
-        INSERT INTO system_timeline (org_id, vendor_id, action, message, severity)
-        VALUES (
-          ${orgId},
-          ${vendorId},
-          'admin_upload_notification_sent',
-          'Admin notified of COI upload',
-          'info'
-        )
-      `;
     } catch (err) {
-      console.error("[upload-coi] Admin email error:", err);
-
-      await sql`
-        INSERT INTO system_timeline (org_id, vendor_id, action, message, severity)
-        VALUES (
-          ${orgId},
-          ${vendorId},
-          'admin_upload_notification_failed',
-          ${'Admin notification failed: ' + err.message},
-          'critical'
-        )
-      `;
+      console.error("[Admin Email Error]:", err);
     }
 
     // -------------------------------------------------------------
-    // 12) FINAL RETURN PAYLOAD
+    // 9) FINAL RETURN PAYLOAD
     // -------------------------------------------------------------
     return res.status(200).json({
       ok: true,
@@ -394,8 +256,7 @@ This COI is available to review in the admin dashboard.
       orgId,
       fileUrl,
       ai,
-      alerts,
-      status,
+      engine: "auto-run V5 executed",
       mode: token ? "vendor_portal" : "admin",
     });
 
@@ -404,11 +265,7 @@ This COI is available to review in the admin dashboard.
 
     await sql`
       INSERT INTO system_timeline (action, message, severity)
-      VALUES (
-        'upload_error',
-        ${err.message},
-        'critical'
-      )
+      VALUES ('upload_error', ${err.message}, 'critical')
     `;
 
     return res.status(500).json({
