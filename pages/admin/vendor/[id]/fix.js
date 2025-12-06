@@ -1,10 +1,11 @@
 // ============================================================
 // Vendor Fix Cockpit V5 — Cinematic Neon
-// - Shows Elite Engine, AI Risk, V5 Rule Engine summary
-// - Generates AI-driven Fix Plan (via /api/vendor/fix-plan)
-// - Sends Fix Emails & downloads Fix PDFs
-// - Fully upgraded for Rule Engine V5
-// - Backwards-compatible with your existing APIs
+// - Elite Engine
+// - AI Risk Engine
+// - V5 Rule Engine (via /api/engine/run-v3)
+// - AI Fix Plan Generation
+// - PDF Generation
+// - Fully build-safe
 // ============================================================
 
 import { useRouter } from "next/router";
@@ -42,25 +43,22 @@ function computeExpirationRisk(policy) {
   if (daysLeft < 0) return { daysLeft, severity: "expired", baseScore: 20 };
   if (daysLeft <= 30) return { daysLeft, severity: "critical", baseScore: 40 };
   if (daysLeft <= 90) return { daysLeft, severity: "warning", baseScore: 70 };
-
   return { daysLeft, severity: "ok", baseScore: 95 };
 }
 
 /* ============================================================
-   AI RISK COMBINED SCORE (expiration + elite + compliance)
+   AI RISK ENGINE (expiration + elite + compliance)
 ============================================================ */
 function computeVendorAiRisk({ primaryPolicy, elite, compliance }) {
   const exp = computeExpirationRisk(primaryPolicy);
   let base = exp.baseScore;
 
-  // Elite engine impact
   let eliteFactor = 1.0;
   if (elite && !elite.error && !elite.loading) {
     if (elite.overall === "fail") eliteFactor = 0.4;
     else if (elite.overall === "warn") eliteFactor = 0.7;
   }
 
-  // Compliance engine impact (V5 logic)
   let complianceFactor = 1.0;
   if (compliance) {
     if (compliance.error) complianceFactor = 0.7;
@@ -73,7 +71,7 @@ function computeVendorAiRisk({ primaryPolicy, elite, compliance }) {
   }
 
   let score = Math.round(base * eliteFactor * complianceFactor);
-  score = Math.min(Math.max(score, 0), 100);
+  score = Math.max(0, Math.min(score, 100));
 
   let tier = "Unknown";
   if (score >= 85) tier = "Elite Safe";
@@ -88,7 +86,6 @@ function computeVendorAiRisk({ primaryPolicy, elite, compliance }) {
 /* ============================================================
    MAIN COMPONENT — VendorFixPage
 ============================================================ */
-
 export default function VendorFixPage() {
   const router = useRouter();
   const { id } = router.query;
@@ -116,12 +113,11 @@ export default function VendorFixPage() {
   const [sendError, setSendError] = useState("");
   const [sendSuccess, setSendSuccess] = useState("");
 
-  // Rule Engine V5 state (backend: /api/engine/run-v3)
+  // V5 Rule Engine state
   const [engineLoading, setEngineLoading] = useState(false);
   const [engineError, setEngineError] = useState("");
-  const [engineSummary, setEngineSummary] = useState(null); // { globalScore, failedCount, totalRules }
+  const [engineSummary, setEngineSummary] = useState(null);
   const [failingRules, setFailingRules] = useState([]);
-
   /* ============================================================
      LOAD VENDOR + POLICIES + COMPLIANCE + ELITE ENGINE
   ============================================================ */
@@ -166,7 +162,7 @@ export default function VendorFixPage() {
       try {
         setLoadingCompliance(true);
 
-        // coverage-style summary (still useful)
+        // coverage summary (legacy)
         const res = await fetch(
           `/api/requirements/check?vendorId=${vendorId}&orgId=${orgId}`
         );
@@ -215,7 +211,7 @@ export default function VendorFixPage() {
   }, [id, activeOrgId]);
 
   /* ============================================================
-     RULE ENGINE V5 — runs through /api/engine/run-v3 backend
+     RULE ENGINE V5 — via /api/engine/run-v3
   ============================================================ */
   async function runRuleEngineV5(vendorIdArg, orgIdArg) {
     const finalVendorId = vendorIdArg || vendor?.id;
@@ -263,7 +259,7 @@ export default function VendorFixPage() {
   }
 
   /* ============================================================
-     AUTO-RUN ENGINE V5 WHEN VENDOR + ORG ARE READY
+     AUTO-RUN RULE ENGINE WHEN CONTEXT IS READY
   ============================================================ */
   useEffect(() => {
     if (vendor && (org?.id || activeOrgId)) {
@@ -271,9 +267,8 @@ export default function VendorFixPage() {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [vendor, org, activeOrgId]);
-
   /* ============================================================
-     LOAD FIX PLAN (legacy; V5 uses same return format)
+     LOAD FIX PLAN (V5 uses same return format as legacy)
   ============================================================ */
   async function loadFixPlan() {
     if (!vendor || !org) return;
@@ -304,8 +299,9 @@ export default function VendorFixPage() {
       setFixLoading(false);
     }
   }
+
   /* ============================================================
-     SEND FIX EMAIL (V5 format-safe)
+     SEND FIX EMAIL (V5 Compatible)
   ============================================================ */
   async function sendFixEmail() {
     if (!vendor || !org || !fixSubject || !fixBody) return;
@@ -339,7 +335,7 @@ export default function VendorFixPage() {
   }
 
   /* ============================================================
-     DOWNLOAD FIX PLAN PDF (V5 compatible)
+     DOWNLOAD FIX PLAN PDF
   ============================================================ */
   async function downloadPDF() {
     try {
@@ -373,7 +369,7 @@ export default function VendorFixPage() {
   }
 
   /* ============================================================
-     DOWNLOAD ENTERPRISE REPORT PDF (V5 compatible)
+     DOWNLOAD ENTERPRISE REPORT PDF
   ============================================================ */
   async function downloadEnterprisePDF() {
     try {
@@ -463,7 +459,6 @@ export default function VendorFixPage() {
       </div>
     );
   }
-
   /* ============================================================
      PRIMARY POLICY + AI RISK
   ============================================================ */
@@ -474,6 +469,7 @@ export default function VendorFixPage() {
     elite: eliteResult,
     compliance,
   });
+
   /* ============================================================
      MAIN UI — CINEMATIC NEON FIX COCKPIT
   ============================================================ */
@@ -563,8 +559,7 @@ export default function VendorFixPage() {
                 marginTop: 4,
               }}
             >
-              Org:{" "}
-              <span style={{ color: "#e5e7eb" }}>{org.name || "Unknown"}</span>
+              Org: <span style={{ color: "#e5e7eb" }}>{org.name || "Unknown"}</span>
             </p>
           )}
         </div>
@@ -758,7 +753,7 @@ export default function VendorFixPage() {
                       </div>
                     </div>
 
-                    {/* Primary policy summary */}
+                    {/* Primary policy details */}
                     {primaryPolicy && (
                       <div
                         style={{
@@ -783,7 +778,7 @@ export default function VendorFixPage() {
             )}
           </div>
           {/* ============================================================
-              RIGHT COLUMN — AI FIX PLAN (V5)
+              RIGHT COLUMN — AI FIX PLAN PANEL
           ============================================================ */}
           <div
             style={{
@@ -1032,7 +1027,7 @@ export default function VendorFixPage() {
                     cursor: "pointer",
                   }}
                 >
-                  🧾 Download Enterprise Compliance Report (PDF)
+                  🧾 Download Enterprise Compliance Report
                 </button>
               </>
             )}
@@ -1067,10 +1062,10 @@ export default function VendorFixPage() {
                 </div>
               </>
             )}
-          </div> {/* END RIGHT COLUMN FIX PLAN */}
+          </div> {/* END RIGHT FIX PLAN PANEL */}
         </div> {/* END TOP GRID ROW (LEFT + RIGHT) */}
         {/* ============================================================
-            RULE ENGINE V5 PANEL (GLOBAL SCORE + SUMMARY)
+            RULE ENGINE V5 ROW — GLOBAL SCORE + FAILING RULES
         ============================================================ */}
         <div
           style={{
@@ -1174,9 +1169,7 @@ export default function VendorFixPage() {
               </div>
             )}
           </div>
-          {/* ============================================================
-              RIGHT — FAILING RULES LIST (V5 ENGINE)
-          ============================================================ */}
+          {/* RIGHT — FAILING RULES LIST (V5 ENGINE) */}
           <div
             style={{
               borderRadius: 16,
@@ -1264,8 +1257,8 @@ export default function VendorFixPage() {
               );
             })}
           </div> {/* END RIGHT FAILING RULES PANEL */}
-        </div> {/* END RULE ENGINE ROW (LEFT + RIGHT) */}
+        </div> {/* END RULE ENGINE ROW */}
       </div> {/* END MAIN CONTENT WRAPPER */}
     </div> {/* END OUTER PAGE WRAPPER */}
   );
-} // END VendorFixPage
+}
