@@ -1,7 +1,15 @@
 // pages/admin/org-compliance.js
 // ============================================================
-// ORG COMPLIANCE DASHBOARD V5
+// ORG COMPLIANCE DASHBOARD V5 — OPTION C
 // Cinematic cockpit for org-wide compliance intelligence.
+//
+// Powered by /api/admin/org-compliance-v5:
+//  - v5Engine  (V5 Rule Engine metrics)
+//  - alertsEngine (Alerts V5 metrics)
+//  - eliteEngine  (Score bands from V5)
+//  - coverageBreakdown
+//  - topRiskVendors
+//  - combined (combinedScore, overallTier, narrative)
 // ============================================================
 
 import { useEffect, useState } from "react";
@@ -82,8 +90,42 @@ export default function OrgComplianceDashboard() {
     );
   }
 
-  const { org, metrics, coverageBreakdown, topRiskVendors } = data;
-  const { globalScoreAvg, vendorCount, alertCounts, expiredPolicies } = metrics;
+  // ============================================================
+  // UNPACK V5 ENGINE, ALERTS, COVERAGE, COMBINED INTEL
+  // ============================================================
+  const {
+    org,
+    v5Engine,
+    alertsEngine,
+    coverageBreakdown = [],
+    topRiskVendors = [],
+    combined,
+  } = data;
+
+  const {
+    globalScoreAvg = 0,
+    vendorCount = 0,
+    failingVendorCount = 0,
+    scoreBands = {},
+    ruleFailureCounts = {},
+  } = v5Engine || {};
+
+  const alertCounts = alertsEngine?.alertCounts || {
+    critical: 0,
+    high: 0,
+    medium: 0,
+    low: 0,
+  };
+
+  const coverageTypes = coverageBreakdown.length;
+  const expiredPolicies = coverageBreakdown.reduce(
+    (sum, c) => sum + (c.expired || 0),
+    0
+  );
+
+  const combinedScore = combined?.combinedScore ?? globalScoreAvg;
+  const overallTier = combined?.overallTier ?? "Unknown";
+  const narrative = combined?.narrative || "";
 
   return (
     <Page>
@@ -103,10 +145,15 @@ export default function OrgComplianceDashboard() {
         </div>
       </div>
 
-      {/* SNAPSHOT */}
+      {/* SNAPSHOT ROW */}
       <div style={snapshotGrid}>
         <SnapCard
-          label="Global Score (V5)"
+          label="Combined Org Score"
+          value={combinedScore}
+          color={combinedScore >= 80 ? GP.neonGreen : combinedScore >= 60 ? GP.neonGold : GP.neonRed}
+        />
+        <SnapCard
+          label="V5 Avg Score"
           value={globalScoreAvg}
           color={GP.neonGreen}
         />
@@ -114,6 +161,11 @@ export default function OrgComplianceDashboard() {
           label="Vendors"
           value={vendorCount}
           color={GP.neonBlue}
+        />
+        <SnapCard
+          label="Failing Vendors"
+          value={failingVendorCount}
+          color={GP.neonRed}
         />
         <SnapCard
           label="Critical Alerts"
@@ -125,22 +177,73 @@ export default function OrgComplianceDashboard() {
           value={alertCounts.high}
           color={GP.neonGold}
         />
-        <SnapCard
-          label="Expired Policies"
-          value={expiredPolicies}
-          color={GP.neonRed}
-        />
-        <SnapCard
-          label="Coverage Types"
-          value={metrics.coverageTypes}
-          color={GP.neonPurple}
-        />
       </div>
 
-      {/* GRID: COVERAGE BREAKDOWN + TOP RISK VENDORS */}
+      {/* ORG INTELLIGENCE SUMMARY */}
       <div
         style={{
-          marginTop: 28,
+          marginTop: 24,
+          marginBottom: 20,
+          borderRadius: 20,
+          padding: 16,
+          border: `1px solid ${GP.neonBlue}55`,
+          background: GP.panel,
+        }}
+      >
+        <div
+          style={{
+            fontSize: 12,
+            textTransform: "uppercase",
+            letterSpacing: 1.4,
+            color: GP.textSoft,
+            marginBottom: 6,
+          }}
+        >
+          Org Intelligence Summary
+        </div>
+
+        <div
+          style={{
+            fontSize: 14,
+            color: GP.neonGreen,
+            marginBottom: 4,
+            fontWeight: 600,
+          }}
+        >
+          {overallTier} (Score: {combinedScore})
+        </div>
+
+        {narrative ? (
+          <p
+            style={{
+              margin: 0,
+              marginTop: 4,
+              fontSize: 13,
+              lineHeight: 1.5,
+              color: GP.text,
+            }}
+          >
+            {narrative}
+          </p>
+        ) : (
+          <p
+            style={{
+              margin: 0,
+              marginTop: 4,
+              fontSize: 13,
+              color: GP.textSoft,
+            }}
+          >
+            AI is still calibrating your org narrative. Try again after a few
+            engine runs.
+          </p>
+        )}
+      </div>
+
+      {/* THREE-BRAIN GRID: COVERAGE + TOP RISK */}
+      <div
+        style={{
+          marginTop: 8,
           display: "grid",
           gridTemplateColumns: "minmax(0,1.5fr) minmax(0,1.2fr)",
           gap: 20,
@@ -151,33 +254,49 @@ export default function OrgComplianceDashboard() {
           {coverageBreakdown.length === 0 ? (
             <Empty text="No policies found for this organization." />
           ) : (
-            <table style={table}>
-              <thead>
-                <tr>
-                  <th style={th}>Coverage</th>
-                  <th style={th}>Policies</th>
-                  <th style={th}>Expired</th>
-                </tr>
-              </thead>
-              <tbody>
-                {coverageBreakdown.map((c) => (
-                  <tr key={c.coverage} style={row}>
-                    <td style={td}>
-                      {c.coverage.charAt(0).toUpperCase() +
-                        c.coverage.slice(1)}
-                    </td>
-                    <td style={td}>{c.count}</td>
-                    <td style={td}>{c.expired}</td>
+            <>
+              <div
+                style={{
+                  fontSize: 12,
+                  color: GP.textSoft,
+                  marginBottom: 8,
+                }}
+              >
+                Coverage types:{" "}
+                <strong style={{ color: GP.text }}>{coverageTypes}</strong> ·
+                Expired policies:{" "}
+                <strong style={{ color: GP.neonRed }}>
+                  {expiredPolicies}
+                </strong>
+              </div>
+              <table style={table}>
+                <thead>
+                  <tr>
+                    <th style={th}>Coverage</th>
+                    <th style={th}>Policies</th>
+                    <th style={th}>Expired</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
+                </thead>
+                <tbody>
+                  {coverageBreakdown.map((c) => (
+                    <tr key={c.coverage} style={row}>
+                      <td style={td}>
+                        {c.coverage.charAt(0).toUpperCase() +
+                          c.coverage.slice(1)}
+                      </td>
+                      <td style={td}>{c.count}</td>
+                      <td style={td}>{c.expired}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </>
           )}
         </Panel>
 
         {/* RIGHT: TOP RISK VENDORS */}
         <Panel title="Top Risk Vendors (Lowest Scores)" color={GP.neonRed}>
-          {(!topRiskVendors || topRiskVendors.length === 0) ? (
+          {!topRiskVendors || topRiskVendors.length === 0 ? (
             <Empty text="No vendor scores available yet." />
           ) : (
             <table style={table}>
