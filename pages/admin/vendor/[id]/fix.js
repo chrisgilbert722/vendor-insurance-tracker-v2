@@ -1265,8 +1265,7 @@ export default function VendorFixPage() {
             })}
           </div> {/* END RIGHT FAILING RULES PANEL */}
         </div> {/* END RULE ENGINE ROW (LEFT + RIGHT) */}
-        </div> {/* END RULE ENGINE ROW (LEFT + RIGHT) */}
       </div> {/* END MAIN CONTENT WRAPPER */}
-    </div>   {/* END OUTER PAGE WRAPPER */}
+    </div> {/* END OUTER PAGE WRAPPER */}
   );
 } // END VendorFixPage
