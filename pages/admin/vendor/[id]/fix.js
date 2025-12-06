@@ -1281,4 +1281,4 @@ export default function VendorFixPage() {
       </div> {/* END MAIN CONTENT WRAPPER */}
     </div>   {/* END OUTER PAGE WRAPPER */}
   );
-} 
+} // <-- END VendorFixPage COMPONENT
