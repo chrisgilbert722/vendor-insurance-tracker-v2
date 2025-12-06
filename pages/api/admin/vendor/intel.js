@@ -2,10 +2,10 @@
 // Vendor Intelligence Graph API — Step 1
 // GET /api/admin/vendor/intel?orgId=...&vendorId=...
 
-import { computeVendorIntelligence } from "../../../lib/vendorIntelligence";
+import { computeVendorIntelligence } from "../../../../lib/vendorIntelligence";
 
 export default async function handler(req, res) {
-  try:
+  try {
     if (req.method !== "GET") {
       return res
         .status(405)
