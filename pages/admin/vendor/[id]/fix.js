@@ -1192,7 +1192,6 @@ export default function VendorFixPage() {
               Failing Rules (V5 Engine)
             </div>
 
-            {/* No failures */}
             {!engineLoading &&
               !engineError &&
               failingRules.length === 0 && (
@@ -1201,7 +1200,6 @@ export default function VendorFixPage() {
                 </div>
               )}
 
-            {/* Iterate rules */}
             {failingRules.map((r, idx) => {
               const sev = (r.severity || "medium").toLowerCase();
 
@@ -1231,7 +1229,6 @@ export default function VendorFixPage() {
                     fontSize: 12,
                   }}
                 >
-                  {/* RULE LINE */}
                   <div
                     style={{
                       fontWeight: 600,
@@ -1243,7 +1240,6 @@ export default function VendorFixPage() {
                     {String(r.expectedValue)}
                   </div>
 
-                  {/* MESSAGE */}
                   <div
                     style={{
                       color: "#e5e7eb",
@@ -1256,9 +1252,9 @@ export default function VendorFixPage() {
                 </div>
               );
             })}
-          </div> {/* END RIGHT FAILING RULES PANEL */}
-        </div> {/* END RULE ENGINE ROW */}
-      </div> {/* END MAIN CONTENT WRAPPER */}
-    </div> {/* END OUTER PAGE WRAPPER */}
+          </div>
+        </div>
+      </div>
+    </div>
   );
 }
