@@ -5,6 +5,7 @@
 // ✔ vendor_compliance_cache (via engine results)
 // ✔ Policy + Renewal Intelligence V3
 // ✔ Elite Engine Integration
+// ✔ Org Compliance Dashboard wiring
 // ✔ Cinematic Cockpit UI
 
 import { useEffect, useState } from "react";
@@ -56,6 +57,7 @@ const GP = {
   textSoft: "#9ca3af",
   textMuted: "#6b7280",
 };
+
 /* ============================================================
    EXPIRATION / RISK HELPERS
 ============================================================ */
@@ -185,7 +187,6 @@ function computeAiRisk({ risk, elite, compliance }) {
 
 /* ============================================================
    COMPLIANCE BADGE (VENDOR-LEVEL)
-   Driven by V5 engine results (failing/passing rules)
 ============================================================ */
 function renderComplianceBadge(vendorId, complianceMap) {
   const data = complianceMap[vendorId];
@@ -272,7 +273,7 @@ function renderComplianceBadge(vendorId, complianceMap) {
 }
 
 /* ============================================================
-   RULE ENGINE V5 TIER (same tiers as before)
+   RULE ENGINE V5 TIER
 ============================================================ */
 function computeV3Tier(score) {
   if (score >= 85) return "Elite Safe";
@@ -311,6 +312,7 @@ function summarizeEngineHealth(engineMap) {
     total: vendors.length,
   };
 }
+
 /* ============================================================
    MAIN DASHBOARD COMPONENT
 ============================================================ */
@@ -345,7 +347,9 @@ export default function Dashboard() {
   const [systemTimeline, setSystemTimeline] = useState([]);
   const [systemTimelineLoading, setSystemTimelineLoading] = useState(true);
 
-  /* ONBOARDING STATUS */
+  /* ============================================================
+     ONBOARDING STATUS
+  ============================================================ */
   useEffect(() => {
     if (!activeOrgId) return;
 
@@ -364,7 +368,7 @@ export default function Dashboard() {
     })();
   }, [activeOrgId]);
 
-  /* ONBOARDING BANNER LOCAL DISMISS */
+  /* ONBOARDING BANNER DISMISS */
   useEffect(() => {
     try {
       const stored = localStorage.getItem("onboardingBannerDismissed");
@@ -412,7 +416,7 @@ export default function Dashboard() {
     };
   }, [onboardingComplete]);
 
-  /* DASHBOARD METRICS (V5 adapted) */
+  /* DASHBOARD METRICS */
   useEffect(() => {
     if (!activeOrgId) return;
 
@@ -494,7 +498,7 @@ export default function Dashboard() {
     });
   }, [policies, eliteMap]);
 
-  /* RULE ENGINE V5 (via run-v3 endpoint) */
+  /* RULE ENGINE V5 (run-v3 endpoint) */
   useEffect(() => {
     if (!policies.length || !activeOrgId) return;
 
@@ -544,7 +548,7 @@ export default function Dashboard() {
             ...prev,
             [vendorId]: {
               loading: false,
-              missing: [], // V5 rules are not coverage-type missing; failingRules reflect logic
+              missing: [],
               failing: json.failingRules || [],
               passing: json.passingRules || [],
             },
@@ -675,6 +679,7 @@ export default function Dashboard() {
         return b.total - a.total;
       })
     : [];
+
   /* ============================================================
      MAIN RENDER
   ============================================================ */
@@ -812,6 +817,32 @@ export default function Dashboard() {
             </span>
           </div>
 
+          {/* ORG COMPLIANCE TILE — ADMIN/MANAGER ONLY */}
+          {(isAdmin || isManager) && (
+            <a
+              href="/admin/org-compliance"
+              style={{
+                marginTop: 12,
+                display: "inline-flex",
+                alignItems: "center",
+                padding: "8px 14px",
+                borderRadius: 12,
+                background:
+                  "radial-gradient(circle at top left,#16a34a,#22c55e,#020617)",
+                border: "1px solid rgba(34,197,94,0.6)",
+                color: "#bbf7d0",
+                fontSize: 13,
+                fontWeight: 600,
+                cursor: "pointer",
+                textDecoration: "none",
+                boxShadow:
+                  "0 0 18px rgba(34,197,94,0.35),0 0 32px rgba(21,128,61,0.25)",
+              }}
+            >
+              🏢 View Org Compliance Dashboard
+            </a>
+          )}
+
           {/* ACTION BUTTONS */}
           <div
             style={{
@@ -845,6 +876,29 @@ export default function Dashboard() {
               </a>
             )}
 
+            {(isAdmin || isManager) && (
+              <a
+                href="/admin/org-compliance"
+                style={{
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: 8,
+                  padding: "8px 16px",
+                  borderRadius: 999,
+                  background:
+                    "radial-gradient(circle at top left,#22c55e,#16a34a,#020617)",
+                  color: "#bbf7d0",
+                  fontSize: 13,
+                  fontWeight: 600,
+                  textDecoration: "none",
+                  boxShadow:
+                    "0 0 18px rgba(34,197,94,0.35),0 0 32px rgba(21,128,61,0.25)",
+                }}
+              >
+                🏢 Org Compliance
+              </a>
+            )}
+
             <button
               onClick={() => setShowAlerts((s) => !s)}
               style={{
@@ -872,6 +926,21 @@ export default function Dashboard() {
               gap: 12,
             }}
           >
+            {/* ORG HEALTH KPI */}
+            <MiniKpi
+              label="Org Health"
+              value={Number.isFinite(avgScore) ? avgScore : "—"}
+              color={
+                !Number.isFinite(avgScore)
+                  ? GP.textSoft
+                  : avgScore >= 80
+                  ? GP.neonGreen
+                  : avgScore >= 60
+                  ? GP.neonGold
+                  : GP.neonRed
+              }
+              icon="🏢"
+            />
             <MiniKpi
               label="Expired"
               value={dashboard?.alerts?.expired ?? 0}
@@ -1019,6 +1088,7 @@ export default function Dashboard() {
           </div>
         </div>
       </div>
+
       {/* RULE ENGINE V5 HEALTH WIDGET */}
       <div
         style={{
@@ -1135,8 +1205,31 @@ export default function Dashboard() {
               ? "Some vendors failing"
               : "Healthy"}
           </div>
+
+          {(isAdmin || isManager) && (
+            <a
+              href="/admin/org-compliance"
+              style={{
+                marginLeft: 8,
+                padding: "6px 12px",
+                borderRadius: 999,
+                border: `1px solid ${GP.neonBlue}`,
+                background:
+                  "linear-gradient(90deg,rgba(15,23,42,0.95),rgba(15,23,42,0.85))",
+                color: GP.neonBlue,
+                fontSize: 12,
+                fontWeight: 600,
+                textDecoration: "none",
+                cursor: "pointer",
+                boxShadow: "0 0 12px rgba(56,189,248,0.3)",
+              }}
+            >
+              View Org Dashboard →
+            </a>
+          )}
         </div>
       </div>
+
       {/* ALERTS V2 PANEL (TOGGLE) */}
       {showAlerts && (
         <div
@@ -1328,18 +1421,18 @@ export default function Dashboard() {
       <SeverityDistributionChart overview={dashboard} />
       <RiskTimelineChart policies={policies} />
 
-      {/* ALERT INTELLIGENCE WEAPON PACK (ALERTS V2-POWERED) */}
+      {/* ALERT INTELLIGENCE WEAPON PACK */}
       <AlertTimelineChart orgId={activeOrgId} />
       <TopAlertTypes orgId={activeOrgId} />
       <AlertAgingKpis orgId={activeOrgId} />
       <SlaBreachWidget orgId={activeOrgId} />
       <CriticalVendorWatchlist orgId={activeOrgId} />
       <AlertHeatSignature orgId={activeOrgId} />
-      {/* RENEWAL INTELLIGENCE V3 • BLOCK 1 */}
+
+      {/* RENEWAL INTELLIGENCE V3 */}
       <RenewalHeatmap range={90} />
       <RenewalBacklog />
 
-      {/* RENEWAL INTELLIGENCE V3 • BLOCK 2 */}
       <div
         style={{
           marginTop: 24,
@@ -1456,6 +1549,7 @@ export default function Dashboard() {
           </div>
         )}
       </div>
+
       {/* POLICIES TABLE */}
       <h2
         style={{
@@ -1732,6 +1826,7 @@ export default function Dashboard() {
     </div>
   );
 }
+
 /* =======================================
    SEVERITY BOX COMPONENT
 ======================================= */
