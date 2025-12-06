@@ -1,5 +1,5 @@
 // components/VendorDrawer.js
-// Vendor Drawer V5 — Cinematic Cockpit Panel (Fully Upgraded for V5 Engine)
+// Vendor Drawer V6 — Cinematic Cockpit Panel (V5 Engine + Document Intelligence)
 
 import { useEffect, useState } from "react";
 import {
@@ -10,6 +10,7 @@ import {
   ListBullets,
   EnvelopeSimple,
   ClipboardText,
+  FileText,
 } from "@phosphor-icons/react";
 import { useOrg } from "../context/OrgContext";
 
@@ -41,6 +42,7 @@ function formatDate(dateStr) {
   if (isNaN(d.getTime())) return dateStr;
   return d.toLocaleDateString();
 }
+
 export default function VendorDrawer({ vendor, policies, onClose }) {
   const { activeOrgId } = useOrg();
 
@@ -56,6 +58,11 @@ export default function VendorDrawer({ vendor, policies, onClose }) {
   // Alerts
   const [alerts, setAlerts] = useState([]);
   const [alertsLoading, setAlertsLoading] = useState(true);
+
+  // Documents (Multi-Document Intelligence)
+  const [documents, setDocuments] = useState([]);
+  const [docsLoading, setDocsLoading] = useState(true);
+  const [docsError, setDocsError] = useState("");
 
   // Renewal email
   const [emailModal, setEmailModal] = useState(false);
@@ -96,6 +103,7 @@ export default function VendorDrawer({ vendor, policies, onClose }) {
 
     loadCompliance();
   }, [vendor?.id]);
+
   // ===========================
   // 2) Load Rule Engine V5 (via run-v3 endpoint)
   // ===========================
@@ -157,6 +165,36 @@ export default function VendorDrawer({ vendor, policies, onClose }) {
     }
 
     loadAlerts();
+  }, [vendor?.id, activeOrgId]);
+
+  // ===========================
+  // 4) Load vendor documents (Document Intelligence)
+  // ===========================
+  useEffect(() => {
+    if (!vendor?.id || !activeOrgId) return;
+
+    async function loadDocuments() {
+      try {
+        setDocsLoading(true);
+        setDocsError("");
+
+        // reuse admin overview, which already returns documents[]
+        const res = await fetch(
+          `/api/admin/vendor/overview?id=${vendor.id}`
+        );
+        const json = await res.json();
+        if (!json.ok) throw new Error(json.error || "Failed to load documents.");
+
+        setDocuments(json.documents || []);
+      } catch (err) {
+        console.error("[VendorDrawer] documents load error:", err);
+        setDocsError(err.message || "Failed to load documents.");
+      } finally {
+        setDocsLoading(false);
+      }
+    }
+
+    loadDocuments();
   }, [vendor?.id, activeOrgId]);
 
   // ===========================
@@ -250,7 +288,7 @@ export default function VendorDrawer({ vendor, policies, onClose }) {
                   </div>
                 </div>
 
-                {v3Score != null && (
+                {v3Tier && (
                   <span
                     className="text-[11px] px-2 py-0.5 rounded-full border border-slate-700 text-slate-300 bg-slate-900/60"
                     title="Score reflects V5 rule evaluation"
@@ -260,7 +298,7 @@ export default function VendorDrawer({ vendor, policies, onClose }) {
                 )}
               </div>
 
-              {/* ENGINE LOADING / ERROR STATES */}
+              {/* ENGINE STATES */}
               {engineLoading ? (
                 <div className="text-[11px] text-slate-500 mt-1">
                   Evaluating V5 rules…
@@ -275,12 +313,11 @@ export default function VendorDrawer({ vendor, policies, onClose }) {
                 </div>
               ) : (
                 <>
-                  {/* SCORE DISPLAY */}
+                  {/* SCORE */}
                   <div className="flex items-baseline justify-between mt-2">
                     <div>
                       <div
                         className="text-3xl font-bold bg-gradient-to-r from-emerald-400 via-lime-300 to-amber-300 bg-clip-text text-transparent"
-                        title="Global compliance score calculated from V5 rules"
                       >
                         {v3Score}
                       </div>
@@ -295,36 +332,31 @@ export default function VendorDrawer({ vendor, policies, onClose }) {
                           <span className="text-rose-400 font-semibold">
                             {engine.failedCount}
                           </span>{" "}
-                          failing rule
-                          {engine.failedCount > 1 ? "s" : ""}
+                          failing rule{engine.failedCount > 1 ? "s" : ""}
                         </>
                       ) : (
-                        <span className="text-emerald-400">
-                          All rules passing
-                        </span>
+                        <span className="text-emerald-400">All rules passing</span>
                       )}
                     </div>
                   </div>
 
-                  {/* V5 FAILING RULES LIST */}
+                  {/* FAILING RULES */}
                   {failingRules.length > 0 && (
                     <div className="mt-3 rounded-xl border border-rose-500/50 bg-rose-950/40 px-3 py-2">
                       <div className="text-[11px] text-rose-200 uppercase tracking-[0.12em] mb-1">
-                        Failing Rules (V5 Engine)
+                        Failing Rules
                       </div>
 
-                      <ul className="text-[11px] text-rose-100 space-y-2 list-none pl-0">
+                      <ul className="text-[11px] text-rose-100 space-y-2 pl-0 list-none">
                         {failingRules.slice(0, 4).map((r, idx) => (
                           <li key={idx} className="border-b border-rose-700/40 pb-1">
                             <div className="font-semibold text-rose-300">
                               [{r.severity?.toUpperCase() || "RULE"}]
                             </div>
-
                             <div className="text-rose-100">
                               <strong>{r.fieldKey}</strong> {r.operator}{" "}
                               <strong>{r.expectedValue}</strong>
                             </div>
-
                             <div className="text-rose-200 text-[10px] mt-1">
                               {r.message}
                             </div>
@@ -342,6 +374,7 @@ export default function VendorDrawer({ vendor, policies, onClose }) {
                 </>
               )}
             </div>
+
             {/* COMPLIANCE SUMMARY */}
             <div className="rounded-2xl border border-slate-800 bg-slate-950/80 px-4 py-3 space-y-2">
               <div className="flex items-center gap-2">
@@ -350,13 +383,11 @@ export default function VendorDrawer({ vendor, policies, onClose }) {
               </div>
 
               {loadingCompliance ? (
-                <p className="text-[11px] text-slate-500">
-                  Loading compliance…
-                </p>
+                <p className="text-[11px] text-slate-500">Loading compliance…</p>
               ) : compliance?.missing?.length > 0 ? (
                 <div className="text-[11px] text-rose-300">
                   Missing required coverage:
-                  <ul className="list-disc ml-4 mt-1 space-y-1">
+                  <ul className="ml-4 mt-1 space-y-1 list-disc">
                     {compliance.missing.map((m, idx) => (
                       <li key={idx}>{m.coverage_type}</li>
                     ))}
@@ -383,7 +414,7 @@ export default function VendorDrawer({ vendor, policies, onClose }) {
                   No active alerts for this vendor.
                 </p>
               ) : (
-                <ul className="text-[11px] text-slate-200 space-y-1 list-none pl-0">
+                <ul className="text-[11px] text-slate-200 space-y-1 pl-0 list-none">
                   {alerts.slice(0, 4).map((a, idx) => (
                     <li key={idx}>
                       <span
@@ -440,19 +471,26 @@ export default function VendorDrawer({ vendor, policies, onClose }) {
                     key={p.id}
                     className="p-3 rounded-2xl border border-slate-800 bg-slate-900/60"
                   >
+                    {/* POLICY CARD */}
                     <div className="flex justify-between items-start gap-4">
                       <div>
+                        {/* COVERAGE TYPE */}
                         <div className="text-[11px] uppercase tracking-[0.12em] text-slate-400">
                           {p.coverage_type || "Coverage"}
                         </div>
+
+                        {/* CARRIER */}
                         <div className="text-sm font-semibold text-slate-50 mt-1">
                           {p.carrier || "Unknown carrier"}
                         </div>
+
+                        {/* POLICY NUMBER */}
                         <div className="text-[11px] text-slate-400 mt-1">
                           Policy #: {p.policy_number || "—"}
                         </div>
                       </div>
 
+                      {/* EXPIRATION */}
                       <div className="text-right text-[11px] text-slate-400">
                         <div>Expires:</div>
                         <div className="text-slate-100">
@@ -465,16 +503,214 @@ export default function VendorDrawer({ vendor, policies, onClose }) {
               </div>
             )}
           </div> {/* END RIGHT COLUMN */}
-        </div>
-      </div>
+        </div> {/* END MAIN GRID LEFT+RIGHT */}
+      </div> {/* END MAIN CONTENT WRAPPER */}
+          {/* ============================================ */}
+          {/* DOCUMENT INTELLIGENCE PANEL (NEW FOR V6)     */}
+          {/* ============================================ */}
+          <div className="flex flex-col gap-4 mt-2">
 
-      {/* EMAIL MODAL */}
+            <div className="flex items-center gap-2">
+              <ClipboardText size={18} className="text-slate-200" />
+              <h3 className="text-sm font-semibold">Document Intelligence</h3>
+            </div>
+
+            {/* DOCUMENT LOADING STATE */}
+            {docsLoading ? (
+              <div className="text-sm text-slate-500">
+                Loading documents…
+              </div>
+            ) : docs.length === 0 ? (
+              <div className="text-sm text-slate-500">
+                No documents uploaded yet.
+              </div>
+            ) : (
+              <div className="space-y-3 max-h-[55vh] overflow-y-auto pr-1">
+
+                {docs.map((doc) => {
+                  const ai = doc.ai_json || {};
+                  const normalized = ai.normalized || {};
+                  const summary = ai.summary || "No AI summary available.";
+
+                  const docColor =
+                    doc.document_type === "contract"
+                      ? "text-amber-300"
+                      : doc.document_type === "license"
+                      ? "text-emerald-300"
+                      : doc.document_type === "w9"
+                      ? "text-sky-300"
+                      : doc.document_type === "endorsement"
+                      ? "text-fuchsia-300"
+                      : "text-slate-300";
+
+                  return (
+                    <div
+                      key={doc.id}
+                      className="p-3 rounded-2xl border border-slate-800 bg-slate-900/60"
+                    >
+                      {/* HEADER ROW */}
+                      <div className="flex justify-between items-start">
+                        <div>
+                          <div
+                            className={`text-[11px] uppercase tracking-[0.12em] ${docColor}`}
+                          >
+                            {doc.document_type.toUpperCase()}
+                          </div>
+
+                          <div className="text-xs text-slate-400 mt-1">
+                            Uploaded: {formatDate(doc.uploaded_at)}
+                          </div>
+                        </div>
+
+                        {/* VIEW DOC BUTTON */}
+                        <a
+                          href={doc.file_url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="text-[11px] px-2 py-1 rounded-lg border border-slate-700 bg-slate-800/60 hover:bg-slate-700 text-slate-300"
+                        >
+                          View File
+                        </a>
+                      </div>
+
+                      {/* AI SUMMARY PANEL */}
+                      <div className="mt-2 text-[11px] text-slate-300 leading-snug">
+                        {summary}
+                      </div>
+
+                      {/* NORMALIZED INSIGHTS */}
+                      {normalized && Object.keys(normalized).length > 0 && (
+                        <div className="mt-3 rounded-xl border border-slate-700 bg-slate-900/50 p-3">
+                          <div className="text-[11px] uppercase tracking-[0.12em] text-slate-400 mb-2">
+                            AI Insights
+                          </div>
+
+                          {/* CONTRACT INSIGHTS */}
+                          {doc.document_type === "contract" && (
+                            <div className="space-y-2 text-[11px] text-slate-200">
+                              <div>
+                                <span className="font-semibold">Parties:</span>{" "}
+                                {normalized.parties || "—"}
+                              </div>
+                              <div>
+                                <span className="font-semibold">Effective:</span>{" "}
+                                {normalized.effective_date || "—"}
+                              </div>
+                              <div>
+                                <span className="font-semibold">Termination:</span>{" "}
+                                {normalized.termination_date || "—"}
+                              </div>
+                              <div>
+                                <span className="font-semibold">Liability:</span>{" "}
+                                {normalized.liability_clause || "—"}
+                              </div>
+                              <div>
+                                <span className="font-semibold">Coverage Min:</span>{" "}
+                                {normalized.coverage_minimums || "—"}
+                              </div>
+                            </div>
+                          )}
+
+                          {/* LICENSE INSIGHTS */}
+                          {doc.document_type === "license" && (
+                            <div className="space-y-2 text-[11px] text-slate-200">
+                              <div>
+                                <span className="font-semibold">Business:</span>{" "}
+                                {normalized.business_name || "—"}
+                              </div>
+                              <div>
+                                <span className="font-semibold">Number:</span>{" "}
+                                {normalized.license_number || "—"}
+                              </div>
+                              <div>
+                                <span className="font-semibold">Expires:</span>{" "}
+                                {normalized.expiration_date || "—"}
+                              </div>
+                              <div>
+                                <span className="font-semibold">Jurisdiction:</span>{" "}
+                                {normalized.jurisdiction || "—"}
+                              </div>
+                            </div>
+                          )}
+
+                          {/* W9 INSIGHTS */}
+                          {doc.document_type === "w9" && (
+                            <div className="space-y-2 text-[11px] text-slate-200">
+                              <div>
+                                <span className="font-semibold">Name:</span>{" "}
+                                {normalized.name || "—"}
+                              </div>
+                              <div>
+                                <span className="font-semibold">Business:</span>{" "}
+                                {normalized.business_name || "—"}
+                              </div>
+                              <div>
+                                <span className="font-semibold">TIN:</span>{" "}
+                                {normalized.tin || "—"}
+                              </div>
+                              <div>
+                                <span className="font-semibold">Classification:</span>{" "}
+                                {normalized.entity_type || "—"}
+                              </div>
+                            </div>
+                          )}
+
+                          {/* ENDORSEMENT INSIGHTS */}
+                          {doc.document_type === "endorsement" && (
+                            <div className="space-y-2 text-[11px] text-slate-200">
+                              <div>
+                                <span className="font-semibold">
+                                  Endorsement Type:
+                                </span>{" "}
+                                {normalized.endorsement_type || "—"}
+                              </div>
+                              <div>
+                                <span className="font-semibold">
+                                  Policy Number:
+                                </span>{" "}
+                                {normalized.policy_number || "—"}
+                              </div>
+                              <div>
+                                <span className="font-semibold">Notes:</span>{" "}
+                                {normalized.notes || "—"}
+                              </div>
+                            </div>
+                          )}
+
+                          {/* SAFETY DOC INSIGHTS */}
+                          {doc.document_type === "safety" && (
+                            <div className="space-y-2 text-[11px] text-slate-200">
+                              <div>
+                                <span className="font-semibold">Summary:</span>{" "}
+                                {normalized.summary || "—"}
+                              </div>
+                              <div>
+                                <span className="font-semibold">
+                                  Safety Flags:
+                                </span>{" "}
+                                {normalized.flags || "—"}
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+      {/* ===================================================== */}
+      {/* EMAIL MODAL — RENEWAL REQUEST (V6)                    */}
+      {/* ===================================================== */}
       {emailModal && (
         <div className="fixed inset-0 flex items-center justify-center bg-black/60 z-[60]">
-          <div className="bg-slate-950 text-slate-100 w-full max-w-xl rounded-2xl border border-slate-700 p-6 shadow-2xl relative">
 
+          <div className="bg-slate-950 text-slate-100 w-full max-w-xl rounded-2xl border border-slate-700 p-6 shadow-2xl relative animate-[fadeIn_0.2s_ease-out]">
+
+            {/* CLOSE BUTTON */}
             <button
-              className="absolute right-4 top-4 text-slate-400 hover:text-slate-200"
+              className="absolute right-4 top-4 text-slate-400 hover:text-slate-200 transition"
               onClick={() => {
                 setEmailModal(false);
                 setEmailData(null);
@@ -484,45 +720,54 @@ export default function VendorDrawer({ vendor, policies, onClose }) {
               <XIcon size={20} />
             </button>
 
+            {/* HEADER */}
             <h2 className="text-lg font-bold mb-3 flex items-center gap-2">
               <EnvelopeSimple size={18} />
               Renewal Request Email
             </h2>
 
+            {/* LOADING */}
             {emailLoading && (
               <p className="text-sm text-slate-400">Generating…</p>
             )}
 
+            {/* ERROR */}
             {emailError && (
               <p className="text-sm text-rose-400 mb-2">{emailError}</p>
             )}
 
+            {/* EMAIL CONTENT */}
             {emailData && (
               <>
+                {/* SUBJECT */}
                 <div className="mb-4">
                   <h3 className="text-sm font-semibold">Subject</h3>
                   <div className="bg-slate-900 p-3 rounded-lg text-xs border border-slate-700 mt-1">
                     {emailData.subject}
                   </div>
 
+                  {/* COPY SUBJECT */}
                   <button
                     onClick={() => copyToClipboard(emailData.subject)}
-                    className="mt-2 flex items-center gap-2 text-xs text-slate-300 bg-slate-800 px-3 py-1 rounded-lg border border-slate-700 hover:bg-slate-700"
+                    className="mt-2 flex items-center gap-2 text-xs text-slate-300 bg-slate-800 px-3 py-1 rounded-lg border border-slate-700 hover:bg-slate-700 transition"
                   >
                     <ClipboardText size={14} />
                     Copy Subject
                   </button>
                 </div>
 
+                {/* BODY */}
                 <div>
                   <h3 className="text-sm font-semibold">Body</h3>
-                  <pre className="bg-slate-900 p-3 rounded-lg text-xs border border-slate-700 whitespace-pre-wrap mt-1">
+
+                  <pre className="bg-slate-900 p-3 rounded-lg text-xs border border-slate-700 whitespace-pre-wrap mt-1 max-h-60 overflow-y-auto">
                     {emailData.body}
                   </pre>
 
+                  {/* COPY BODY */}
                   <button
                     onClick={() => copyToClipboard(emailData.body)}
-                    className="mt-2 flex items-center gap-2 text-xs text-slate-300 bg-slate-800 px-3 py-1 rounded-lg border border-slate-700 hover:bg-slate-700"
+                    className="mt-2 flex items-center gap-2 text-xs text-slate-300 bg-slate-800 px-3 py-1 rounded-lg border border-slate-700 hover:bg-slate-700 transition"
                   >
                     <ClipboardText size={14} />
                     Copy Body
@@ -543,7 +788,90 @@ export default function VendorDrawer({ vendor, policies, onClose }) {
           </div>
         </div>
       )}
+          {/* ===================================================== */}
+          {/* RIGHT COLUMN — POLICIES PANEL (continued)             */}
+          {/* ===================================================== */}
+
+          {/* Already rendered above — this section contains final wrappers */}
+        </div> 
+        {/* END GRID (LEFT + RIGHT COLUMNS) */}
+      </div>
+      {/* END CINEMATIC PANEL WRAPPER */}
+    </div>
+      {/* =============================== */}
+      {/* EMAIL MODAL (RENEWAL EMAIL)     */}
+      {/* =============================== */}
+      {emailModal && (
+        <div className="fixed inset-0 flex items-center justify-center bg-black/60 z-[60]">
+          <div className="bg-slate-950 text-slate-100 w-full max-w-xl rounded-2xl border border-slate-700 p-6 shadow-2xl relative">
+
+            {/* CLOSE BUTTON */}
+            <button
+              className="absolute right-4 top-4 text-slate-400 hover:text-slate-200"
+              onClick={() => {
+                setEmailModal(false);
+                setEmailData(null);
+                setEmailError("");
+              }}
+            >
+              <XIcon size={20} />
+            </button>
+
+            {/* TITLE */}
+            <h2 className="text-lg font-bold mb-3 flex items-center gap-2">
+              <EnvelopeSimple size={18} />
+              Renewal Request Email
+            </h2>
+
+            {/* LOADING */}
+            {emailLoading && (
+              <p className="text-sm text-slate-400">Generating…</p>
+            )}
+
+            {/* ERROR */}
+            {emailError && (
+              <p className="text-sm text-rose-400 mb-2">{emailError}</p>
+            )}
+
+            {/* EMAIL CONTENT */}
+            {emailData && (
+              <>
+                {/* SUBJECT */}
+                <div className="mb-4">
+                  <h3 className="text-sm font-semibold">Subject</h3>
+                  <div className="bg-slate-900 p-3 rounded-lg text-xs border border-slate-700 mt-1">
+                    {emailData.subject}
+                  </div>
+
+                  <button
+                    onClick={() => copyToClipboard(emailData.subject)}
+                    className="mt-2 flex items-center gap-2 text-xs text-slate-300 bg-slate-800 px-3 py-1 rounded-lg border border-slate-700 hover:bg-slate-700"
+                  >
+                    <ClipboardText size={14} />
+                    Copy Subject
+                  </button>
+                </div>
+
+                {/* BODY */}
+                <div>
+                  <h3 className="text-sm font-semibold">Body</h3>
+                  <pre className="bg-slate-900 p-3 rounded-lg text-xs border border-slate-700 whitespace-pre-wrap mt-1">
+                    {emailData.body}
+                  </pre>
+
+                  <button
+                    onClick={() => copyToClipboard(emailData.body)}
+                    className="mt-2 flex items-center gap-2 text-xs text-slate-300 bg-slate-800 px-3 py-1 rounded-lg border border-slate-700 hover:bg-slate-700"
+                  >
+                    <ClipboardText size={14} />
+                    Copy Body
+                  </button>
+                </div>
+              </>
+            )}
+          </div>
+        </div>
+      )}
     </>
   );
 }
-
