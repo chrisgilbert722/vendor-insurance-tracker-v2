@@ -1,5 +1,5 @@
 // components/VendorDrawer.js
-// Vendor Drawer V4 — Cinematic Cockpit Panel (Self-contained loader)
+// Vendor Drawer V5 — Cinematic Cockpit Panel (Fully Upgraded for V5 Engine)
 
 import { useEffect, useState } from "react";
 import {
@@ -13,6 +13,7 @@ import {
 } from "@phosphor-icons/react";
 import { useOrg } from "../context/OrgContext";
 
+// GLOBAL PALETTE
 const GP = {
   bg: "#020617",
   panel: "rgba(15,23,42,0.98)",
@@ -40,7 +41,6 @@ function formatDate(dateStr) {
   if (isNaN(d.getTime())) return dateStr;
   return d.toLocaleDateString();
 }
-
 export default function VendorDrawer({ vendor, policies, onClose }) {
   const { activeOrgId } = useOrg();
 
@@ -48,7 +48,7 @@ export default function VendorDrawer({ vendor, policies, onClose }) {
   const [compliance, setCompliance] = useState(null);
   const [loadingCompliance, setLoadingCompliance] = useState(true);
 
-  // Rule Engine V3
+  // Rule Engine V5 (backend endpoint is still run-v3 but now V5 logic)
   const [engine, setEngine] = useState(null);
   const [engineLoading, setEngineLoading] = useState(true);
   const [engineError, setEngineError] = useState("");
@@ -96,9 +96,8 @@ export default function VendorDrawer({ vendor, policies, onClose }) {
 
     loadCompliance();
   }, [vendor?.id]);
-
   // ===========================
-  // 2) Load Rule Engine V3 (dryRun)
+  // 2) Load Rule Engine V5 (via run-v3 endpoint)
   // ===========================
   useEffect(() => {
     if (!vendor?.id || !activeOrgId) return;
@@ -124,7 +123,7 @@ export default function VendorDrawer({ vendor, policies, onClose }) {
         setEngine(json);
       } catch (err) {
         console.error("[VendorDrawer] Rule Engine error:", err);
-        setEngineError(err.message || "Rule Engine V3 failed.");
+        setEngineError(err.message || "Rule Engine V5 failed.");
       } finally {
         setEngineLoading(false);
       }
@@ -199,7 +198,6 @@ export default function VendorDrawer({ vendor, policies, onClose }) {
       : null;
   const v3Tier = v3Score != null ? computeV3Tier(v3Score) : "Unknown";
   const failingRules = engine?.failingRules || [];
-
   return (
     <>
       {/* BACKDROP */}
@@ -217,6 +215,7 @@ export default function VendorDrawer({ vendor, policies, onClose }) {
         >
           {/* LEFT COLUMN */}
           <div className="flex flex-col gap-5 border-r border-slate-800/80 pr-4 md:pr-6">
+
             {/* HEADER */}
             <div className="flex justify-between items-start gap-4">
               <div>
@@ -230,6 +229,7 @@ export default function VendorDrawer({ vendor, policies, onClose }) {
                   Vendor ID: {vendor?.id ?? "—"}
                 </div>
               </div>
+
               <button
                 onClick={onClose}
                 className="inline-flex items-center justify-center rounded-full border border-slate-700 bg-slate-900/80 text-slate-400 hover:text-slate-100 hover:border-slate-500 px-3 py-1 text-xs"
@@ -239,25 +239,31 @@ export default function VendorDrawer({ vendor, policies, onClose }) {
               </button>
             </div>
 
-            {/* RULE ENGINE V3 SUMMARY */}
+            {/* RULE ENGINE V5 SUMMARY */}
             <div className="rounded-2xl border border-slate-800 bg-slate-950/80 px-4 py-3 space-y-2">
+
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2">
                   <ShieldCheck size={16} className="text-emerald-400" />
                   <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-400">
-                    Rule Engine V3
+                    Rule Engine V5
                   </div>
                 </div>
+
                 {v3Score != null && (
-                  <span className="text-[11px] px-2 py-0.5 rounded-full border border-slate-700 text-slate-300 bg-slate-900/60">
+                  <span
+                    className="text-[11px] px-2 py-0.5 rounded-full border border-slate-700 text-slate-300 bg-slate-900/60"
+                    title="Score reflects V5 rule evaluation"
+                  >
                     {v3Tier}
                   </span>
                 )}
               </div>
 
+              {/* ENGINE LOADING / ERROR STATES */}
               {engineLoading ? (
                 <div className="text-[11px] text-slate-500 mt-1">
-                  Evaluating rules…
+                  Evaluating V5 rules…
                 </div>
               ) : engineError ? (
                 <div className="text-[11px] text-rose-400 mt-1">
@@ -265,19 +271,24 @@ export default function VendorDrawer({ vendor, policies, onClose }) {
                 </div>
               ) : v3Score == null ? (
                 <div className="text-[11px] text-slate-500 mt-1">
-                  No rule evaluation is available for this vendor yet.
+                  No rule evaluation available for this vendor yet.
                 </div>
               ) : (
                 <>
+                  {/* SCORE DISPLAY */}
                   <div className="flex items-baseline justify-between mt-2">
                     <div>
-                      <div className="text-3xl font-bold bg-gradient-to-r from-emerald-400 via-lime-300 to-amber-300 bg-clip-text text-transparent">
+                      <div
+                        className="text-3xl font-bold bg-gradient-to-r from-emerald-400 via-lime-300 to-amber-300 bg-clip-text text-transparent"
+                        title="Global compliance score calculated from V5 rules"
+                      >
                         {v3Score}
                       </div>
                       <div className="text-[11px] text-slate-400">
-                        Global compliance score
+                        Global compliance score (V5 Rules)
                       </div>
                     </div>
+
                     <div className="text-right text-[11px] text-slate-300">
                       {engine.failedCount > 0 ? (
                         <>
@@ -295,23 +306,34 @@ export default function VendorDrawer({ vendor, policies, onClose }) {
                     </div>
                   </div>
 
+                  {/* V5 FAILING RULES LIST */}
                   {failingRules.length > 0 && (
                     <div className="mt-3 rounded-xl border border-rose-500/50 bg-rose-950/40 px-3 py-2">
                       <div className="text-[11px] text-rose-200 uppercase tracking-[0.12em] mb-1">
-                        Failing rules
+                        Failing Rules (V5 Engine)
                       </div>
-                      <ul className="text-[11px] text-rose-100 space-y-1 list-disc ml-4">
+
+                      <ul className="text-[11px] text-rose-100 space-y-2 list-none pl-0">
                         {failingRules.slice(0, 4).map((r, idx) => (
-                          <li key={idx}>
-                            <span className="font-semibold">
-                              [{r.severity || "rule"}]{" "}
-                            </span>
-                            {r.message}
+                          <li key={idx} className="border-b border-rose-700/40 pb-1">
+                            <div className="font-semibold text-rose-300">
+                              [{r.severity?.toUpperCase() || "RULE"}]
+                            </div>
+
+                            <div className="text-rose-100">
+                              <strong>{r.fieldKey}</strong> {r.operator}{" "}
+                              <strong>{r.expectedValue}</strong>
+                            </div>
+
+                            <div className="text-rose-200 text-[10px] mt-1">
+                              {r.message}
+                            </div>
                           </li>
                         ))}
                       </ul>
+
                       {failingRules.length > 4 && (
-                        <div className="mt-1 text-[10px] text-rose-200">
+                        <div className="mt-2 text-[10px] text-rose-200">
                           +{failingRules.length - 4} more…
                         </div>
                       )}
@@ -320,7 +342,6 @@ export default function VendorDrawer({ vendor, policies, onClose }) {
                 </>
               )}
             </div>
-
             {/* COMPLIANCE SUMMARY */}
             <div className="rounded-2xl border border-slate-800 bg-slate-950/80 px-4 py-3 space-y-2">
               <div className="flex items-center gap-2">
@@ -399,8 +420,8 @@ export default function VendorDrawer({ vendor, policies, onClose }) {
               <EnvelopeSimple size={16} />
               Generate Renewal Email
             </button>
-          </div>
 
+          </div> {/* END LEFT COLUMN */}
           {/* RIGHT COLUMN — POLICIES */}
           <div className="flex flex-col gap-4">
             <div className="flex items-center gap-2 mb-1">
@@ -431,6 +452,7 @@ export default function VendorDrawer({ vendor, policies, onClose }) {
                           Policy #: {p.policy_number || "—"}
                         </div>
                       </div>
+
                       <div className="text-right text-[11px] text-slate-400">
                         <div>Expires:</div>
                         <div className="text-slate-100">
@@ -442,7 +464,7 @@ export default function VendorDrawer({ vendor, policies, onClose }) {
                 ))}
               </div>
             )}
-          </div>
+          </div> {/* END RIGHT COLUMN */}
         </div>
       </div>
 
@@ -450,6 +472,7 @@ export default function VendorDrawer({ vendor, policies, onClose }) {
       {emailModal && (
         <div className="fixed inset-0 flex items-center justify-center bg-black/60 z-[60]">
           <div className="bg-slate-950 text-slate-100 w-full max-w-xl rounded-2xl border border-slate-700 p-6 shadow-2xl relative">
+
             <button
               className="absolute right-4 top-4 text-slate-400 hover:text-slate-200"
               onClick={() => {
@@ -481,6 +504,7 @@ export default function VendorDrawer({ vendor, policies, onClose }) {
                   <div className="bg-slate-900 p-3 rounded-lg text-xs border border-slate-700 mt-1">
                     {emailData.subject}
                   </div>
+
                   <button
                     onClick={() => copyToClipboard(emailData.subject)}
                     className="mt-2 flex items-center gap-2 text-xs text-slate-300 bg-slate-800 px-3 py-1 rounded-lg border border-slate-700 hover:bg-slate-700"
@@ -495,6 +519,7 @@ export default function VendorDrawer({ vendor, policies, onClose }) {
                   <pre className="bg-slate-900 p-3 rounded-lg text-xs border border-slate-700 whitespace-pre-wrap mt-1">
                     {emailData.body}
                   </pre>
+
                   <button
                     onClick={() => copyToClipboard(emailData.body)}
                     className="mt-2 flex items-center gap-2 text-xs text-slate-300 bg-slate-800 px-3 py-1 rounded-lg border border-slate-700 hover:bg-slate-700"
@@ -503,7 +528,7 @@ export default function VendorDrawer({ vendor, policies, onClose }) {
                     Copy Body
                   </button>
 
-                  {/* Existing Fix Plan Button */}
+                  {/* FIX PLAN BUTTON */}
                   <button
                     onClick={() => {
                       window.location.href = `/vendor/${vendor.id}?fixPlan=1`;
@@ -521,3 +546,4 @@ export default function VendorDrawer({ vendor, policies, onClose }) {
     </>
   );
 }
+
