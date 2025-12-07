@@ -268,13 +268,12 @@ export default async function handler(req, res) {
           const parserRes = await fetch(parserUrl, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ fileUrl }),
+            body: JSON.stringify({ fileUrl, vendorId, orgId }),
           });
 
           const parserJson = await parserRes.json();
 
           if (parserJson.ok) {
-            // Choose the correct field from each parser payload
             if (docType === "w9") {
               normalized = {
                 docType,
@@ -324,7 +323,6 @@ export default async function handler(req, res) {
             };
           }
         } else {
-          // Fallback for unknown docTypes
           normalized = { docType, note: "No specific parser for this docType." };
         }
       } catch (e) {
@@ -362,33 +360,60 @@ export default async function handler(req, res) {
       const documentId = inserted[0]?.id;
 
       // ---------------------------------------------------------
-      // 7) Auto-process CONTRACT → Rule Engine V3 (legacy hook)
+      // 7) Auto-process CONTRACT → Contract Matching V3 + legacy hook
       // ---------------------------------------------------------
       if (docType === "contract") {
         try {
-          if (process.env.NEXT_PUBLIC_BASE_URL) {
-            await fetch(
-              `${process.env.NEXT_PUBLIC_BASE_URL}/api/admin/rules-v3/auto-process-contract`,
-              {
+          if (BASE_URL) {
+            // NEW — Contract Matching V3 → updates vendor.contract_status, contract_risk_score, alerts
+            try {
+              await fetch(`${BASE_URL}/api/contracts/apply-matching`, {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ documentId }),
-              }
-            );
+                body: JSON.stringify({ vendorId }),
+              });
 
-            await sql`
-              INSERT INTO system_timeline (org_id, vendor_id, action, message, severity)
-              VALUES (
-                ${orgId},
-                ${vendorId},
-                'contract_auto_process_triggered',
-                'Contract auto-processing triggered.',
-                'info'
-              )
-            `;
+              await sql`
+                INSERT INTO system_timeline (org_id, vendor_id, action, message, severity)
+                VALUES (
+                  ${orgId},
+                  ${vendorId},
+                  'contract_matching_v3_applied',
+                  'Contract matching V3 applied to vendor.',
+                  'info'
+                )
+              `;
+            } catch (err) {
+              console.error("[upload-doc] contract matching error:", err);
+            }
+
+            // Legacy V3 auto-process (rules-v3 engine)
+            try {
+              await fetch(
+                `${BASE_URL}/api/admin/rules-v3/auto-process-contract`,
+                {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({ documentId }),
+                }
+              );
+
+              await sql`
+                INSERT INTO system_timeline (org_id, vendor_id, action, message, severity)
+                VALUES (
+                  ${orgId},
+                  ${vendorId},
+                  'contract_auto_process_triggered',
+                  'Contract auto-processing triggered.',
+                  'info'
+                )
+              `;
+            } catch (err) {
+              console.error("[contract auto-process ERROR]", err);
+            }
           }
         } catch (err) {
-          console.error("[contract auto-process ERROR]", err);
+          console.error("[CONTRACT V3 PIPELINE ERROR]", err);
         }
       }
 
