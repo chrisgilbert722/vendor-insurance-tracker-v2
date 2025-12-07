@@ -2,28 +2,29 @@
 // ==========================================================
 // AI ONBOARDING WIZARD — STEP 2
 // Requirements Generation → Vendor Selection → AI Email Invites
-// Fully wired to load vendor data from Step 1 (localStorage)
+// WITH WIZARD NAVIGATION (BACK ↔ NEXT)
 // ==========================================================
 
 import { useState, useEffect } from "react";
+import { useRouter } from "next/router";                      // ✅ NEW
 import { openai } from "../../../lib/openaiClient";
 import ToastV2 from "../../../components/ToastV2";
 
 export default function OnboardingWizardStep2() {
+  const router = useRouter();                                 // ✅ NEW
+
   // -----------------------------------------------------------
-  // STEP 2 STATE
+  // STATE
   // -----------------------------------------------------------
-  const [vendors, setVendors] = useState([]);             // ✅ loaded from LS
-  const [profiles, setProfiles] = useState([]);           // AI-created profiles
+  const [vendors, setVendors] = useState([]);
+  const [profiles, setProfiles] = useState([]);
   const [loading, setLoading] = useState(false);
 
-  // Invite & selection state
   const [selectedVendorIds, setSelectedVendorIds] = useState([]);
   const [sendingInvites, setSendingInvites] = useState(false);
   const [inviteResults, setInviteResults] = useState(null);
   const [resultsOpen, setResultsOpen] = useState(false);
 
-  // Toast
   const [toast, setToast] = useState({
     open: false,
     message: "",
@@ -31,7 +32,7 @@ export default function OnboardingWizardStep2() {
   });
 
   // -----------------------------------------------------------
-  // LOAD VENDORS FROM STEP 1 (localStorage)
+  // LOAD VENDORS FROM STEP 1
   // -----------------------------------------------------------
   useEffect(() => {
     try {
@@ -43,15 +44,15 @@ export default function OnboardingWizardStep2() {
         const parsed = JSON.parse(raw);
         setVendors(parsed);
       } else {
-        console.warn("⚠ Step 2: No vendor data found in localStorage.");
+        console.warn("⚠ Step 2: No vendor data found.");
       }
     } catch (err) {
-      console.error("Failed to load vendors:", err);
+      console.error("Vendor load error:", err);
     }
   }, []);
 
   // -----------------------------------------------------------
-  // STEP 2 — AI GENERATE REQUIREMENTS PROFILES
+  // STEP 2 — AI GENERATE REQUIREMENTS
   // -----------------------------------------------------------
   async function generateRequirements() {
     if (!vendors.length) {
@@ -74,8 +75,7 @@ Based on this vendor info:
 
 ${JSON.stringify(vendor, null, 2)}
 
-Generate a requirements profile in JSON ONLY:
-
+Generate a V5 requirements profile in JSON ONLY:
 {
   "version": "v5",
   "work_type": string,
@@ -106,10 +106,7 @@ Generate a requirements profile in JSON ONLY:
         const last = raw.lastIndexOf("}");
         const json = JSON.parse(raw.slice(first, last + 1));
 
-        newProfiles.push({
-          vendor,
-          profile: json,
-        });
+        newProfiles.push({ vendor, profile: json });
       }
 
       setProfiles(newProfiles);
@@ -117,14 +114,14 @@ Generate a requirements profile in JSON ONLY:
       setToast({
         open: true,
         type: "success",
-        message: "AI generated requirements for all vendors.",
+        message: "AI requirements generated.",
       });
     } catch (err) {
-      console.error("Requirements generation error:", err);
+      console.error("Generation error:", err);
       setToast({
         open: true,
         type: "error",
-        message: "AI failed generating requirements.",
+        message: "AI failed to generate requirements.",
       });
     } finally {
       setLoading(false);
@@ -132,7 +129,7 @@ Generate a requirements profile in JSON ONLY:
   }
 
   // -----------------------------------------------------------
-  // SELECT / DESELECT VENDOR
+  // SELECT VENDORS FOR EMAIL INVITES
   // -----------------------------------------------------------
   function toggleVendorSelection(id) {
     setSelectedVendorIds((prev) =>
@@ -141,7 +138,7 @@ Generate a requirements profile in JSON ONLY:
   }
 
   // -----------------------------------------------------------
-  // SEND AI ONBOARDING EMAIL INVITES
+  // SEND EMAIL INVITES (Step 3 engine)
   // -----------------------------------------------------------
   async function handleSendInvites() {
     if (!selectedVendorIds.length) {
@@ -159,7 +156,7 @@ Generate a requirements profile in JSON ONLY:
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          orgId: vendors[0]?.org_id || 1,
+          orgId: 1,
           vendorIds: selectedVendorIds,
         }),
       });
@@ -183,7 +180,7 @@ Generate a requirements profile in JSON ONLY:
       setToast({
         open: true,
         type: "error",
-        message: err.message || "Failed to send invites.",
+        message: err.message || "Failed sending invites.",
       });
     } finally {
       setSendingInvites(false);
@@ -191,7 +188,33 @@ Generate a requirements profile in JSON ONLY:
   }
 
   // -----------------------------------------------------------
-  // VENDOR SELECTION UI
+  // WIZARD NAVIGATION BUTTONS (BACK / NEXT)
+  // -----------------------------------------------------------
+  function goBack() {
+    router.push("/admin/onboarding-wizard");          // ← Step 1
+  }
+
+  function goNext() {
+    if (!profiles.length) {
+      return setToast({
+        open: true,
+        type: "error",
+        message: "Generate requirements before continuing.",
+      });
+    }
+
+    const profilesOnly = profiles.map((p) => ({
+      vendor: p.vendor,
+      requirements: p.profile,
+    }));
+
+    localStorage.setItem("onboardingProfiles", JSON.stringify(profilesOnly));
+
+    router.push("/admin/onboarding-wizard/step3");     // → Step 3
+  }
+
+  // -----------------------------------------------------------
+  // UI HELPERS
   // -----------------------------------------------------------
   function renderVendorSelection() {
     if (!profiles.length) return null;
@@ -251,9 +274,6 @@ Generate a requirements profile in JSON ONLY:
     );
   }
 
-  // -----------------------------------------------------------
-  // RESULTS DRAWER
-  // -----------------------------------------------------------
   function renderInviteResults() {
     if (!resultsOpen || !inviteResults) return null;
 
@@ -268,32 +288,25 @@ Generate a requirements profile in JSON ONLY:
           background: "rgba(15,23,42,0.97)",
           padding: 20,
           borderLeft: "1px solid rgba(148,163,184,0.4)",
-          boxShadow: "-10px 0 30px rgba(0,0,0,0.6)",
           overflowY: "auto",
           zIndex: 1000,
         }}
       >
-        <h2 style={{ marginTop: 0 }}>Onboarding Email Results</h2>
+        <h2>Onboarding Results</h2>
 
         <p>
-          <strong>Sent:</strong> {inviteResults.sentCount}  
+          <strong>Sent:</strong> {inviteResults.sentCount}
           <br />
           <strong>Failed:</strong> {inviteResults.failedCount}
         </p>
 
         <h3>Sent Emails</h3>
-        <pre style={{ whiteSpace: "pre-wrap", fontSize: 12 }}>
+        <pre style={{ fontSize: 12 }}>
 {JSON.stringify(inviteResults.sent, null, 2)}
         </pre>
 
         <h3>Failed</h3>
-        <pre
-          style={{
-            whiteSpace: "pre-wrap",
-            fontSize: 12,
-            color: "#fca5a5",
-          }}
-        >
+        <pre style={{ fontSize: 12, color: "#fca5a5" }}>
 {JSON.stringify(inviteResults.failed, null, 2)}
         </pre>
 
@@ -320,14 +333,32 @@ Generate a requirements profile in JSON ONLY:
   // -----------------------------------------------------------
   return (
     <div style={{ padding: 40, color: "white" }}>
-      <h1 style={{ fontSize: 28, marginBottom: 10 }}>
+      <h1 style={{ fontSize: 28, marginBottom: 20 }}>
         AI Onboarding Wizard — Step 2
       </h1>
 
+      {/* BACK BUTTON */}
+      <button
+        onClick={goBack}
+        style={{
+          marginBottom: 20,
+          padding: "8px 14px",
+          borderRadius: 8,
+          border: "1px solid rgba(148,163,184,0.5)",
+          background: "rgba(31,41,55,0.7)",
+          color: "white",
+          cursor: "pointer",
+        }}
+      >
+        ← Back to Step 1
+      </button>
+
+      {/* GENERATE REQUIREMENTS */}
       <button
         onClick={generateRequirements}
         disabled={loading}
         style={{
+          marginLeft: 12,
           padding: "12px 18px",
           borderRadius: 12,
           background: "linear-gradient(90deg,#38bdf8,#0ea5e9,#1e40af)",
@@ -336,14 +367,14 @@ Generate a requirements profile in JSON ONLY:
           fontSize: 15,
           fontWeight: 600,
           color: "white",
-          marginBottom: 20,
         }}
       >
-        {loading ? "Analyzing…" : "⚡ Generate Requirements for All Vendors"}
+        {loading ? "Analyzing…" : "⚡ Generate Requirements"}
       </button>
 
       {renderVendorSelection()}
 
+      {/* SEND INVITES */}
       {profiles.length > 0 && (
         <button
           onClick={handleSendInvites}
@@ -359,11 +390,34 @@ Generate a requirements profile in JSON ONLY:
             fontSize: 16,
             fontWeight: 600,
             cursor:
-              selectedVendorIds.length === 0 ? "not-allowed" : "pointer",
+              selectedVendorIds.length === 0
+                ? "not-allowed"
+                : "pointer",
             color: "white",
           }}
         >
-          {sendingInvites ? "Sending invites…" : "📨 Send AI Onboarding Emails"}
+          {sendingInvites ? "Sending…" : "📨 Send AI Onboarding Emails"}
+        </button>
+      )}
+
+      {/* NEXT BUTTON (ONLY AFTER PROFILES GENERATED) */}
+      {profiles.length > 0 && (
+        <button
+          onClick={goNext}
+          style={{
+            marginTop: 20,
+            marginLeft: 12,
+            padding: "12px 20px",
+            borderRadius: 12,
+            background: "linear-gradient(90deg,#10b981,#059669)",
+            border: "1px solid #10b981",
+            color: "white",
+            cursor: "pointer",
+            fontSize: 15,
+            fontWeight: 600,
+          }}
+        >
+          Continue → Step 3
         </button>
       )}
 
