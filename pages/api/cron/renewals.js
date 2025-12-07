@@ -1,7 +1,7 @@
 // pages/api/cron/renewals.js
 // ==========================================================
 // FULL AUTOPILOT CRON — Renewals + Email Brain + SLA Engine
-// Combines your RenewalEngineV2 with SLA Intelligence (V3).
+// + Broker Escalation Engine (Step 5)
 // ==========================================================
 
 import { query, sql } from "../../../lib/db";
@@ -24,23 +24,25 @@ export default async function handler(req, res) {
     queued: 0,
     sent: 0,
     failed: [],
+    escalations: []
   };
 
   try {
     // ======================================================
-    // 1️⃣ Run your existing Renewal Engine V2
+    // 1️⃣ Run Renewal Engine V2 (your core system)
     // ======================================================
     summary.renewalEngine = await runRenewalEngineAllOrgsV2();
 
     // ======================================================
-    // 2️⃣ SLA Intelligence Layer (Renewal Intelligence V3)
-    // Applies timeline entries + alerts + AI emails automatically.
+    // 2️⃣ SLA INTELLIGENCE + ESCALATION LAYER (V3 + Step 5)
     // ======================================================
     const vendors = await sql`
       SELECT
         v.id AS vendor_id,
         v.vendor_name,
         v.email,
+        v.broker_email,
+        v.work_type,
         v.org_id,
         v.requirements_json,
         p.expiration_date
@@ -55,11 +57,9 @@ export default async function handler(req, res) {
       if (!expStr) return null;
       const [mm, dd, yyyy] = expStr.split("/");
       const exp = new Date(`${yyyy}-${mm}-${dd}`);
-      if (isNaN(exp)) return null;
-      return Math.floor((exp - now) / (1000 * 60 * 60 * 24));
+      return isNaN(exp) ? null : Math.floor((exp - now) / 86400000);
     }
 
-    // Helper: Check existing event
     async function hasTimeline(vendorId, action) {
       const r = await sql`
         SELECT id FROM system_timeline
@@ -69,12 +69,12 @@ export default async function handler(req, res) {
       return r.length > 0;
     }
 
-    async function writeTimeline(vendor, action, message, severity) {
+    async function writeTimeline(v, action, message, severity) {
       await sql`
         INSERT INTO system_timeline (org_id, vendor_id, action, message, severity)
-        VALUES (${vendor.org_id}, ${vendor.vendor_id}, ${action}, ${message}, ${severity});
+        VALUES (${v.org_id}, ${v.vendor_id}, ${action}, ${message}, ${severity});
       `;
-      summary.slaEvents.push({ vendorId: vendor.vendor_id, action });
+      summary.slaEvents.push({ vendorId: v.vendor_id, action });
     }
 
     async function ensureAlert(v, title, severity, rule) {
@@ -103,15 +103,12 @@ export default async function handler(req, res) {
       if (!v.email) return;
 
       const prompt = `
-Write a short, professional insurance renewal reminder email.
+Write a short, professional COI renewal reminder email.
 
 Vendor: ${v.vendor_name}
 Expiration: ${v.expiration_date}
 Days Left: ${daysLeft}
 Urgency: ${urgency}
-
-Requirements:
-${JSON.stringify(v.requirements_json || {}, null, 2)}
 
 Return JSON ONLY:
 {
@@ -124,30 +121,145 @@ Return JSON ONLY:
         model: "gpt-4.1-mini",
         temperature: 0.1,
         messages: [
-          { role: "system", content: "Return only JSON." },
-          { role: "user", content: prompt },
-        ],
+          { role: "system", content: "Return JSON only" },
+          { role: "user", content: prompt }
+        ]
       });
 
-      let raw = completion.choices[0].message?.content.trim() || "{}";
+      const raw = completion.choices[0].message.content.trim();
       const json = JSON.parse(raw.substring(raw.indexOf("{"), raw.lastIndexOf("}") + 1));
 
       await sendEmail({
         to: v.email,
         subject: json.subject,
-        body: json.body,
+        body: json.body
       });
 
       await writeTimeline(v, "renewal_email_ai_v3", `AI renewal email sent (${urgency})`, "info");
+    }
 
-      summary.slaEvents.push({
+    // ======================================================
+    // 🔥 BROKER ESCALATION ENGINE (Step 5)
+    // ======================================================
+    async function escalateBroker(v, overdueDays) {
+      if (!v.broker_email) return;
+
+      await writeTimeline(
+        v,
+        "broker_escalation",
+        `Broker escalation — vendor overdue ${overdueDays} days`,
+        "critical"
+      );
+
+      await ensureAlert(
+        v,
+        `Broker Escalation — Vendor Overdue ${overdueDays} Days`,
+        "Critical",
+        "Renewal Broker Escalation"
+      );
+
+      await sendEmail({
+        to: v.broker_email,
+        subject: `Urgent: Vendor ${v.vendor_name} Insurance Renewal Overdue`,
+        body: `
+Hello,
+
+Vendor **${v.vendor_name}** is now **${overdueDays} days overdue** on insurance renewal.
+
+Please coordinate with your insured immediately to provide an updated COI.
+
+Thank you,
+Compliance Team
+        `
+      });
+
+      summary.escalations.push({
         vendorId: v.vendor_id,
-        email: true,
-        urgency,
+        type: "broker_escalation",
+        overdueDays
       });
     }
 
-    // Process vendors
+    async function escalateInternal(v, overdueDays) {
+      const internalEmail = process.env.INTERNAL_COMPLIANCE_EMAIL;
+      if (!internalEmail) return;
+
+      await writeTimeline(
+        v,
+        "internal_escalation",
+        `Internal escalation — vendor overdue ${overdueDays} days`,
+        "critical"
+      );
+
+      await ensureAlert(
+        v,
+        `Internal Escalation — Vendor Overdue ${overdueDays} Days`,
+        "Critical",
+        "Renewal Internal Escalation"
+      );
+
+      await sendEmail({
+        to: internalEmail,
+        subject: `Escalation: Vendor ${v.vendor_name} is overdue ${overdueDays} days`,
+        body: `
+Team,
+
+Vendor **${v.vendor_name}** has failed to provide a valid COI for **${overdueDays} days**.
+
+Immediate internal action is required.
+
+– Automated Compliance System
+        `
+      });
+
+      summary.escalations.push({
+        vendorId: v.vendor_id,
+        type: "internal_escalation",
+        overdueDays
+      });
+    }
+
+    async function escalateTermination(v, overdueDays) {
+      await writeTimeline(
+        v,
+        "termination_warning",
+        `Vendor suspension warning — overdue ${overdueDays} days`,
+        "critical"
+      );
+
+      await ensureAlert(
+        v,
+        `Vendor Suspension Warning — Overdue ${overdueDays} Days`,
+        "Critical",
+        "Renewal Suspension Warning"
+      );
+
+      await sendEmail({
+        to: v.email,
+        subject: `Final Notice: Insurance Renewal Overdue (${overdueDays} days)`,
+        body: `
+Hi ${v.vendor_name},
+
+Your insurance renewal has been overdue for **${overdueDays} days**.
+
+If we do not receive an updated Certificate of Insurance immediately,
+your authorization to work may be suspended.
+
+Thank you,
+Compliance Team
+        `
+      });
+
+      summary.escalations.push({
+        vendorId: v.vendor_id,
+        type: "termination_warning",
+        overdueDays
+      });
+    }
+
+    // ======================================================
+    // 3️⃣ PROCESS VENDORS
+    // ======================================================
     for (const row of vendors) {
       const dte = computeDays(row.expiration_date);
       let stage = "missing";
@@ -162,7 +274,9 @@ Return JSON ONLY:
 
       const v = row;
 
-      // SLA logic (only fire once)
+      // -----------------------------
+      // SLA Notices (existing from V3)
+      // -----------------------------
       if (stage === "expired" && !(await hasTimeline(v.vendor_id, "sla_expired"))) {
         await writeTimeline(v, "sla_expired", "Policy expired", "critical");
         await ensureAlert(v, "Policy expired — renewal required", "Critical", "Renewal Overdue");
@@ -192,14 +306,35 @@ Return JSON ONLY:
         await ensureAlert(v, "Missing expiration date", "Medium", "Renewal Missing Expiration");
       }
 
-      // 90-day stage just logs (no email)
       if (stage === "90_day" && !(await hasTimeline(v.vendor_id, "sla_90_day"))) {
         await writeTimeline(v, "sla_90_day", "COI expires within 90 days", "info");
+      }
+
+      // ======================================================
+      // 🔥 ESCALATION LOGIC (Step 5)
+      // ======================================================
+      if (stage === "expired") {
+        const overdueDays = Math.abs(dte);
+
+        // 1) EXPIRED > 7 days → BROKER ESCALATION
+        if (overdueDays > 7 && v.broker_email && !(await hasTimeline(v.vendor_id, "broker_escalation"))) {
+          await escalateBroker(v, overdueDays);
+        }
+
+        // 2) EXPIRED > 14 days → INTERNAL ESCALATION
+        if (overdueDays > 14 && !(await hasTimeline(v.vendor_id, "internal_escalation"))) {
+          await escalateInternal(v, overdueDays);
+        }
+
+        // 3) EXPIRED > 30 days → TERMINATION WARNING
+        if (overdueDays > 30 && !(await hasTimeline(v.vendor_id, "termination_warning"))) {
+          await escalateTermination(v, overdueDays);
+        }
       }
     }
 
     // ======================================================
-    // 3️⃣ Your existing AUTO-EMAIL BRAIN + QUEUE
+    // 4️⃣ AUTO EMAIL BRAIN + QUEUE (existing)
     // ======================================================
     const queued = await autoEmailBrain();
     summary.queued = queued?.count || 0;
@@ -209,7 +344,7 @@ Return JSON ONLY:
     summary.failed = results.filter(r => r.status === "failed").map(r => r.id);
 
     // ======================================================
-    // 4️⃣ HEARTBEAT LOG
+    // 5️⃣ HEARTBEAT LOGGING
     // ======================================================
     await query(
       `
@@ -238,7 +373,6 @@ Return JSON ONLY:
   } catch (err) {
     const msg = err?.message || "Unknown error";
 
-    // HEARTBEAT FAILURE
     await query(
       `
       INSERT INTO cron_renewals_heartbeat
