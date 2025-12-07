@@ -2,11 +2,13 @@
 // ==========================================================
 // AI ONBOARDING WIZARD — STEP 5
 // Bulk Nudge System + Renewal Reminder Engine (UI)
+// FULL COCKPIT V9 WEAPONIZED THEME
 // ==========================================================
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/router";
 import ToastV2 from "../../../components/ToastV2";
+import CockpitWizardLayout from "../../../components/CockpitWizardLayout";
 
 export default function OnboardingWizardStep5() {
   const router = useRouter();
@@ -48,7 +50,7 @@ export default function OnboardingWizardStep5() {
   }, []);
 
   // -----------------------------------------------------------
-  // FILTER & SELECTION
+  // FILTER & SELECTION HELPERS
   // -----------------------------------------------------------
   function passesFilter(v) {
     if (filter === "all") return true;
@@ -130,54 +132,88 @@ export default function OnboardingWizardStep5() {
   }
 
   // -----------------------------------------------------------
-  // RENDER VENDOR GRID
+  // RENDER VENDOR GRID — COCKPIT WEAPONIZED
   // -----------------------------------------------------------
   function renderVendorGrid() {
     if (loading) return <div>Loading…</div>;
     if (!vendors.length) return <div>No vendors found.</div>;
+
+    const filtered = vendors.filter(passesFilter);
+
+    if (!filtered.length) {
+      return (
+        <div
+          style={{
+            marginTop: 18,
+            padding: 16,
+            borderRadius: 16,
+            background: "rgba(15,23,42,0.85)",
+            border: "1px solid rgba(148,163,184,0.4)",
+            fontSize: 13,
+            color: "#9ca3af",
+          }}
+        >
+          No vendors match this filter yet.
+        </div>
+      );
+    }
 
     return (
       <div
         style={{
           marginTop: 20,
           display: "grid",
-          gridTemplateColumns: "repeat(auto-fill, minmax(320px, 1fr))",
+          gridTemplateColumns: "repeat(auto-fill, minmax(330px, 1fr))",
           gap: 18,
         }}
       >
-        {vendors.filter(passesFilter).map((v) => {
-          const checked = selectedVendorIds.includes(v.id);
+        {filtered.map((v) => {
+          const selected = selectedVendorIds.includes(v.id);
 
           return (
             <div
               key={v.id}
               style={{
                 padding: 16,
-                borderRadius: 14,
-                background: "rgba(15,23,42,0.85)",
-                border: "1px solid rgba(148,163,184,0.3)",
+                borderRadius: 18,
+                background: "rgba(15,23,42,0.88)",
+                border: selected
+                  ? "1px solid rgba(56,189,248,0.9)"
+                  : "1px solid rgba(80,120,255,0.35)",
+                boxShadow: selected
+                  ? "0 0 25px rgba(56,189,248,0.45), inset 0 0 20px rgba(15,23,42,0.9)"
+                  : "0 0 20px rgba(64,106,255,0.25), inset 0 0 16px rgba(15,23,42,0.9)",
+                cursor: "pointer",
+                backdropFilter: "blur(8px)",
               }}
+              onClick={() => toggleVendorSelection(v.id)}
             >
-              <label
+              <div
                 style={{
                   display: "flex",
                   alignItems: "center",
                   gap: 8,
-                  cursor: "pointer",
+                  marginBottom: 8,
                 }}
               >
                 <input
                   type="checkbox"
-                  checked={checked}
+                  checked={selected}
                   onChange={() => toggleVendorSelection(v.id)}
-                  style={{ width: 18, height: 18 }}
+                  style={{
+                    width: 18,
+                    height: 18,
+                    accentColor: "#38bdf8",
+                    cursor: "pointer",
+                  }}
+                  onClick={(e) => e.stopPropagation()}
                 />
                 <span style={{ fontSize: 15, fontWeight: 600 }}>
                   {v.vendor_name}
                 </span>
-              </label>
+              </div>
 
-              <div style={{ marginTop: 8, fontSize: 12, color: "#9ca3af" }}>
+              <div style={{ fontSize: 12, color: "#9ca3af" }}>
                 <div>
                   {v.last_uploaded_coi ? "📄 COI Uploaded" : "⚠ Missing COI"}
                 </div>
@@ -203,7 +239,7 @@ export default function OnboardingWizardStep5() {
   }
 
   // -----------------------------------------------------------
-  // RESULTS SUMMARY
+  // RESULTS SUMMARY PANEL
   // -----------------------------------------------------------
   function renderResultsSummary() {
     if (!lastResults) return null;
@@ -211,12 +247,13 @@ export default function OnboardingWizardStep5() {
     return (
       <div
         style={{
-          marginTop: 20,
+          marginTop: 22,
           padding: 12,
-          borderRadius: 10,
-          background: "rgba(15,23,42,0.8)",
-          border: "1px solid rgba(148,163,184,0.4)",
+          borderRadius: 14,
+          background: "rgba(15,23,42,0.88)",
+          border: "1px solid rgba(148,163,184,0.5)",
           fontSize: 13,
+          color: "#e5e7eb",
         }}
       >
         <div>
@@ -228,246 +265,256 @@ export default function OnboardingWizardStep5() {
   }
 
   // -----------------------------------------------------------
-  // PAGE RENDER
-  // -----------------------------------------------------------
+  // PAGE RENDER (COCKPIT WRAPPED)
+// -----------------------------------------------------------
   return (
-    <div style={{ padding: 40, color: "white" }}>
-      <h1 style={{ fontSize: 28, marginBottom: 8 }}>
-        AI Onboarding Wizard — Step 5
-      </h1>
-      <p style={{ color: "#9ca3af", marginBottom: 16 }}>
-        Nudge vendors who are stuck or late, and trigger renewal reminders.
-      </p>
-
-      {/* BACK BUTTON */}
-      <button
-        onClick={goBack}
-        style={{
-          padding: "8px 14px",
-          borderRadius: 8,
-          border: "1px solid rgba(148,163,184,0.5)",
-          background: "rgba(31,41,55,0.7)",
-          color: "white",
-          cursor: "pointer",
-          marginBottom: 16,
-        }}
-      >
-        ← Back to Step 4
-      </button>
-
-      {/* FILTER CONTROLS */}
-      <div
-        style={{
-          display: "flex",
-          gap: 8,
-          alignItems: "center",
-          marginBottom: 12,
-          fontSize: 13,
-        }}
-      >
-        <span style={{ color: "#9ca3af" }}>Filter:</span>
-        <button
-          onClick={() => setFilter("all")}
+    <CockpitWizardLayout>
+      <div style={{ position: "relative", zIndex: 3 }}>
+        <h1
           style={{
-            padding: "6px 10px",
-            borderRadius: 999,
-            border:
-              filter === "all"
-                ? "1px solid #38bdf8"
-                : "1px solid rgba(148,163,184,0.5)",
-            background:
-              filter === "all"
-                ? "rgba(56,189,248,0.2)"
-                : "rgba(15,23,42,0.8)",
+            fontSize: 30,
+            marginBottom: 10,
+            background: "linear-gradient(90deg,#38bdf8,#fbbf24,#ef4444)",
+            WebkitBackgroundClip: "text",
+            color: "transparent",
+          }}
+        >
+          AI Onboarding Wizard — Step 5
+        </h1>
+
+        <p style={{ color: "#9ca3af", marginBottom: 16, fontSize: 13 }}>
+          Nudge vendors who are stuck or late, and trigger renewal reminders
+          using AI-powered bulk outreach.
+        </p>
+
+        {/* NAV BAR */}
+        <button
+          onClick={goBack}
+          style={{
+            padding: "8px 14px",
+            borderRadius: 10,
+            background: "rgba(31,41,55,0.8)",
+            border: "1px solid rgba(148,163,184,0.6)",
             color: "white",
             cursor: "pointer",
+            marginBottom: 16,
+          }}
+        >
+          ← Back to Step 4
+        </button>
+
+        {/* FILTER CONTROLS */}
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: 8,
             fontSize: 12,
+            marginBottom: 10,
+            color: "#9ca3af",
           }}
         >
-          All
-        </button>
-        <button
-          onClick={() => setFilter("missing_coi")}
-          style={{
-            padding: "6px 10px",
-            borderRadius: 999,
-            border:
-              filter === "missing_coi"
-                ? "1px solid #f97316"
-                : "1px solid rgba(148,163,184,0.5)",
-            background:
-              filter === "missing_coi"
-                ? "rgba(249,115,22,0.2)"
-                : "rgba(15,23,42,0.8)",
-            color: "white",
-            cursor: "pointer",
-            fontSize: 12,
-          }}
-        >
-          Missing COI
-        </button>
-        <button
-          onClick={() => setFilter("coverage")}
-          style={{
-            padding: "6px 10px",
-            borderRadius: 999,
-            border:
-              filter === "coverage"
-                ? "1px solid #facc15"
-                : "1px solid rgba(148,163,184,0.5)",
-            background:
-              filter === "coverage"
-                ? "rgba(250,204,21,0.2)"
-                : "rgba(15,23,42,0.8)",
-            color: "white",
-            cursor: "pointer",
-            fontSize: 12,
-          }}
-        >
-          Coverage Issues
-        </button>
-        <button
-          onClick={() => setFilter("critical")}
-          style={{
-            padding: "6px 10px",
-            borderRadius: 999,
-            border:
-              filter === "critical"
-                ? "1px solid #ef4444"
-                : "1px solid rgba(148,163,184,0.5)",
-            background:
-              filter === "critical"
-                ? "rgba(239,68,68,0.2)"
-                : "rgba(15,23,42,0.8)",
-            color: "white",
-            cursor: "pointer",
-            fontSize: 12,
-          }}
-        >
-          Critical Alerts
-        </button>
-      </div>
-
-      {/* SELECTION CONTROLS */}
-      <div
-        style={{
-          display: "flex",
-          gap: 8,
-          alignItems: "center",
-          fontSize: 12,
-          marginBottom: 10,
-          color: "#9ca3af",
-        }}
-      >
-        <span>Selected: {selectedVendorIds.length}</span>
-        <button
-          onClick={selectAllFiltered}
-          style={{
-            padding: "4px 10px",
-            borderRadius: 999,
-            border: "1px solid rgba(148,163,184,0.8)",
-            background: "rgba(15,23,42,0.9)",
-            color: "white",
-            cursor: "pointer",
-          }}
-        >
-          Select All (Filtered)
-        </button>
-        <button
-          onClick={clearSelection}
-          style={{
-            padding: "4px 10px",
-            borderRadius: 999,
-            border: "1px solid rgba(148,163,184,0.8)",
-            background: "rgba(15,23,42,0.9)",
-            color: "white",
-            cursor: "pointer",
-          }}
-        >
-          Clear
-        </button>
-      </div>
-
-      {renderVendorGrid()}
-
-      {/* ACTION BUTTONS */}
-      {vendors.length > 0 && (
-        <div style={{ marginTop: 24, display: "flex", gap: 10 }}>
+          <span>Filter:</span>
           <button
-            onClick={() => sendNudges("missing_coi")}
-            disabled={sending || selectedVendorIds.length === 0}
+            onClick={() => setFilter("all")}
             style={{
-              padding: "10px 16px",
-              borderRadius: 12,
-              background: "linear-gradient(90deg,#f97316,#ea580c)",
-              border: "1px solid #f97316",
+              padding: "4px 10px",
+              borderRadius: 999,
+              border:
+                filter === "all"
+                  ? "1px solid #38bdf8"
+                  : "1px solid rgba(148,163,184,0.6)",
+              background:
+                filter === "all"
+                  ? "rgba(56,189,248,0.22)"
+                  : "rgba(15,23,42,0.9)",
               color: "white",
-              cursor:
-                selectedVendorIds.length === 0 || sending
-                  ? "not-allowed"
-                  : "pointer",
-              fontSize: 14,
-              fontWeight: 600,
+              cursor: "pointer",
             }}
           >
-            {sending ? "Sending…" : "⚠ Nudge: Missing COI"}
+            All
           </button>
-
           <button
-            onClick={() => sendNudges("coverage_issues")}
-            disabled={sending || selectedVendorIds.length === 0}
+            onClick={() => setFilter("missing_coi")}
             style={{
-              padding: "10px 16px",
-              borderRadius: 12,
-              background: "linear-gradient(90deg,#facc15,#eab308)",
-              border: "1px solid #facc15",
+              padding: "4px 10px",
+              borderRadius: 999,
+              border:
+                filter === "missing_coi"
+                  ? "1px solid #f97316"
+                  : "1px solid rgba(148,163,184,0.6)",
+              background:
+                filter === "missing_coi"
+                  ? "rgba(249,115,22,0.22)"
+                  : "rgba(15,23,42,0.9)",
               color: "white",
-              cursor:
-                selectedVendorIds.length === 0 || sending
-                  ? "not-allowed"
-                  : "pointer",
-              fontSize: 14,
-              fontWeight: 600,
+              cursor: "pointer",
             }}
           >
-            {sending ? "Sending…" : "🛡 Nudge: Coverage Issues"}
+            Missing COI
           </button>
-
           <button
-            onClick={() => sendNudges("renewal")}
-            disabled={sending || selectedVendorIds.length === 0}
+            onClick={() => setFilter("coverage")}
             style={{
-              padding: "10px 16px",
-              borderRadius: 12,
-              background: "linear-gradient(90deg,#22c55e,#16a34a)",
-              border: "1px solid #22c55e",
+              padding: "4px 10px",
+              borderRadius: 999,
+              border:
+                filter === "coverage"
+                  ? "1px solid #facc15"
+                  : "1px solid rgba(148,163,184,0.6)",
+              background:
+                filter === "coverage"
+                  ? "rgba(250,204,21,0.22)"
+                  : "rgba(15,23,42,0.9)",
               color: "white",
-              cursor:
-                selectedVendorIds.length === 0 || sending
-                  ? "not-allowed"
-                  : "pointer",
-              fontSize: 14,
-              fontWeight: 600,
+              cursor: "pointer",
             }}
           >
-            {sending ? "Sending…" : "📆 Nudge: Renewal Reminder"}
+            Coverage Issues
+          </button>
+          <button
+            onClick={() => setFilter("critical")}
+            style={{
+              padding: "4px 10px",
+              borderRadius: 999,
+              border:
+                filter === "critical"
+                  ? "1px solid #ef4444"
+                  : "1px solid rgba(148,163,184,0.6)",
+              background:
+                filter === "critical"
+                  ? "rgba(239,68,68,0.22)"
+                  : "rgba(15,23,42,0.9)",
+              color: "white",
+              cursor: "pointer",
+            }}
+          >
+            Critical Alerts
           </button>
         </div>
-      )}
 
-      {renderResultsSummary()}
+        {/* SELECTION CONTROLS */}
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: 8,
+            fontSize: 12,
+            marginBottom: 10,
+            color: "#9ca3af",
+          }}
+        >
+          <span>Selected: {selectedVendorIds.length}</span>
+          <button
+            onClick={selectAllFiltered}
+            style={{
+              padding: "4px 10px",
+              borderRadius: 999,
+              border: "1px solid rgba(148,163,184,0.7)",
+              background: "rgba(15,23,42,0.95)",
+              color: "white",
+              cursor: "pointer",
+            }}
+          >
+            Select All (Filtered)
+          </button>
+          <button
+            onClick={clearSelection}
+            style={{
+              padding: "4px 10px",
+              borderRadius: 999,
+              border: "1px solid rgba(148,163,184,0.7)",
+              background: "rgba(15,23,42,0.95)",
+              color: "white",
+              cursor: "pointer",
+            }}
+          >
+            Clear
+          </button>
+        </div>
 
-      <ToastV2
-        open={toast.open}
-        type={toast.type}
-        message={toast.message}
-        onClose={() =>
-          setToast((p) => ({
-            ...p,
-            open: false,
-          }))
-        }
-      />
-    </div>
+        {/* VENDOR GRID */}
+        {renderVendorGrid()}
+
+        {/* ACTION BUTTONS */}
+        {vendors.length > 0 && (
+          <div style={{ marginTop: 24, display: "flex", gap: 10, flexWrap: "wrap" }}>
+            <button
+              onClick={() => sendNudges("missing_coi")}
+              disabled={sending || selectedVendorIds.length === 0}
+              style={{
+                padding: "10px 16px",
+                borderRadius: 12,
+                background: "linear-gradient(90deg,#f97316,#ea580c)",
+                border: "1px solid #f97316",
+                color: "white",
+                cursor:
+                  selectedVendorIds.length === 0 || sending
+                    ? "not-allowed"
+                    : "pointer",
+                fontSize: 14,
+                fontWeight: 600,
+              }}
+            >
+              {sending ? "Sending…" : "⚠ Nudge: Missing COI"}
+            </button>
+
+            <button
+              onClick={() => sendNudges("coverage_issues")}
+              disabled={sending || selectedVendorIds.length === 0}
+              style={{
+                padding: "10px 16px",
+                borderRadius: 12,
+                background: "linear-gradient(90deg,#facc15,#eab308)",
+                border: "1px solid #facc15",
+                color: "white",
+                cursor:
+                  selectedVendorIds.length === 0 || sending
+                    ? "not-allowed"
+                    : "pointer",
+                fontSize: 14,
+                fontWeight: 600,
+              }}
+            >
+              {sending ? "Sending…" : "🛡 Nudge: Coverage Issues"}
+            </button>
+
+            <button
+              onClick={() => sendNudges("renewal")}
+              disabled={sending || selectedVendorIds.length === 0}
+              style={{
+                padding: "10px 16px",
+                borderRadius: 12,
+                background: "linear-gradient(90deg,#22c55e,#16a34a)",
+                border: "1px solid #22c55e",
+                color: "white",
+                cursor:
+                  selectedVendorIds.length === 0 || sending
+                    ? "not-allowed"
+                    : "pointer",
+                fontSize: 14,
+                fontWeight: 600,
+              }}
+            >
+              {sending ? "Sending…" : "📆 Nudge: Renewal Reminder"}
+            </button>
+          </div>
+        )}
+
+        {renderResultsSummary()}
+
+        <ToastV2
+          open={toast.open}
+          type={toast.type}
+          message={toast.message}
+          onClose={() =>
+            setToast((prev) => ({
+              ...prev,
+              open: false,
+            }))
+          }
+        />
+      </div>
+    </CockpitWizardLayout>
   );
 }
