@@ -1,11 +1,25 @@
 // pages/api/admin/vendor/overview.js
 // ============================================================
-// VENDOR INTELLIGENCE API (V5 + CONTRACT INTELLIGENCE V3)
-// Powers:
-//  • Admin Vendor Overview (/admin/vendor/[id])
-//  • Admin Vendor Profile (/admin/vendor/[id]/profile)
-//  • Vendor Drawer
-//  • GVI Table (optional contract data)
+// VENDOR INTELLIGENCE API (V5 + Contract Intelligence V3)
+// ============================================================
+//
+// Returns:
+//  • vendor
+//  • org
+//  • portalToken
+//  • policies
+//  • alerts
+//  • engine (rule engine V5 summary)
+//  • intel (coverage intel)
+//  • timeline
+//  • documents
+//  • metrics
+//  • ⭐ contract_json
+//  • ⭐ contract_score
+//  • ⭐ contract_requirements
+//  • ⭐ contract_mismatches
+//  • ⭐ contract_status
+//  • ⭐ contract_risk_score
 // ============================================================
 
 import { sql } from "../../../../lib/db";
@@ -13,9 +27,7 @@ import { sql } from "../../../../lib/db";
 export default async function handler(req, res) {
   try {
     if (req.method !== "GET") {
-      return res
-        .status(405)
-        .json({ ok: false, error: "Method not allowed" });
+      return res.status(405).json({ ok: false, error: "Method not allowed" });
     }
 
     const { id } = req.query;
@@ -24,54 +36,57 @@ export default async function handler(req, res) {
     if (!vendorId || Number.isNaN(vendorId)) {
       return res.status(400).json({
         ok: false,
-        error: "Missing or invalid vendor id.",
+        error: "Invalid or missing vendorId",
       });
     }
 
     // ============================================================
-    // 1) LOAD VENDOR (now includes contract_status fields)
+    // 1) LOAD VENDOR (now includes Contract Intelligence V3 fields)
     // ============================================================
     const vendorRows = await sql`
-      SELECT
+      SELECT 
         id,
         name,
         org_id,
+
+        /* ⭐ Contract Intelligence V3 fields */
+        contract_json,
+        contract_score,
+        contract_requirements,
+        contract_mismatches,
         contract_status,
-        contract_risk_score,
-        contract_issues_json
+        contract_risk_score
+
       FROM vendors
       WHERE id = ${vendorId}
       LIMIT 1;
     `;
 
     if (!vendorRows.length) {
-      return res.status(404).json({
-        ok: false,
-        error: "Vendor not found.",
-      });
+      return res.status(404).json({ ok: false, error: "Vendor not found." });
     }
 
     const vendor = vendorRows[0];
     const orgId = vendor.org_id;
 
     // ============================================================
-    // 2) LOAD ORG + PORTAL TOKEN
+    // 2) ORG + PORTAL TOKEN
     // ============================================================
-    const portalRows = await sql`
-      SELECT token
-      FROM vendor_portal_tokens
-      WHERE vendor_id = ${vendorId}
-      LIMIT 1;
-    `;
-    const portalToken = portalRows[0]?.token || null;
-
     const orgRows = await sql`
-      SELECT id, name
+      SELECT id, name 
       FROM orgs
       WHERE id = ${orgId}
       LIMIT 1;
     `;
     const org = orgRows[0] || null;
+
+    const portalRows = await sql`
+      SELECT token 
+      FROM vendor_portal_tokens
+      WHERE vendor_id = ${vendorId}
+      LIMIT 1;
+    `;
+    const portalToken = portalRows[0]?.token || null;
 
     // ============================================================
     // 3) POLICIES
@@ -84,20 +99,28 @@ export default async function handler(req, res) {
         carrier,
         expiration_date,
         effective_date,
-        limit_each_occurrence
+        limit_each_occurrence,
+        auto_limit,
+        work_comp_limit,
+        umbrella_limit
       FROM policies
-      WHERE vendor_id = ${vendorId}
-        AND org_id = ${orgId}
+      WHERE vendor_id = ${vendorId} AND org_id = ${orgId}
       ORDER BY expiration_date ASC NULLS LAST;
     `;
 
     // ============================================================
-    // 4) ALERTS (V5, open only)
+    // 4) ALERTS (V5)
     // ============================================================
     const alerts = await sql`
-      SELECT
-        id, severity, message, code, type, status,
-        rule_label, created_at
+      SELECT 
+        id,
+        severity,
+        message,
+        code,
+        type,
+        status,
+        rule_label,
+        created_at
       FROM alerts
       WHERE vendor_id = ${vendorId}
         AND org_id = ${orgId}
@@ -106,7 +129,7 @@ export default async function handler(req, res) {
     `;
 
     // ============================================================
-    // 5) RULE ENGINE V5 RESULTS
+    // 5) RULE ENGINE V5 SUMMARY (from results table)
     // ============================================================
     const failingRules = await sql`
       SELECT
@@ -140,7 +163,7 @@ export default async function handler(req, res) {
         AND rr.passed = TRUE;
     `;
 
-    const engineSummary = {
+    const engine = {
       totalRules: failingRules.length + passingRules.length,
       failedCount: failingRules.length,
       passingCount: passingRules.length,
@@ -149,7 +172,7 @@ export default async function handler(req, res) {
     };
 
     // ============================================================
-    // 6) COVERAGE INTEL SNAPSHOT
+    // 6) COVERAGE INTELLIGENCE SNAPSHOT
     // ============================================================
     const coverageMap = {};
     const failuresByCoverage = {};
@@ -157,30 +180,22 @@ export default async function handler(req, res) {
     for (const p of policies) {
       const key = (p.coverage_type || "unknown").toLowerCase();
       if (!coverageMap[key]) coverageMap[key] = { count: 0, expired: 0 };
-
       coverageMap[key].count++;
 
       const exp = p.expiration_date ? new Date(p.expiration_date) : null;
       if (exp && exp < new Date()) coverageMap[key].expired++;
     }
 
-    // Map rule failures → coverage type buckets
     for (const f of failingRules) {
-      const key = (f.field_key || "unknown")
-        .split(".")
-        .pop()
-        .toLowerCase();
+      const key = (f.field_key || "unknown").split(".").pop().toLowerCase();
       if (!failuresByCoverage[key]) failuresByCoverage[key] = [];
       failuresByCoverage[key].push(f);
     }
 
-    const intel = {
-      coverageMap,
-      failuresByCoverage,
-    };
+    const intel = { coverageMap, failuresByCoverage };
 
     // ============================================================
-    // 7) TIMELINE
+    // 7) TIMELINE (last 50)
     // ============================================================
     const timeline = await sql`
       SELECT action, message, severity, created_at
@@ -191,27 +206,17 @@ export default async function handler(req, res) {
     `;
 
     // ============================================================
-    // 8) DOCUMENTS (FULL V3 INTEL)
+    // 8) DOCUMENTS (all types: COI, contract, W9, etc.)
     // ============================================================
     const documents = await sql`
-      SELECT
-        id,
-        document_type,
-        file_url,
-        ai_json,
-        uploaded_at
+      SELECT id, document_type, file_url, ai_json, uploaded_at
       FROM vendor_documents
       WHERE vendor_id = ${vendorId}
       ORDER BY uploaded_at DESC;
     `;
 
-    // Find latest contract
-    const latestContract = documents.find(
-      (d) => d.document_type === "contract"
-    ) || null;
-
     // ============================================================
-    // 9) METRICS (same as before)
+    // 9) METRICS
     // ============================================================
     const metrics = {
       totalAlerts: alerts.length,
@@ -219,8 +224,8 @@ export default async function handler(req, res) {
       highAlerts: alerts.filter((a) => a.severity === "high").length,
       mediumAlerts: alerts.filter((a) => a.severity === "medium").length,
       lowAlerts: alerts.filter((a) => a.severity === "low").length,
-      failingRuleCount: failingRules.length,
-      totalRules: engineSummary.totalRules,
+      failingRuleCount: engine.failedCount,
+      totalRules: engine.totalRules,
       coverageTypes: Object.keys(coverageMap).length,
       expiredPolicies: Object.values(coverageMap).reduce(
         (sum, c) => sum + c.expired,
@@ -230,37 +235,22 @@ export default async function handler(req, res) {
     };
 
     // ============================================================
-    // 10) CONTRACT INTELLIGENCE V3 (NEW)
-    // ============================================================
-    const contractIntel = {
-      status: vendor.contract_status || "unknown",
-      risk_score:
-        vendor.contract_risk_score !== null
-          ? vendor.contract_risk_score
-          : null,
-      issues: vendor.contract_issues_json || [],
-      latestContract,
-    };
-
-    // ============================================================
-    // 11) RESPONSE
+    // 10) RETURN PAYLOAD
     // ============================================================
     return res.status(200).json({
       ok: true,
+
       vendor,
       org,
       portalToken,
 
       policies,
       alerts,
-      engine: engineSummary,
+      engine,
       intel,
-      metrics,
       timeline,
       documents,
-
-      // ⭐ NEW: Contract Intelligence added here
-      contractIntel,
+      metrics,
     });
   } catch (err) {
     console.error("[admin/vendor/overview] ERROR:", err);
