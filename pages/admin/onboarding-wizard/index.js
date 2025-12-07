@@ -2,19 +2,19 @@
 // ==========================================================
 // AI ONBOARDING WIZARD — STEP 1 (CSV IMPORTER)
 // NOW USING LOCAL PAPAPARSE (TURBOPACK SAFE)
-// WIRED TO STEP 2 NAVIGATION
+// FULL COCKPIT V9 WEAPONIZED THEME APPLIED
 // ==========================================================
 
 import { useState, useEffect } from "react";
-import { useRouter } from "next/router";          // ✅ NEW
+import { useRouter } from "next/router";
 import { openai } from "../../../lib/openaiClient";
 import ToastV2 from "../../../components/ToastV2";
+import CockpitWizardLayout from "../../../components/CockpitWizardLayout";   // ✅ NEW
 
 export default function OnboardingWizardStep1() {
-  const router = useRouter();                     // ✅ NEW
+  const router = useRouter();
 
   const [csvFile, setCsvFile] = useState(null);
-  const [rawCsvText, setRawCsvText] = useState("");
   const [csvRows, setCsvRows] = useState([]);
   const [headerColumns, setHeaderColumns] = useState([]);
   const [columnMapping, setColumnMapping] = useState({});
@@ -28,19 +28,16 @@ export default function OnboardingWizardStep1() {
     type: "success",
   });
 
-  // ==========================================================
-  // LOAD PAPAPARSE FROM PUBLIC FOLDER (TURBOPACK SAFE)
-  // ==========================================================
+  // -----------------------------------------------------------
+  // LOAD PAPAPARSE FROM PUBLIC FOLDER
+  // -----------------------------------------------------------
   useEffect(() => {
     const script = document.createElement("script");
     script.src = "/vendor/papaparse.min.js";
-    script.onload = () => {
-      setPapa(window.Papa);
-    };
+    script.onload = () => setPapa(window.Papa);
     document.body.appendChild(script);
   }, []);
 
-  // Acceptable mapping list
   const ACCEPTABLE_FIELDS = [
     "vendor_name",
     "email",
@@ -51,9 +48,9 @@ export default function OnboardingWizardStep1() {
     "tags",
   ];
 
-  // ==========================================================
-  // HANDLE CSV FILE SELECTION
-  // ==========================================================
+  // -----------------------------------------------------------
+  // HANDLE CSV UPLOAD
+  // -----------------------------------------------------------
   async function handleCsvSelected(e) {
     const file = e.target.files[0];
     if (!file) return;
@@ -72,7 +69,7 @@ export default function OnboardingWizardStep1() {
       return setToast({
         open: true,
         type: "error",
-        message: "CSV engine not loaded yet. Try again in 1 sec.",
+        message: "CSV engine loading… try again.",
       });
     }
 
@@ -82,14 +79,13 @@ export default function OnboardingWizardStep1() {
       complete: (results) => {
         setCsvRows(results.data || []);
         setHeaderColumns(results.meta.fields || []);
-        setRawCsvText(JSON.stringify(results.data.slice(0, 5), null, 2));
       },
     });
   }
 
-  // ==========================================================
-  // AI SUGGEST COLUMN MAPPING
-  // ==========================================================
+  // -----------------------------------------------------------
+  // AI MAP COLUMNS
+  // -----------------------------------------------------------
   async function handleAiSuggestMapping() {
     if (!headerColumns.length) {
       return setToast({
@@ -104,31 +100,30 @@ export default function OnboardingWizardStep1() {
     try {
       const prompt = `
 We are onboarding vendors into a compliance platform.
-Here are CSV column headers:
-${JSON.stringify(headerColumns, null, 2)}
+Map each CSV header to a known vendor field:
 
-Map each header to one of these fields:
-${JSON.stringify(ACCEPTABLE_FIELDS, null, 2)}
+${JSON.stringify(ACCEPTABLE_FIELDS)}
 
-Return valid JSON ONLY with:
+CSV headers:
+${JSON.stringify(headerColumns)}
+
+Return JSON ONLY:
 {
-  "headerName": "mappedSystemField" | null
+  "headerName": "systemField" | null
 }
-`.trim();
+      `.trim();
 
       const completion = await openai.chat.completions.create({
         model: "gpt-4.1-mini",
         temperature: 0,
         messages: [
-          { role: "system", content: "Return only valid JSON." },
+          { role: "system", content: "Return valid JSON only." },
           { role: "user", content: prompt },
         ],
       });
 
-      const raw = completion.choices[0].message?.content || "";
-      const first = raw.indexOf("{");
-      const last = raw.lastIndexOf("}");
-      const json = JSON.parse(raw.slice(first, last + 1));
+      let raw = completion.choices[0].message?.content?.trim() || "";
+      const json = JSON.parse(raw.slice(raw.indexOf("{"), raw.lastIndexOf("}") + 1));
 
       setAiSuggestedMapping(json);
       setColumnMapping(json);
@@ -136,34 +131,32 @@ Return valid JSON ONLY with:
       setToast({
         open: true,
         type: "success",
-        message: "AI mapped file fields successfully.",
+        message: "AI mapped CSV to system fields.",
       });
-
     } catch (err) {
       console.error(err);
       setToast({
         open: true,
         type: "error",
-        message: "AI could not map columns.",
+        message: "AI could not map fields.",
       });
     } finally {
       setLoading(false);
     }
   }
 
-  // ==========================================================
-  // SEND TO STEP 2 — SAVE PROCESSED CSV VENDORS
-  // ==========================================================
+  // -----------------------------------------------------------
+  // CONTINUE → STEP 2
+  // -----------------------------------------------------------
   function goToStep2() {
     if (!csvRows.length) {
       return setToast({
         open: true,
         type: "error",
-        message: "Upload a CSV before continuing.",
+        message: "Upload CSV before continuing.",
       });
     }
 
-    // Transform CSV rows → vendor objects based on mapping
     const vendors = csvRows.map((row) => {
       const mapped = {};
       for (const col in columnMapping) {
@@ -173,24 +166,19 @@ Return valid JSON ONLY with:
       return mapped;
     });
 
-    // Save to localStorage so Step 2 can load it
     localStorage.setItem("onboardingVendors", JSON.stringify(vendors));
-
     router.push("/admin/onboarding-wizard/step2");
   }
 
-  // ==========================================================
-  // COLUMN MAPPING UI
-  // ==========================================================
+  // -----------------------------------------------------------
+  // RENDER COLUMN MAPPING UI
+  // -----------------------------------------------------------
   function renderColumnMapping() {
     if (!headerColumns.length) return null;
 
     return (
-      <div style={{ marginTop: 20 }}>
-        <h3 style={{ color: "#e5e7eb", marginBottom: 10 }}>Column Mapping</h3>
-        <p style={{ fontSize: 13, color: "#9ca3af" }}>
-          AI guessed the mappings. Review or override below.
-        </p>
+      <div style={{ marginTop: 30 }}>
+        <h3 style={{ marginBottom: 10 }}>Column Mapping</h3>
 
         {headerColumns.map((col, idx) => (
           <div
@@ -205,10 +193,9 @@ Return valid JSON ONLY with:
             <div
               style={{
                 width: 200,
-                color: "#e5e7eb",
                 fontSize: 14,
                 padding: 6,
-                borderRadius: 8,
+                borderRadius: 10,
                 background: "rgba(15,23,42,0.9)",
                 border: "1px solid rgba(148,163,184,0.4)",
               }}
@@ -219,21 +206,24 @@ Return valid JSON ONLY with:
             <select
               value={columnMapping[col] || ""}
               onChange={(e) =>
-                setColumnMapping((prev) => ({ ...prev, [col]: e.target.value }))
+                setColumnMapping((prev) => ({
+                  ...prev,
+                  [col]: e.target.value,
+                }))
               }
               style={{
                 flex: 1,
                 padding: "6px 10px",
-                borderRadius: 8,
-                background: "rgba(30,41,59,0.9)",
+                borderRadius: 10,
+                background: "rgba(31,41,55,0.95)",
                 color: "white",
                 border: "1px solid rgba(148,163,184,0.4)",
               }}
             >
               <option value="">Ignore this column</option>
-              {ACCEPTABLE_FIELDS.map((field) => (
-                <option key={field} value={field}>
-                  {field}
+              {ACCEPTABLE_FIELDS.map((f) => (
+                <option key={f} value={f}>
+                  {f}
                 </option>
               ))}
             </select>
@@ -243,9 +233,9 @@ Return valid JSON ONLY with:
     );
   }
 
-  // ==========================================================
-  // PREVIEW FIRST 10 VENDORS
-  // ==========================================================
+  // -----------------------------------------------------------
+  // VENDOR PREVIEW TABLE
+  // -----------------------------------------------------------
   function renderPreviewTable() {
     if (!csvRows.length) return null;
 
@@ -253,14 +243,13 @@ Return valid JSON ONLY with:
 
     return (
       <div style={{ marginTop: 30 }}>
-        <h3 style={{ color: "#e5e7eb" }}>Vendor Preview (first 10)</h3>
+        <h3>Vendor Preview (first 10 rows)</h3>
 
         <table
           style={{
             width: "100%",
             marginTop: 10,
             borderCollapse: "collapse",
-            color: "#e5e7eb",
             fontSize: 13,
           }}
         >
@@ -271,8 +260,8 @@ Return valid JSON ONLY with:
                   key={col}
                   style={{
                     borderBottom: "1px solid rgba(148,163,184,0.4)",
-                    paddingBottom: 6,
                     textAlign: "left",
+                    paddingBottom: 4,
                   }}
                 >
                   {columnMapping[col] || "(ignored)"}
@@ -303,89 +292,89 @@ Return valid JSON ONLY with:
     );
   }
 
-  // ==========================================================
-  // MAIN RENDER
-  // ==========================================================
+  // -----------------------------------------------------------
+  // PAGE OUTPUT (WRAPPED IN COCKPIT V9)
+  // -----------------------------------------------------------
   return (
-    <div style={{ padding: 40, color: "white" }}>
-      <h1 style={{ fontSize: 28, marginBottom: 20 }}>
-        AI Onboarding Wizard — Step 1: CSV Import
-      </h1>
+    <CockpitWizardLayout>
+      <div style={{ position: "relative", zIndex: 3 }}>
+        <h1 style={{ fontSize: 28, marginBottom: 20 }}>
+          AI Onboarding Wizard — Step 1 (CSV Import)
+        </h1>
 
-      {/* CSV Upload */}
-      <div
-        style={{
-          border: "2px dashed rgba(148,163,184,0.4)",
-          padding: 30,
-          borderRadius: 16,
-          background: "rgba(15,23,42,0.6)",
-        }}
-      >
-        <input
-          type="file"
-          accept=".csv"
-          onChange={handleCsvSelected}
-          style={{ fontSize: 14, marginBottom: 10 }}
-        />
+        {/* UPLOAD BOX */}
+        <div
+          style={{
+            borderRadius: 22,
+            padding: 24,
+            background: "rgba(15,23,42,0.78)",
+            border: "1px solid rgba(80,120,255,0.35)",
+            boxShadow:
+              "0 0 35px rgba(64,106,255,0.25), inset 0 0 28px rgba(20,30,60,0.5)",
+            backdropFilter: "blur(12px)",
+          }}
+        >
+          <input type="file" accept=".csv" onChange={handleCsvSelected} />
 
-        {csvFile && (
-          <div style={{ marginTop: 10, fontSize: 13 }}>
-            Uploaded: <strong>{csvFile.name}</strong>
-          </div>
+          {csvFile && (
+            <div style={{ marginTop: 10, fontSize: 13 }}>
+              Uploaded: <strong>{csvFile.name}</strong>
+            </div>
+          )}
+
+          <button
+            onClick={handleAiSuggestMapping}
+            disabled={!csvFile || loading}
+            style={{
+              marginTop: 14,
+              padding: "10px 16px",
+              borderRadius: 12,
+              background:
+                "linear-gradient(90deg,#38bdf8,#0ea5e9,#1e40af)",
+              border: "1px solid rgba(56,189,248,0.8)",
+              color: "white",
+              cursor: "pointer",
+            }}
+          >
+            {loading ? "Analyzing…" : "⚡ AI Map Columns"}
+          </button>
+        </div>
+
+        {renderColumnMapping()}
+        {renderPreviewTable()}
+
+        {/* CONTINUE BUTTON */}
+        {csvRows.length > 0 && (
+          <button
+            onClick={goToStep2}
+            style={{
+              marginTop: 30,
+              padding: "12px 20px",
+              borderRadius: 12,
+              background: "linear-gradient(90deg,#38bdf8,#0ea5e9)",
+              border: "1px solid rgba(56,189,248,0.8)",
+              color: "white",
+              cursor: "pointer",
+              fontSize: 16,
+              fontWeight: 600,
+            }}
+          >
+            Continue → Step 2
+          </button>
         )}
 
-        <button
-          onClick={handleAiSuggestMapping}
-          disabled={!csvFile || loading}
-          style={{
-            marginTop: 14,
-            padding: "10px 16px",
-            borderRadius: 10,
-            background: "linear-gradient(90deg,#38bdf8,#0ea5e9,#1e40af)",
-            color: "white",
-            cursor: "pointer",
-            border: "1px solid rgba(56,189,248,0.8)",
-          }}
-        >
-          {loading ? "Analyzing…" : "⚡ AI Map Columns"}
-        </button>
+        <ToastV2
+          open={toast.open}
+          type={toast.type}
+          message={toast.message}
+          onClose={() =>
+            setToast((prev) => ({
+              ...prev,
+              open: false,
+            }))
+          }
+        />
       </div>
-
-      {renderColumnMapping()}
-      {renderPreviewTable()}
-
-      {/* CONTINUE TO STEP 2 */}
-      {csvRows.length > 0 && (
-        <button
-          onClick={goToStep2}
-          style={{
-            marginTop: 30,
-            padding: "12px 20px",
-            borderRadius: 12,
-            background: "linear-gradient(90deg,#38bdf8,#0ea5e9)",
-            color: "white",
-            border: "1px solid rgba(56,189,248,0.8)",
-            cursor: "pointer",
-            fontSize: 16,
-            fontWeight: 600,
-          }}
-        >
-          Continue → AI Requirements Generator
-        </button>
-      )}
-
-      <ToastV2
-        open={toast.open}
-        message={toast.message}
-        type={toast.type}
-        onClose={() =>
-          setToast((prev) => ({
-            ...prev,
-            open: false,
-          }))
-        }
-      />
-    </div>
+    </CockpitWizardLayout>
   );
 }
- 
