@@ -2,45 +2,63 @@
 // ==========================================================
 // AI ONBOARDING WIZARD — STEP 2
 // Requirements Generation → Vendor Selection → AI Email Invites
+// Fully wired to load vendor data from Step 1 (localStorage)
 // ==========================================================
 
 import { useState, useEffect } from "react";
 import { openai } from "../../../lib/openaiClient";
 import ToastV2 from "../../../components/ToastV2";
 
-export default function OnboardingWizardStep2({ vendors = [] }) {
-  // STEP 2 STATES
-  const [profiles, setProfiles] = useState([]);
+export default function OnboardingWizardStep2() {
+  // -----------------------------------------------------------
+  // STEP 2 STATE
+  // -----------------------------------------------------------
+  const [vendors, setVendors] = useState([]);             // ✅ loaded from LS
+  const [profiles, setProfiles] = useState([]);           // AI-created profiles
   const [loading, setLoading] = useState(false);
 
-  // NEW — vendor selection + AI onboarding invite system
+  // Invite & selection state
   const [selectedVendorIds, setSelectedVendorIds] = useState([]);
   const [sendingInvites, setSendingInvites] = useState(false);
   const [inviteResults, setInviteResults] = useState(null);
   const [resultsOpen, setResultsOpen] = useState(false);
 
+  // Toast
   const [toast, setToast] = useState({
     open: false,
     message: "",
     type: "success",
   });
 
-  // Redirect safety if no vendor data
+  // -----------------------------------------------------------
+  // LOAD VENDORS FROM STEP 1 (localStorage)
+  // -----------------------------------------------------------
   useEffect(() => {
-    if (!vendors.length) {
-      console.warn("Step 2 loaded without vendors. Add router state later.");
+    try {
+      const raw = typeof window !== "undefined"
+        ? localStorage.getItem("onboardingVendors")
+        : null;
+
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        setVendors(parsed);
+      } else {
+        console.warn("⚠ Step 2: No vendor data found in localStorage.");
+      }
+    } catch (err) {
+      console.error("Failed to load vendors:", err);
     }
-  }, [vendors]);
+  }, []);
 
   // -----------------------------------------------------------
-  // STEP 2 — AI Generate Requirements Profiles
+  // STEP 2 — AI GENERATE REQUIREMENTS PROFILES
   // -----------------------------------------------------------
   async function generateRequirements() {
     if (!vendors.length) {
       return setToast({
         open: true,
         type: "error",
-        message: "No vendors found. Upload CSV in Step 1 first.",
+        message: "No vendors found — upload CSV in Step 1.",
       });
     }
 
@@ -83,13 +101,13 @@ Generate a requirements profile in JSON ONLY:
           ],
         });
 
-        let raw = completion.choices[0].message?.content?.trim() || "";
+        let raw = completion.choices?.[0]?.message?.content?.trim() || "";
         const first = raw.indexOf("{");
         const last = raw.lastIndexOf("}");
         const json = JSON.parse(raw.slice(first, last + 1));
 
         newProfiles.push({
-          vendor: vendor,
+          vendor,
           profile: json,
         });
       }
@@ -102,11 +120,11 @@ Generate a requirements profile in JSON ONLY:
         message: "AI generated requirements for all vendors.",
       });
     } catch (err) {
-      console.error(err);
+      console.error("Requirements generation error:", err);
       setToast({
         open: true,
         type: "error",
-        message: "Failed generating requirements.",
+        message: "AI failed generating requirements.",
       });
     } finally {
       setLoading(false);
@@ -114,7 +132,7 @@ Generate a requirements profile in JSON ONLY:
   }
 
   // -----------------------------------------------------------
-  // SELECT / DESELECT vendor for onboarding
+  // SELECT / DESELECT VENDOR
   // -----------------------------------------------------------
   function toggleVendorSelection(id) {
     setSelectedVendorIds((prev) =>
@@ -123,7 +141,7 @@ Generate a requirements profile in JSON ONLY:
   }
 
   // -----------------------------------------------------------
-  // SEND AI ONBOARDING EMAILS
+  // SEND AI ONBOARDING EMAIL INVITES
   // -----------------------------------------------------------
   async function handleSendInvites() {
     if (!selectedVendorIds.length) {
@@ -141,7 +159,7 @@ Generate a requirements profile in JSON ONLY:
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          orgId: vendors[0]?.org_id || null,
+          orgId: vendors[0]?.org_id || 1,
           vendorIds: selectedVendorIds,
         }),
       });
@@ -149,7 +167,7 @@ Generate a requirements profile in JSON ONLY:
       const json = await res.json();
 
       if (!res.ok || !json.ok) {
-        throw new Error(json.error || "Onboarding emails failed.");
+        throw new Error(json.error || "Invite sending failed");
       }
 
       setInviteResults(json);
@@ -158,14 +176,14 @@ Generate a requirements profile in JSON ONLY:
       setToast({
         open: true,
         type: "success",
-        message: `Sent: ${json.sentCount}, Failed: ${json.failedCount}`,
+        message: `Sent: ${json.sentCount}  Failed: ${json.failedCount}`,
       });
     } catch (err) {
-      console.error(err);
+      console.error("Invite error:", err);
       setToast({
         open: true,
         type: "error",
-        message: err.message || "Failed sending invites.",
+        message: err.message || "Failed to send invites.",
       });
     } finally {
       setSendingInvites(false);
@@ -195,7 +213,6 @@ Generate a requirements profile in JSON ONLY:
               border: "1px solid rgba(148,163,184,0.3)",
             }}
           >
-            {/* SELECT BOX */}
             <label
               style={{
                 display: "flex",
@@ -211,7 +228,7 @@ Generate a requirements profile in JSON ONLY:
                 style={{ width: 18, height: 18 }}
               />
               <span style={{ fontSize: 15, fontWeight: 600 }}>
-                {item.vendor.vendor_name}
+                {item.vendor.vendor_name || "(Unnamed Vendor)"}
               </span>
             </label>
 
@@ -235,7 +252,7 @@ Generate a requirements profile in JSON ONLY:
   }
 
   // -----------------------------------------------------------
-  // INVITE RESULT DRAWER
+  // RESULTS DRAWER
   // -----------------------------------------------------------
   function renderInviteResults() {
     if (!resultsOpen || !inviteResults) return null;
@@ -259,7 +276,7 @@ Generate a requirements profile in JSON ONLY:
         <h2 style={{ marginTop: 0 }}>Onboarding Email Results</h2>
 
         <p>
-          <strong>Sent:</strong> {inviteResults.sentCount}
+          <strong>Sent:</strong> {inviteResults.sentCount}  
           <br />
           <strong>Failed:</strong> {inviteResults.failedCount}
         </p>
@@ -270,7 +287,13 @@ Generate a requirements profile in JSON ONLY:
         </pre>
 
         <h3>Failed</h3>
-        <pre style={{ whiteSpace: "pre-wrap", fontSize: 12, color: "#fca5a5" }}>
+        <pre
+          style={{
+            whiteSpace: "pre-wrap",
+            fontSize: 12,
+            color: "#fca5a5",
+          }}
+        >
 {JSON.stringify(inviteResults.failed, null, 2)}
         </pre>
 
@@ -293,7 +316,7 @@ Generate a requirements profile in JSON ONLY:
   }
 
   // -----------------------------------------------------------
-  // PAGE OUTPUT
+  // PAGE RENDER
   // -----------------------------------------------------------
   return (
     <div style={{ padding: 40, color: "white" }}>
@@ -307,8 +330,7 @@ Generate a requirements profile in JSON ONLY:
         style={{
           padding: "12px 18px",
           borderRadius: 12,
-          background:
-            "linear-gradient(90deg,#38bdf8,#0ea5e9,#1e40af)",
+          background: "linear-gradient(90deg,#38bdf8,#0ea5e9,#1e40af)",
           border: "1px solid rgba(56,189,248,0.8)",
           cursor: loading ? "not-allowed" : "pointer",
           fontSize: 15,
