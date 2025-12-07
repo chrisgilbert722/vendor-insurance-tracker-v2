@@ -170,26 +170,33 @@ export default function GlobalVendorTable({ orgId }) {
         >
           <thead>
             <tr>
-              {["Vendor", "Status", "AI Score", "Progress", "Alerts", "Primary Policy", "Expires"].map(
-                (h) => (
-                  <th
-                    key={h}
-                    style={{
-                      textAlign: "left",
-                      padding: "8px 10px",
-                      background: "rgba(15,23,42,1)",
-                      color: "#9ca3af",
-                      borderBottom:
-                        "1px solid rgba(51,65,85,0.9)",
-                      fontWeight: 600,
-                    }}
-                  >
-                    {h}
-                  </th>
-                )
-              )}
+              {[
+                "Vendor",
+                "Status",
+                "AI Score",
+                "Progress",
+                "Alerts",
+                "Primary Policy",
+                "Expires",
+                "Actions",        // ⭐ NEW COLUMN
+              ].map((h) => (
+                <th
+                  key={h}
+                  style={{
+                    textAlign: "left",
+                    padding: "8px 10px",
+                    background: "rgba(15,23,42,1)",
+                    color: "#9ca3af",
+                    borderBottom: "1px solid rgba(51,65,85,0.9)",
+                    fontWeight: 600,
+                  }}
+                >
+                  {h}
+                </th>
+              ))}
             </tr>
           </thead>
+
           <tbody>
             {vendors.map((v) => (
               <tr
@@ -199,11 +206,11 @@ export default function GlobalVendorTable({ orgId }) {
                     "linear-gradient(90deg,rgba(15,23,42,0.98),rgba(15,23,42,0.94))",
                 }}
               >
+                {/* Vendor name */}
                 <td
                   style={{
                     padding: "8px 10px",
-                    borderBottom:
-                      "1px solid rgba(51,65,85,0.6)",
+                    borderBottom: "1px solid rgba(51,65,85,0.6)",
                     color: "#e5e7eb",
                   }}
                 >
@@ -219,11 +226,11 @@ export default function GlobalVendorTable({ orgId }) {
                   </a>
                 </td>
 
+                {/* Status */}
                 <td
                   style={{
                     padding: "8px 10px",
-                    borderBottom:
-                      "1px solid rgba(51,65,85,0.6)",
+                    borderBottom: "1px solid rgba(51,65,85,0.6)",
                     color:
                       v.compliance.status === "fail"
                         ? "#fecaca"
@@ -237,11 +244,11 @@ export default function GlobalVendorTable({ orgId }) {
                   {String(v.compliance.status || "unknown").toUpperCase()}
                 </td>
 
+                {/* AI Score */}
                 <td
                   style={{
                     padding: "8px 10px",
-                    borderBottom:
-                      "1px solid rgba(51,65,85,0.6)",
+                    borderBottom: "1px solid rgba(51,65,85,0.6)",
                     color:
                       v.aiScore >= 80
                         ? "#22c55e"
@@ -254,11 +261,11 @@ export default function GlobalVendorTable({ orgId }) {
                   {v.aiScore}
                 </td>
 
+                {/* Progress bar */}
                 <td
                   style={{
                     padding: "8px 10px",
-                    borderBottom:
-                      "1px solid rgba(51,65,85,0.6)",
+                    borderBottom: "1px solid rgba(51,65,85,0.6)",
                   }}
                 >
                   {v.compliance.totalRules > 0 ? (
@@ -268,7 +275,6 @@ export default function GlobalVendorTable({ orgId }) {
                         height: 4,
                         borderRadius: 999,
                         background: "rgba(15,23,42,1)",
-                        overflow: "hidden",
                       }}
                     >
                       <div
@@ -288,34 +294,33 @@ export default function GlobalVendorTable({ orgId }) {
                   )}
                 </td>
 
+                {/* Alerts */}
                 <td
                   style={{
                     padding: "8px 10px",
-                    borderBottom:
-                      "1px solid rgba(51,65,85,0.6)",
-                    color:
-                      v.alertsCount > 0 ? "#fb7185" : "#6b7280",
+                    borderBottom: "1px solid rgba(51,65,85,0.6)",
+                    color: v.alertsCount > 0 ? "#fb7185" : "#6b7280",
                   }}
                 >
                   {v.alertsCount}
                 </td>
 
+                {/* Primary Policy */}
                 <td
                   style={{
                     padding: "8px 10px",
-                    borderBottom:
-                      "1px solid rgba(51,65,85,0.6)",
+                    borderBottom: "1px solid rgba(51,65,85,0.6)",
                     color: "#e5e7eb",
                   }}
                 >
                   {v.primaryPolicy.coverage_type || "—"}
                 </td>
 
+                {/* Expires */}
                 <td
                   style={{
                     padding: "8px 10px",
-                    borderBottom:
-                      "1px solid rgba(51,65,85,0.6)",
+                    borderBottom: "1px solid rgba(51,65,85,0.6)",
                     color:
                       v.primaryPolicy.daysLeft != null &&
                       v.primaryPolicy.daysLeft <= 30
@@ -326,6 +331,33 @@ export default function GlobalVendorTable({ orgId }) {
                   {v.primaryPolicy.expiration_date || "—"}{" "}
                   {v.primaryPolicy.daysLeft != null &&
                     `(${v.primaryPolicy.daysLeft} d)`}
+                </td>
+
+                {/* ⭐ NEW ACTIONS COLUMN */}
+                <td
+                  style={{
+                    padding: "8px 10px",
+                    borderBottom: "1px solid rgba(51,65,85,0.6)",
+                  }}
+                >
+                  <a
+                    href={`/admin/contracts/review?vendorId=${v.id}`}
+                    style={{
+                      padding: "6px 10px",
+                      borderRadius: 999,
+                      border: "1px solid #22c55e",
+                      background: "rgba(15,23,42,0.85)",
+                      color: "#22c55e",
+                      fontSize: 11,
+                      fontWeight: 600,
+                      textDecoration: "none",
+                      whiteSpace: "nowrap",
+                      display: "inline-block",
+                      boxShadow: "0 0 8px rgba(34,197,94,0.35)",
+                    }}
+                  >
+                    ⚖️ Review Contract
+                  </a>
                 </td>
               </tr>
             ))}
