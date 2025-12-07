@@ -354,6 +354,10 @@ export default function RequirementsV5Page() {
   const [conflictOpen, setConflictOpen] = useState(false);
   const [conflictLoading, setConflictLoading] = useState(false);
 
+  // NEW — vendor requirements saving state
+  const [targetVendorId, setTargetVendorId] = useState("");
+  const [savingVendorProfile, setSavingVendorProfile] = useState(false);
+
   const activeGroup = useMemo(
     () => groups.find((g) => g.id === activeGroupId) || null,
     [groups, activeGroupId]
@@ -363,7 +367,6 @@ export default function RequirementsV5Page() {
     () => getConflictedRuleIds(conflicts),
     [conflicts]
   );
-
   // -------------------------------------
   // LOADERS
   // -------------------------------------
@@ -602,7 +605,7 @@ export default function RequirementsV5Page() {
 
   // -------------------------------------
   // ENGINE RUN (V5 LOGGING, still uses run-v3 backend)
-// -------------------------------------
+  // -------------------------------------
   async function handleRunEngine() {
     try {
       setRunningEngine(true);
@@ -658,7 +661,7 @@ export default function RequirementsV5Page() {
 
   // -------------------------------------
   // SAMPLE POLICY EVALUATION (V5)
-// -------------------------------------
+  // -------------------------------------
   function handleEvaluateSamplePolicy() {
     setEvaluation({ ok: false, error: "", results: {} });
 
@@ -684,7 +687,7 @@ export default function RequirementsV5Page() {
 
   // -------------------------------------
   // V5 AI RULE BUILDER (real handler)
-// -------------------------------------
+  // -------------------------------------
   async function handleAiBuildRules() {
     if (!aiInput.trim()) {
       setToast({
@@ -756,7 +759,7 @@ export default function RequirementsV5Page() {
 
   // -------------------------------------
   // AI RULE SUGGEST (existing lightweight flow)
-// -------------------------------------
+  // -------------------------------------
   function handleOpenAiSuggest() {
     if (!activeGroup) {
       return setToast({
@@ -884,6 +887,94 @@ export default function RequirementsV5Page() {
     }
   }
 
+  // -------------------------------------
+  // SAVE CURRENT GROUP + RULES → vendor.requirements_json
+  // -------------------------------------
+  async function handleSaveRequirementsForVendor() {
+    if (!canEdit) {
+      return setToast({
+        open: true,
+        type: "error",
+        message: "You don't have permission to edit requirements.",
+      });
+    }
+
+    if (!orgId) {
+      return setToast({
+        open: true,
+        type: "error",
+        message: "No active org selected.",
+      });
+    }
+
+    if (!activeGroup) {
+      return setToast({
+        open: true,
+        type: "error",
+        message: "Select a group first.",
+      });
+    }
+
+    if (!targetVendorId || !String(targetVendorId).trim()) {
+      return setToast({
+        open: true,
+        type: "error",
+        message: "Enter a vendor ID.",
+      });
+    }
+
+    if (!rules.length) {
+      return setToast({
+        open: true,
+        type: "error",
+        message: "This group has no rules to save.",
+      });
+    }
+
+    try {
+      setSavingVendorProfile(true);
+
+      const profile = {
+        version: "v5",
+        orgId,
+        groupId: activeGroup.id,
+        groupName: activeGroup.name || "",
+        description: activeGroup.description || "",
+        createdAt: new Date().toISOString(),
+        rules,
+      };
+
+      const res = await fetch("/api/vendor/save-requirements", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          vendorId: targetVendorId,
+          orgId,
+          requirementsProfile: profile,
+        }),
+      });
+
+      const json = await res.json();
+      if (!res.ok || !json.ok) {
+        throw new Error(json.error || "Failed to save vendor requirements.");
+      }
+
+      setToast({
+        open: true,
+        type: "success",
+        message: `Requirements saved to vendor #${targetVendorId}.`,
+      });
+    } catch (err) {
+      console.error("Save vendor requirements error", err);
+      setToast({
+        open: true,
+        type: "error",
+        message: err.message || "Failed to save vendor requirements.",
+      });
+    } finally {
+      setSavingVendorProfile(false);
+    }
+  }
   // -------------------------------------
   // RENDER — PAGE LAYOUT
   // -------------------------------------
@@ -1462,7 +1553,6 @@ Must include Additional Insured and Waiver of Subrogation."`}
               </div>
             </DndProvider>
           </div>
-
           {/* RIGHT PANEL — ENGINE + EVAL + AI SUGGEST + CONFLICT */}
           <div
             style={{
@@ -1723,6 +1813,117 @@ Must include Additional Insured and Waiver of Subrogation."`}
                     );
                   })
                 )}
+              </div>
+            </div>
+
+            {/* SAVE TO VENDOR REQUIREMENTS_JSON */}
+            <div
+              style={{
+                borderTop: "1px solid rgba(55,65,81,0.9)",
+                paddingTop: 12,
+                marginTop: 12,
+              }}
+            >
+              <div
+                style={{
+                  fontSize: 12,
+                  textTransform: "uppercase",
+                  letterSpacing: 1.4,
+                  color: "#9ca3af",
+                  marginBottom: 6,
+                }}
+              >
+                Vendor Requirements Profile
+              </div>
+
+              <div
+                style={{
+                  fontSize: 12,
+                  color: "#cbd5f5",
+                  marginBottom: 10,
+                }}
+              >
+                Save the{" "}
+                <span style={{ color: "#e5e7eb" }}>
+                  current group + rules
+                </span>{" "}
+                as the vendor&apos;s{" "}
+                <code style={{ color: "#38bdf8" }}>requirements_json</code>.
+                This is what Document → Alert Intelligence V2 will use on COI
+                upload.
+              </div>
+
+              <div
+                style={{
+                  display: "flex",
+                  gap: 8,
+                  marginBottom: 8,
+                  alignItems: "center",
+                }}
+              >
+                <input
+                  type="number"
+                  placeholder="Vendor ID"
+                  value={targetVendorId}
+                  onChange={(e) => setTargetVendorId(e.target.value)}
+                  style={{
+                    flex: 1,
+                    borderRadius: 10,
+                    padding: "6px 10px",
+                    border: "1px solid rgba(51,65,85,0.9)",
+                    background: "rgba(15,23,42,0.96)",
+                    color: "#e5e7eb",
+                    fontSize: 12,
+                  }}
+                />
+
+                <button
+                  onClick={handleSaveRequirementsForVendor}
+                  disabled={
+                    !canEdit ||
+                    !orgId ||
+                    !activeGroup ||
+                    !rules.length ||
+                    savingVendorProfile
+                  }
+                  style={{
+                    padding: "7px 12px",
+                    borderRadius: 10,
+                    border: "1px solid rgba(56,189,248,0.9)",
+                    background:
+                      !canEdit ||
+                      !orgId ||
+                      !activeGroup ||
+                      !rules.length ||
+                      savingVendorProfile
+                        ? "rgba(56,189,248,0.25)"
+                        : "linear-gradient(90deg,#38bdf8,#0ea5e9)",
+                    color: "white",
+                    fontSize: 12,
+                    fontWeight: 500,
+                    cursor:
+                      !canEdit ||
+                      !orgId ||
+                      !activeGroup ||
+                      !rules.length ||
+                      savingVendorProfile
+                        ? "not-allowed"
+                        : "pointer",
+                  }}
+                >
+                  {savingVendorProfile ? "Saving…" : "Save to Vendor"}
+                </button>
+              </div>
+
+              <div
+                style={{
+                  fontSize: 11,
+                  color: "#9ca3af",
+                }}
+              >
+                Tip: Use different groups as templates (Standard Sub, Roofer,
+                Snow Removal, Professional Services, etc.) and map them to each
+                vendor individually.
               </div>
             </div>
 
@@ -2009,129 +2210,129 @@ Must include Additional Insured and Waiver of Subrogation."`}
                 Conflict Analysis
               </div>
 
-            <button
-              onClick={() => setConflictOpen(false)}
-              style={{
-                borderRadius: 999,
-                padding: "4px 8px",
-                fontSize: 12,
-                background: "rgba(15,23,42,0.8)",
-                border: "1px solid rgba(148,163,184,0.6)",
-                color: "#9ca3af",
-                cursor: "pointer",
-              }}
-            >
-              Close
-            </button>
-          </div>
-
-          {conflictLoading && (
-            <div style={{ color: "#cbd5f5", fontSize: 13 }}>
-              AI is analyzing all rules for conflicts…
-            </div>
-          )}
-
-          {!conflictLoading && conflicts.length === 0 && (
-            <div
-              style={{
-                fontSize: 13,
-                color: "#9ca3af",
-                padding: 12,
-                borderRadius: 12,
-                border: "1px solid rgba(55,65,81,0.6)",
-                background: "rgba(15,23,42,0.8)",
-              }}
-            >
-              ✅ No conflicts detected.
-            </div>
-          )}
-
-          {!conflictLoading &&
-            conflicts.length > 0 &&
-            conflicts.map((c, idx) => (
-              <div
-                key={idx}
+              <button
+                onClick={() => setConflictOpen(false)}
                 style={{
-                  padding: 14,
-                  borderRadius: 14,
-                  marginBottom: 12,
-                  background:
-                    "linear-gradient(145deg,rgba(31,41,55,0.8),rgba(17,24,39,0.9))",
-                  border: "1px solid rgba(239,68,68,0.6)",
+                  borderRadius: 999,
+                  padding: "4px 8px",
+                  fontSize: 12,
+                  background: "rgba(15,23,42,0.8)",
+                  border: "1px solid rgba(148,163,184,0.6)",
+                  color: "#9ca3af",
+                  cursor: "pointer",
                 }}
               >
-                <div
-                  style={{
-                    color: "#fca5a5",
-                    fontWeight: 600,
-                    marginBottom: 6,
-                    fontSize: 14,
-                  }}
-                >
-                  ⚠ Conflict #{idx + 1}
-                </div>
+                Close
+              </button>
+            </div>
 
-                <div style={{ color: "#e5e7eb", fontSize: 13 }}>
-                  {c.summary}
-                </div>
-
-                <div
-                  style={{
-                    color: "#fcd34d",
-                    fontSize: 12,
-                    marginTop: 8,
-                    fontStyle: "italic",
-                  }}
-                >
-                  Suggestion: {c.suggestion}
-                </div>
+            {conflictLoading && (
+              <div style={{ color: "#cbd5f5", fontSize: 13 }}>
+                AI is analyzing all rules for conflicts…
               </div>
-            ))}
+            )}
+
+            {!conflictLoading && conflicts.length === 0 && (
+              <div
+                style={{
+                  fontSize: 13,
+                  color: "#9ca3af",
+                  padding: 12,
+                  borderRadius: 12,
+                  border: "1px solid rgba(55,65,81,0.6)",
+                  background: "rgba(15,23,42,0.8)",
+                }}
+              >
+                ✅ No conflicts detected.
+              </div>
+            )}
+
+            {!conflictLoading &&
+              conflicts.length > 0 &&
+              conflicts.map((c, idx) => (
+                <div
+                  key={idx}
+                  style={{
+                    padding: 14,
+                    borderRadius: 14,
+                    marginBottom: 12,
+                    background:
+                      "linear-gradient(145deg,rgba(31,41,55,0.8),rgba(17,24,39,0.9))",
+                    border: "1px solid rgba(239,68,68,0.6)",
+                  }}
+                >
+                  <div
+                    style={{
+                      color: "#fca5a5",
+                      fontWeight: 600,
+                      marginBottom: 6,
+                      fontSize: 14,
+                    }}
+                  >
+                    ⚠ Conflict #{idx + 1}
+                  </div>
+
+                  <div style={{ color: "#e5e7eb", fontSize: 13 }}>
+                    {c.summary}
+                  </div>
+
+                  <div
+                    style={{
+                      color: "#fcd34d",
+                      fontSize: 12,
+                      marginTop: 8,
+                      fontStyle: "italic",
+                    }}
+                  >
+                    Suggestion: {c.suggestion}
+                  </div>
+                </div>
+              ))}
+          </div>
+        )}
+      </div>
+
+      {/* SAVING INDICATOR */}
+      {saving && (
+        <div
+          style={{
+            position: "fixed",
+            right: 18,
+            bottom: 18,
+            padding: "6px 12px",
+            borderRadius: 999,
+            background: "rgba(15,23,42,0.9)",
+            border: "1px solid rgba(148,163,184,0.7)",
+            color: "#e5e7eb",
+            fontSize: 12,
+            zIndex: 50,
+          }}
+        >
+          Saving…
         </div>
       )}
-    </div>
 
-    {/* SAVING INDICATOR */}
-    {saving && (
-      <div
-        style={{
-          position: "fixed",
-          right: 18,
-          bottom: 18,
-          padding: "6px 12px",
-          borderRadius: 999,
-          background: "rgba(15,23,42,0.9)",
-          border: "1px solid rgba(148,163,184,0.7)",
-          color: "#e5e7eb",
-          fontSize: 12,
-          zIndex: 50,
-        }}
-      >
-        Saving…
-      </div>
-    )}
-
-    {/* TOAST */}
-    <ToastV2
-      open={toast.open}
-      message={toast.message}
-      type={toast.type}
-      onClose={() =>
-        setToast((p) => ({
-          ...p,
-          open: false,
-        }))
-      }
-    />
-
-    {/* GLOBAL SPIN ANIMATION */}
-    <style jsx global>{`
-      @keyframes spin {
-        to {
-          transform: rotate(360deg);
+      {/* TOAST */}
+      <ToastV2
+        open={toast.open}
+        message={toast.message}
+        type={toast.type}
+        onClose={() =>
+          setToast((p) => ({
+            ...p,
+            open: false,
+          }))
         }
-      }
-    `}</style>
-  </div>
-);
+      />
+
+      {/* GLOBAL SPIN ANIMATION */}
+      <style jsx global>{`
+        @keyframes spin {
+          to {
+            transform: rotate(360deg);
+          }
+        }
+      `}</style>
+    </div>
+  );
 }
