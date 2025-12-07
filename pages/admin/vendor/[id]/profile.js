@@ -234,6 +234,7 @@ export default function AdminVendorProfile() {
             marginBottom: 24,
           }}
         >
+          {/* LEFT SIDE OF HEADER */}
           <div>
             <div
               style={{
@@ -266,6 +267,7 @@ export default function AdminVendorProfile() {
               </span>
             </div>
 
+            {/* Portal Token */}
             {portalToken && (
               <div
                 style={{ marginTop: 4, fontSize: 11, color: GP.textSoft }}
@@ -285,87 +287,114 @@ export default function AdminVendorProfile() {
             )}
           </div>
 
-          {/* SUMMARY STATS */}
+          {/* ⭐ RIGHT SIDE — CONTRACT REVIEW BUTTON */}
           <div
             style={{
               display: "flex",
-              flexWrap: "wrap",
+              flexDirection: "column",
               gap: 10,
-              alignSelf: "flex-start",
-              justifyContent: "flex-end",
+              alignItems: "flex-end",
             }}
           >
-            <div
+            <button
+              onClick={() =>
+                router.push(`/admin/contracts/review?vendorId=${vendor.id}`)
+              }
               style={{
-                minWidth: 120,
-                padding: "6px 10px",
-                borderRadius: 12,
-                border: `1px solid ${GP.border}`,
-                background: "rgba(15,23,42,0.95)",
+                padding: "8px 14px",
+                borderRadius: 999,
+                border: `1px solid ${GP.neonGreen}`,
+                background: "rgba(15,23,42,0.9)",
+                color: GP.neonGreen,
+                fontSize: 12,
+                fontWeight: 500,
+                cursor: "pointer",
+                whiteSpace: "nowrap",
               }}
             >
-              <div style={{ fontSize: 11, color: GP.textSoft }}>
-                Total Alerts
-              </div>
-              <div style={{ fontSize: 18, fontWeight: 600 }}>
-                {metrics?.totalAlerts ?? alerts.length}
-              </div>
-            </div>
-
-            <div
-              style={{
-                minWidth: 120,
-                padding: "6px 10px",
-                borderRadius: 12,
-                border: "1px solid rgba(248,113,113,0.5)",
-                background: "rgba(120,53,15,0.4)",
-              }}
-            >
-              <div style={{ fontSize: 11, color: GP.textSoft }}>
-                Critical / High
-              </div>
-              <div style={{ fontSize: 16, fontWeight: 600 }}>
-                {(metrics?.criticalAlerts ?? criticalAlerts.length) +
-                  (metrics?.highAlerts ?? highAlerts.length)}
-              </div>
-            </div>
-
-            <div
-              style={{
-                minWidth: 140,
-                padding: "6px 10px",
-                borderRadius: 12,
-                border: `1px solid ${GP.border}`,
-                background: "rgba(15,23,42,0.95)",
-              }}
-            >
-              <div style={{ fontSize: 11, color: GP.textSoft }}>
-                Coverage Req.
-              </div>
-              <div style={{ fontSize: 16, fontWeight: 600 }}>
-                {metrics?.coverageCount ?? requirements.length}
-              </div>
-            </div>
-
-            <div
-              style={{
-                minWidth: 160,
-                padding: "6px 10px",
-                borderRadius: 12,
-                border: `1px solid ${GP.border}`,
-                background: "rgba(15,23,42,0.95)",
-              }}
-            >
-              <div style={{ fontSize: 11, color: GP.textSoft }}>
-                Last Activity
-              </div>
-              <div style={{ fontSize: 12 }}>
-                {formatDateTime(metrics?.lastActivity)}
-              </div>
-            </div>
+              ⚖️ Review Contract (AI)
+            </button>
           </div>
         </div>
 
+        {/* SUMMARY STATS */}
+        <div
+          style={{
+            display: "flex",
+            flexWrap: "wrap",
+            gap: 10,
+            marginBottom: 24,
+          }}
+        >
+          <div
+            style={{
+              minWidth: 120,
+              padding: "6px 10px",
+              borderRadius: 12,
+              border: `1px solid ${GP.border}`,
+              background: "rgba(15,23,42,0.95)",
+            }}
+          >
+            <div style={{ fontSize: 11, color: GP.textSoft }}>
+              Total Alerts
+            </div>
+            <div style={{ fontSize: 18, fontWeight: 600 }}>
+              {metrics?.totalAlerts ?? alerts.length}
+            </div>
+          </div>
+
+          <div
+            style={{
+              minWidth: 120,
+              padding: "6px 10px",
+              borderRadius: 12,
+              border: "1px solid rgba(248,113,113,0.5)",
+              background: "rgba(120,53,15,0.4)",
+            }}
+          >
+            <div style={{ fontSize: 11, color: GP.textSoft }}>
+              Critical / High
+            </div>
+            <div style={{ fontSize: 16, fontWeight: 600 }}>
+              {(metrics?.criticalAlerts ?? criticalAlerts.length) +
+                (metrics?.highAlerts ?? highAlerts.length)}
+            </div>
+          </div>
+
+          <div
+            style={{
+              minWidth: 140,
+              padding: "6px 10px",
+              borderRadius: 12,
+              border: `1px solid ${GP.border}`,
+              background: "rgba(15,23,42,0.95)",
+            }}
+          >
+            <div style={{ fontSize: 11, color: GP.textSoft }}>
+              Coverage Req.
+            </div>
+            <div style={{ fontSize: 16, fontWeight: 600 }}>
+              {metrics?.coverageCount ?? requirements.length}
+            </div>
+          </div>
+
+          <div
+            style={{
+              minWidth: 160,
+              padding: "6px 10px",
+              borderRadius: 12,
+              border: `1px solid ${GP.border}`,
+              background: "rgba(15,23,42,0.95)",
+            }}
+          >
+            <div style={{ fontSize: 11, color: GP.textSoft }}>
+              Last Activity
+            </div>
+            <div style={{ fontSize: 12 }}>
+              {formatDateTime(metrics?.lastActivity)}
+            </div>
+          </div>
+        </div>
         {/* MAIN GRID */}
         <div
           style={{
@@ -427,6 +456,7 @@ export default function AdminVendorProfile() {
                     gap: 10,
                   }}
                 >
+                  {/* Critical */}
                   {criticalAlerts.map((a, idx) => (
                     <div
                       key={idx}
@@ -445,6 +475,7 @@ export default function AdminVendorProfile() {
                     </div>
                   ))}
 
+                  {/* High */}
                   {highAlerts.map((a, idx) => (
                     <div
                       key={idx}
@@ -463,6 +494,7 @@ export default function AdminVendorProfile() {
                     </div>
                   ))}
 
+                  {/* Info */}
                   {infoAlerts.map((a, idx) => (
                     <div
                       key={idx}
@@ -590,15 +622,13 @@ export default function AdminVendorProfile() {
                       "other";
 
                     const fileUrl = doc.file_url || doc.url || null;
-                    const uploadedAt =
-                      doc.uploaded_at || doc.created_at || null;
+                    const uploadedAt = doc.uploaded_at || doc.created_at || null;
 
                     let typeColor = GP.neonBlue;
                     if (docType === "contract") typeColor = GP.neonPurple;
                     else if (docType === "license") typeColor = GP.neonGreen;
                     else if (docType === "w9") typeColor = GP.neonGold;
                     else if (docType === "endorsement") typeColor = GP.neonRed;
-                    else if (docType === "binder") typeColor = GP.neonBlue;
 
                     return (
                       <div
@@ -624,7 +654,6 @@ export default function AdminVendorProfile() {
                           {docType.toUpperCase()}
                         </div>
 
-                        {/* FILE LINK */}
                         {fileUrl && (
                           <a
                             href={fileUrl}
@@ -666,45 +695,32 @@ export default function AdminVendorProfile() {
                         </div>
 
                         {/* NORMALIZED FIELDS */}
-                        {normalized &&
-                          typeof normalized === "object" &&
-                          Object.keys(normalized).length > 0 && (
-                            <div style={{ marginTop: 8 }}>
-                              <div
-                                style={{
-                                  fontWeight: 600,
-                                  fontSize: 12,
-                                  marginBottom: 4,
-                                  color: GP.neonGreen,
-                                }}
-                              >
-                                Extracted Data
-                              </div>
-
-                              <div
-                                style={{
-                                  display: "grid",
-                                  gridTemplateColumns: "minmax(0,1fr)",
-                                  gap: 4,
-                                }}
-                              >
-                                {Object.entries(normalized).map(
-                                  ([key, value]) => (
-                                    <div key={key} style={{ fontSize: 11 }}>
-                                      <strong style={{ color: GP.text }}>
-                                        {key}:{" "}
-                                      </strong>
-                                      {typeof value === "object"
-                                        ? JSON.stringify(value)
-                                        : String(value)}
-                                    </div>
-                                  )
-                                )}
-                              </div>
+                        {normalized && Object.keys(normalized).length > 0 && (
+                          <div style={{ marginTop: 8 }}>
+                            <div
+                              style={{
+                                fontWeight: 600,
+                                fontSize: 12,
+                                marginBottom: 4,
+                                color: GP.neonGreen,
+                              }}
+                            >
+                              Extracted Data
                             </div>
-                          )}
 
-                        {/* UPLOADED AT */}
+                            {Object.entries(normalized).map(([k, v]) => (
+                              <div key={k} style={{ fontSize: 11 }}>
+                                <strong style={{ color: GP.text }}>
+                                  {k}:{" "}
+                                </strong>
+                                {typeof v === "object"
+                                  ? JSON.stringify(v)
+                                  : String(v)}
+                              </div>
+                            ))}
+                          </div>
+                        )}
+
                         <div
                           style={{
                             marginTop: 10,
@@ -720,7 +736,6 @@ export default function AdminVendorProfile() {
                 </div>
               )}
             </div>
-
             {/* TIMELINE PANEL */}
             <div
               style={{
@@ -800,6 +815,7 @@ export default function AdminVendorProfile() {
               )}
             </div>
           </div>
+
           {/* RIGHT COLUMN */}
           <div>
             {/* COMPLIANCE SNAPSHOT PANEL */}
@@ -916,6 +932,7 @@ export default function AdminVendorProfile() {
                   gap: 8,
                 }}
               >
+                {/* Upload Request */}
                 <button
                   type="button"
                   onClick={() => handleSendEmail("request")}
@@ -935,6 +952,7 @@ export default function AdminVendorProfile() {
                   📩 Send Upload Request
                 </button>
 
+                {/* Fix Issues Email */}
                 <button
                   type="button"
                   onClick={() => handleSendEmail("fix")}
@@ -953,6 +971,7 @@ export default function AdminVendorProfile() {
                   ⚠️ Send Fix Issues Email
                 </button>
 
+                {/* Renewal Reminder */}
                 <button
                   type="button"
                   onClick={() => handleSendEmail("renewal")}
@@ -971,7 +990,7 @@ export default function AdminVendorProfile() {
                   ⏰ Send Renewal Reminder
                 </button>
 
-                {/* Run Rule Engine V5 */}
+                {/* Run Rule Engine */}
                 <button
                   type="button"
                   onClick={handleRunEngine}
