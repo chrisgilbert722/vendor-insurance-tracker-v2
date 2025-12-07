@@ -5,7 +5,7 @@
 // ==========================================================
 
 import { useState, useEffect } from "react";
-import Papa from "papaparse";
+import * as Papa from "papaparse";  // ✅ FIXED IMPORT
 import { openai } from "../../../lib/openaiClient";
 import ToastV2 from "../../../components/ToastV2";
 
@@ -41,6 +41,7 @@ export default function OnboardingWizardStep1() {
     "notes",
     "tags",
   ];
+
   // ============================================
   // HANDLE CSV DRAG + DROP
   // ============================================
@@ -68,6 +69,7 @@ export default function OnboardingWizardStep1() {
       },
     });
   }
+
   // ============================================
   // AI SUGGEST COLUMN MAPPING
   // ============================================
@@ -131,6 +133,7 @@ Return valid JSON ONLY with:
       setLoading(false);
     }
   }
+
   // ============================================
   // MANUAL COLUMN MAPPING UI
   // ============================================
@@ -197,6 +200,7 @@ Return valid JSON ONLY with:
       </div>
     );
   }
+
   // ============================================
   // PREVIEW FIRST 10 VENDORS
   // ============================================
@@ -256,6 +260,7 @@ Return valid JSON ONLY with:
       </div>
     );
   }
+
   return (
     <div style={{ padding: 40, color: "white" }}>
       <h1 style={{ fontSize: 28, marginBottom: 20 }}>
