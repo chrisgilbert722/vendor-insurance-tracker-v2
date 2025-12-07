@@ -65,6 +65,7 @@ export default function GlobalVendorTable({ orgId }) {
   if (error) {
     return <div style={{ fontSize: 12, color: "#fecaca" }}>Error: {error}</div>;
   }
+
   return (
     <div>
       {/* Insights header */}
@@ -146,14 +147,14 @@ export default function GlobalVendorTable({ orgId }) {
             <tr>
               {[
                 "Vendor",
-                "Status",
+                "Compliance Status",
                 "AI Score",
                 "Progress",
                 "Alerts",
                 "Primary Policy",
                 "Expires",
-                "Contract Status", // ⭐ NEW COLUMN
-                "Actions",          // ⭐ NEW COLUMN
+                "Contract Status", // ⭐ CONTRACT
+                "Actions",          // ⭐ REVIEW
               ].map((h) => (
                 <th
                   key={h}
@@ -173,115 +174,175 @@ export default function GlobalVendorTable({ orgId }) {
           </thead>
 
           <tbody>
-            {vendors.map((v) => (
-              <tr
-                key={v.id}
-                style={{
-                  background:
-                    "linear-gradient(90deg,rgba(15,23,42,0.98),rgba(15,23,42,0.94))",
-                }}
-              >
-                {/* Vendor name */}
-                <td style={tdCell}>
-                  <a
-                    href={`/vendor/${v.id}`}
-                    style={{
-                      color: "#38bdf8",
-                      textDecoration: "none",
-                      fontWeight: 600,
-                    }}
-                  >
-                    {v.name}
-                  </a>
-                </td>
+            {vendors.map((v) => {
+              const contractStatus = v.contractStatus || "missing";
+              const contractIssuesCount = v.contractIssuesCount ?? 0;
 
-                {/* Compliance Status */}
-                <td style={{ ...tdCell, color: complianceColor(v.compliance.status) }}>
-                  {String(v.compliance.status).toUpperCase()}
-                </td>
-
-                {/* AI Score */}
-                <td style={{ ...tdCell, color: aiColor(v.aiScore), fontWeight: 600 }}>
-                  {v.aiScore}
-                </td>
-
-                {/* Progress Bar */}
-                <td style={tdCell}>
-                  {v.compliance.totalRules > 0 ? (
-                    <div style={progressShell}>
-                      <div
+              return (
+                <tr
+                  key={v.id}
+                  style={{
+                    background:
+                      "linear-gradient(90deg,rgba(15,23,42,0.98),rgba(15,23,42,0.94))",
+                  }}
+                >
+                  {/* Vendor name + Contract Review link */}
+                  <td style={tdCell}>
+                    <div style={{ display: "flex", flexDirection: "column" }}>
+                      <a
+                        href={`/vendor/${v.id}`}
                         style={{
-                          ...progressFill,
-                          width: `${
-                            (v.compliance.fixedRules / v.compliance.totalRules) * 100
-                          }%`,
+                          color: "#38bdf8",
+                          textDecoration: "none",
+                          fontWeight: 600,
+                          marginBottom: 2,
                         }}
-                      />
+                      >
+                        {v.name}
+                      </a>
+
+                      {/* Quick contract badge */}
+                      {contractStatus !== "missing" && (
+                        <span
+                          style={{
+                            fontSize: 11,
+                            color:
+                              contractStatus === "failed"
+                                ? "#fb7185"
+                                : contractStatus === "partial"
+                                ? "#facc15"
+                                : "#22c55e",
+                          }}
+                        >
+                          {contractStatus === "passed"
+                            ? "✓ Contract OK"
+                            : contractStatus === "partial"
+                            ? "⚠ Contract Partial"
+                            : contractStatus === "failed"
+                            ? "⚠ Contract Issues"
+                            : "Contract Unknown"}
+                        </span>
+                      )}
                     </div>
-                  ) : (
-                    <span style={{ color: "#6b7280" }}>—</span>
-                  )}
-                </td>
+                  </td>
 
-                {/* Alerts */}
-                <td style={{ ...tdCell, color: v.alertsCount > 0 ? "#fb7185" : "#6b7280" }}>
-                  {v.alertsCount}
-                </td>
-
-                {/* Primary Policy */}
-                <td style={tdCell}>{v.primaryPolicy.coverage_type || "—"}</td>
-
-                {/* Expiration */}
-                <td
-                  style={{
-                    ...tdCell,
-                    color:
-                      v.primaryPolicy.daysLeft != null &&
-                      v.primaryPolicy.daysLeft <= 30
-                        ? "#fecaca"
-                        : "#9ca3af",
-                  }}
-                >
-                  {v.primaryPolicy.expiration_date || "—"}{" "}
-                  {v.primaryPolicy.daysLeft != null &&
-                    `(${v.primaryPolicy.daysLeft} d)`}
-                </td>
-
-                {/* ⭐ NEW COLUMN: Contract Status Placeholder */}
-                <td
-                  style={{
-                    ...tdCell,
-                    color: "#9ca3af",
-                    fontStyle: "italic",
-                  }}
-                >
-                  No contract data yet
-                </td>
-
-                {/* ⭐ NEW COLUMN: Contract Review Button */}
-                <td style={tdCell}>
-                  <button
-                    onClick={() =>
-                      router.push(`/admin/contracts/review?vendorId=${v.id}`)
-                    }
+                  {/* Compliance Status */}
+                  <td
                     style={{
-                      padding: "6px 10px",
-                      borderRadius: 999,
-                      border: "1px solid #22c55e",
-                      background: "rgba(34,197,94,0.1)",
-                      color: "#22c55e",
-                      fontSize: 11,
-                      fontWeight: 600,
-                      cursor: "pointer",
-                      whiteSpace: "nowrap",
-                      boxShadow: "0 0 12px rgba(34,197,94,0.3)",
+                      ...tdCell,
+                      color: complianceColor(v.compliance.status),
                     }}
                   >
-                    ⚖️ Review
-                  </button>
-                </td>
-              </tr>
-            ))}
+                    {String(v.compliance.status || "unknown").toUpperCase()}
+                  </td>
+
+                  {/* AI Score */}
+                  <td
+                    style={{
+                      ...tdCell,
+                      color: aiColor(v.aiScore),
+                      fontWeight: 600,
+                    }}
+                  >
+                    {v.aiScore}
+                  </td>
+
+                  {/* Progress */}
+                  <td style={tdCell}>
+                    {v.compliance.totalRules > 0 ? (
+                      <div style={progressShell}>
+                        <div
+                          style={{
+                            ...progressFill,
+                            width: `${
+                              (v.compliance.fixedRules /
+                                v.compliance.totalRules) *
+                              100
+                            }%`,
+                          }}
+                        />
+                      </div>
+                    ) : (
+                      <span style={{ color: "#6b7280" }}>—</span>
+                    )}
+                  </td>
+
+                  {/* Alerts */}
+                  <td
+                    style={{
+                      ...tdCell,
+                      color: v.alertsCount > 0 ? "#fb7185" : "#6b7280",
+                    }}
+                  >
+                    {v.alertsCount}
+                  </td>
+
+                  {/* Primary Policy */}
+                  <td style={tdCell}>
+                    {v.primaryPolicy.coverage_type || "—"}
+                  </td>
+
+                  {/* Expires */}
+                  <td
+                    style={{
+                      ...tdCell,
+                      color:
+                        v.primaryPolicy.daysLeft != null &&
+                        v.primaryPolicy.daysLeft <= 30
+                          ? "#fecaca"
+                          : "#9ca3af",
+                    }}
+                  >
+                    {v.primaryPolicy.expiration_date || "—"}{" "}
+                    {v.primaryPolicy.daysLeft != null &&
+                      `(${v.primaryPolicy.daysLeft} d)`}
+                  </td>
+
+                  {/* CONTRACT STATUS */}
+                  <td
+                    style={{
+                      ...tdCell,
+                      color:
+                        contractStatus === "failed"
+                          ? "#fb7185"
+                          : contractStatus === "partial"
+                          ? "#facc15"
+                          : contractStatus === "passed"
+                          ? "#22c55e"
+                          : "#9ca3af",
+                    }}
+                  >
+                    {contractStatus === "missing"
+                      ? "MISSING"
+                      : contractStatus.toUpperCase()}{" "}
+                    {contractIssuesCount > 0 && `(${contractIssuesCount})`}
+                  </td>
+
+                  {/* ACTIONS: Review Contract */}
+                  <td style={tdCell}>
+                    <button
+                      onClick={() =>
+                        router.push(`/admin/contracts/review?vendorId=${v.id}`)
+                      }
+                      style={{
+                        padding: "6px 10px",
+                        borderRadius: 999,
+                        border: "1px solid #22c55e",
+                        background: "rgba(34,197,94,0.1)",
+                        color: "#22c55e",
+                        fontSize: 11,
+                        fontWeight: 600,
+                        cursor: "pointer",
+                        whiteSpace: "nowrap",
+                        boxShadow: "0 0 12px rgba(34,197,94,0.3)",
+                      }}
+                    >
+                      ⚖ Review
+                    </button>
+                  </td>
+                </tr>
+              );
+            })}
           </tbody>
         </table>
       </div>
