@@ -1,13 +1,6 @@
 // pages/admin/vendor/[id]/index.js
 // ============================================================
 // ADMIN VENDOR OVERVIEW — V5 INTELLIGENCE EDITION
-// High-level vendor cockpit that shows:
-//  • Vendor stats
-//  • Alerts (V5)
-//  • Engine V5 summary
-//  • Coverage intel snapshot
-//  • Renewal intelligence
-//  • Policy listing
 // ============================================================
 
 import { useRouter } from "next/router";
@@ -91,15 +84,12 @@ export default function AdminVendorDetailPage() {
   }
 
   // Extract fields
-  const { vendor, org, policies, alerts, engine, intel, metrics } = data;
+  const { vendor, org, policies, alerts, engine, metrics } = data;
 
   const primaryPolicy = policies?.[0] || null;
 
   const critical = alerts.filter((a) => a.severity === "critical");
   const high = alerts.filter((a) => a.severity === "high");
-  const medium = alerts.filter((a) => a.severity === "medium");
-  const low = alerts.filter((a) => a.severity === "low");
-
   const score =
     engine?.failedCount > 0
       ? Math.max(0, 100 - engine.failedCount * 5)
@@ -128,16 +118,29 @@ export default function AdminVendorDetailPage() {
           )}
         </div>
 
+        {/* ============================================================
+            ACTION BUTTONS (UPDATED WITH CONTRACT REVIEW)
+        ============================================================ */}
         <div style={{ display: "flex", gap: 12 }}>
           <Button
             label="Profile"
             onClick={() => router.push(`/admin/vendor/${vendor.id}/profile`)}
             color={GP.neonPurple}
           />
+
           <Button
             label="Fix Cockpit"
             onClick={() => router.push(`/admin/vendor/${vendor.id}/fix`)}
             color={GP.neonBlue}
+          />
+
+          {/* ⭐ NEW: Contract Review Deep Link */}
+          <Button
+            label="Review Contract (AI)"
+            onClick={() =>
+              router.push(`/admin/contracts/review?vendorId=${vendor.id}`)
+            }
+            color={GP.neonGreen}
           />
         </div>
       </div>
@@ -152,7 +155,7 @@ export default function AdminVendorDetailPage() {
       </div>
 
       {/* ============================================================
-          RENEWAL INTELLIGENCE (ALL PANELS)
+          RENEWAL INTELLIGENCE
       ============================================================ */}
 
       <Section>
@@ -179,7 +182,7 @@ export default function AdminVendorDetailPage() {
         <RenewalCommunicationLog vendorId={vendor.id} />
       </Section>
 
-      {/* ⭐ NEW SECTION: RENEWAL TIMELINE UI (STEP 6) */}
+      {/* ⭐ NEW SECTION: RENEWAL TIMELINE UI */}
       <Section>
         <VendorRenewalTimeline vendorId={vendor.id} />
       </Section>
@@ -315,7 +318,7 @@ function Section({ children }) {
 }
 
 /* ============================================================
-   STYLES
+   TABLE STYLES
 ============================================================ */
 
 const headerRow = {
