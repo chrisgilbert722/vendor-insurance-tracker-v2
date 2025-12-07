@@ -1,7 +1,8 @@
 // pages/vendor/index.js
 // ==========================================================
-// Vendor Portal V3 — AI-Powered Cockpit
-// Vendor sees requirements, alerts, and uploads COIs.
+// Vendor Portal V4 — AI-Powered Cockpit with Fix Mode
+// Vendor sees requirements, alerts, uploads COIs and gets
+// AI-driven explanations of what's missing / wrong.
 // ==========================================================
 
 import { useEffect, useState } from "react";
@@ -19,6 +20,11 @@ export default function VendorPortalPage() {
   const [alerts, setAlerts] = useState([]);
   const [summary, setSummary] = useState(null);
   const [uploading, setUploading] = useState(false);
+
+  // AI Fix Mode state
+  const [fixLoading, setFixLoading] = useState(false);
+  const [fixSummary, setFixSummary] = useState("");
+  const [fixIssues, setFixIssues] = useState([]);
 
   const [toast, setToast] = useState({
     open: false,
@@ -96,7 +102,7 @@ export default function VendorPortalPage() {
         message: "COI uploaded successfully. Our system is reviewing it.",
       });
 
-      // Optionally re-fetch portal data to reflect new state
+      // Optional: re-run AI Fix Mode automatically later
     } catch (err) {
       console.error(err);
       setToast({
@@ -109,17 +115,85 @@ export default function VendorPortalPage() {
     }
   }
 
+  // -----------------------------------------------------------
+  // AI FIX MODE: RUN ANALYSIS
+  // -----------------------------------------------------------
+  async function runAiFixAnalysis() {
+    if (!token) {
+      return setToast({
+        open: true,
+        type: "error",
+        message: "Missing token. Please reload your link.",
+      });
+    }
+
+    try {
+      setFixLoading(true);
+      setFixSummary("");
+      setFixIssues([]);
+
+      const res = await fetch("/api/vendor/ai-fix-analysis", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ token }),
+      });
+
+      const json = await res.json();
+      if (!res.ok || !json.ok) {
+        throw new Error(json.error || "AI Fix Mode failed.");
+      }
+
+      setFixSummary(json.summary || "");
+      setFixIssues(Array.isArray(json.issues) ? json.issues : []);
+
+      setToast({
+        open: true,
+        type: "success",
+        message: "AI Fix analysis complete.",
+      });
+    } catch (err) {
+      console.error(err);
+      setToast({
+        open: true,
+        type: "error",
+        message: err.message || "AI Fix Mode failed.",
+      });
+    } finally {
+      setFixLoading(false);
+    }
+  }
+
+  // -----------------------------------------------------------
+  // COPY BROKER EMAIL TEXT
+  // -----------------------------------------------------------
+  function copyBrokerEmail(emailText) {
+    if (!emailText) return;
+    try {
+      navigator.clipboard.writeText(emailText);
+      setToast({
+        open: true,
+        type: "success",
+        message: "Text copied — paste into an email to your broker.",
+      });
+    } catch (err) {
+      console.error(err);
+      setToast({
+        open: true,
+        type: "error",
+        message: "Could not copy text. Please copy manually.",
+      });
+    }
+  }
+
+  // -----------------------------------------------------------
+  // RENDER HELPERS
+  // -----------------------------------------------------------
   function renderRequirements() {
     if (!requirements) {
       return (
-        <div
-          style={{
-            fontSize: 13,
-            color: "#9ca3af",
-          }}
-        >
-          Your requirements profile is being prepared. If this message persists,
-          please contact the compliance team.
+        <div style={{ fontSize: 13, color: "#9ca3af" }}>
+          Your requirements profile is being prepared. If this persists, please
+          contact your client.
         </div>
       );
     }
@@ -192,8 +266,193 @@ export default function VendorPortalPage() {
     );
   }
 
+  function renderFixMode() {
+    return (
+      <div
+        style={{
+          marginTop: 18,
+          padding: 18,
+          borderRadius: 18,
+          background: "rgba(15,23,42,0.9)",
+          border: "1px solid rgba(80,120,255,0.45)",
+          boxShadow:
+            "0 0 30px rgba(64,106,255,0.35), inset 0 0 20px rgba(15,23,42,0.95)",
+          backdropFilter: "blur(10px)",
+        }}
+      >
+        <div
+          style={{
+            fontSize: 14,
+            fontWeight: 600,
+            marginBottom: 6,
+          }}
+        >
+          🧠 AI Fix Mode
+        </div>
+        <p
+          style={{
+            fontSize: 12,
+            color: "#9ca3af",
+            marginBottom: 10,
+          }}
+        >
+          AI will compare your most recent COI against the requirements and
+          explain what needs to be fixed. You can copy the suggested wording and
+          send it directly to your insurance broker.
+        </p>
+
+        <button
+          onClick={runAiFixAnalysis}
+          disabled={fixLoading}
+          style={{
+            padding: "8px 14px",
+            borderRadius: 10,
+            background: fixLoading
+              ? "rgba(56,189,248,0.35)"
+              : "linear-gradient(90deg,#38bdf8,#0ea5e9)",
+            border: "1px solid rgba(56,189,248,0.8)",
+            color: "white",
+            cursor: fixLoading ? "not-allowed" : "pointer",
+            fontSize: 13,
+            fontWeight: 600,
+            marginBottom: 10,
+          }}
+        >
+          {fixLoading ? "Analyzing COI…" : "⚡ Run AI Fix Analysis"}
+        </button>
+
+        {fixSummary && (
+          <div
+            style={{
+              marginTop: 10,
+              padding: 10,
+              borderRadius: 12,
+              background: "rgba(15,23,42,0.95)",
+              border: "1px solid rgba(148,163,184,0.6)",
+              fontSize: 12,
+              color: "#e5e7eb",
+            }}
+          >
+            <div style={{ fontWeight: 600, marginBottom: 4 }}>Summary</div>
+            <div>{fixSummary}</div>
+          </div>
+        )}
+
+        {fixIssues.length > 0 && (
+          <div style={{ marginTop: 12 }}>
+            <div
+              style={{
+                fontSize: 13,
+                fontWeight: 600,
+                marginBottom: 6,
+              }}
+            >
+              Detected Issues
+            </div>
+            <div
+              style={{
+                display: "flex",
+                flexDirection: "column",
+                gap: 10,
+              }}
+            >
+              {fixIssues.map((issue, idx) => {
+                const severityColor =
+                  issue.severity === "critical"
+                    ? "#ef4444"
+                    : issue.severity === "high"
+                    ? "#f97316"
+                    : issue.severity === "medium"
+                    ? "#facc15"
+                    : "#22c55e";
+
+                return (
+                  <div
+                    key={idx}
+                    style={{
+                      borderRadius: 12,
+                      padding: 10,
+                      background: "rgba(15,23,42,0.96)",
+                      border: `1px solid ${severityColor}80`,
+                    }}
+                  >
+                    <div
+                      style={{
+                        display: "flex",
+                        justifyContent: "space-between",
+                        alignItems: "center",
+                        marginBottom: 4,
+                      }}
+                    >
+                      <span
+                        style={{
+                          fontSize: 12,
+                          fontWeight: 600,
+                          color: "#e5e7eb",
+                        }}
+                      >
+                        {issue.field || "Issue"}
+                      </span>
+                      <span
+                        style={{
+                          fontSize: 11,
+                          padding: "2px 8px",
+                          borderRadius: 999,
+                          border: `1px solid ${severityColor}`,
+                          color: severityColor,
+                        }}
+                      >
+                        {(issue.severity || "").toUpperCase()}
+                      </span>
+                    </div>
+                    <div
+                      style={{
+                        fontSize: 11,
+                        color: "#9ca3af",
+                        marginBottom: 4,
+                      }}
+                    >
+                      <strong>Required:</strong> {issue.requirement || "—"}
+                      <br />
+                      <strong>COI Shows:</strong> {issue.actual || "Not found"}
+                    </div>
+                    <div
+                      style={{
+                        fontSize: 11,
+                        color: "#e5e7eb",
+                        marginBottom: 6,
+                      }}
+                    >
+                      {issue.explanation}
+                    </div>
+                    {issue.broker_email && (
+                      <button
+                        onClick={() => copyBrokerEmail(issue.broker_email)}
+                        style={{
+                          fontSize: 11,
+                          padding: "6px 10px",
+                          borderRadius: 8,
+                          border: "1px solid rgba(56,189,248,0.8)",
+                          background: "rgba(15,23,42,0.95)",
+                          color: "#7dd3fc",
+                          cursor: "pointer",
+                        }}
+                      >
+                        📧 Copy Email Text for Broker
+                      </button>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
+      </div>
+    );
+  }
+
   // -----------------------------------------------------------
-  // PAGE RENDER (COCKPIT WRAPPED)
+  // MAIN RENDER
   // -----------------------------------------------------------
   return (
     <CockpitWizardLayout>
@@ -245,7 +504,7 @@ export default function VendorPortalPage() {
                 alignItems: "flex-start",
               }}
             >
-              {/* LEFT: REQUIREMENTS + ALERTS */}
+              {/* LEFT: REQUIREMENTS + ALERTS + AI FIX MODE */}
               <div>
                 {/* REQUIREMENTS PANEL */}
                 <div
@@ -292,6 +551,7 @@ export default function VendorPortalPage() {
                     boxShadow:
                       "0 0 24px rgba(30,64,175,0.25), inset 0 0 14px rgba(15,23,42,0.9)",
                     backdropFilter: "blur(8px)",
+                    marginBottom: 18,
                   }}
                 >
                   <div
@@ -329,6 +589,9 @@ export default function VendorPortalPage() {
                   )}
                   {renderAlerts()}
                 </div>
+
+                {/* AI FIX MODE PANEL */}
+                {renderFixMode()}
               </div>
 
               {/* RIGHT: UPLOAD PANEL */}
@@ -406,29 +669,31 @@ export default function VendorPortalPage() {
                     >
                       Last uploaded COI:{" "}
                       <span style={{ color: "#e5e7eb" }}>
-                        {new Date(
-                          vendor.last_uploaded_at
-                        ).toLocaleDateString()}
+                        {vendor.last_uploaded_at
+                          ? new Date(
+                              vendor.last_uploaded_at
+                            ).toLocaleDateString()
+                          : "date not available"}
                       </span>
                     </div>
                   )}
                 </div>
               </div>
             </div>
-
-            <ToastV2
-              open={toast.open}
-              type={toast.type}
-              message={toast.message}
-              onClose={() =>
-                setToast((prev) => ({
-                  ...prev,
-                  open: false,
-                }))
-              }
-            />
           </>
         )}
+
+        <ToastV2
+          open={toast.open}
+          type={toast.type}
+          message={toast.message}
+          onClose={() =>
+            setToast((prev) => ({
+              ...prev,
+              open: false,
+            }))
+          }
+        />
       </div>
     </CockpitWizardLayout>
   );
