@@ -1,7 +1,7 @@
 // pages/admin/onboarding-wizard/index.js
 // ==========================================================
 // AI ONBOARDING WIZARD — STEP 1 (CSV IMPORTER)
-// Imports CSV → Detect Columns → AI Mapping → Vendor Preview
+// NOW USING LOCAL PAPAPARSE (TURBOPACK SAFE)
 // ==========================================================
 
 import { useState, useEffect } from "react";
@@ -16,12 +16,25 @@ export default function OnboardingWizardStep1() {
   const [columnMapping, setColumnMapping] = useState({});
   const [aiSuggestedMapping, setAiSuggestedMapping] = useState({});
   const [loading, setLoading] = useState(false);
+  const [Papa, setPapa] = useState(null);
 
   const [toast, setToast] = useState({
     open: false,
     message: "",
     type: "success",
   });
+
+  // ==========================================================
+  // LOAD PAPAPARSE FROM PUBLIC FOLDER (TURBOPACK SAFE)
+  // ==========================================================
+  useEffect(() => {
+    const script = document.createElement("script");
+    script.src = "/vendor/papaparse.min.js";
+    script.onload = () => {
+      setPapa(window.Papa);
+    };
+    document.body.appendChild(script);
+  }, []);
 
   // Required vendor fields
   const REQUIRED_FIELDS = ["vendor_name", "email", "work_type"];
@@ -38,7 +51,7 @@ export default function OnboardingWizardStep1() {
   ];
 
   // ==========================================================
-  // HANDLE CSV FILE SELECTION — WITH DYNAMIC PAPAPARSE IMPORT
+  // HANDLE CSV FILE SELECTION
   // ==========================================================
   async function handleCsvSelected(e) {
     const file = e.target.files[0];
@@ -54,8 +67,13 @@ export default function OnboardingWizardStep1() {
 
     setCsvFile(file);
 
-    // 🟦 Dynamic import — Turbopack SAFE
-    const Papa = (await import("papaparse")).default;
+    if (!Papa) {
+      return setToast({
+        open: true,
+        type: "error",
+        message: "CSV engine not loaded yet. Try again in 1 sec.",
+      });
+    }
 
     Papa.parse(file, {
       header: true,
@@ -63,7 +81,7 @@ export default function OnboardingWizardStep1() {
       complete: (results) => {
         setCsvRows(results.data || []);
         setHeaderColumns(results.meta.fields || []);
-        setRawCsvText(results.data.slice(0, 5));
+        setRawCsvText(JSON.stringify(results.data.slice(0, 5), null, 2));
       },
     });
   }
@@ -89,13 +107,14 @@ Here are CSV column headers:
 ${JSON.stringify(headerColumns, null, 2)}
 
 Map each header to one of these fields:
+
 ${JSON.stringify(ACCEPTABLE_FIELDS, null, 2)}
 
 Return valid JSON ONLY with:
 {
   "headerName": "mappedSystemField" | null
 }
-      `.trim();
+`.trim();
 
       const completion = await openai.chat.completions.create({
         model: "gpt-4.1-mini",
@@ -264,7 +283,7 @@ Return valid JSON ONLY with:
         AI Onboarding Wizard — Step 1: CSV Import
       </h1>
 
-      {/* CSV Upload Box */}
+      {/* CSV Upload */}
       <div
         style={{
           border: "2px dashed rgba(148,163,184,0.4)",
@@ -293,7 +312,8 @@ Return valid JSON ONLY with:
             marginTop: 14,
             padding: "10px 16px",
             borderRadius: 10,
-            background: "linear-gradient(90deg,#38bdf8,#0ea5e9,#1e40af)",
+            background:
+              "linear-gradient(90deg,#38bdf8,#0ea5e9,#1e40af)",
             color: "white",
             cursor: "pointer",
             border: "1px solid rgba(56,189,248,0.8)",
