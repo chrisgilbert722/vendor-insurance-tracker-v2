@@ -47,7 +47,7 @@ function computeExpirationRisk(policy) {
 }
 
 /* ============================================================
-   AI RISK ENGINE (expiration + elite + compliance)
+   AI RISK ENGINE
 ============================================================ */
 function computeVendorAiRisk({ primaryPolicy, elite, compliance }) {
   const exp = computeExpirationRisk(primaryPolicy);
@@ -101,23 +101,6 @@ export default function VendorFixPage() {
   const [loadingVendor, setLoadingVendor] = useState(true);
   const [loadingCompliance, setLoadingCompliance] = useState(true);
   const [error, setError] = useState("");
-
-  // Fix Plan State
-  const [fixLoading, setFixLoading] = useState(false);
-  const [fixError, setFixError] = useState("");
-  const [fixSteps, setFixSteps] = useState([]);
-  const [fixSubject, setFixSubject] = useState("");
-  const [fixBody, setFixBody] = useState("");
-  const [fixInternalNotes, setFixInternalNotes] = useState("");
-  const [sendLoading, setSendLoading] = useState(false);
-  const [sendError, setSendError] = useState("");
-  const [sendSuccess, setSendSuccess] = useState("");
-
-  // V5 Rule Engine state
-  const [engineLoading, setEngineLoading] = useState(false);
-  const [engineError, setEngineError] = useState("");
-  const [engineSummary, setEngineSummary] = useState(null);
-  const [failingRules, setFailingRules] = useState([]);
   /* ============================================================
      LOAD VENDOR + POLICIES + COMPLIANCE + ELITE ENGINE
   ============================================================ */
@@ -155,14 +138,11 @@ export default function VendorFixPage() {
       }
     }
 
-    /* ============================================================
-       LOAD COMPLIANCE (legacy coverage check) + ELITE ENGINE
-    ============================================================ */
     async function loadComplianceAndElite(vendorId, orgId, vendorPolicies) {
       try {
         setLoadingCompliance(true);
 
-        // coverage summary (legacy)
+        // Coverage summary (legacy)
         const res = await fetch(
           `/api/requirements/check?vendorId=${vendorId}&orgId=${orgId}`
         );
@@ -265,10 +245,10 @@ export default function VendorFixPage() {
     if (vendor && (org?.id || activeOrgId)) {
       runRuleEngineV5(vendor.id, org?.id);
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [vendor, org, activeOrgId]);
+
   /* ============================================================
-     LOAD FIX PLAN (V5 uses same return format as legacy)
+     LOAD FIX PLAN
   ============================================================ */
   async function loadFixPlan() {
     if (!vendor || !org) return;
@@ -301,7 +281,7 @@ export default function VendorFixPage() {
   }
 
   /* ============================================================
-     SEND FIX EMAIL (V5 Compatible)
+     SEND FIX EMAIL
   ============================================================ */
   async function sendFixEmail() {
     if (!vendor || !org || !fixSubject || !fixBody) return;
@@ -459,6 +439,7 @@ export default function VendorFixPage() {
       </div>
     );
   }
+
   /* ============================================================
      PRIMARY POLICY + AI RISK
   ============================================================ */
@@ -469,7 +450,6 @@ export default function VendorFixPage() {
     elite: eliteResult,
     compliance,
   });
-
   /* ============================================================
      MAIN UI — CINEMATIC NEON FIX COCKPIT
   ============================================================ */
@@ -504,64 +484,103 @@ export default function VendorFixPage() {
       {/* MAIN CONTENT WRAPPER */}
       <div style={{ position: "relative", zIndex: 2 }}>
         {/* ===============================
-            PAGE HEADER
+            PAGE HEADER (with Contract Button)
         =============================== */}
-        <div style={{ marginBottom: 18 }}>
-          <div
-            style={{
-              fontSize: 12,
-              color: "#9ca3af",
-              marginBottom: 8,
-              display: "flex",
-              gap: 8,
-              alignItems: "center",
-            }}
-          >
-            <a href="/vendors" style={{ color: "#93c5fd" }}>
-              Vendors
-            </a>
-            <span>/</span>
-            <a
-              href={`/admin/vendor/${vendor.id}`}
-              style={{ color: "#93c5fd" }}
+        <div
+          style={{
+            marginBottom: 18,
+            display: "flex",
+            justifyContent: "space-between",
+            alignItems: "flex-start",
+            gap: 16,
+          }}
+        >
+          {/* LEFT SIDE OF HEADER */}
+          <div>
+            <div
+              style={{
+                fontSize: 12,
+                color: "#9ca3af",
+                marginBottom: 8,
+                display: "flex",
+                gap: 8,
+                alignItems: "center",
+              }}
             >
-              {vendor.name}
-            </a>
-            <span>/</span>
-            <span>Fix Plan</span>
+              <a href="/vendors" style={{ color: "#93c5fd" }}>
+                Vendors
+              </a>
+              <span>/</span>
+              <a
+                href={`/admin/vendor/${vendor.id}`}
+                style={{ color: "#93c5fd" }}
+              >
+                {vendor.name}
+              </a>
+              <span>/</span>
+              <span>Fix Plan</span>
+            </div>
+
+            <h1
+              style={{
+                fontSize: 26,
+                fontWeight: 600,
+                margin: 0,
+              }}
+            >
+              Fix Plan & Elite Risk for{" "}
+              <span
+                style={{
+                  background:
+                    "linear-gradient(90deg,#38bdf8,#a5b4fc,#e5e7eb)",
+                  WebkitBackgroundClip: "text",
+                  color: "transparent",
+                }}
+              >
+                {vendor.name}
+              </span>
+            </h1>
+
+            {org && (
+              <p
+                style={{
+                  fontSize: 13,
+                  color: "#9ca3af",
+                  marginTop: 4,
+                }}
+              >
+                Org:{" "}
+                <span style={{ color: "#e5e7eb" }}>
+                  {org.name || "Unknown"}
+                </span>
+              </p>
+            )}
           </div>
 
-          <h1
-            style={{
-              fontSize: 26,
-              fontWeight: 600,
-              margin: 0,
-            }}
-          >
-            Fix Plan & Elite Risk for{" "}
-            <span
+          {/* ⭐ RIGHT SIDE — CONTRACT REVIEW BUTTON */}
+          <div>
+            <button
+              onClick={() =>
+                router.push(
+                  `/admin/contracts/review?vendorId=${vendor.id}`
+                )
+              }
               style={{
-                background:
-                  "linear-gradient(90deg,#38bdf8,#a5b4fc,#e5e7eb)",
-                WebkitBackgroundClip: "text",
-                color: "transparent",
+                padding: "8px 14px",
+                borderRadius: 999,
+                border: "1px solid #22c55e",
+                background: "rgba(15,23,42,0.9)",
+                color: "#22c55e",
+                fontSize: 12,
+                fontWeight: 500,
+                cursor: "pointer",
+                whiteSpace: "nowrap",
+                boxShadow: "0 0 12px rgba(34,197,94,0.4)",
               }}
             >
-              {vendor.name}
-            </span>
-          </h1>
-
-          {org && (
-            <p
-              style={{
-                fontSize: 13,
-                color: "#9ca3af",
-                marginTop: 4,
-              }}
-            >
-              Org: <span style={{ color: "#e5e7eb" }}>{org.name || "Unknown"}</span>
-            </p>
-          )}
+              ⚖️ Review Contract (AI)
+            </button>
+          </div>
         </div>
 
         {/* ============================================================
@@ -618,7 +637,6 @@ export default function VendorFixPage() {
             {/* BODY */}
             {!loadingCompliance && compliance && !compliance.error && (
               <>
-                {/* Summary text */}
                 <div
                   style={{
                     fontSize: 13,
@@ -630,7 +648,7 @@ export default function VendorFixPage() {
                   {compliance.summary}
                 </div>
 
-                {/* GRID: Elite Engine + AI Risk */}
+                {/* GRID — Elite Engine + AI Risk */}
                 <div
                   style={{
                     display: "grid",
@@ -638,7 +656,9 @@ export default function VendorFixPage() {
                     gap: 16,
                   }}
                 >
-                  {/* ELITE ENGINE PANEL */}
+                  {/* ============================================================
+                      ELITE ENGINE PANEL
+                  ============================================================ */}
                   <div
                     style={{
                       borderRadius: 16,
@@ -671,7 +691,9 @@ export default function VendorFixPage() {
                     />
                   </div>
 
-                  {/* AI RISK PANEL */}
+                  {/* ============================================================
+                      AI RISK SCORE PANEL
+                  ============================================================ */}
                   <div
                     style={{
                       borderRadius: 16,
@@ -727,6 +749,7 @@ export default function VendorFixPage() {
                           {aiRisk.tier}
                         </div>
 
+                        {/* Mini meter */}
                         <div
                           style={{
                             marginTop: 4,
@@ -777,6 +800,7 @@ export default function VendorFixPage() {
               </>
             )}
           </div>
+
           {/* ============================================================
               RIGHT COLUMN — AI FIX PLAN PANEL
           ============================================================ */}
@@ -863,6 +887,7 @@ export default function VendorFixPage() {
                 >
                   Action Steps
                 </div>
+
                 <ol
                   style={{
                     paddingLeft: 18,
@@ -871,45 +896,14 @@ export default function VendorFixPage() {
                     color: "#e5e7eb",
                   }}
                 >
-                  {fixSteps.map((s, i) => (
-                    <li key={i} style={{ marginBottom: 4 }}>
-                      {s}
+                  {fixSteps.map((step, idx) => (
+                    <li key={idx} style={{ marginBottom: 4 }}>
+                      {step}
                     </li>
                   ))}
                 </ol>
               </>
             )}
-
-            {/* Vendor Email Subject */}
-            {fixSubject && (
-              <>
-                <div
-                  style={{
-                    fontSize: 11,
-                    textTransform: "uppercase",
-                    letterSpacing: 1.1,
-                    color: "#9ca3af",
-                    marginTop: 10,
-                    marginBottom: 4,
-                  }}
-                >
-                  Vendor Email Subject
-                </div>
-                <div
-                  style={{
-                    borderRadius: 10,
-                    padding: 8,
-                    background: "rgba(15,23,42,0.96)",
-                    border: "1px solid rgba(51,65,85,0.9)",
-                    fontSize: 12,
-                    color: "#e5e7eb",
-                  }}
-                >
-                  {fixSubject}
-                </div>
-              </>
-            )}
-
             {/* Vendor Email Body */}
             {fixBody && (
               <>
@@ -925,6 +919,7 @@ export default function VendorFixPage() {
                 >
                   Vendor Email Body
                 </div>
+
                 <textarea
                   readOnly
                   value={fixBody}
@@ -1047,6 +1042,7 @@ export default function VendorFixPage() {
                 >
                   Internal Notes
                 </div>
+
                 <div
                   style={{
                     borderRadius: 10,
@@ -1063,9 +1059,10 @@ export default function VendorFixPage() {
               </>
             )}
           </div> {/* END RIGHT FIX PLAN PANEL */}
-        </div> {/* END TOP GRID ROW (LEFT + RIGHT) */}
+        </div> {/* END TOP GRID ROW */}
+
         {/* ============================================================
-            RULE ENGINE V5 ROW — GLOBAL SCORE + FAILING RULES
+            RULE ENGINE V5 — GLOBAL SCORE + FAILING RULES LIST
         ============================================================ */}
         <div
           style={{
@@ -1076,7 +1073,7 @@ export default function VendorFixPage() {
             gap: 16,
           }}
         >
-          {/* LEFT — V5 ENGINE GLOBAL SCORE */}
+          {/* LEFT — V5 ENGINE SCORE */}
           <div
             style={{
               borderRadius: 16,
@@ -1150,7 +1147,6 @@ export default function VendorFixPage() {
                   <strong>{engineSummary.failedCount}</strong>
                 </div>
 
-                {/* BUTTON — Re-run engine */}
                 <button
                   onClick={() => runRuleEngineV5(vendor.id, org?.id)}
                   style={{
@@ -1169,7 +1165,8 @@ export default function VendorFixPage() {
               </div>
             )}
           </div>
-          {/* RIGHT — FAILING RULES LIST (V5 ENGINE) */}
+
+          {/* RIGHT — FAILING RULES */}
           <div
             style={{
               borderRadius: 16,
