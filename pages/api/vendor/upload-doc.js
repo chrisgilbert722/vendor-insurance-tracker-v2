@@ -8,7 +8,7 @@
 // Handles:
 // ✔ W9
 // ✔ Business License
-// ✔ Contracts (auto-rule processing)
+// ✔ Contracts (auto-rule processing + Contract Intelligence V3)
 // ✔ Endorsements
 // ✔ Binders / Dec Pages
 // ✔ Entity Certificates
@@ -360,12 +360,12 @@ export default async function handler(req, res) {
       const documentId = inserted[0]?.id;
 
       // ---------------------------------------------------------
-      // 7) Auto-process CONTRACT → Contract Matching V3 + legacy hook
+      // 7) Auto-process CONTRACT → Contract Matching V3 + legacy rules-v3
       // ---------------------------------------------------------
       if (docType === "contract") {
         try {
           if (BASE_URL) {
-            // NEW — Contract Matching V3 → updates vendor.contract_status, contract_risk_score, alerts
+            // NEW — Contract Matching V3 → updates vendor.contract_status, contract_risk_score, contract_issues_json, alerts
             try {
               await fetch(`${BASE_URL}/api/contracts/apply-matching`, {
                 method: "POST",
@@ -379,7 +379,7 @@ export default async function handler(req, res) {
                   ${orgId},
                   ${vendorId},
                   'contract_matching_v3_applied',
-                  'Contract matching V3 applied to vendor.',
+                  'Contract Matching V3 applied to vendor.',
                   'info'
                 )
               `;
@@ -387,7 +387,7 @@ export default async function handler(req, res) {
               console.error("[upload-doc] contract matching error:", err);
             }
 
-            // Legacy V3 auto-process (rules-v3 engine)
+            // LEGACY: V3 auto-process rules engine for backward compatibility
             try {
               await fetch(
                 `${BASE_URL}/api/admin/rules-v3/auto-process-contract`,
@@ -404,7 +404,7 @@ export default async function handler(req, res) {
                   ${orgId},
                   ${vendorId},
                   'contract_auto_process_triggered',
-                  'Contract auto-processing triggered.',
+                  'Contract auto-processing (rules-v3) triggered.',
                   'info'
                 )
               `;
