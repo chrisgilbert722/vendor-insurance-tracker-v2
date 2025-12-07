@@ -2,13 +2,17 @@
 // ==========================================================
 // AI ONBOARDING WIZARD — STEP 1 (CSV IMPORTER)
 // NOW USING LOCAL PAPAPARSE (TURBOPACK SAFE)
+// WIRED TO STEP 2 NAVIGATION
 // ==========================================================
 
 import { useState, useEffect } from "react";
+import { useRouter } from "next/router";          // ✅ NEW
 import { openai } from "../../../lib/openaiClient";
 import ToastV2 from "../../../components/ToastV2";
 
 export default function OnboardingWizardStep1() {
+  const router = useRouter();                     // ✅ NEW
+
   const [csvFile, setCsvFile] = useState(null);
   const [rawCsvText, setRawCsvText] = useState("");
   const [csvRows, setCsvRows] = useState([]);
@@ -35,9 +39,6 @@ export default function OnboardingWizardStep1() {
     };
     document.body.appendChild(script);
   }, []);
-
-  // Required vendor fields
-  const REQUIRED_FIELDS = ["vendor_name", "email", "work_type"];
 
   // Acceptable mapping list
   const ACCEPTABLE_FIELDS = [
@@ -107,7 +108,6 @@ Here are CSV column headers:
 ${JSON.stringify(headerColumns, null, 2)}
 
 Map each header to one of these fields:
-
 ${JSON.stringify(ACCEPTABLE_FIELDS, null, 2)}
 
 Return valid JSON ONLY with:
@@ -125,7 +125,7 @@ Return valid JSON ONLY with:
         ],
       });
 
-      let raw = completion.choices[0].message?.content || "";
+      const raw = completion.choices[0].message?.content || "";
       const first = raw.indexOf("{");
       const last = raw.lastIndexOf("}");
       const json = JSON.parse(raw.slice(first, last + 1));
@@ -138,6 +138,7 @@ Return valid JSON ONLY with:
         type: "success",
         message: "AI mapped file fields successfully.",
       });
+
     } catch (err) {
       console.error(err);
       setToast({
@@ -148,6 +149,34 @@ Return valid JSON ONLY with:
     } finally {
       setLoading(false);
     }
+  }
+
+  // ==========================================================
+  // SEND TO STEP 2 — SAVE PROCESSED CSV VENDORS
+  // ==========================================================
+  function goToStep2() {
+    if (!csvRows.length) {
+      return setToast({
+        open: true,
+        type: "error",
+        message: "Upload a CSV before continuing.",
+      });
+    }
+
+    // Transform CSV rows → vendor objects based on mapping
+    const vendors = csvRows.map((row) => {
+      const mapped = {};
+      for (const col in columnMapping) {
+        const key = columnMapping[col];
+        if (key) mapped[key] = row[col];
+      }
+      return mapped;
+    });
+
+    // Save to localStorage so Step 2 can load it
+    localStorage.setItem("onboardingVendors", JSON.stringify(vendors));
+
+    router.push("/admin/onboarding-wizard/step2");
   }
 
   // ==========================================================
@@ -312,8 +341,7 @@ Return valid JSON ONLY with:
             marginTop: 14,
             padding: "10px 16px",
             borderRadius: 10,
-            background:
-              "linear-gradient(90deg,#38bdf8,#0ea5e9,#1e40af)",
+            background: "linear-gradient(90deg,#38bdf8,#0ea5e9,#1e40af)",
             color: "white",
             cursor: "pointer",
             border: "1px solid rgba(56,189,248,0.8)",
@@ -325,6 +353,26 @@ Return valid JSON ONLY with:
 
       {renderColumnMapping()}
       {renderPreviewTable()}
+
+      {/* CONTINUE TO STEP 2 */}
+      {csvRows.length > 0 && (
+        <button
+          onClick={goToStep2}
+          style={{
+            marginTop: 30,
+            padding: "12px 20px",
+            borderRadius: 12,
+            background: "linear-gradient(90deg,#38bdf8,#0ea5e9)",
+            color: "white",
+            border: "1px solid rgba(56,189,248,0.8)",
+            cursor: "pointer",
+            fontSize: 16,
+            fontWeight: 600,
+          }}
+        >
+          Continue → AI Requirements Generator
+        </button>
+      )}
 
       <ToastV2
         open={toast.open}
@@ -340,4 +388,3 @@ Return valid JSON ONLY with:
     </div>
   );
 }
- 
