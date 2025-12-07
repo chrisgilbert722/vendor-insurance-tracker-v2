@@ -5,7 +5,6 @@
 // ==========================================================
 
 import { useState, useEffect } from "react";
-import * as Papa from "papaparse";  // ✅ FIXED IMPORT
 import { openai } from "../../../lib/openaiClient";
 import ToastV2 from "../../../components/ToastV2";
 
@@ -25,13 +24,9 @@ export default function OnboardingWizardStep1() {
   });
 
   // Required vendor fields
-  const REQUIRED_FIELDS = [
-    "vendor_name",
-    "email",
-    "work_type",
-  ];
+  const REQUIRED_FIELDS = ["vendor_name", "email", "work_type"];
 
-  // Columns the system *can* accept
+  // Acceptable mapping list
   const ACCEPTABLE_FIELDS = [
     "vendor_name",
     "email",
@@ -42,10 +37,10 @@ export default function OnboardingWizardStep1() {
     "tags",
   ];
 
-  // ============================================
-  // HANDLE CSV DRAG + DROP
-  // ============================================
-  function handleCsvSelected(e) {
+  // ==========================================================
+  // HANDLE CSV FILE SELECTION — WITH DYNAMIC PAPAPARSE IMPORT
+  // ==========================================================
+  async function handleCsvSelected(e) {
     const file = e.target.files[0];
     if (!file) return;
 
@@ -59,6 +54,9 @@ export default function OnboardingWizardStep1() {
 
     setCsvFile(file);
 
+    // 🟦 Dynamic import — Turbopack SAFE
+    const Papa = (await import("papaparse")).default;
+
     Papa.parse(file, {
       header: true,
       dynamicTyping: false,
@@ -70,9 +68,9 @@ export default function OnboardingWizardStep1() {
     });
   }
 
-  // ============================================
+  // ==========================================================
   // AI SUGGEST COLUMN MAPPING
-  // ============================================
+  // ==========================================================
   async function handleAiSuggestMapping() {
     if (!headerColumns.length) {
       return setToast({
@@ -91,7 +89,6 @@ Here are CSV column headers:
 ${JSON.stringify(headerColumns, null, 2)}
 
 Map each header to one of these fields:
-
 ${JSON.stringify(ACCEPTABLE_FIELDS, null, 2)}
 
 Return valid JSON ONLY with:
@@ -134,9 +131,9 @@ Return valid JSON ONLY with:
     }
   }
 
-  // ============================================
-  // MANUAL COLUMN MAPPING UI
-  // ============================================
+  // ==========================================================
+  // COLUMN MAPPING UI
+  // ==========================================================
   function renderColumnMapping() {
     if (!headerColumns.length) return null;
 
@@ -174,10 +171,7 @@ Return valid JSON ONLY with:
             <select
               value={columnMapping[col] || ""}
               onChange={(e) =>
-                setColumnMapping((p) => ({
-                  ...p,
-                  [col]: e.target.value,
-                }))
+                setColumnMapping((prev) => ({ ...prev, [col]: e.target.value }))
               }
               style={{
                 flex: 1,
@@ -189,9 +183,9 @@ Return valid JSON ONLY with:
               }}
             >
               <option value="">Ignore this column</option>
-              {ACCEPTABLE_FIELDS.map((f) => (
-                <option key={f} value={f}>
-                  {f}
+              {ACCEPTABLE_FIELDS.map((field) => (
+                <option key={field} value={field}>
+                  {field}
                 </option>
               ))}
             </select>
@@ -201,9 +195,9 @@ Return valid JSON ONLY with:
     );
   }
 
-  // ============================================
+  // ==========================================================
   // PREVIEW FIRST 10 VENDORS
-  // ============================================
+  // ==========================================================
   function renderPreviewTable() {
     if (!csvRows.length) return null;
 
@@ -240,8 +234,8 @@ Return valid JSON ONLY with:
           </thead>
 
           <tbody>
-            {preview.map((row, rIndex) => (
-              <tr key={rIndex}>
+            {preview.map((row, idx) => (
+              <tr key={idx}>
                 {Object.keys(columnMapping).map((col) => (
                   <td
                     key={col}
@@ -261,13 +255,16 @@ Return valid JSON ONLY with:
     );
   }
 
+  // ==========================================================
+  // MAIN RENDER
+  // ==========================================================
   return (
     <div style={{ padding: 40, color: "white" }}>
       <h1 style={{ fontSize: 28, marginBottom: 20 }}>
         AI Onboarding Wizard — Step 1: CSV Import
       </h1>
 
-      {/* CSV UPLOAD */}
+      {/* CSV Upload Box */}
       <div
         style={{
           border: "2px dashed rgba(148,163,184,0.4)",
@@ -296,8 +293,7 @@ Return valid JSON ONLY with:
             marginTop: 14,
             padding: "10px 16px",
             borderRadius: 10,
-            background:
-              "linear-gradient(90deg,#38bdf8,#0ea5e9,#1e40af)",
+            background: "linear-gradient(90deg,#38bdf8,#0ea5e9,#1e40af)",
             color: "white",
             cursor: "pointer",
             border: "1px solid rgba(56,189,248,0.8)",
@@ -314,7 +310,12 @@ Return valid JSON ONLY with:
         open={toast.open}
         message={toast.message}
         type={toast.type}
-        onClose={() => setToast((p) => ({ ...p, open: false }))}
+        onClose={() =>
+          setToast((prev) => ({
+            ...prev,
+            open: false,
+          }))
+        }
       />
     </div>
   );
