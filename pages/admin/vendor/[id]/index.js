@@ -90,10 +90,17 @@ export default function AdminVendorDetailPage() {
 
   const critical = alerts.filter((a) => a.severity === "critical");
   const high = alerts.filter((a) => a.severity === "high");
+
   const score =
     engine?.failedCount > 0
       ? Math.max(0, 100 - engine.failedCount * 5)
       : 100;
+
+  // ⭐ NEW CONTRACT FIELDS
+  const contractJson = vendor.contract_json || null;
+  const contractScore = vendor.contract_score || null;
+  const contractRequirements = vendor.contract_requirements || [];
+  const contractMismatches = vendor.contract_mismatches || [];
 
   return (
     <Page>
@@ -118,9 +125,7 @@ export default function AdminVendorDetailPage() {
           )}
         </div>
 
-        {/* ============================================================
-            ACTION BUTTONS (UPDATED WITH CONTRACT REVIEW)
-        ============================================================ */}
+        {/* ACTION BUTTONS */}
         <div style={{ display: "flex", gap: 12 }}>
           <Button
             label="Profile"
@@ -134,7 +139,6 @@ export default function AdminVendorDetailPage() {
             color={GP.neonBlue}
           />
 
-          {/* ⭐ NEW: Contract Review Deep Link */}
           <Button
             label="Review Contract (AI)"
             onClick={() =>
@@ -182,9 +186,147 @@ export default function AdminVendorDetailPage() {
         <RenewalCommunicationLog vendorId={vendor.id} />
       </Section>
 
-      {/* ⭐ NEW SECTION: RENEWAL TIMELINE UI */}
+      {/* ⭐ TIMELINE */}
       <Section>
         <VendorRenewalTimeline vendorId={vendor.id} />
+      </Section>
+
+      {/* ⭐ ============================================================
+            CONTRACT INTELLIGENCE V3 PANEL
+      ============================================================ */}
+      <Section>
+        <h2 style={sectionTitle}>Contract Intelligence</h2>
+
+        {!contractJson ? (
+          <div style={{ fontSize: 13, color: GP.textSoft }}>
+            No contract uploaded for this vendor yet.
+          </div>
+        ) : (
+          <>
+            {/* SCORE + BUTTON */}
+            <div
+              style={{
+                display: "flex",
+                justifyContent: "space-between",
+                alignItems: "center",
+                marginBottom: 12,
+              }}
+            >
+              <div>
+                <div style={{ fontSize: 12, color: GP.textSoft }}>
+                  AI Contract Score
+                </div>
+                <div
+                  style={{
+                    fontSize: 26,
+                    fontWeight: 700,
+                    background:
+                      contractScore >= 80
+                        ? "linear-gradient(120deg,#22c55e,#bef264)"
+                        : contractScore >= 60
+                        ? "linear-gradient(120deg,#facc15,#fde68a)"
+                        : "linear-gradient(120deg,#fb7185,#fecaca)",
+                    WebkitBackgroundClip: "text",
+                    color: "transparent",
+                  }}
+                >
+                  {contractScore ?? "—"}
+                </div>
+              </div>
+
+              <Button
+                label="Review Contract (AI)"
+                onClick={() =>
+                  router.push(`/admin/contracts/review?vendorId=${vendor.id}`)
+                }
+                color={GP.neonGreen}
+              />
+            </div>
+
+            {/* SUMMARY */}
+            {contractJson.summary && (
+              <div
+                style={{
+                  marginBottom: 12,
+                  padding: 12,
+                  borderRadius: 14,
+                  background: "rgba(15,23,42,0.9)",
+                  border: "1px solid rgba(148,163,184,0.4)",
+                  fontSize: 13,
+                  color: GP.textSoft,
+                  whiteSpace: "pre-wrap",
+                }}
+              >
+                {contractJson.summary}
+              </div>
+            )}
+
+            {/* REQUIREMENTS */}
+            {contractRequirements.length > 0 && (
+              <>
+                <h4
+                  style={{
+                    color: GP.neonBlue,
+                    fontSize: 14,
+                    marginBottom: 6,
+                  }}
+                >
+                  Required Coverages & Minimums
+                </h4>
+
+                {contractRequirements.map((r, idx) => (
+                  <div
+                    key={idx}
+                    style={{
+                      marginBottom: 6,
+                      padding: 8,
+                      borderRadius: 10,
+                      background: "rgba(15,23,42,0.85)",
+                      border: "1px solid rgba(51,65,85,0.7)",
+                    }}
+                  >
+                    <strong style={{ color: GP.text }}>{r.label}:</strong>{" "}
+                    <span style={{ color: GP.neonGold }}>{r.value}</span>
+                  </div>
+                ))}
+              </>
+            )}
+
+            {/* MISMATCHES */}
+            {contractMismatches.length > 0 && (
+              <>
+                <h4
+                  style={{
+                    color: GP.neonRed,
+                    fontSize: 14,
+                    marginTop: 14,
+                    marginBottom: 6,
+                  }}
+                >
+                  Coverage Mismatches
+                </h4>
+
+                {contractMismatches.map((m, idx) => (
+                  <div
+                    key={idx}
+                    style={{
+                      marginBottom: 8,
+                      padding: 10,
+                      borderRadius: 10,
+                      background: "rgba(127,29,29,0.35)",
+                      border: "1px solid rgba(248,113,113,0.6)",
+                      fontSize: 12,
+                      color: GP.textSoft,
+                    }}
+                  >
+                    <strong style={{ color: GP.neonRed }}>{m.label}:</strong>{" "}
+                    {m.message}
+                  </div>
+                ))}
+              </>
+            )}
+          </>
+        )}
       </Section>
 
       {/* ============================================================
@@ -243,7 +385,6 @@ function Page({ children }) {
         position: "relative",
       }}
     >
-      {/* Background Aura */}
       <div
         style={{
           position: "absolute",
@@ -316,10 +457,6 @@ function Section({ children }) {
     </div>
   );
 }
-
-/* ============================================================
-   TABLE STYLES
-============================================================ */
 
 const headerRow = {
   display: "flex",
