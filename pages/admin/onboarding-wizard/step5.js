@@ -518,3 +518,4 @@ export default function OnboardingWizardStep5() {
     </CockpitWizardLayout>
   );
 }
+ 
