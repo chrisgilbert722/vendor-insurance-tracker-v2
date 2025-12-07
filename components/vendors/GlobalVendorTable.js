@@ -1,7 +1,10 @@
 // components/vendors/GlobalVendorTable.js
 import { useEffect, useState } from "react";
+import { useRouter } from "next/router";
 
 export default function GlobalVendorTable({ orgId }) {
+  const router = useRouter();
+
   const [vendors, setVendors] = useState([]);
   const [insights, setInsights] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -52,29 +55,16 @@ export default function GlobalVendorTable({ orgId }) {
   }
 
   if (!orgId) {
-    return (
-      <div style={{ fontSize: 12, color: "#9ca3af" }}>
-        No org selected.
-      </div>
-    );
+    return <div style={{ fontSize: 12, color: "#9ca3af" }}>No org selected.</div>;
   }
 
   if (loading) {
-    return (
-      <div style={{ fontSize: 12, color: "#9ca3af" }}>
-        Loading vendor landscape…
-      </div>
-    );
+    return <div style={{ fontSize: 12, color: "#9ca3af" }}>Loading vendor landscape…</div>;
   }
 
   if (error) {
-    return (
-      <div style={{ fontSize: 12, color: "#fecaca" }}>
-        Error: {error}
-      </div>
-    );
+    return <div style={{ fontSize: 12, color: "#fecaca" }}>Error: {error}</div>;
   }
-
   return (
     <div>
       {/* Insights header */}
@@ -104,15 +94,11 @@ export default function GlobalVendorTable({ orgId }) {
             padding: "6px 10px",
             borderRadius: 999,
             border: "1px solid rgba(56,189,248,0.85)",
-            background:
-              "linear-gradient(90deg,#0ea5e9,#38bdf8,#0f172a)",
+            background: "linear-gradient(90deg,#0ea5e9,#38bdf8,#0f172a)",
             color: "white",
             fontSize: 11,
             fontWeight: 600,
-            cursor:
-              insightsLoading || vendors.length === 0
-                ? "not-allowed"
-                : "pointer",
+            cursor: insightsLoading ? "not-allowed" : "pointer",
           }}
         >
           {insightsLoading ? "Analyzing…" : "⚡ AI Risk Insights"}
@@ -135,18 +121,6 @@ export default function GlobalVendorTable({ orgId }) {
           <div style={{ fontWeight: 600, marginBottom: 6 }}>
             {insights.summary}
           </div>
-          {insights.recommended_actions?.length > 0 && (
-            <>
-              <div style={{ color: "#9ca3af", marginTop: 4 }}>
-                Recommended Actions:
-              </div>
-              <ul style={{ paddingLeft: 18, marginTop: 4 }}>
-                {insights.recommended_actions.map((a, idx) => (
-                  <li key={idx}>{a}</li>
-                ))}
-              </ul>
-            </>
-          )}
         </div>
       )}
 
@@ -178,7 +152,8 @@ export default function GlobalVendorTable({ orgId }) {
                 "Alerts",
                 "Primary Policy",
                 "Expires",
-                "Actions",        // ⭐ NEW COLUMN
+                "Contract Status", // ⭐ NEW COLUMN
+                "Actions",          // ⭐ NEW COLUMN
               ].map((h) => (
                 <th
                   key={h}
@@ -207,13 +182,7 @@ export default function GlobalVendorTable({ orgId }) {
                 }}
               >
                 {/* Vendor name */}
-                <td
-                  style={{
-                    padding: "8px 10px",
-                    borderBottom: "1px solid rgba(51,65,85,0.6)",
-                    color: "#e5e7eb",
-                  }}
-                >
+                <td style={tdCell}>
                   <a
                     href={`/vendor/${v.id}`}
                     style={{
@@ -226,66 +195,26 @@ export default function GlobalVendorTable({ orgId }) {
                   </a>
                 </td>
 
-                {/* Status */}
-                <td
-                  style={{
-                    padding: "8px 10px",
-                    borderBottom: "1px solid rgba(51,65,85,0.6)",
-                    color:
-                      v.compliance.status === "fail"
-                        ? "#fecaca"
-                        : v.compliance.status === "warn"
-                        ? "#facc15"
-                        : v.compliance.status === "pass"
-                        ? "#bbf7d0"
-                        : "#9ca3af",
-                  }}
-                >
-                  {String(v.compliance.status || "unknown").toUpperCase()}
+                {/* Compliance Status */}
+                <td style={{ ...tdCell, color: complianceColor(v.compliance.status) }}>
+                  {String(v.compliance.status).toUpperCase()}
                 </td>
 
                 {/* AI Score */}
-                <td
-                  style={{
-                    padding: "8px 10px",
-                    borderBottom: "1px solid rgba(51,65,85,0.6)",
-                    color:
-                      v.aiScore >= 80
-                        ? "#22c55e"
-                        : v.aiScore >= 60
-                        ? "#facc15"
-                        : "#fb7185",
-                    fontWeight: 600,
-                  }}
-                >
+                <td style={{ ...tdCell, color: aiColor(v.aiScore), fontWeight: 600 }}>
                   {v.aiScore}
                 </td>
 
-                {/* Progress bar */}
-                <td
-                  style={{
-                    padding: "8px 10px",
-                    borderBottom: "1px solid rgba(51,65,85,0.6)",
-                  }}
-                >
+                {/* Progress Bar */}
+                <td style={tdCell}>
                   {v.compliance.totalRules > 0 ? (
-                    <div
-                      style={{
-                        width: 80,
-                        height: 4,
-                        borderRadius: 999,
-                        background: "rgba(15,23,42,1)",
-                      }}
-                    >
+                    <div style={progressShell}>
                       <div
                         style={{
+                          ...progressFill,
                           width: `${
-                            (v.compliance.fixedRules /
-                              v.compliance.totalRules) *
-                            100
+                            (v.compliance.fixedRules / v.compliance.totalRules) * 100
                           }%`,
-                          height: "100%",
-                          background: "#22c55e",
                         }}
                       />
                     </div>
@@ -295,32 +224,17 @@ export default function GlobalVendorTable({ orgId }) {
                 </td>
 
                 {/* Alerts */}
-                <td
-                  style={{
-                    padding: "8px 10px",
-                    borderBottom: "1px solid rgba(51,65,85,0.6)",
-                    color: v.alertsCount > 0 ? "#fb7185" : "#6b7280",
-                  }}
-                >
+                <td style={{ ...tdCell, color: v.alertsCount > 0 ? "#fb7185" : "#6b7280" }}>
                   {v.alertsCount}
                 </td>
 
                 {/* Primary Policy */}
-                <td
-                  style={{
-                    padding: "8px 10px",
-                    borderBottom: "1px solid rgba(51,65,85,0.6)",
-                    color: "#e5e7eb",
-                  }}
-                >
-                  {v.primaryPolicy.coverage_type || "—"}
-                </td>
+                <td style={tdCell}>{v.primaryPolicy.coverage_type || "—"}</td>
 
-                {/* Expires */}
+                {/* Expiration */}
                 <td
                   style={{
-                    padding: "8px 10px",
-                    borderBottom: "1px solid rgba(51,65,85,0.6)",
+                    ...tdCell,
                     color:
                       v.primaryPolicy.daysLeft != null &&
                       v.primaryPolicy.daysLeft <= 30
@@ -333,31 +247,38 @@ export default function GlobalVendorTable({ orgId }) {
                     `(${v.primaryPolicy.daysLeft} d)`}
                 </td>
 
-                {/* ⭐ NEW ACTIONS COLUMN */}
+                {/* ⭐ NEW COLUMN: Contract Status Placeholder */}
                 <td
                   style={{
-                    padding: "8px 10px",
-                    borderBottom: "1px solid rgba(51,65,85,0.6)",
+                    ...tdCell,
+                    color: "#9ca3af",
+                    fontStyle: "italic",
                   }}
                 >
-                  <a
-                    href={`/admin/contracts/review?vendorId=${v.id}`}
+                  No contract data yet
+                </td>
+
+                {/* ⭐ NEW COLUMN: Contract Review Button */}
+                <td style={tdCell}>
+                  <button
+                    onClick={() =>
+                      router.push(`/admin/contracts/review?vendorId=${v.id}`)
+                    }
                     style={{
                       padding: "6px 10px",
                       borderRadius: 999,
                       border: "1px solid #22c55e",
-                      background: "rgba(15,23,42,0.85)",
+                      background: "rgba(34,197,94,0.1)",
                       color: "#22c55e",
                       fontSize: 11,
                       fontWeight: 600,
-                      textDecoration: "none",
+                      cursor: "pointer",
                       whiteSpace: "nowrap",
-                      display: "inline-block",
-                      boxShadow: "0 0 8px rgba(34,197,94,0.35)",
+                      boxShadow: "0 0 12px rgba(34,197,94,0.3)",
                     }}
                   >
-                    ⚖️ Review Contract
-                  </a>
+                    ⚖️ Review
+                  </button>
                 </td>
               </tr>
             ))}
@@ -366,4 +287,41 @@ export default function GlobalVendorTable({ orgId }) {
       </div>
     </div>
   );
+}
+
+/* ================================
+   STYLES & HELPERS
+================================ */
+
+const tdCell = {
+  padding: "8px 10px",
+  borderBottom: "1px solid rgba(51,65,85,0.6)",
+  color: "#e5e7eb",
+};
+
+const progressShell = {
+  width: 80,
+  height: 4,
+  borderRadius: 999,
+  background: "rgba(15,23,42,1)",
+  overflow: "hidden",
+};
+
+const progressFill = {
+  height: "100%",
+  background: "#22c55e",
+};
+
+function complianceColor(status) {
+  if (!status) return "#9ca3af";
+  if (status === "fail") return "#fecaca";
+  if (status === "warn") return "#facc15";
+  if (status === "pass") return "#bbf7d0";
+  return "#9ca3af";
+}
+
+function aiColor(score) {
+  if (score >= 80) return "#22c55e";
+  if (score >= 60) return "#facc15";
+  return "#fb7185";
 }
