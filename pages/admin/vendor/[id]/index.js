@@ -13,11 +13,14 @@
 import { useRouter } from "next/router";
 import { useEffect, useState } from "react";
 
-// Existing renewal components (unchanged)
+// Existing renewal components
 import VendorRenewalStatusPanel from "../../../../components/renewals/VendorRenewalStatusPanel";
 import RenewalCommunicationLog from "../../../../components/renewals/RenewalCommunicationLog";
 import RenewalUploadPanel from "../../../../components/renewals/RenewalUploadPanel";
 import RenewalPredictionPanel from "../../../../components/renewals/RenewalPredictionPanel";
+
+// ⭐ NEW — Renewal Timeline (Step 6)
+import VendorRenewalTimeline from "../../../../components/renewals/VendorRenewalTimeline";
 
 const GP = {
   bg: "#020617",
@@ -36,12 +39,12 @@ export default function AdminVendorDetailPage() {
   const router = useRouter();
   const { id } = router.query;
 
-  const [data, setData] = useState(null); // overview payload
+  const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
 
   // ============================================================
-  // LOAD VENDOR INTELLIGENCE (from new overview API)
+  // LOAD VENDOR INTELLIGENCE
   // ============================================================
   useEffect(() => {
     if (!id) return;
@@ -55,7 +58,6 @@ export default function AdminVendorDetailPage() {
         const json = await res.json();
 
         if (!json.ok) throw new Error(json.error || "Failed to load vendor.");
-
         setData(json);
       } catch (err) {
         console.error("[VendorOverview ERROR]", err);
@@ -98,13 +100,13 @@ export default function AdminVendorDetailPage() {
   const medium = alerts.filter((a) => a.severity === "medium");
   const low = alerts.filter((a) => a.severity === "low");
 
-  const score = engine?.failedCount > 0
-    ? Math.max(0, 100 - engine.failedCount * 5)
-    : 100;
+  const score =
+    engine?.failedCount > 0
+      ? Math.max(0, 100 - engine.failedCount * 5)
+      : 100;
 
   return (
     <Page>
-
       {/* HEADER */}
       <div style={headerRow}>
         <div>
@@ -140,36 +142,19 @@ export default function AdminVendorDetailPage() {
         </div>
       </div>
 
-      {/* ============================================================
-          VENDOR SNAPSHOT (Engine + Alerts + Coverage)
-      ============================================================ */}
+      {/* SNAPSHOT */}
       <div style={snapshotGrid}>
         <SnapCard label="Engine Score" value={score} color={GP.neonGreen} />
-        <SnapCard
-          label="Critical Alerts"
-          value={critical.length}
-          color={GP.neonRed}
-        />
-        <SnapCard
-          label="High Alerts"
-          value={high.length}
-          color={GP.neonGold}
-        />
-        <SnapCard
-          label="Coverage Types"
-          value={metrics.coverageTypes}
-          color={GP.neonBlue}
-        />
-        <SnapCard
-          label="Expired Policies"
-          value={metrics.expiredPolicies}
-          color={GP.neonRed}
-        />
+        <SnapCard label="Critical Alerts" value={critical.length} color={GP.neonRed} />
+        <SnapCard label="High Alerts" value={high.length} color={GP.neonGold} />
+        <SnapCard label="Coverage Types" value={metrics.coverageTypes} color={GP.neonBlue} />
+        <SnapCard label="Expired Policies" value={metrics.expiredPolicies} color={GP.neonRed} />
       </div>
 
       {/* ============================================================
-          RENEWAL INTELLIGENCE PANELS
+          RENEWAL INTELLIGENCE (ALL PANELS)
       ============================================================ */}
+
       <Section>
         <VendorRenewalStatusPanel
           vendorId={vendor.id}
@@ -194,6 +179,11 @@ export default function AdminVendorDetailPage() {
         <RenewalCommunicationLog vendorId={vendor.id} />
       </Section>
 
+      {/* ⭐ NEW SECTION: RENEWAL TIMELINE UI (STEP 6) */}
+      <Section>
+        <VendorRenewalTimeline vendorId={vendor.id} />
+      </Section>
+
       {/* ============================================================
           POLICIES TABLE
       ============================================================ */}
@@ -215,6 +205,7 @@ export default function AdminVendorDetailPage() {
                   <th style={th}>Expires</th>
                 </tr>
               </thead>
+
               <tbody>
                 {policies.map((p) => (
                   <tr key={p.id} style={policyRow}>
