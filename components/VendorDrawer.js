@@ -52,7 +52,6 @@ export default function VendorDrawer({ vendor, policies = [], onClose }) {
   const [emailLoading, setEmailLoading] = useState(false);
   const [emailError, setEmailError] = useState("");
   const [emailData, setEmailData] = useState(null);
-
   // ---------------- ENGINE LOAD (V5 via run-v3) ----------------
   useEffect(() => {
     if (!vendor?.id || !activeOrgId) return;
@@ -178,7 +177,8 @@ export default function VendorDrawer({ vendor, policies = [], onClose }) {
 
           {/* ================= LEFT COLUMN: Engine + Alerts ================= */}
           <div className="flex flex-col gap-5 pr-4 border-r border-slate-800/70">
-            {/* HEADER */}
+
+            {/* ================= HEADER + CONTRACT REVIEW BUTTON ================= */}
             <div className="flex justify-between items-start">
               <div>
                 <div className="text-[11px] uppercase tracking-[0.16em] text-slate-400">
@@ -192,14 +192,26 @@ export default function VendorDrawer({ vendor, policies = [], onClose }) {
                 </div>
               </div>
 
-              <button
-                onClick={onClose}
-                className="rounded-full border border-slate-700 px-3 py-1 text-xs bg-slate-900/80 text-slate-400 hover:text-slate-200 hover:border-slate-500"
-              >
-                <XIcon size={14} className="inline" /> Close
-              </button>
-            </div>
+              <div className="flex gap-2">
+                {/* NEW — CONTRACT REVIEW BUTTON */}
+                <button
+                  onClick={() =>
+                    window.location.href = `/admin/contracts/review?vendorId=${vendor.id}`
+                  }
+                  className="rounded-full border border-emerald-500 px-3 py-1 text-xs bg-emerald-900/30 text-emerald-300 hover:text-emerald-100 hover:border-emerald-400 transition"
+                >
+                  ⚖️ Review Contract
+                </button>
 
+                {/* CLOSE BUTTON */}
+                <button
+                  onClick={onClose}
+                  className="rounded-full border border-slate-700 px-3 py-1 text-xs bg-slate-900/80 text-slate-400 hover:text-slate-200 hover:border-slate-500"
+                >
+                  <XIcon size={14} className="inline" /> Close
+                </button>
+              </div>
+            </div>
             {/* RULE ENGINE CARD */}
             <div className="rounded-2xl border border-slate-800 bg-slate-950/80 p-4 space-y-3">
               <div className="flex items-center justify-between">
@@ -228,13 +240,16 @@ export default function VendorDrawer({ vendor, policies = [], onClose }) {
                 <>
                   <div className="flex justify-between items-baseline">
                     <div>
-                      <div className="text-3xl font-bold bg-gradient-to-r from-emerald-400 via-lime-300 to-amber-300 bg-clip-text text-transparent">
+                      <div
+                        className="text-3xl font-bold bg-gradient-to-r from-emerald-400 via-lime-300 to-amber-300 bg-clip-text text-transparent"
+                      >
                         {score}
                       </div>
                       <div className="text-[11px] text-slate-400">
                         Global compliance score
                       </div>
                     </div>
+
                     <div className="text-[11px] text-slate-300">
                       {engine.failedCount > 0 ? (
                         <>
@@ -244,7 +259,9 @@ export default function VendorDrawer({ vendor, policies = [], onClose }) {
                           failing rule{engine.failedCount > 1 ? "s" : ""}
                         </>
                       ) : (
-                        <span className="text-emerald-400">All rules passing</span>
+                        <span className="text-emerald-400">
+                          All rules passing
+                        </span>
                       )}
                     </div>
                   </div>
@@ -273,6 +290,7 @@ export default function VendorDrawer({ vendor, policies = [], onClose }) {
                           </li>
                         ))}
                       </ul>
+
                       {failingRules.length > 4 && (
                         <div className="text-[10px] text-rose-200 mt-1">
                           +{failingRules.length - 4} more…
@@ -398,7 +416,8 @@ export default function VendorDrawer({ vendor, policies = [], onClose }) {
                 {documents.map((doc) => {
                   const ai = doc.ai_json || {};
                   const summary =
-                    ai.summary || "AI summary not available for this document.";
+                    ai.summary ||
+                    "AI summary not available for this document.";
                   const n = ai.normalized || {};
                   const type = doc.document_type || "other";
 
@@ -430,6 +449,7 @@ export default function VendorDrawer({ vendor, policies = [], onClose }) {
                             Uploaded: {formatDate(doc.uploaded_at)}
                           </div>
                         </div>
+
                         {doc.file_url && (
                           <a
                             href={doc.file_url}
@@ -447,7 +467,7 @@ export default function VendorDrawer({ vendor, policies = [], onClose }) {
                         {summary}
                       </div>
 
-                      {/* NORMALIZED DATA */}
+                      {/* AI NORMALIZED DATA */}
                       {n && Object.keys(n).length > 0 && (
                         <div className="mt-3 rounded-xl border border-slate-700 bg-slate-900/50 p-3">
                           <div className="text-[11px] uppercase tracking-[0.12em] text-slate-400 mb-2">
@@ -458,29 +478,22 @@ export default function VendorDrawer({ vendor, policies = [], onClose }) {
                           {type === "contract" && (
                             <div className="space-y-2 text-[11px] text-slate-200">
                               <div>
-                                <span className="font-semibold">Parties:</span>{" "}
-                                {n.parties || "—"}
+                                <strong>Parties:</strong> {n.parties || "—"}
                               </div>
                               <div>
-                                <span className="font-semibold">Effective:</span>{" "}
+                                <strong>Effective:</strong>{" "}
                                 {n.effective_date || "—"}
                               </div>
                               <div>
-                                <span className="font-semibold">
-                                  Termination:
-                                </span>{" "}
+                                <strong>Termination:</strong>{" "}
                                 {n.termination_date || "—"}
                               </div>
                               <div>
-                                <span className="font-semibold">
-                                  Liability:
-                                </span>{" "}
+                                <strong>Liability:</strong>{" "}
                                 {n.liability_clause || "—"}
                               </div>
                               <div>
-                                <span className="font-semibold">
-                                  Coverage Min:
-                                </span>{" "}
+                                <strong>Coverage Min:</strong>{" "}
                                 {n.coverage_minimums || "—"}
                               </div>
                             </div>
@@ -490,21 +503,19 @@ export default function VendorDrawer({ vendor, policies = [], onClose }) {
                           {type === "license" && (
                             <div className="space-y-2 text-[11px] text-slate-200">
                               <div>
-                                <span className="font-semibold">Business:</span>{" "}
+                                <strong>Business:</strong>{" "}
                                 {n.business_name || "—"}
                               </div>
                               <div>
-                                <span className="font-semibold">Number:</span>{" "}
+                                <strong>Number:</strong>{" "}
                                 {n.license_number || "—"}
                               </div>
                               <div>
-                                <span className="font-semibold">Expires:</span>{" "}
+                                <strong>Expires:</strong>{" "}
                                 {n.expiration_date || "—"}
                               </div>
                               <div>
-                                <span className="font-semibold">
-                                  Jurisdiction:
-                                </span>{" "}
+                                <strong>Jurisdiction:</strong>{" "}
                                 {n.jurisdiction || "—"}
                               </div>
                             </div>
@@ -514,21 +525,17 @@ export default function VendorDrawer({ vendor, policies = [], onClose }) {
                           {type === "w9" && (
                             <div className="space-y-2 text-[11px] text-slate-200">
                               <div>
-                                <span className="font-semibold">Name:</span>{" "}
-                                {n.name || "—"}
+                                <strong>Name:</strong> {n.name || "—"}
                               </div>
                               <div>
-                                <span className="font-semibold">Business:</span>{" "}
+                                <strong>Business:</strong>{" "}
                                 {n.business_name || "—"}
                               </div>
                               <div>
-                                <span className="font-semibold">TIN:</span>{" "}
-                                {n.tin || "—"}
+                                <strong>TIN:</strong> {n.tin || "—"}
                               </div>
                               <div>
-                                <span className="font-semibold">
-                                  Classification:
-                                </span>{" "}
+                                <strong>Classification:</strong>{" "}
                                 {n.entity_type || "—"}
                               </div>
                             </div>
@@ -538,25 +545,20 @@ export default function VendorDrawer({ vendor, policies = [], onClose }) {
                           {type === "endorsement" && (
                             <div className="space-y-2 text-[11px] text-slate-200">
                               <div>
-                                <span className="font-semibold">
-                                  Endorsement Type:
-                                </span>{" "}
+                                <strong>Endorsement Type:</strong>{" "}
                                 {n.endorsement_type || "—"}
                               </div>
                               <div>
-                                <span className="font-semibold">
-                                  Policy Number:
-                                </span>{" "}
+                                <strong>Policy Number:</strong>{" "}
                                 {n.policy_number || "—"}
                               </div>
                               <div>
-                                <span className="font-semibold">Notes:</span>{" "}
-                                {n.notes || "—"}
+                                <strong>Notes:</strong> {n.notes || "—"}
                               </div>
                             </div>
                           )}
 
-                          {/* SAFETY OR OTHER */}
+                          {/* OTHER DOCUMENT TYPES */}
                           {type !== "contract" &&
                             type !== "license" &&
                             type !== "w9" &&
@@ -564,9 +566,7 @@ export default function VendorDrawer({ vendor, policies = [], onClose }) {
                               <div className="space-y-1 text-[11px] text-slate-200">
                                 {Object.entries(n).map(([key, value]) => (
                                   <div key={key}>
-                                    <span className="font-semibold">
-                                      {key}:
-                                    </span>{" "}
+                                    <strong>{key}:</strong>{" "}
                                     {typeof value === "object"
                                       ? JSON.stringify(value)
                                       : String(value)}
@@ -585,7 +585,7 @@ export default function VendorDrawer({ vendor, policies = [], onClose }) {
         </div>
       </div>
 
-      {/* ================= RENEWAL EMAIL MODAL (SINGLE) ================= */}
+      {/* ================= RENEWAL EMAIL MODAL ================= */}
       {emailModal && (
         <div className="fixed inset-0 flex items-center justify-center bg-black/60 z-[60]">
           <div className="bg-slate-950 text-slate-100 w-full max-w-xl rounded-2xl border border-slate-700 p-6 shadow-2xl relative">
