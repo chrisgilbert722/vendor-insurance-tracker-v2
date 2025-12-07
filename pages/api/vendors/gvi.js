@@ -1,5 +1,5 @@
 // pages/api/vendors/gvi.js
-// Global Vendor Intelligence (GVI) — now with RENEWAL INTELLIGENCE V2
+// Global Vendor Intelligence (GVI) — now with RENEWAL INTELLIGENCE V2 + CONTRACT INTELLIGENCE V3
 
 import { sql } from "../../../lib/db";
 
@@ -102,10 +102,16 @@ export default async function handler(req, res) {
     }
 
     /* -------------------------------------------
-       1) Vendors
+       1) Vendors (+ Contract Intelligence Fields)
     ------------------------------------------- */
     const vendors = await sql`
-      SELECT id, name, org_id
+      SELECT
+        id,
+        name,
+        org_id,
+        contract_status,
+        contract_risk_score,
+        contract_issues_json
       FROM vendors
       WHERE org_id = ${orgId}
       ORDER BY name ASC;
@@ -205,18 +211,28 @@ export default async function handler(req, res) {
       );
 
       /* -------------------------------------------
-         NEW: Renewal Intelligence Object
+         Renewal Intelligence Object
       ------------------------------------------- */
       const renewalStage = computeRenewalStage(expDays);
       const renewalUrgency = computeRenewalUrgencyScore(expDays);
       const nextAction = computeNextRenewalAction(renewalStage);
+
+      /* -------------------------------------------
+         Contract Intelligence (from vendors table)
+      ------------------------------------------- */
+      const rawIssues = Array.isArray(v.contract_issues_json)
+        ? v.contract_issues_json
+        : [];
+      const contractStatus = v.contract_status || "missing";
+      const contractRiskScore =
+        v.contract_risk_score !== null ? Number(v.contract_risk_score) : null;
+      const contractIssuesCount = rawIssues.length;
 
       return {
         id: v.id,
         name: v.name,
         org_id: v.org_id,
 
-        /* Compliance block (unchanged) */
         compliance: {
           status,
           summary,
@@ -228,14 +244,12 @@ export default async function handler(req, res) {
         alertsCount,
         aiScore,
 
-        /* Primary Policy Info */
         primaryPolicy: {
           coverage_type: primaryCoverage,
           expiration_date: expDate,
           daysLeft: expDays,
         },
 
-        /* NEW: Renewal Intelligence */
         renewal: {
           stage: renewalStage,
           stage_label: stageLabel(renewalStage),
@@ -243,6 +257,11 @@ export default async function handler(req, res) {
           urgency_score: renewalUrgency,
           next_action: nextAction,
         },
+
+        // ⭐ CONTRACT INTELLIGENCE V3
+        contractStatus,
+        contractRiskScore,
+        contractIssuesCount,
       };
     });
 
