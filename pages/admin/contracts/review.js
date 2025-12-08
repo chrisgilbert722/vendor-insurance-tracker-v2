@@ -13,6 +13,7 @@
 //  • Required coverages & minimums
 //  • Contract mismatches / issues
 //  • Latest contract document link
+//  • ⭐ AI “Fix Email” generator for contract issues
 // ============================================================
 
 import { useRouter } from "next/router";
@@ -39,6 +40,11 @@ export default function ContractReviewPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
 
+  // AI Fix Email state
+  const [emailLoading, setEmailLoading] = useState(false);
+  const [emailError, setEmailError] = useState("");
+  const [emailData, setEmailData] = useState(null);
+
   useEffect(() => {
     if (!vendorId) return;
 
@@ -64,6 +70,37 @@ export default function ContractReviewPage() {
 
     load();
   }, [vendorId]);
+
+  // ==========================
+  // AI FIX EMAIL GENERATOR
+  // ==========================
+  async function generateFixEmail() {
+    if (!vendorId) return;
+    try {
+      setEmailLoading(true);
+      setEmailError("");
+      setEmailData(null);
+
+      const res = await fetch("/api/vendor/email-contract-fix", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ vendorId }),
+      });
+
+      const json = await res.json();
+      if (!json.ok) throw new Error(json.error || "Failed to generate email.");
+
+      setEmailData({
+        subject: json.subject,
+        body: json.body,
+      });
+    } catch (err) {
+      console.error("[ContractReview] email error:", err);
+      setEmailError(err.message || "Failed to generate fix email.");
+    } finally {
+      setEmailLoading(false);
+    }
+  }
 
   // ==========================
   // LOADING / ERROR STATES
@@ -105,19 +142,16 @@ export default function ContractReviewPage() {
   const { vendor, org, documents } = data;
 
   // Contract intel (support multiple shapes just in case)
-  const contractJson =
-    vendor.contract_json ||
-    null; // could also be data.contractIntel?.contract_json in other versions
-
+  const contractJson = vendor.contract_json || null;
   const contractScore =
     vendor.contract_score ??
     vendor.contract_risk_score ??
-    null; // fallback if only risk_score exists
+    null;
 
   const contractIssues =
     vendor.contract_mismatches ||
     vendor.contract_issues_json ||
-    []; // fallback to issues_json if mismatches not mapped
+    [];
 
   const latestContract =
     (documents || []).find((d) => d.document_type === "contract") || null;
@@ -436,7 +470,7 @@ export default function ContractReviewPage() {
           )}
         </div>
 
-        {/* RIGHT: ISSUES / MISMATCHES */}
+        {/* RIGHT: ISSUES / MISMATCHES + AI FIX EMAIL */}
         <div
           style={{
             borderRadius: 22,
@@ -464,9 +498,10 @@ export default function ContractReviewPage() {
           ) : (
             <div
               style={{
-                maxHeight: 260,
+                maxHeight: 180,
                 overflowY: "auto",
                 paddingRight: 2,
+                marginBottom: 10,
               }}
             >
               {contractIssues.map((issue, idx) => {
@@ -484,9 +519,9 @@ export default function ContractReviewPage() {
                   <div
                     key={idx}
                     style={{
-                      marginBottom: 10,
-                      padding: 10,
-                      borderRadius: 12,
+                      marginBottom: 8,
+                      padding: 8,
+                      borderRadius: 10,
                       border: "1px solid rgba(248,113,113,0.5)",
                       background: "rgba(127,29,29,0.35)",
                       fontSize: 12,
@@ -505,50 +540,165 @@ export default function ContractReviewPage() {
                       {String(sev).toUpperCase()}
                     </div>
                     <div>{issue.message || "Contract requirement not met."}</div>
-
-                    {issue.requirement && (
-                      <div
-                        style={{
-                          fontSize: 11,
-                          marginTop: 4,
-                          color: GP.neonGold,
-                        }}
-                      >
-                        Required:{" "}
-                        {typeof issue.requirement === "object"
-                          ? JSON.stringify(issue.requirement)
-                          : String(issue.requirement)}
-                      </div>
-                    )}
-
-                    {issue.actual && (
-                      <div
-                        style={{
-                          fontSize: 11,
-                          marginTop: 2,
-                          color: GP.neonBlue,
-                        }}
-                      >
-                        Actual:{" "}
-                        {typeof issue.actual === "object"
-                          ? JSON.stringify(issue.actual)
-                          : String(issue.actual)}
-                      </div>
-                    )}
                   </div>
                 );
               })}
             </div>
           )}
 
-          {/* ACTIONS */}
-          <div style={{ marginTop: 12 }}>
-            <button
-              onClick={() => router.push(`/admin/vendor/${vendor.id}`)}
-              style={pillButton(GP.neonBlue)}
+          {/* AI FIX EMAIL GENERATOR */}
+          <div
+            style={{
+              marginTop: 10,
+              paddingTop: 10,
+              borderTop: "1px solid rgba(51,65,85,0.9)",
+            }}
+          >
+            <div
+              style={{
+                fontSize: 12,
+                textTransform: "uppercase",
+                letterSpacing: "0.14em",
+                color: GP.textSoft,
+                marginBottom: 8,
+              }}
             >
-              View Vendor Coverage & Alerts
+              AI Fix Email
+            </div>
+
+            <button
+              onClick={generateFixEmail}
+              disabled={emailLoading}
+              style={{
+                padding: "8px 14px",
+                borderRadius: 999,
+                border: `1px solid ${GP.neonGreen}`,
+                background: emailLoading
+                  ? "rgba(34,197,94,0.15)"
+                  : "rgba(15,23,42,0.9)",
+                color: GP.neonGreen,
+                fontSize: 12,
+                fontWeight: 600,
+                cursor: emailLoading ? "not-allowed" : "pointer",
+                marginBottom: 8,
+              }}
+            >
+              {emailLoading ? "Generating…" : "✨ Generate Fix Email (AI)"}
             </button>
+
+            {emailError && (
+              <div
+                style={{
+                  fontSize: 12,
+                  color: GP.neonRed,
+                  marginBottom: 6,
+                }}
+              >
+                {emailError}
+              </div>
+            )}
+
+            {emailData && (
+              <div
+                style={{
+                  marginTop: 6,
+                  padding: 10,
+                  borderRadius: 12,
+                  border: "1px solid rgba(148,163,184,0.6)",
+                  background: "rgba(15,23,42,0.96)",
+                  fontSize: 12,
+                }}
+              >
+                <div style={{ marginBottom: 8 }}>
+                  <div
+                    style={{
+                      fontSize: 11,
+                      textTransform: "uppercase",
+                      letterSpacing: "0.13em",
+                      color: GP.textSoft,
+                      marginBottom: 4,
+                    }}
+                  >
+                    Subject
+                  </div>
+                  <div
+                    style={{
+                      padding: 6,
+                      borderRadius: 8,
+                      border: "1px solid rgba(51,65,85,0.9)",
+                      background: "rgba(15,23,42,1)",
+                      fontSize: 12,
+                      color: GP.text,
+                    }}
+                  >
+                    {emailData.subject}
+                  </div>
+                  <button
+                    onClick={() =>
+                      navigator.clipboard.writeText(emailData.subject)
+                    }
+                    style={{
+                      marginTop: 4,
+                      padding: "4px 10px",
+                      borderRadius: 999,
+                      border: "1px solid rgba(148,163,184,0.8)",
+                      background: "rgba(15,23,42,0.9)",
+                      color: GP.textSoft,
+                      fontSize: 11,
+                      cursor: "pointer",
+                    }}
+                  >
+                    Copy Subject
+                  </button>
+                </div>
+
+                <div>
+                  <div
+                    style={{
+                      fontSize: 11,
+                      textTransform: "uppercase",
+                      letterSpacing: "0.13em",
+                      color: GP.textSoft,
+                      marginBottom: 4,
+                    }}
+                  >
+                    Body
+                  </div>
+                  <div
+                    style={{
+                      padding: 6,
+                      borderRadius: 8,
+                      border: "1px solid rgba(51,65,85,0.9)",
+                      background: "rgba(15,23,42,1)",
+                      fontSize: 12,
+                      color: GP.text,
+                      maxHeight: 140,
+                      overflowY: "auto",
+                      whiteSpace: "pre-wrap",
+                    }}
+                  >
+                    {emailData.body}
+                  </div>
+                  <button
+                    onClick={() =>
+                      navigator.clipboard.writeText(emailData.body)
+                    }
+                    style={{
+                      marginTop: 4,
+                      padding: "4px 10px",
+                      borderRadius: 999,
+                      border: "1px solid rgba(148,163,184,0.8)",
+                      background: "rgba(15,23,42,0.9)",
+                      color: GP.textSoft,
+                      fontSize: 11,
+                      cursor: "pointer",
+                    }}
+                  >
+                    Copy Body
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
         </div>
       </div>
