@@ -1,219 +1,179 @@
 // pages/api/vendor/fix-plan.js
-import { Client } from "pg";
+// ============================================================
+// FIX PLAN V5 — AI-Powered Rule-Based Vendor Remediation Engine
+// ============================================================
+
+import { sql } from "../../../lib/db";
 import OpenAI from "openai";
 
 export default async function handler(req, res) {
-  if (req.method !== "GET") {
-    return res
-      .status(405)
-      .json({ ok: false, error: "Method not allowed" });
-  }
-
-  let db = null;
-
   try {
-    const { vendorId, orgId } = req.query;
+    const vendorId = Number(req.query.vendorId);
+    const orgId = Number(req.query.orgId);
 
     if (!vendorId || !orgId) {
-      return res
-        .status(400)
-        .json({ ok: false, error: "Missing vendorId or orgId" });
-    }
-
-    // 1️⃣ Load vendor + policies from DB
-    db = new Client({ connectionString: process.env.DATABASE_URL });
-    await db.connect();
-
-    const vendorRes = await db.query(
-      `
-      SELECT id, org_id, name, email, phone, address
-      FROM public.vendors
-      WHERE id = $1
-      `,
-      [vendorId]
-    );
-
-    if (vendorRes.rows.length === 0) {
-      return res
-        .status(404)
-        .json({ ok: false, error: "Vendor not found" });
-    }
-
-    const vendor = vendorRes.rows[0];
-
-    const policiesRes = await db.query(
-      `
-      SELECT id,
-             coverage_type,
-             policy_number,
-             carrier,
-             expiration_date,
-             limit_each_occurrence,
-             limit_aggregate,
-             risk_score
-      FROM public.policies
-      WHERE vendor_id = $1
-      ORDER BY created_at DESC
-      `,
-      [vendorId]
-    );
-
-    const policies = policiesRes.rows;
-
-    // 2️⃣ Call existing compliance engine
-    const baseUrl =
-      process.env.NEXT_PUBLIC_BASE_URL || `http://localhost:3000`;
-
-    const complianceRes = await fetch(
-      `${baseUrl}/api/requirements/check?vendorId=${vendorId}&orgId=${orgId}`
-    );
-
-    const complianceData = await complianceRes.json();
-
-    if (!complianceData.ok) {
-      return res.status(500).json({
+      return res.status(400).json({
         ok: false,
-        error:
-          complianceData.error ||
-          "Compliance engine failed while generating fix plan.",
+        error: "Missing vendorId or orgId",
       });
     }
 
-    const { summary, missing, failing, passing } = complianceData;
+    // ------------------------------------------------------------
+    // 1) Load vendor + policies
+    // ------------------------------------------------------------
+    const vendorRows = await sql`
+      SELECT id, name, email
+      FROM vendors
+      WHERE id = ${vendorId}
+      LIMIT 1;
+    `;
+    if (!vendorRows.length) {
+      return res.status(404).json({
+        ok: false,
+        error: "Vendor not found.",
+      });
+    }
 
-    // 3️⃣ AI — Generate fix steps + emails (Hybrid G + Legal)
-    if (!process.env.OPENAI_API_KEY) {
+    const vendor = vendorRows[0];
+
+    const policies = await sql`
+      SELECT *
+      FROM policies
+      WHERE vendor_id = ${vendorId}
+        AND org_id = ${orgId}
+      ORDER BY expiration_date ASC NULLS LAST;
+    `;
+
+    // ------------------------------------------------------------
+    // 2) Run Rule Engine V5 (dry run)
+    // ------------------------------------------------------------
+    const engineRes = await fetch(
+      `${process.env.APP_URL}/api/engine/run-v3`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          vendorId,
+          orgId,
+          dryRun: true
+        }),
+      }
+    );
+
+    let engineJson;
+    try {
+      engineJson = await engineRes.json();
+    } catch (e) {
+      return res.status(200).json({
+        ok: false,
+        error: "Rule engine returned invalid JSON.",
+      });
+    }
+
+    if (!engineJson.ok) {
+      return res.status(200).json({
+        ok: false,
+        error: engineJson.error || "Engine failed.",
+      });
+    }
+
+    const failingRules = engineJson.failingRules || [];
+
+    // ------------------------------------------------------------
+    // 2b) No failing rules = vendor is compliant
+    // ------------------------------------------------------------
+    if (failingRules.length === 0) {
       return res.status(200).json({
         ok: true,
-        steps: [
-          "Review missing and failing coverage for this vendor.",
-          "Request an updated COI from the vendor and/or broker.",
-          "Verify the new COI meets all limits, endorsements, and expiration requirements.",
-        ],
-        vendorEmailSubject: "Request for updated Certificate of Insurance",
-        vendorEmailBody:
-          "Please provide an updated Certificate of Insurance that satisfies our current coverage requirements.",
-        internalNotes:
-          "OpenAI API key not configured. AI-generated plan disabled; using fallback generic steps.",
+        steps: ["No action required — vendor appears compliant."],
+        vendorEmailSubject: `Your COI Review — No Issues Found`,
+        vendorEmailBody: `Hi ${vendor.name},
+
+We reviewed your Certificate of Insurance and found no outstanding issues.
+
+Thank you for maintaining compliance.
+
+– Compliance Team`,
+        internalNotes: "Vendor fully compliant — no further review required."
       });
     }
 
+    // ------------------------------------------------------------
+    // 3) Summaries for AI
+    // ------------------------------------------------------------
+    const ruleSummaries = failingRules.map((r) => ({
+      ruleId: r.ruleId,
+      severity: r.severity || "medium",
+      field: r.fieldKey,
+      operator: r.operator,
+      expected: r.expectedValue,
+      message: r.message,
+    }));
+
+    // ------------------------------------------------------------
+    // 4) AI Fix Plan
+    // ------------------------------------------------------------
     const openai = new OpenAI({
       apiKey: process.env.OPENAI_API_KEY,
     });
 
     const prompt = `
-You are an insurance compliance and construction risk expert writing for a general contractor / owner.
+You are an insurance compliance expert.
 
-Tone: 
-- Hybrid of G-MODE (direct, blunt, no fluff) 
-- AND legal-safe professional: no insults, no threats, no promises beyond facts.
+Convert these failing rules into a remediation plan for the vendor.
 
-You are given:
-- Vendor details
-- Policy snapshot
-- Compliance result (missing coverage, failing rules, passing rules)
-- Summary of compliance status
-
-You must output STRICT JSON:
-
-{
-  "steps": ["...", "...", "..."],
-  "vendorEmailSubject": "...",
-  "vendorEmailBody": "...",
-  "internalNotes": "..."
-}
-
-Where:
-- "steps" = a 3–7 item checklist of what this organization must do to bring the vendor into compliance.
-- "vendorEmailSubject" = a clear, professional subject line for the email to the vendor or broker.
-- "vendorEmailBody" = a concise, professional email in plain text asking for exactly what is needed (coverage, limits, endorsements, corrected dates, etc.). It must be polite, firm, and legally safe.
-- "internalNotes" = 3–6 sentences explaining to the internal team (GC/owner/compliance staff) what the risk is, what is missing, and what should happen next.
-
-Do not include JSON comments. Do not wrap JSON in markdown. JSON only.
-
-Vendor:
-${JSON.stringify(
-  {
-    id: vendor.id,
-    name: vendor.name,
-    email: vendor.email,
-    phone: vendor.phone,
-    address: vendor.address,
-  },
-  null,
-  2
-)}
+Failing Rules:
+${JSON.stringify(ruleSummaries, null, 2)}
 
 Policies:
 ${JSON.stringify(policies, null, 2)}
 
-Compliance Summary:
-${JSON.stringify(
-  {
-    summary,
-    missing,
-    failing,
-    passing,
-  },
-  null,
-  2
-)}
-    `.trim();
+Return ONLY valid JSON in this exact shape:
 
-    const completion = await openai.chat.completions.create({
-      model: "gpt-4o-mini",
-      temperature: 0.2,
-      response_format: { type: "json_object" },
-      messages: [
-        {
-          role: "system",
-          content:
-            "You are an AI assistant helping a construction/general contractor compliance team manage vendor insurance risk.",
-        },
-        {
-          role: "user",
-          content: prompt,
-        },
-      ],
+{
+  "steps": ["..."],
+  "vendorSubject": "...",
+  "vendorBody": "...",
+  "internalNotes": "..."
+}
+`;
+
+    const aiRes = await openai.chat.completions.create({
+      model: "gpt-4.1-mini",
+      messages: [{ role: "user", content: prompt }],
+      temperature: 0.3,
     });
 
-    const rawContent = completion.choices[0]?.message?.content || "{}";
+    let content = aiRes.choices?.[0]?.message?.content?.trim() || "{}";
+
+    if (content.startsWith("```")) {
+      content = content.replace(/```json|```/g, "").trim();
+    }
 
     let parsed;
     try {
-      parsed = JSON.parse(rawContent);
+      parsed = JSON.parse(content);
     } catch (err) {
-      console.error("Fix-plan JSON parse error:", err);
       parsed = {
-        steps: [
-          "Review vendor coverage against requirements.",
-          "Request updated COI to cure missing or failing coverage.",
-          "Re-run compliance after updated documents are received.",
-        ],
-        vendorEmailSubject: "Request for updated COI",
-        vendorEmailBody:
-          "Please provide an updated Certificate of Insurance that meets our requirements.",
-        internalNotes:
-          "AI output could not be parsed as JSON. Using fallback generic plan.",
+        steps: ["AI failed to generate steps. Retry."],
+        vendorSubject: "COI Issues",
+        vendorBody: "There are issues with your COI.",
+        internalNotes: content.substring(0, 500),
       };
     }
 
     return res.status(200).json({
       ok: true,
       steps: parsed.steps || [],
-      vendorEmailSubject: parsed.vendorEmailSubject || "",
-      vendorEmailBody: parsed.vendorEmailBody || "",
+      vendorEmailSubject: parsed.vendorSubject || "",
+      vendorEmailBody: parsed.vendorBody || "",
       internalNotes: parsed.internalNotes || "",
     });
+
   } catch (err) {
-    console.error("FIX PLAN ENGINE ERROR:", err);
-    return res
-      .status(500)
-      .json({ ok: false, error: err.message || "Fix plan generation failed" });
-  } finally {
-    try {
-      await db?.end();
-    } catch (_) {}
+    return res.status(200).json({
+      ok: false,
+      error: err.message || "Fix-plan failed.",
+    });
   }
 }
