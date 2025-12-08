@@ -17,11 +17,8 @@
 //    - Resolves old engine alerts for this vendor/org
 //    - Creates new alerts in alerts table for each failing rule
 //
-// ⭐ Now also integrates CONTRACT RULES V5:
-//    - Uses vendors.contract_* fields (populated by Contract Matching V3)
-//    - Merges contract failures into failingRules for UI & scoring
-//    - Adjusts globalScore to respect contract risk
-//    - Does NOT double-insert contract issues into rule_results_v3/alerts
+// ⭐ Also integrates CONTRACT RULES V5:
+//    - Uses contractResults from getContractRuleResultsForVendor
 // ============================================================
 
 import { sql } from "../../../lib/db";
@@ -34,7 +31,7 @@ export const config = {
 };
 
 /* ============================================================
-   SCORE HELPER (same scale you already use)
+   SCORE HELPER
 ============================================================ */
 function computeScoreFromFailures(failures = []) {
   let score = 100;
@@ -57,7 +54,6 @@ function computeScoreFromFailures(failures = []) {
    V5 RULE EVALUATION HELPERS
 ============================================================ */
 
-// Guess type from field_key
 function inferType(fieldKey) {
   if (!fieldKey) return "string";
   const key = fieldKey.toLowerCase();
@@ -76,15 +72,20 @@ function resolvePolicyValue(policy, fieldKey) {
     key = key.split(".").slice(1).join(".");
   }
 
-  // Explicit mappings based on your schema
+  // Explicit mappings matching YOUR schema
   if (key === "coverage_type") return policy.coverage_type;
   if (key === "expiration_date") return policy.expiration_date;
   if (key === "effective_date") return policy.effective_date;
   if (key === "carrier") return policy.carrier;
-  if (key === "glEachOccurrence") return policy.limit_each_occurrence;
-  if (key === "glAggregate") return policy.gl_aggregate; // if you ever add this
+  if (key === "policy_number") return policy.policy_number;
+  if (key === "status") return policy.status;
+  if (key === "vendor_name") return policy.vendor_name;
 
-  // Fallback: try direct column name
+  // Legacy keys (will just be undefined, but won’t crash)
+  if (key === "glEachOccurrence") return policy.limit_each_occurrence;
+  if (key === "glAggregate") return policy.gl_aggregate;
+
+  // Fallback: direct column name
   return policy[key];
 }
 
@@ -164,9 +165,7 @@ export default async function handler(req, res) {
       });
     }
 
-    // ---------------------------------------------------
-    // 1) Load vendor policies
-    // ---------------------------------------------------
+    // 1) Load vendor policies — ONLY REAL COLUMNS
     const policies = await sql`
       SELECT
         id,
@@ -178,11 +177,7 @@ export default async function handler(req, res) {
         status,
         vendor_name,
         policy_number,
-        carrier,
-        limit_each_occurrence,
-        auto_limit,
-        work_comp_limit,
-        umbrella_limit
+        carrier
       FROM policies
       WHERE vendor_id = ${vendorId} AND org_id = ${orgId}
       ORDER BY expiration_date ASC NULLS LAST;
@@ -202,9 +197,7 @@ export default async function handler(req, res) {
       });
     }
 
-    // ---------------------------------------------------
-    // 2) Load org V5 rules (requirements_rules_v2)
-    // ---------------------------------------------------
+    // 2) Load org V5 rules
     const rules = await sql`
       SELECT
         id,
@@ -239,9 +232,7 @@ export default async function handler(req, res) {
       });
     }
 
-    // ---------------------------------------------------
-    // 3) Evaluate coverage rules across policies
-    // ---------------------------------------------------
+    // 3) Evaluate coverage rules
     const failures = [];
     const passes = [];
 
@@ -290,9 +281,7 @@ export default async function handler(req, res) {
       }
     }
 
-    // ---------------------------------------------------
-    // 3b) MERGE CONTRACT RULES (Contract Intelligence V3)
-    // ---------------------------------------------------
+    // 3b) Merge contract rules
     let contractFailCount = 0;
     let contractPassCount = 0;
     let contractScore = null;
@@ -308,7 +297,6 @@ export default async function handler(req, res) {
         contractPassCount = contractResult.passingContractRules.length;
         contractScore = contractResult.contractScore;
 
-        // Map contract fails into same shape
         for (const cf of contractResult.failingContractRules) {
           failures.push({
             ruleId: cf.rule_id,
@@ -322,7 +310,6 @@ export default async function handler(req, res) {
           });
         }
 
-        // Map contract passes into same shape
         for (const cp of contractResult.passingContractRules) {
           passes.push({
             ruleId: cp.rule_id,
@@ -340,32 +327,26 @@ export default async function handler(req, res) {
       console.error("[engine/run-v3] ContractRulesV5 error:", contractErr);
     }
 
-    // ---------------------------------------------------
-    // 3c) Compute globalScore (Coverage + Contract)
-    // ---------------------------------------------------
     let globalScore = computeScoreFromFailures(failures);
     if (contractScore != null) {
-      // Conservative: global score cannot exceed contract score
       globalScore = Math.min(globalScore, contractScore);
     }
 
-    const totalRules = activeRules.length + contractFailCount + contractPassCount;
+    const totalRules =
+      activeRules.length + contractFailCount + contractPassCount;
 
-    // Split coverage vs contract for persistence
-    const coverageFailures = failures.filter((f) => f.source === "coverage_v5");
+    const coverageFailures = failures.filter(
+      (f) => f.source === "coverage_v5"
+    );
     const coveragePasses = passes.filter((p) => p.source === "coverage_v5");
 
-    // ---------------------------------------------------
-    // 4) Persist results + alerts (if NOT dryRun)
-    // ---------------------------------------------------
+    // 4) Persist + alerts if not dryRun
     if (!dryRun) {
-      // 4a) wipe existing rule_results_v3 for this vendor/org
       await sql`
         DELETE FROM rule_results_v3
         WHERE vendor_id = ${vendorId} AND org_id = ${orgId};
       `;
 
-      // 4b) insert failing coverage rule results (NOT contract)
       for (const f of coverageFailures) {
         await sql`
           INSERT INTO rule_results_v3 (
@@ -387,7 +368,6 @@ export default async function handler(req, res) {
         `;
       }
 
-      // 4c) insert passing coverage rule results (NOT contract)
       for (const p of coveragePasses) {
         await sql`
           INSERT INTO rule_results_v3 (
@@ -409,7 +389,6 @@ export default async function handler(req, res) {
         `;
       }
 
-      // 4d) system_timeline log
       await sql`
         INSERT INTO system_timeline (org_id, vendor_id, action, message, severity)
         VALUES (
@@ -421,7 +400,6 @@ export default async function handler(req, res) {
         )
       `;
 
-      // 4e) vendor_compliance_cache — best-effort
       try {
         await sql`
           INSERT INTO vendor_compliance_cache (
@@ -443,20 +421,12 @@ export default async function handler(req, res) {
         `;
       } catch (cacheErr) {
         console.error(
-          "[engine/run-v3] vendor_compliance_cache upsert failed (check columns):",
+          "[engine/run-v3] vendor_compliance_cache upsert failed:",
           cacheErr
         );
       }
 
-      // ---------------------------------------------------
-      // 4f) V5 ALERT PIPELINE (COVERAGE ONLY)
-      //
-      // Contract alerts are already handled by Contract Matching V3
-      // and /api/contracts/apply-matching, so we avoid double-alerts
-      // here and limit this pipeline to coverage_rule_failure.
-      // ---------------------------------------------------
       try {
-        // Resolve prior engine alerts of type 'coverage_rule_failure'
         await sql`
           UPDATE alerts
           SET status = 'resolved'
@@ -466,17 +436,11 @@ export default async function handler(req, res) {
             AND status = 'open';
         `;
 
-        // Insert new alerts for each failing COVERAGE rule
         for (const f of coverageFailures) {
           const severity = (f.severity || "medium").toLowerCase();
           const ruleLabel = `${f.fieldKey} ${f.operator} ${f.expectedValue}`;
           const message = f.message || `Rule failed: ${ruleLabel}`;
           const title = "Coverage requirement not met";
-          const code = `RULE_${(severity || "medium").toUpperCase()}_${String(
-            f.fieldKey || "field"
-          )
-            .replace(/[^A-Za-z0-9]/g, "_")
-            .toUpperCase()}`;
 
           await sql`
             INSERT INTO alerts (
@@ -520,13 +484,9 @@ export default async function handler(req, res) {
         }
       } catch (alertErr) {
         console.error("[engine/run-v3] alert pipeline failed:", alertErr);
-        // do not throw, engine result should still succeed
       }
     }
 
-    // ---------------------------------------------------
-    // 5) Response payload
-    // ---------------------------------------------------
     return res.status(200).json({
       ok: true,
       vendorId,
