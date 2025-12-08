@@ -792,10 +792,9 @@ async function downloadEnterprisePDF() {
     })}
   </div>
 </div>
-{/* ============================================================
-    PAGE WRAPPING & FINAL RENDER
-============================================================ */}
-</div> {/* <-- closes main content wrapper */}
-</div> {/* <-- closes CINEMATIC PAGE BACKGROUND */}
-);
-} // <-- END OF VendorFixPage COMPONENT
+        </div> {/* end failing rules list */}
+      </div>   {/* end score + failing rules grid */}
+    </div>     {/* end main content wrapper */}
+  </div>       {/* end cinematic background */}
+  );
+} // END OF VendorFixPage COMPONENT
