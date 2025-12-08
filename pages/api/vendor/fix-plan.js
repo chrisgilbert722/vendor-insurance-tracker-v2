@@ -50,21 +50,22 @@ export default async function handler(req, res) {
     const vendor = vendorRes.rows[0];
 
     // ---------------------------------------------
-    // LOAD POLICIES
+    // LOAD POLICIES (PATCHED: removed created_at)
     // ---------------------------------------------
     const policiesRes = await db.query(
       `
-      SELECT id,
-             coverage_type,
-             policy_number,
-             carrier,
-             expiration_date,
-             limit_each_occurrence,
-             limit_aggregate,
-             risk_score
+      SELECT 
+        id,
+        coverage_type,
+        policy_number,
+        carrier,
+        expiration_date,
+        limit_each_occurrence,
+        limit_aggregate,
+        risk_score
       FROM public.policies
       WHERE vendor_id = $1
-      ORDER BY created_at DESC
+      ORDER BY expiration_date ASC NULLS LAST
       `,
       [vendorId]
     );
@@ -72,7 +73,7 @@ export default async function handler(req, res) {
     const policies = policiesRes.rows;
 
     // ---------------------------------------------
-    // BUILD SAFE INTERNAL URL FOR RULE ENGINE
+    // BUILD SAFE INTERNAL URL FOR RULE ENGINE V5
     // ---------------------------------------------
     const host =
       req.headers.host && req.headers.host.startsWith("localhost")
@@ -106,7 +107,7 @@ export default async function handler(req, res) {
     const failingRules = engineJson.failingRules || [];
 
     // ---------------------------------------------
-    // COMPLIANT VENDOR → SIMPLE PLAN
+    // COMPLIANT → SIMPLE PLAN
     // ---------------------------------------------
     if (failingRules.length === 0) {
       return res.status(200).json({
@@ -125,7 +126,7 @@ Thank you for maintaining compliance.
     }
 
     // ---------------------------------------------
-    // PREP RULE SUMMARY FOR AI
+    // PREP FAILING RULES FOR AI
     // ---------------------------------------------
     const ruleSummaries = failingRules.map((r) => ({
       ruleId: r.ruleId,
@@ -145,20 +146,19 @@ Thank you for maintaining compliance.
         steps: [
           "Review missing and failing coverage requirements.",
           "Request updated COI from the vendor/broker.",
-          "Re-run compliance after receiving updated COI.",
+          "Re-run compliance after receiving updated documentation.",
         ],
         vendorEmailSubject: "Request for Updated Certificate of Insurance",
         vendorEmailBody:
-          "Please provide an updated Certificate of Insurance meeting our requirements.",
-        internalNotes:
-          "AI disabled — using generic fallback fix plan. Add OPENAI_API_KEY.",
+          "Please provide an updated Certificate of Insurance meeting our coverage requirements.",
+        internalNotes: "AI disabled — using fallback fix plan.",
       });
     }
 
     const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
     const prompt = `
-You are an insurance compliance expert. Convert the following failing rules into a clear remediation plan.
+You are an insurance compliance expert. Convert the failing rules into a clear remediation plan.
 
 Failing Rules:
 ${JSON.stringify(ruleSummaries, null, 2)}
@@ -166,7 +166,7 @@ ${JSON.stringify(ruleSummaries, null, 2)}
 Policies:
 ${JSON.stringify(policies, null, 2)}
 
-Return ONLY valid JSON:
+Return ONLY valid JSON format:
 {
   "steps": ["...", "..."],
   "vendorSubject": "...",
@@ -183,6 +183,7 @@ Return ONLY valid JSON:
 
     let content = completion.choices?.[0]?.message?.content?.trim() || "{}";
 
+    // Strip Markdown fences if any
     if (content.startsWith("```")) {
       content = content.replace(/```json|```/g, "").trim();
     }
@@ -192,10 +193,10 @@ Return ONLY valid JSON:
       parsed = JSON.parse(content);
     } catch (err) {
       parsed = {
-        steps: ["AI returned invalid data — retry."],
+        steps: ["AI returned unreadable or invalid JSON — retry."],
         vendorSubject: "COI Issues Detected",
         vendorBody:
-          "We identified COI issues but AI failed to produce details. Please re-run the fix plan.",
+          "We identified coverage issues but AI was unable to generate full details. Please re-run the Fix Plan.",
         internalNotes: content,
       };
     }
