@@ -1,8 +1,6 @@
 // pages/api/vendor/fix-plan.js
 // ============================================================
 // FIX PLAN ENGINE (Patched for Vercel + Local Dev)
-// - Always builds correct Rule Engine URL
-// - No APP_URL required
 // ============================================================
 
 import { Client } from "pg";
@@ -20,9 +18,7 @@ export default async function handler(req, res) {
     const orgId = Number(req.query.orgId);
 
     if (!vendorId || !orgId) {
-      return res
-        .status(400)
-        .json({ ok: false, error: "Missing vendorId or orgId" });
+      return res.status(400).json({ ok: false, error: "Missing vendorId or orgId" });
     }
 
     // ---------------------------------------------
@@ -43,26 +39,25 @@ export default async function handler(req, res) {
       [vendorId]
     );
 
-    if (vendorRes.rows.length === 0) {
+    if (!vendorRes.rows.length) {
       return res.status(404).json({ ok: false, error: "Vendor not found" });
     }
 
     const vendor = vendorRes.rows[0];
 
     // ---------------------------------------------
-    // LOAD POLICIES (PATCHED: removed created_at)
+    // LOAD POLICIES (PATCHED — removed risk_score)
     // ---------------------------------------------
     const policiesRes = await db.query(
       `
-      SELECT 
+      SELECT
         id,
         coverage_type,
         policy_number,
         carrier,
         expiration_date,
         limit_each_occurrence,
-        limit_aggregate,
-        risk_score
+        limit_aggregate
       FROM public.policies
       WHERE vendor_id = $1
       ORDER BY expiration_date ASC NULLS LAST
@@ -73,7 +68,7 @@ export default async function handler(req, res) {
     const policies = policiesRes.rows;
 
     // ---------------------------------------------
-    // BUILD SAFE INTERNAL URL FOR RULE ENGINE V5
+    // BUILD INTERNAL RULE ENGINE URL
     // ---------------------------------------------
     const host =
       req.headers.host && req.headers.host.startsWith("localhost")
@@ -83,7 +78,7 @@ export default async function handler(req, res) {
     const engineUrl = `${host}/api/engine/run-v3`;
 
     // ---------------------------------------------
-    // RUN RULE ENGINE IN DRY-RUN MODE
+    // RUN RULE ENGINE IN DRY MODE
     // ---------------------------------------------
     const engineRes = await fetch(engineUrl, {
       method: "POST",
@@ -91,8 +86,8 @@ export default async function handler(req, res) {
       body: JSON.stringify({
         vendorId,
         orgId,
-        dryRun: true,
-      }),
+        dryRun: true
+      })
     });
 
     const engineJson = await engineRes.json();
@@ -100,7 +95,7 @@ export default async function handler(req, res) {
     if (!engineJson.ok) {
       return res.status(500).json({
         ok: false,
-        error: engineJson.error || "Rule Engine V5 failed.",
+        error: engineJson.error || "Rule Engine failed"
       });
     }
 
@@ -113,7 +108,7 @@ export default async function handler(req, res) {
       return res.status(200).json({
         ok: true,
         steps: ["No action required — vendor appears compliant."],
-        vendorEmailSubject: `Your COI Review — No Issues Found`,
+        vendorEmailSubject: "Your COI Review — No Issues Found",
         vendorEmailBody: `Hi ${vendor.name},
 
 We reviewed your Certificate of Insurance and found no outstanding issues.
@@ -121,24 +116,24 @@ We reviewed your Certificate of Insurance and found no outstanding issues.
 Thank you for maintaining compliance.
 
 – Compliance Team`,
-        internalNotes: "Vendor fully compliant — no further review required.",
+        internalNotes: "Vendor fully compliant — no further review required."
       });
     }
 
     // ---------------------------------------------
     // PREP FAILING RULES FOR AI
     // ---------------------------------------------
-    const ruleSummaries = failingRules.map((r) => ({
+    const ruleSummaries = failingRules.map(r => ({
       ruleId: r.ruleId,
       field: r.fieldKey,
       operator: r.operator,
       expected: r.expectedValue,
       severity: r.severity || "medium",
-      message: r.message,
+      message: r.message
     }));
 
     // ---------------------------------------------
-    // CALL OPENAI TO GENERATE FIX PLAN
+    // AI GENERATION
     // ---------------------------------------------
     if (!process.env.OPENAI_API_KEY) {
       return res.status(200).json({
@@ -146,12 +141,12 @@ Thank you for maintaining compliance.
         steps: [
           "Review missing and failing coverage requirements.",
           "Request updated COI from the vendor/broker.",
-          "Re-run compliance after receiving updated documentation.",
+          "Re-run compliance after receiving updated documentation."
         ],
         vendorEmailSubject: "Request for Updated Certificate of Insurance",
         vendorEmailBody:
           "Please provide an updated Certificate of Insurance meeting our coverage requirements.",
-        internalNotes: "AI disabled — using fallback fix plan.",
+        internalNotes: "AI disabled — using fallback fix plan."
       });
     }
 
@@ -178,12 +173,11 @@ Return ONLY valid JSON format:
     const completion = await openai.chat.completions.create({
       model: "gpt-4.1-mini",
       temperature: 0.3,
-      messages: [{ role: "user", content: prompt }],
+      messages: [{ role: "user", content: prompt }]
     });
 
     let content = completion.choices?.[0]?.message?.content?.trim() || "{}";
 
-    // Strip Markdown fences if any
     if (content.startsWith("```")) {
       content = content.replace(/```json|```/g, "").trim();
     }
@@ -191,13 +185,13 @@ Return ONLY valid JSON format:
     let parsed;
     try {
       parsed = JSON.parse(content);
-    } catch (err) {
+    } catch {
       parsed = {
-        steps: ["AI returned unreadable or invalid JSON — retry."],
+        steps: ["AI returned invalid data — retry."],
         vendorSubject: "COI Issues Detected",
         vendorBody:
-          "We identified coverage issues but AI was unable to generate full details. Please re-run the Fix Plan.",
-        internalNotes: content,
+          "We identified coverage issues but AI failed to produce a full explanation. Please re-run the fix plan.",
+        internalNotes: content
       };
     }
 
@@ -206,16 +200,17 @@ Return ONLY valid JSON format:
       steps: parsed.steps || [],
       vendorEmailSubject: parsed.vendorSubject || "",
       vendorEmailBody: parsed.vendorBody || "",
-      internalNotes: parsed.internalNotes || "",
+      internalNotes: parsed.internalNotes || ""
     });
+
   } catch (err) {
     return res.status(500).json({
       ok: false,
-      error: err.message || "Fix plan generation failed",
+      error: err.message || "Fix plan generation failed"
     });
   } finally {
     try {
       await db?.end();
-    } catch (_) {}
+    } catch {}
   }
 }
