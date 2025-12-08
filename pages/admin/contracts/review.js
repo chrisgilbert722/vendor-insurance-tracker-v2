@@ -1,744 +1,645 @@
 // pages/admin/contracts/review.js
-// ==========================================================
-// CONTRACT REVIEW COCKPIT — ADMIN
-// Step 3 UI for Contract Intelligence:
-// 1) Upload contract PDF
-// 2) Run AI extraction (extract-contract)
-// 3) Review insurance requirements + raw clauses
-// 4) Apply contract-derived requirements → vendor.requirements_json
-// ==========================================================
+// ============================================================
+// CONTRACT REVIEW COCKPIT V3 — Cinematic Contract Intelligence
+//
+// URL: /admin/contracts/review?vendorId=123
+//
+// Uses:
+//  • /api/admin/vendor/overview?id=vendorId
+// Shows:
+//  • Vendor + Org info
+//  • Contract risk score
+//  • AI summary
+//  • Required coverages & minimums
+//  • Contract mismatches / issues
+//  • Latest contract document link
+// ============================================================
 
-import { useState } from "react";
-import { useOrg } from "../../../context/OrgContext";
-import ToastV2 from "../../../components/ToastV2";
-import CockpitWizardLayout from "../../../components/CockpitWizardLayout";
+import { useRouter } from "next/router";
+import { useEffect, useState } from "react";
+
+const GP = {
+  bg: "#020617",
+  panel: "rgba(15,23,42,0.98)",
+  border: "rgba(51,65,85,0.9)",
+  text: "#e5e7eb",
+  textSoft: "#9ca3af",
+  neonBlue: "#38bdf8",
+  neonPurple: "#a855f7",
+  neonGreen: "#22c55e",
+  neonGold: "#facc15",
+  neonRed: "#fb7185",
+};
 
 export default function ContractReviewPage() {
-  const { activeOrgId: orgId } = useOrg();
+  const router = useRouter();
+  const { vendorId } = router.query;
 
-  const [vendorId, setVendorId] = useState("");
-  const [file, setFile] = useState(null);
+  const [data, setData] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
 
-  const [extractLoading, setExtractLoading] = useState(false);
-  const [applyLoading, setApplyLoading] = useState(false);
+  useEffect(() => {
+    if (!vendorId) return;
 
-  const [requirementsProfile, setRequirementsProfile] = useState(null);
-  const [rawClauses, setRawClauses] = useState(null);
-  const [confidence, setConfidence] = useState(null);
-  const [reason, setReason] = useState("");
+    async function load() {
+      try {
+        setLoading(true);
+        setError("");
 
-  const [toast, setToast] = useState({
-    open: false,
-    type: "success",
-    message: "",
-  });
+        const res = await fetch(
+          `/api/admin/vendor/overview?id=${encodeURIComponent(vendorId)}`
+        );
+        const json = await res.json();
+        if (!json.ok) throw new Error(json.error || "Failed to load contract.");
 
-  // ----------------------------------------------------------
-  // HANDLERS
-  // ----------------------------------------------------------
-  function handleFileChange(e) {
-    const f = e.target.files?.[0] || null;
-    if (!f) return;
-    if (!f.name.toLowerCase().endsWith(".pdf")) {
-      setToast({
-        open: true,
-        type: "error",
-        message: "Please upload a PDF contract.",
-      });
-      return;
-    }
-    setFile(f);
-  }
-
-  async function handleExtract() {
-    if (!orgId) {
-      setToast({
-        open: true,
-        type: "error",
-        message: "No active org selected.",
-      });
-      return;
-    }
-    if (!vendorId.trim()) {
-      setToast({
-        open: true,
-        type: "error",
-        message: "Enter a vendor ID first.",
-      });
-      return;
-    }
-    if (!file) {
-      setToast({
-        open: true,
-        type: "error",
-        message: "Upload a contract PDF first.",
-      });
-      return;
-    }
-
-    try {
-      setExtractLoading(true);
-      setRequirementsProfile(null);
-      setRawClauses(null);
-      setConfidence(null);
-      setReason("");
-
-      const formData = new FormData();
-      formData.append("file", file);
-      formData.append("vendorId", vendorId);
-      formData.append("orgId", String(orgId));
-
-      const res = await fetch("/api/docs/extract-contract", {
-        method: "POST",
-        body: formData,
-      });
-
-      const json = await res.json();
-      if (!res.ok || !json.ok) {
-        throw new Error(json.error || "Failed to extract contract requirements.");
+        setData(json);
+      } catch (err) {
+        console.error("[ContractReview] load error:", err);
+        setError(err.message || "Failed to load contract intelligence.");
+      } finally {
+        setLoading(false);
       }
-
-      setRequirementsProfile(json.requirementsProfile || null);
-      setRawClauses(json.rawClauses || null);
-      setConfidence(json.confidence ?? null);
-      setReason(json.reason || "");
-
-      setToast({
-        open: true,
-        type: "success",
-        message: "Contract requirements extracted.",
-      });
-    } catch (err) {
-      console.error("[ContractReview] extract error:", err);
-      setToast({
-        open: true,
-        type: "error",
-        message: err.message || "Failed to extract contract.",
-      });
-    } finally {
-      setExtractLoading(false);
-    }
-  }
-
-  async function handleApplyRequirements() {
-    if (!orgId) {
-      setToast({
-        open: true,
-        type: "error",
-        message: "No active org selected.",
-      });
-      return;
-    }
-    if (!vendorId.trim()) {
-      setToast({
-        open: true,
-        type: "error",
-        message: "Vendor ID is required.",
-      });
-      return;
-    }
-    if (!requirementsProfile) {
-      setToast({
-        open: true,
-        type: "error",
-        message: "No extracted requirements to apply.",
-      });
-      return;
     }
 
-    try {
-      setApplyLoading(true);
+    load();
+  }, [vendorId]);
 
-      const res = await fetch("/api/docs/apply-contract-requirements", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          vendorId: Number(vendorId),
-          orgId: Number(orgId),
-          requirementsProfile,
-        }),
-      });
-
-      const json = await res.json();
-      if (!res.ok || !json.ok) {
-        throw new Error(json.error || "Failed to apply contract requirements.");
-      }
-
-      setToast({
-        open: true,
-        type: "success",
-        message: "Contract requirements applied to vendor.",
-      });
-    } catch (err) {
-      console.error("[ContractReview] apply error:", err);
-      setToast({
-        open: true,
-        type: "error",
-        message: err.message || "Failed to apply requirements.",
-      });
-    } finally {
-      setApplyLoading(false);
-    }
-  }
-
-  // ----------------------------------------------------------
-  // RENDER HELPERS
-  // ----------------------------------------------------------
-  function renderRequirements() {
-    if (!requirementsProfile) {
-      return (
-        <div
-          style={{
-            padding: 12,
-            borderRadius: 12,
-            border: "1px dashed rgba(148,163,184,0.5)",
-            color: "#9ca3af",
-            fontSize: 13,
-          }}
-        >
-          No contract requirements extracted yet. Upload a contract and run AI
-          extraction.
-        </div>
-      );
-    }
-
-    const coverages = requirementsProfile.coverages || {};
-
-    function renderCoverageBlock(key, label, coverage) {
-      if (!coverage) return null;
-
-      return (
-        <div
-          key={key}
-          style={{
-            borderRadius: 12,
-            padding: 10,
-            border: "1px solid rgba(51,65,85,0.8)",
-            background: "rgba(15,23,42,0.95)",
-            marginBottom: 8,
-          }}
-        >
-          <div
-            style={{
-              display: "flex",
-              justifyContent: "space-between",
-              marginBottom: 4,
-            }}
-          >
-            <div style={{ fontSize: 13, fontWeight: 600 }}>{label}</div>
-            <div
-              style={{
-                fontSize: 11,
-                padding: "2px 8px",
-                borderRadius: 999,
-                background: coverage.required
-                  ? "rgba(34,197,94,0.15)"
-                  : "rgba(148,163,184,0.15)",
-                color: coverage.required ? "#4ade80" : "#9ca3af",
-                border: coverage.required
-                  ? "1px solid rgba(34,197,94,0.7)"
-                  : "1px solid rgba(148,163,184,0.7)",
-              }}
-            >
-              {coverage.required ? "Required" : "Not Required"}
-            </div>
-          </div>
-
-          <div style={{ fontSize: 12, color: "#e5e7eb" }}>
-            {coverage.eachOccurrenceLimit && (
-              <div>
-                Each Occurrence: $
-                {coverage.eachOccurrenceLimit.toLocaleString?.() ||
-                  coverage.eachOccurrenceLimit}
-              </div>
-            )}
-            {coverage.generalAggregateLimit && (
-              <div>
-                General Aggregate: $
-                {coverage.generalAggregateLimit.toLocaleString?.() ||
-                  coverage.generalAggregateLimit}
-              </div>
-            )}
-            {coverage.productsCompletedOpsAggregate && (
-              <div>
-                Products/Completed Ops Agg: $
-                {coverage.productsCompletedOpsAggregate.toLocaleString?.() ||
-                  coverage.productsCompletedOpsAggregate}
-              </div>
-            )}
-            {coverage.combinedSingleLimit && (
-              <div>
-                Combined Single Limit: $
-                {coverage.combinedSingleLimit.toLocaleString?.() ||
-                  coverage.combinedSingleLimit}
-              </div>
-            )}
-            {coverage.limit && (
-              <div>
-                Limit: $
-                {coverage.limit.toLocaleString?.() || coverage.limit}
-              </div>
-            )}
-
-            {coverage.waiverOfSubrogationRequired && (
-              <div>• Waiver of Subrogation required</div>
-            )}
-            {coverage.primaryNonContributoryRequired && (
-              <div>• Primary & Noncontributory required</div>
-            )}
-            {coverage.perProjectAggregate && <div>• Per Project Aggregate</div>}
-            {coverage.perLocationAggregate && (
-              <div>• Per Location Aggregate</div>
-            )}
-            {coverage.anyAuto && <div>• Any Auto</div>}
-            {coverage.hiredNonOwned && <div>• Hired / Non-Owned Auto</div>}
-            {coverage.followsForm && <div>• Umbrella follows form</div>}
-            {coverage.retroactiveDateRequired && (
-              <div>• Retroactive date required</div>
-            )}
-            {coverage.tailCoverageRequiredYears && (
-              <div>
-                • Tail coverage required ({coverage.tailCoverageRequiredYears}{" "}
-                years)
-              </div>
-            )}
-
-            {coverage.description && (
-              <div style={{ marginTop: 6, color: "#9ca3af" }}>
-                {coverage.description}
-              </div>
-            )}
-          </div>
-        </div>
-      );
-    }
-
-    const requiredEndorsements =
-      requirementsProfile.requiredEndorsements || [];
-
+  // ==========================
+  // LOADING / ERROR STATES
+  // ==========================
+  if (!vendorId) {
     return (
-      <div>
-        {/* Coverages */}
-        {renderCoverageBlock("gl", "General Liability", coverages.generalLiability)}
-        {renderCoverageBlock("auto", "Auto Liability", coverages.autoLiability)}
-        {renderCoverageBlock("wc", "Workers' Compensation", coverages.workersComp)}
-        {renderCoverageBlock("umb", "Umbrella / Excess", coverages.umbrella)}
-        {renderCoverageBlock("pl", "Professional Liability", coverages.professionalLiability)}
-
-        {/* Flags */}
-        <div style={{ marginTop: 10, fontSize: 12, color: "#e5e7eb" }}>
-          {requirementsProfile.additionalInsuredRequired && (
-            <div>• Additional Insured required</div>
-          )}
-          {requirementsProfile.waiverOfSubrogationRequired && (
-            <div>• Waiver of Subrogation required</div>
-          )}
-          {requirementsProfile.primaryNonContributoryRequired && (
-            <div>• Primary & Noncontributory required</div>
-          )}
-          {requirementsProfile.otherInsuranceLanguage && (
-            <div style={{ marginTop: 4, color: "#9ca3af" }}>
-              Other insurance language:{" "}
-              {requirementsProfile.otherInsuranceLanguage}
-            </div>
-          )}
-        </div>
-
-        {/* Required Endorsements */}
-        <div style={{ marginTop: 12 }}>
-          <div
-            style={{
-              fontSize: 12,
-              fontWeight: 600,
-              marginBottom: 4,
-            }}
-          >
-            Required Endorsements
-          </div>
-          {requiredEndorsements.length === 0 ? (
-            <div style={{ fontSize: 12, color: "#9ca3af" }}>
-              None explicitly identified.
-            </div>
-          ) : (
-            <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
-              {requiredEndorsements.map((code, idx) => (
-                <span
-                  key={idx}
-                  style={{
-                    padding: "4px 8px",
-                    borderRadius: 999,
-                    border: "1px solid rgba(148,163,184,0.7)",
-                    fontSize: 11,
-                    color: "#e5e7eb",
-                    background: "rgba(15,23,42,0.95)",
-                  }}
-                >
-                  {code}
-                </span>
-              ))}
-            </div>
-          )}
-        </div>
-
-        {/* Notes */}
-        {requirementsProfile.notes && (
-          <div
-            style={{
-              marginTop: 10,
-              padding: 10,
-              borderRadius: 10,
-              background: "rgba(15,23,42,0.96)",
-              border: "1px solid rgba(55,65,81,0.9)",
-              fontSize: 12,
-              color: "#cbd5f5",
-            }}
-          >
-            <strong>Notes:</strong> {requirementsProfile.notes}
-          </div>
-        )}
-      </div>
+      <Shell>
+        <h1 style={{ fontSize: 22, marginBottom: 8 }}>Contract Review</h1>
+        <p style={{ color: GP.textSoft, fontSize: 13 }}>
+          Missing <code>vendorId</code> in query string.
+        </p>
+      </Shell>
     );
   }
 
-  function renderRawClauses() {
-    if (!rawClauses) {
-      return (
-        <div
-          style={{
-            padding: 12,
-            borderRadius: 12,
-            border: "1px dashed rgba(148,163,184,0.5)",
-            color: "#9ca3af",
-            fontSize: 13,
-          }}
-        >
-          No raw clauses extracted yet.
-        </div>
-      );
-    }
-
-    function ClauseBlock({ title, text }) {
-      if (!text) return null;
-      return (
-        <div
-          style={{
-            marginBottom: 16,
-            padding: 10,
-            borderRadius: 12,
-            border: "1px solid rgba(55,65,81,0.9)",
-            background: "rgba(15,23,42,0.97)",
-            fontSize: 12,
-            color: "#e5e7eb",
-          }}
-        >
-          <div
-            style={{
-              fontSize: 12,
-              fontWeight: 600,
-              marginBottom: 6,
-              color: "#e5e7eb",
-            }}
-          >
-            {title}
-          </div>
-          <pre
-            style={{
-              whiteSpace: "pre-wrap",
-              fontSize: 11,
-              color: "#cbd5f5",
-            }}
-          >
-            {text}
-          </pre>
-        </div>
-      );
-    }
-
+  if (loading) {
     return (
-      <div>
-        <ClauseBlock
-          title="Insurance Requirements Clause"
-          text={rawClauses.insuranceRequirements}
-        />
-        <ClauseBlock title="Indemnity Clause" text={rawClauses.indemnity} />
-        <ClauseBlock
-          title="Waiver of Subrogation Language"
-          text={rawClauses.waiverOfSubrogation}
-        />
-        <ClauseBlock
-          title="Additional Insured Language"
-          text={rawClauses.additionalInsured}
-        />
-      </div>
+      <Shell>
+        <h1 style={{ fontSize: 22, marginBottom: 8 }}>Contract Review</h1>
+        <p style={{ color: GP.textSoft, fontSize: 13 }}>Loading…</p>
+      </Shell>
     );
   }
 
-  // -----------------------------------------------------------
-  // PAGE RENDER (COCKPIT WRAPPED)
-  // -----------------------------------------------------------
+  if (error || !data?.vendor) {
+    return (
+      <Shell>
+        <h1 style={{ fontSize: 22, marginBottom: 8 }}>Contract Review</h1>
+        <p style={{ color: GP.neonRed, fontSize: 13 }}>
+          {error || "Vendor not found."}
+        </p>
+      </Shell>
+    );
+  }
+
+  // ==========================
+  // EXTRACT DATA
+  // ==========================
+  const { vendor, org, documents } = data;
+
+  // Contract intel (support multiple shapes just in case)
+  const contractJson =
+    vendor.contract_json ||
+    null; // could also be data.contractIntel?.contract_json in other versions
+
+  const contractScore =
+    vendor.contract_score ??
+    vendor.contract_risk_score ??
+    null; // fallback if only risk_score exists
+
+  const contractIssues =
+    vendor.contract_mismatches ||
+    vendor.contract_issues_json ||
+    []; // fallback to issues_json if mismatches not mapped
+
+  const latestContract =
+    (documents || []).find((d) => d.document_type === "contract") || null;
+
+  const riskColor =
+    contractScore == null
+      ? GP.textSoft
+      : contractScore >= 80
+      ? GP.neonGreen
+      : contractScore >= 60
+      ? GP.neonGold
+      : GP.neonRed;
+
   return (
-    <CockpitWizardLayout>
-      <div style={{ position: "relative", zIndex: 3 }}>
-        {/* HEADER */}
-        <div style={{ marginBottom: 20 }}>
-          <div
-            style={{
-              display: "inline-flex",
-              gap: 8,
-              padding: "4px 10px",
-              borderRadius: 999,
-              border: "1px solid rgba(148,163,184,0.4)",
-              background:
-                "linear-gradient(120deg,rgba(15,23,42,0.94),rgba(15,23,42,0.7))",
-              marginBottom: 6,
-            }}
-          >
-            <span
-              style={{
-                fontSize: 10,
-                color: "#9ca3af",
-                letterSpacing: "0.14em",
-                textTransform: "uppercase",
-              }}
+    <Shell>
+      {/* HEADER */}
+      <div style={headerRow}>
+        <div>
+          <div style={breadcrumb}>
+            <a href="/vendors" style={{ color: GP.neonBlue }}>
+              Vendors
+            </a>
+            <span>/</span>
+            <a
+              href={`/admin/vendor/${vendor.id}`}
+              style={{ color: GP.neonBlue }}
             >
-              Contract Intelligence
-            </span>
-            <span
-              style={{
-                fontSize: 10,
-                color: "#38bdf8",
-                letterSpacing: "0.12em",
-                textTransform: "uppercase",
-              }}
-            >
-              AI Requirements Review
-            </span>
+              {vendor.name}
+            </a>
+            <span>/</span>
+            <span>Contract Review</span>
           </div>
 
-          <h1
-            style={{
-              margin: 0,
-              fontSize: 26,
-              fontWeight: 600,
-            }}
-          >
-            Review{" "}
-            <span
-              style={{
-                background:
-                  "linear-gradient(90deg,#38bdf8,#a855f7,#f97316)",
-                WebkitBackgroundClip: "text",
-                color: "transparent",
-              }}
-            >
-              contract insurance requirements
-            </span>{" "}
-            before applying.
+          <h1 style={title}>
+            Contract Review:{" "}
+            <span style={titleGradient}>{vendor.name}</span>
           </h1>
-          <p
-            style={{
-              marginTop: 6,
-              fontSize: 13,
-              color: "#9ca3af",
-              maxWidth: 720,
-            }}
-          >
-            Upload a contract, let AI extract the insurance requirements and
-            indemnity clauses, then apply them as the vendor&apos;s official
-            requirements profile.
-          </p>
+
+          {org && (
+            <p style={orgText}>
+              Org: <span style={{ color: GP.text }}>{org.name}</span>
+            </p>
+          )}
         </div>
 
-        {/* CONTROLS */}
-        <div
-          style={{
-            display: "flex",
-            gap: 12,
-            flexWrap: "wrap",
-            alignItems: "flex-end",
-            marginBottom: 18,
-          }}
-        >
-          <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-            <label
-              style={{ fontSize: 12, color: "#9ca3af", marginBottom: 2 }}
-            >
-              Vendor ID
-            </label>
-            <input
-              type="number"
-              value={vendorId}
-              onChange={(e) => setVendorId(e.target.value)}
-              placeholder="e.g. 123"
-              style={{
-                minWidth: 160,
-                padding: "6px 10px",
-                borderRadius: 8,
-                border: "1px solid rgba(148,163,184,0.6)",
-                background: "rgba(15,23,42,0.95)",
-                color: "#e5e7eb",
-                fontSize: 13,
-              }}
-            />
-          </div>
-
-          <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-            <label
-              style={{ fontSize: 12, color: "#9ca3af", marginBottom: 2 }}
-            >
-              Contract PDF
-            </label>
-            <input
-              type="file"
-              accept="application/pdf"
-              onChange={handleFileChange}
-              style={{ fontSize: 12 }}
-            />
-          </div>
-
+        <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
           <button
-            onClick={handleExtract}
-            disabled={extractLoading || !file || !vendorId || !orgId}
-            style={{
-              padding: "9px 16px",
-              borderRadius: 12,
-              border: "1px solid rgba(56,189,248,0.8)",
-              background:
-                extractLoading || !file || !vendorId || !orgId
-                  ? "rgba(56,189,248,0.3)"
-                  : "linear-gradient(90deg,#38bdf8,#0ea5e9,#1d4ed8)",
-              color: "white",
-              fontSize: 13,
-              fontWeight: 600,
-              cursor:
-                extractLoading || !file || !vendorId || !orgId
-                  ? "not-allowed"
-                  : "pointer",
-            }}
+            onClick={() => router.push(`/admin/vendor/${vendor.id}`)}
+            style={pillButton(GP.neonBlue)}
           >
-            {extractLoading ? "Analyzing contract…" : "⚡ Extract Requirements"}
+            ← Back to Vendor Overview
           </button>
-
           <button
-            onClick={handleApplyRequirements}
-            disabled={!requirementsProfile || applyLoading}
-            style={{
-              padding: "9px 16px",
-              borderRadius: 12,
-              border: "1px solid #22c55e",
-              background: requirementsProfile
-                ? "linear-gradient(90deg,#22c55e,#16a34a,#15803d)"
-                : "rgba(34,197,94,0.25)",
-              color: "white",
-              fontSize: 13,
-              fontWeight: 600,
-              cursor:
-                !requirementsProfile || applyLoading
-                  ? "not-allowed"
-                  : "pointer",
-            }}
+            onClick={() => router.push(`/admin/vendor/${vendor.id}/profile`)}
+            style={pillButton(GP.neonPurple)}
           >
-            {applyLoading
-              ? "Applying requirements…"
-              : "✅ Apply Requirements to Vendor"}
+            Open Vendor Profile
           </button>
         </div>
+      </div>
 
-        {/* MAIN GRID */}
+      {/* TOP ROW: SCORE + META */}
+      <div
+        style={{
+          display: "grid",
+          gridTemplateColumns: "minmax(0,1.2fr) minmax(0,1.1fr)",
+          gap: 18,
+          marginBottom: 22,
+        }}
+      >
+        {/* SCORE PANEL */}
         <div
           style={{
-            display: "grid",
-            gridTemplateColumns: "minmax(0,1.6fr) minmax(0,1.4fr)",
-            gap: 20,
-            alignItems: "flex-start",
+            borderRadius: 22,
+            padding: 18,
+            background: GP.panel,
+            border: `1px solid ${GP.border}`,
           }}
         >
-          {/* LEFT: STRUCTURED REQUIREMENTS */}
           <div
             style={{
-              borderRadius: 22,
-              padding: 18,
-              background: "rgba(15,23,42,0.85)",
-              border: "1px solid rgba(80,120,255,0.4)",
-              boxShadow:
-                "0 0 28px rgba(64,106,255,0.25), inset 0 0 18px rgba(15,23,42,0.9)",
-              backdropFilter: "blur(10px)",
+              fontSize: 12,
+              textTransform: "uppercase",
+              letterSpacing: "0.14em",
+              color: GP.textSoft,
+              marginBottom: 10,
             }}
           >
-            <div
-              style={{
-                fontSize: 13,
-                fontWeight: 600,
-                marginBottom: 8,
-              }}
-            >
-              Extracted Insurance Requirements
+            Contract Risk Score (V3)
+          </div>
+
+          <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
+            <div>
+              <div
+                style={{
+                  fontSize: 32,
+                  fontWeight: 700,
+                  background:
+                    contractScore == null
+                      ? "linear-gradient(120deg,#9ca3af,#6b7280)"
+                      : contractScore >= 80
+                      ? "linear-gradient(120deg,#22c55e,#bef264)"
+                      : contractScore >= 60
+                      ? "linear-gradient(120deg,#facc15,#fde68a)"
+                      : "linear-gradient(120deg,#fb7185,#fecaca)",
+                  WebkitBackgroundClip: "text",
+                  color: "transparent",
+                }}
+              >
+                {contractScore ?? "—"}
+              </div>
+              <div style={{ fontSize: 12, color: GP.textSoft }}>
+                Overall contract compliance
+              </div>
             </div>
-            {confidence != null && (
+
+            <div style={{ flex: 1 }}>
+              <div
+                style={{
+                  height: 6,
+                  borderRadius: 999,
+                  background: "rgba(15,23,42,1)",
+                  overflow: "hidden",
+                }}
+              >
+                <div
+                  style={{
+                    width: `${Math.max(
+                      0,
+                      Math.min(100, contractScore ?? 0)
+                    )}%`,
+                    height: "100%",
+                    background: riskColor,
+                  }}
+                />
+              </div>
+
               <div
                 style={{
                   fontSize: 11,
-                  marginBottom: 8,
-                  color: "#9ca3af",
+                  color: GP.textSoft,
+                  marginTop: 6,
                 }}
               >
-                Confidence:{" "}
-                <span style={{ color: "#e5e7eb" }}>
-                  {(confidence * 100).toFixed(0)}%
-                </span>{" "}
-                {reason && <span>· {reason}</span>}
+                Scores under <span style={{ color: GP.neonGold }}>70</span> may
+                require review. Scores under{" "}
+                <span style={{ color: GP.neonRed }}>55</span> indicate
+                significant contract-to-coverage gaps.
               </div>
-            )}
-            {renderRequirements()}
-          </div>
-
-          {/* RIGHT: RAW CLAUSES */}
-          <div
-            style={{
-              borderRadius: 22,
-              padding: 18,
-              background: "rgba(15,23,42,0.9)",
-              border: "1px solid rgba(30,64,175,0.6)",
-              boxShadow:
-                "0 0 24px rgba(37,99,235,0.3), inset 0 0 18px rgba(15,23,42,0.95)",
-              backdropFilter: "blur(10px)",
-            }}
-          >
-            <div
-              style={{
-                fontSize: 13,
-                fontWeight: 600,
-                marginBottom: 8,
-              }}
-            >
-              Raw Contract Clauses (for Legal Review)
             </div>
-            <div
-              style={{
-                fontSize: 11,
-                color: "#9ca3af",
-                marginBottom: 8,
-              }}
-            >
-              These are the actual contract paragraphs for legal / risk teams to
-              review before final approval.
-            </div>
-            {renderRawClauses()}
           </div>
         </div>
 
-        <ToastV2
-          open={toast.open}
-          type={toast.type}
-          message={toast.message}
-          onClose={() =>
-            setToast((p) => ({
-              ...p,
-              open: false,
-            }))
-          }
-        />
+        {/* META PANEL */}
+        <div
+          style={{
+            borderRadius: 22,
+            padding: 18,
+            background: GP.panel,
+            border: `1px solid ${GP.border}`,
+          }}
+        >
+          <div
+            style={{
+              fontSize: 12,
+              textTransform: "uppercase",
+              letterSpacing: "0.14em",
+              color: GP.textSoft,
+              marginBottom: 10,
+            }}
+          >
+            Contract Document
+          </div>
+
+          {latestContract ? (
+            <>
+              <div
+                style={{
+                  fontSize: 13,
+                  color: GP.text,
+                  marginBottom: 6,
+                }}
+              >
+                Latest contract on file:
+              </div>
+              <a
+                href={latestContract.file_url}
+                target="_blank"
+                rel="noopener noreferrer"
+                style={{
+                  fontSize: 13,
+                  color: GP.neonBlue,
+                  textDecoration: "underline",
+                  display: "inline-block",
+                  marginBottom: 8,
+                }}
+              >
+                📄 Open Contract PDF
+              </a>
+
+              <div
+                style={{
+                  fontSize: 11,
+                  color: GP.textSoft,
+                }}
+              >
+                Uploaded:{" "}
+                {latestContract.uploaded_at
+                  ? new Date(latestContract.uploaded_at).toLocaleString()
+                  : "Unknown"}
+              </div>
+            </>
+          ) : (
+            <div style={{ fontSize: 13, color: GP.textSoft }}>
+              No contract document has been uploaded for this vendor yet.
+            </div>
+          )}
+        </div>
       </div>
-    </CockpitWizardLayout>
+
+      {/* BODY GRID */}
+      <div
+        style={{
+          display: "grid",
+          gridTemplateColumns: "minmax(0,1.5fr) minmax(0,1.3fr)",
+          gap: 18,
+        }}
+      >
+        {/* LEFT: SUMMARY + REQUIREMENTS */}
+        <div
+          style={{
+            borderRadius: 22,
+            padding: 18,
+            background: GP.panel,
+            border: `1px solid ${GP.border}`,
+          }}
+        >
+          <div
+            style={{
+              fontSize: 12,
+              textTransform: "uppercase",
+              letterSpacing: "0.14em",
+              color: GP.textSoft,
+              marginBottom: 10,
+            }}
+          >
+            AI Contract Summary
+          </div>
+
+          {contractJson?.summary ? (
+            <div
+              style={{
+                fontSize: 13,
+                color: GP.textSoft,
+                whiteSpace: "pre-wrap",
+                lineHeight: 1.45,
+                borderRadius: 14,
+                border: "1px solid rgba(148,163,184,0.45)",
+                background: "rgba(15,23,42,0.96)",
+                padding: 12,
+                marginBottom: 16,
+              }}
+            >
+              {contractJson.summary}
+            </div>
+          ) : (
+            <div style={{ fontSize: 13, color: GP.textSoft, marginBottom: 12 }}>
+              No AI contract summary is available yet. Ensure the contract has
+              been parsed and matching has run.
+            </div>
+          )}
+
+          {/* Required Coverages & Minimums */}
+          {Array.isArray(contractJson?.requirements) &&
+          contractJson.requirements.length > 0 ? (
+            <>
+              <h3
+                style={{
+                  fontSize: 14,
+                  margin: 0,
+                  marginBottom: 8,
+                  color: GP.neonBlue,
+                }}
+              >
+                Required Coverages & Minimums
+              </h3>
+              <div style={{ fontSize: 12 }}>
+                {contractJson.requirements.map((r, idx) => (
+                  <div
+                    key={idx}
+                    style={{
+                      marginBottom: 6,
+                      padding: 8,
+                      borderRadius: 10,
+                      border: "1px solid rgba(51,65,85,0.8)",
+                      background: "rgba(15,23,42,0.92)",
+                    }}
+                  >
+                    <strong style={{ color: GP.text }}>{r.label}:</strong>{" "}
+                    <span style={{ color: GP.neonGold }}>{r.value}</span>
+                  </div>
+                ))}
+              </div>
+            </>
+          ) : (
+            <div
+              style={{
+                fontSize: 12,
+                color: GP.textSoft,
+                marginTop: 4,
+              }}
+            >
+              No normalized requirements are attached to this contract yet. You
+              can still rely on the issues list to see gaps.
+            </div>
+          )}
+        </div>
+
+        {/* RIGHT: ISSUES / MISMATCHES */}
+        <div
+          style={{
+            borderRadius: 22,
+            padding: 18,
+            background: GP.panel,
+            border: `1px solid ${GP.border}`,
+          }}
+        >
+          <div
+            style={{
+              fontSize: 12,
+              textTransform: "uppercase",
+              letterSpacing: "0.14em",
+              color: GP.textSoft,
+              marginBottom: 10,
+            }}
+          >
+            Contract Issues & Mismatches
+          </div>
+
+          {!contractIssues || contractIssues.length === 0 ? (
+            <div style={{ fontSize: 13, color: GP.textSoft }}>
+              No contract issues recorded.
+            </div>
+          ) : (
+            <div
+              style={{
+                maxHeight: 260,
+                overflowY: "auto",
+                paddingRight: 2,
+              }}
+            >
+              {contractIssues.map((issue, idx) => {
+                const sev = (issue.severity || "high").toLowerCase();
+                const sevColor =
+                  sev === "critical"
+                    ? GP.neonRed
+                    : sev === "high"
+                    ? GP.neonGold
+                    : sev === "medium"
+                    ? GP.neonBlue
+                    : GP.textSoft;
+
+                return (
+                  <div
+                    key={idx}
+                    style={{
+                      marginBottom: 10,
+                      padding: 10,
+                      borderRadius: 12,
+                      border: "1px solid rgba(248,113,113,0.5)",
+                      background: "rgba(127,29,29,0.35)",
+                      fontSize: 12,
+                      color: GP.textSoft,
+                    }}
+                  >
+                    <div
+                      style={{
+                        fontSize: 11,
+                        fontWeight: 600,
+                        marginBottom: 4,
+                        color: sevColor,
+                      }}
+                    >
+                      {issue.code || "CONTRACT_ISSUE"} ·{" "}
+                      {String(sev).toUpperCase()}
+                    </div>
+                    <div>{issue.message || "Contract requirement not met."}</div>
+
+                    {issue.requirement && (
+                      <div
+                        style={{
+                          fontSize: 11,
+                          marginTop: 4,
+                          color: GP.neonGold,
+                        }}
+                      >
+                        Required:{" "}
+                        {typeof issue.requirement === "object"
+                          ? JSON.stringify(issue.requirement)
+                          : String(issue.requirement)}
+                      </div>
+                    )}
+
+                    {issue.actual && (
+                      <div
+                        style={{
+                          fontSize: 11,
+                          marginTop: 2,
+                          color: GP.neonBlue,
+                        }}
+                      >
+                        Actual:{" "}
+                        {typeof issue.actual === "object"
+                          ? JSON.stringify(issue.actual)
+                          : String(issue.actual)}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          )}
+
+          {/* ACTIONS */}
+          <div style={{ marginTop: 12 }}>
+            <button
+              onClick={() => router.push(`/admin/vendor/${vendor.id}`)}
+              style={pillButton(GP.neonBlue)}
+            >
+              View Vendor Coverage & Alerts
+            </button>
+          </div>
+        </div>
+      </div>
+    </Shell>
   );
+}
+
+/* ============================================================
+   SHELL + STYLES
+============================================================ */
+
+function Shell({ children }) {
+  return (
+    <div
+      style={{
+        minHeight: "100vh",
+        background:
+          "radial-gradient(circle at top left,#020617 0,#020617 45%,#000 100%)",
+        padding: "32px 40px 40px",
+        color: GP.text,
+        position: "relative",
+      }}
+    >
+      {/* AURA */}
+      <div
+        style={{
+          position: "absolute",
+          top: -260,
+          left: "50%",
+          transform: "translateX(-50%)",
+          width: 1100,
+          height: 1100,
+          background:
+            "radial-gradient(circle, rgba(56,189,248,0.35), transparent 60%)",
+          filter: "blur(120px)",
+          pointerEvents: "none",
+          zIndex: 0,
+        }}
+      />
+      <div style={{ position: "relative", zIndex: 1 }}>{children}</div>
+    </div>
+  );
+}
+
+const headerRow = {
+  display: "flex",
+  alignItems: "flex-start",
+  justifyContent: "space-between",
+  gap: 16,
+  flexWrap: "wrap",
+  marginBottom: 18,
+};
+
+const breadcrumb = {
+  fontSize: 12,
+  color: GP.textSoft,
+  marginBottom: 6,
+  display: "flex",
+  gap: 8,
+  alignItems: "center",
+};
+
+const title = {
+  margin: 0,
+  fontSize: 24,
+  fontWeight: 600,
+  color: GP.text,
+};
+
+const titleGradient = {
+  background: "linear-gradient(90deg,#38bdf8,#a855f7,#f97316)",
+  WebkitBackgroundClip: "text",
+  color: "transparent",
+};
+
+const orgText = {
+  marginTop: 4,
+  fontSize: 13,
+  color: GP.textSoft,
+};
+
+function pillButton(color) {
+  return {
+    padding: "8px 14px",
+    borderRadius: 999,
+    border: `1px solid ${color}`,
+    background: "rgba(15,23,42,0.9)",
+    color,
+    fontSize: 12,
+    fontWeight: 500,
+    cursor: "pointer",
+    whiteSpace: "nowrap",
+  };
 }
