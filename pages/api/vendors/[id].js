@@ -2,17 +2,15 @@
 import { Client } from "pg";
 
 /**
- * Vendor API — Contract-Aware Edition
- * Adds:
+ * Vendor API — Contract-Aware Edition (SSL-Fixed)
+ * Adds + normalizes:
  *   • contract_json
  *   • contract_score
  *   • contract_status
- *   • contract_requirements (array)
- *   • contract_mismatches (array)
+ *   • contract_requirements
+ *   • contract_mismatches
  *   • requirements_json (merged coverage + contract reqs)
  *   • contract_issues_json
- *
- * Safe for Fix Cockpit + Contract Review UI
  */
 
 export default async function handler(req, res) {
@@ -27,7 +25,11 @@ export default async function handler(req, res) {
     process.env.POSTGRES_URL ||
     process.env.DATABASE_URL;
 
-  const client = new Client({ connectionString });
+  // ⭐ FIX: Force SSL for Neon + Vercel
+  const client = new Client({
+    connectionString,
+    ssl: { rejectUnauthorized: false }
+  });
 
   try {
     await client.connect();
@@ -82,6 +84,7 @@ export default async function handler(req, res) {
       /* -------------------------------------------
          Load Contract Intelligence V3 Fields
       ------------------------------------------- */
+
       vendor.contract_json = vendor.contract_json || null;
       vendor.contract_score = vendor.contract_score || null;
       vendor.contract_status = vendor.contract_status || "unknown";
@@ -100,8 +103,8 @@ export default async function handler(req, res) {
         ...vendor.contract_requirements.map((r) => ({
           name: r.label,
           limit: r.value,
-          source: "contract",
-        })),
+          source: "contract"
+        }))
       ];
     }
 
@@ -119,10 +122,10 @@ export default async function handler(req, res) {
           contract_requirements: [],
           contract_mismatches: [],
           contract_status: "unknown",
-          requirements_json: [],
+          requirements_json: []
         },
         organization: { id: "demo-org", name: "Demo Organization" },
-        policies: [],
+        policies: []
       });
     }
 
@@ -141,7 +144,7 @@ export default async function handler(req, res) {
       ok: true,
       vendor,
       organization,
-      policies,
+      policies
     });
   } catch (err) {
     console.error("[Vendor API error]:", err);
@@ -149,6 +152,6 @@ export default async function handler(req, res) {
   } finally {
     try {
       await client.end();
-    } catch {}
+    } catch (e) {}
   }
 }
