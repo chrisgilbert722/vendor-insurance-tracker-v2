@@ -1,278 +1,310 @@
 // pages/api/contracts/apply-matching.js
 // ============================================================
-// CONTRACT MATCHING V3 → Vendor Status + Alerts
+// CONTRACT MATCHING ENGINE V3 — WITH SEVERITY + RECOMMENDED FIX
 //
-// POST /api/contracts/apply-matching
-// Body: { vendorId, orgId? }
+// Triggered when:
+//   • A contract is uploaded (/api/vendor/upload-doc.js)
+//   • Admin manually re-runs matching from the Contract Review UI
 //
 // Does:
-// 1) Load vendor + org + requirements_json (canonical requirements)
-// 2) Build coverageSnapshot from policies (GL, Auto, Umbrella, WC)
-// 3) (Optional) Build endorsementsSnapshot from vendor_documents
-// 4) Run matchContractV3(requirementsProfile, coverageSnapshot, endorsements)
-// 5) Update vendors.contract_status, contract_risk_score, contract_issues_json
-// 6) Insert Contract alerts into alerts table
-// 7) Insert timeline entry
+// 1. Load vendor + contract normalized JSON
+// 2. Extract key coverage requirements from contract
+// 3. Compare contract requirements → vendor policies
+// 4. Generate mismatch objects:
+//      { label, message, severity, recommended_fix }
+// 5. Compute contract risk score
+// 6. Write results to vendors table
+// 7. Create V5 alerts for each mismatch
 // ============================================================
 
 import { sql } from "../../../lib/db";
-import { matchContractV3 } from "../../../lib/contracts/matchContractV3";
-
-export const config = {
-  api: {
-    bodyParser: { sizeLimit: "1mb" },
-  },
-};
+import { openai } from "../../../lib/openaiClient";
 
 export default async function handler(req, res) {
   try {
     if (req.method !== "POST") {
-      return res
-        .status(405)
-        .json({ ok: false, error: "Method not allowed. Use POST." });
+      return res.status(405).json({ ok: false, error: "POST only" });
     }
 
-    const { vendorId: rawVendorId, orgId: rawOrgId } = req.body || {};
-
-    const vendorId = Number(rawVendorId || 0);
-    let orgId = rawOrgId ? Number(rawOrgId) : null;
-
-    if (!vendorId || Number.isNaN(vendorId)) {
-      return res
-        .status(400)
-        .json({ ok: false, error: "Missing or invalid vendorId." });
+    const { vendorId } = req.body || {};
+    if (!vendorId) {
+      return res.status(400).json({ ok: false, error: "Missing vendorId" });
     }
 
-    // ---------------------------------------------------------
-    // 1) Load Vendor (and resolve orgId)
-    // ---------------------------------------------------------
+    // -----------------------------------------------------------
+    // 1) LOAD VENDOR + CONTRACT DOCS
+    // -----------------------------------------------------------
     const vendorRows = await sql`
-      SELECT
-        id,
-        org_id,
-        requirements_json
+      SELECT id, vendor_name, org_id
       FROM vendors
       WHERE id = ${vendorId}
       LIMIT 1;
     `;
-
     if (!vendorRows.length) {
-      return res
-        .status(404)
-        .json({ ok: false, error: "Vendor not found." });
+      return res.status(404).json({ ok: false, error: "Vendor not found" });
     }
 
     const vendor = vendorRows[0];
-    if (!orgId) orgId = vendor.org_id;
 
-    if (!orgId) {
-      return res
-        .status(400)
-        .json({ ok: false, error: "Vendor has no org_id (orgId required)." });
-    }
-
-    const requirementsProfile = vendor.requirements_json || null;
-
-    // ---------------------------------------------------------
-    // 2) Build coverageSnapshot from policies
-    //    This is a normalized object used by matchContractV3
-    // ---------------------------------------------------------
-    const policyRows = await sql`
-      SELECT
-        coverage_type,
-        limit_each_occurrence,
-        gl_aggregate,
-        auto_limit,
-        umbrella_limit,
-        expiration_date
-      FROM policies
-      WHERE vendor_id = ${vendorId}
-        AND org_id = ${orgId};
-    `;
-
-    // Initialize empty coverage snapshot
-    const coverageSnapshot = {
-      GL: null,
-      Auto: null,
-      Umbrella: null,
-      WC: null,
-    };
-
-    for (const p of policyRows) {
-      const ct = (p.coverage_type || "").toLowerCase();
-
-      if (ct.includes("general") || ct.includes("gl")) {
-        coverageSnapshot.GL = {
-          eachOccurrenceLimit: p.limit_each_occurrence || null,
-          aggregateLimit: p.gl_aggregate || null,
-          expiration_date: p.expiration_date || null,
-        };
-      } else if (ct.includes("auto")) {
-        coverageSnapshot.Auto = {
-          combinedSingleLimit: p.auto_limit || null,
-          expiration_date: p.expiration_date || null,
-        };
-      } else if (ct.includes("umbrella") || ct.includes("excess")) {
-        coverageSnapshot.Umbrella = {
-          limit: p.umbrella_limit || null,
-          expiration_date: p.expiration_date || null,
-        };
-      } else if (ct.includes("workers") || ct.includes("wc")) {
-        coverageSnapshot.WC = {
-          required: true,
-          expiration_date: p.expiration_date || null,
-        };
-      }
-    }
-
-    // ---------------------------------------------------------
-    // 3) Build endorsementsSnapshot from vendor_documents
-    //    (We keep it minimal; match engine will interpret what it can)
-    // ---------------------------------------------------------
-    const endorsementDocs = await sql`
-      SELECT ai_json
+    // Load newest contract from vendor_documents
+    const contractRows = await sql`
+      SELECT id, ai_json
       FROM vendor_documents
       WHERE vendor_id = ${vendorId}
-        AND org_id = ${orgId}
-        AND document_type = 'endorsement';
+        AND document_type = 'contract'
+      ORDER BY uploaded_at DESC
+      LIMIT 1;
     `;
 
-    const endorsementsSnapshot = {
-      endorsements: [],
-    };
-
-    for (const row of endorsementDocs) {
-      const normalized = row.ai_json?.normalized || row.ai_json || null;
-      if (!normalized) continue;
-
-      // Collect some generic text for heuristic matching
-      if (normalized.endorsement_type) {
-        endorsementsSnapshot.endorsements.push(
-          String(normalized.endorsement_type)
-        );
-      }
-      if (normalized.notes) {
-        endorsementsSnapshot.endorsements.push(String(normalized.notes));
-      }
-    }
-
-    // ---------------------------------------------------------
-    // 4) Run Contract Matching V3
-    // ---------------------------------------------------------
-    const matchResult = matchContractV3({
-      requirementsProfile,
-      coverageSnapshot,
-      endorsementsSnapshot,
-    });
-
-    if (!matchResult.ok) {
-      // We still update status as "missing" if no requirements
-      await sql`
-        UPDATE vendors
-        SET contract_status = ${matchResult.status || "missing"},
-            contract_risk_score = ${matchResult.score || 0},
-            contract_issues_json = ${JSON.stringify(matchResult.issues || [])}
-        WHERE id = ${vendorId}
-      `;
-      return res.status(200).json({
-        ok: true,
-        vendorId,
-        orgId,
-        warning: "Match engine reported non-ok. Status updated.",
-        status: matchResult.status,
-        score: matchResult.score,
-        issues: matchResult.issues || [],
+    if (!contractRows.length) {
+      return res.status(400).json({
+        ok: false,
+        error: "No contract document found for vendor.",
       });
     }
 
-    const { status, score, issues } = matchResult;
+    const contract = contractRows[0];
+    const normalized = contract.ai_json?.normalized?.contract || {};
 
-    // ---------------------------------------------------------
-    // 5) Update vendor contract_* fields
-    // ---------------------------------------------------------
+    // -----------------------------------------------------------
+    // 2) Load vendor policies for comparison
+    // -----------------------------------------------------------
+    const policyRows = await sql`
+      SELECT coverage_type, limit_each_occurrence, auto_limit, work_comp_limit, umbrella_limit, expiration_date
+      FROM policies
+      WHERE vendor_id = ${vendorId} AND org_id = ${vendor.org_id};
+    `;
+
+    const policies = policyRows || [];
+
+    // Helper: get first policy of type
+    function findPolicy(type) {
+      return policies.find(p =>
+        (p.coverage_type || "").toLowerCase() === type.toLowerCase()
+      );
+    }
+
+    // -----------------------------------------------------------
+    // 3) Build CONTRACT REQUIREMENTS (from normalized contract parser)
+    // -----------------------------------------------------------
+    const required = {
+      gl: normalized.coverage_minimums?.general_liability || null,
+      auto: normalized.coverage_minimums?.auto || null,
+      wc: normalized.coverage_minimums?.workers_comp || null,
+      umbrella: normalized.coverage_minimums?.umbrella || null,
+    };
+
+    // -----------------------------------------------------------
+    // 4) Compare → build mismatches
+    // each mismatch: { label, message, severity, recommended_fix }
+    // -----------------------------------------------------------
+    const mismatches = [];
+
+    function addMismatch(label, message, severity, fix) {
+      mismatches.push({
+        label,
+        message,
+        severity,
+        recommended_fix: fix,
+      });
+    }
+
+    // --- General Liability ---
+    if (required.gl) {
+      const policy = findPolicy("GL");
+      const requiredLimit = Number(required.gl) || 0;
+
+      if (!policy) {
+        addMismatch(
+          "General Liability",
+          "Vendor does not have a General Liability policy on file.",
+          "high",
+          "Request a current GL policy meeting the minimum limits specified in the contract."
+        );
+      } else if (policy.limit_each_occurrence < requiredLimit) {
+        addMismatch(
+          "General Liability",
+          `GL limit is ${policy.limit_each_occurrence}, but contract requires ${requiredLimit}.`,
+          "high",
+          `Ask the vendor/broker to provide a revised GL policy showing at least ${requiredLimit} in Each Occurrence coverage.`
+        );
+      }
+    }
+
+    // --- Auto Liability ---
+    if (required.auto) {
+      const policy = findPolicy("Auto");
+      const requiredLimit = Number(required.auto) || 0;
+
+      if (!policy) {
+        addMismatch(
+          "Auto Liability",
+          "Vendor does not have an Auto Liability policy on file.",
+          "medium",
+          "Request an updated Auto Liability certificate that meets the contract limits."
+        );
+      } else if ((policy.auto_limit || 0) < requiredLimit) {
+        addMismatch(
+          "Auto Liability",
+          `Auto limit is ${policy.auto_limit}, but contract requires ${requiredLimit}.`,
+          "medium",
+          `Broker must update Auto Liability coverage to at least ${requiredLimit}. Request revised COI.`
+        );
+      }
+    }
+
+    // --- Workers Comp ---
+    if (required.wc) {
+      const policy = findPolicy("WC");
+
+      if (!policy) {
+        addMismatch(
+          "Workers Compensation",
+          "Workers Compensation evidence is missing.",
+          "medium",
+          "Request a Workers Compensation certificate showing statutory limits and employer liability coverage."
+        );
+      }
+    }
+
+    // --- Umbrella ---
+    if (required.umbrella) {
+      const policy = findPolicy("Umbrella");
+      const requiredLimit = Number(required.umbrella) || 0;
+
+      if (!policy) {
+        addMismatch(
+          "Umbrella / Excess Liability",
+          "Umbrella policy not found.",
+          "medium",
+          "Request an Umbrella policy meeting the minimum limit specified in the contract."
+        );
+      } else if ((policy.umbrella_limit || 0) < requiredLimit) {
+        addMismatch(
+          "Umbrella / Excess Liability",
+          `Umbrella limit is ${policy.umbrella_limit}, but contract requires ${requiredLimit}.`,
+          "high",
+          `Request a revised Umbrella certificate showing at least ${requiredLimit} in coverage.`
+        );
+      }
+    }
+
+    // -----------------------------------------------------------
+    // 5) AI-ENHANCE each mismatch with professional recommended_fix
+    // -----------------------------------------------------------
+    try {
+      const prompt = `
+You are a compliance assistant improving contract insurance mismatch explanations.
+
+For each mismatch below, rewrite the "recommended_fix" into a short professional directive (max 25 words) that can be sent to a broker:
+
+${JSON.stringify(mismatches, null, 2)}
+
+Return JSON array ONLY, matching this structure:
+
+[
+  {
+    "label": "string",
+    "recommended_fix": "string"
+  }
+]
+`;
+
+      const completion = await openai.chat.completions.create({
+        model: "gpt-4.1-mini",
+        temperature: 0.1,
+        messages: [
+          { role: "system", content: "Return JSON only." },
+          { role: "user", content: prompt },
+        ],
+      });
+
+      const raw = completion.choices[0]?.message?.content || "[]";
+      const first = raw.indexOf("[");
+      const last = raw.lastIndexOf("]");
+      const enhanced = JSON.parse(raw.slice(first, last + 1));
+
+      // Map back onto mismatches
+      mismatches.forEach(m => {
+        const ai = enhanced.find(e => e.label === m.label);
+        if (ai?.recommended_fix) {
+          m.recommended_fix = ai.recommended_fix;
+        }
+      });
+    } catch (err) {
+      console.error("[Contract Matching V3] AI enhancement failed:", err);
+    }
+
+    // -----------------------------------------------------------
+    // 6) Compute Contract Score
+    // -----------------------------------------------------------
+    let contractScore = 100;
+    for (const m of mismatches) {
+      if (m.severity === "critical") contractScore -= 35;
+      else if (m.severity === "high") contractScore -= 25;
+      else if (m.severity === "medium") contractScore -= 15;
+      else contractScore -= 5;
+    }
+    if (contractScore < 0) contractScore = 0;
+
+    // -----------------------------------------------------------
+    // 7) Save into vendors table
+    // -----------------------------------------------------------
     await sql`
       UPDATE vendors
       SET
-        contract_status = ${status},
-        contract_risk_score = ${score},
-        contract_issues_json = ${JSON.stringify(issues || [])}
-      WHERE id = ${vendorId}
+        contract_json = ${normalized}::jsonb,
+        contract_score = ${contractScore},
+        contract_issues_json = ${JSON.stringify(mismatches)}::jsonb,
+        updated_at = NOW()
+      WHERE id = ${vendorId};
     `;
 
-    // ---------------------------------------------------------
-    // 6) Insert contract alerts (one per issue)
-    // ---------------------------------------------------------
-    try {
-      for (const issue of issues || []) {
-        const sev = (issue.severity || "high").toLowerCase();
-        const title = issue.code || "Contract requirement not met";
-        const message = issue.message || "Contract / coverage mismatch detected.";
-
-        await sql`
-          INSERT INTO alerts (
-            created_at,
-            is_read,
-            vendor_id,
-            org_id,
-            type,
-            severity,
-            status,
-            title,
-            message,
-            rule_label,
-            extracted
-          )
-          VALUES (
-            NOW(),
-            FALSE,
-            ${vendorId},
-            ${orgId},
-            'Contract',
-            ${sev},
-            'open',
-            ${title},
-            ${message},
-            ${issue.code || "ContractMatch"},
-            ${JSON.stringify(issue)}::jsonb
-          );
-        `;
-      }
-    } catch (alertErr) {
-      console.error("[apply-matching] alert insert error:", alertErr);
-      // non-fatal
-    }
-
-    // ---------------------------------------------------------
-    // 7) Timeline entry
-    // ---------------------------------------------------------
-    try {
+    // -----------------------------------------------------------
+    // 8) Write alerts for mismatches (V5 format)
+    // -----------------------------------------------------------
+    for (const m of mismatches) {
       await sql`
-        INSERT INTO system_timeline (org_id, vendor_id, action, message, severity)
-        VALUES (
-          ${orgId},
-          ${vendorId},
-          'contract_matching_v3_run',
-          ${`Contract Matching V3 complete — status: ${status}, score: ${score}`},
-          ${status === "failed" ? "warning" : "info"}
+        INSERT INTO alerts (
+          created_at,
+          org_id,
+          vendor_id,
+          type,
+          title,
+          message,
+          severity,
+          status,
+          extracted
         )
+        VALUES (
+          NOW(),
+          ${vendor.org_id},
+          ${vendorId},
+          'contract_mismatch',
+          ${m.label},
+          ${m.message},
+          ${m.severity},
+          'open',
+          ${JSON.stringify(m)}::jsonb
+        );
       `;
-    } catch (timeErr) {
-      console.error("[apply-matching] timeline insert error:", timeErr);
     }
 
+    // -----------------------------------------------------------
+    // 9) Response
+    // -----------------------------------------------------------
     return res.status(200).json({
       ok: true,
       vendorId,
-      orgId,
-      status,
-      score,
-      issues: issues || [],
+      contractScore,
+      mismatches,
     });
+
   } catch (err) {
-    console.error("[contracts/apply-matching] ERROR:", err);
+    console.error("[apply-matching] ERROR:", err);
     return res.status(500).json({
       ok: false,
-      error: err.message || "Contract matching failed.",
+      error: err.message,
     });
   }
 }
