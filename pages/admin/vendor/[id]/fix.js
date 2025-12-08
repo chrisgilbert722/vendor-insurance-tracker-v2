@@ -210,235 +210,232 @@ export default function VendorFixPage() {
 
     loadAll();
   }, [id, activeOrgId]);
+/* ============================================================
+   RULE ENGINE V5 — via /api/engine/run-v3
+   (PATCHED to ALWAYS send numeric vendorId)
+============================================================ */
+async function runRuleEngineV5(vendorIdArg, orgIdArg) {
+  const numericVendorId = Number(vendorIdArg || vendor?.id);
+  const numericOrgId = Number(orgIdArg || org?.id || activeOrgId);
 
-  /* ============================================================
-     RULE ENGINE V5 — via /api/engine/run-v3
-     (PATCHED to ALWAYS send numeric vendorId)
-  ============================================================ */
-  async function runRuleEngineV5(vendorIdArg, orgIdArg) {
-    const numericVendorId = Number(vendorIdArg || vendor?.id);
-    const numericOrgId = Number(orgIdArg || org?.id || activeOrgId);
-
-    if (
-      !numericVendorId ||
-      Number.isNaN(numericVendorId) ||
-      !numericOrgId ||
-      Number.isNaN(numericOrgId)
-    ) {
-      console.warn("Rule Engine aborted — invalid vendor/org id", {
-        vendorIdArg,
-        orgIdArg,
-        numericVendorId,
-        numericOrgId,
-      });
-      return;
-    }
-
-    try {
-      setEngineLoading(true);
-      setEngineError("");
-      setEngineSummary(null);
-      setFailingRules([]);
-
-      const res = await fetch("/api/engine/run-v3", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          vendorId: numericVendorId,
-          orgId: numericOrgId,
-          dryRun: false,
-        }),
-      });
-
-      const json = await res.json();
-
-      if (!res.ok || !json.ok) {
-        throw new Error(json.error || "Rule Engine V5 failed.");
-      }
-
-      setEngineSummary({
-        vendorId: json.vendorId,
-        orgId: json.orgId,
-        globalScore: json.globalScore,
-        failedCount: json.failedCount,
-        totalRules: json.totalRules,
-      });
-
-      setFailingRules(Array.isArray(json.failingRules) ? json.failingRules : []);
-    } catch (err) {
-      console.error("[VendorFixPage] Rule Engine V5 error:", err);
-      setEngineError(err.message || "Failed to run Rule Engine V5.");
-    } finally {
-      setEngineLoading(false);
-    }
+  if (
+    !numericVendorId ||
+    Number.isNaN(numericVendorId) ||
+    !numericOrgId ||
+    Number.isNaN(numericOrgId)
+  ) {
+    console.warn("Rule Engine aborted — invalid vendor/org id", {
+      vendorIdArg,
+      orgIdArg,
+      numericVendorId,
+      numericOrgId,
+    });
+    return;
   }
 
-  /* ============================================================
-     AUTO-RUN RULE ENGINE WHEN CONTEXT IS READY (PATCHED)
-  ============================================================ */
-  useEffect(() => {
-    if (!vendor) return;
+  try {
+    setEngineLoading(true);
+    setEngineError("");
+    setEngineSummary(null);
+    setFailingRules([]);
 
-    const numericVendorId = Number(vendor.id);
-    const numericOrgId = Number(org?.id || activeOrgId);
+    const res = await fetch("/api/engine/run-v3", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        vendorId: numericVendorId,
+        orgId: numericOrgId,
+        dryRun: false,
+      }),
+    });
 
-    if (
-      !numericVendorId ||
-      Number.isNaN(numericVendorId) ||
-      !numericOrgId ||
-      Number.isNaN(numericOrgId)
-    ) {
-      console.warn("Rule Engine auto-run skipped — invalid ids");
-      return;
+    const json = await res.json();
+
+    if (!res.ok || !json.ok) {
+      throw new Error(json.error || "Rule Engine V5 failed.");
     }
 
-    runRuleEngineV5(numericVendorId, numericOrgId);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [vendor, org, activeOrgId]);
+    setEngineSummary({
+      vendorId: json.vendorId,
+      orgId: json.orgId,
+      globalScore: json.globalScore,
+      failedCount: json.failedCount,
+      totalRules: json.totalRules,
+    });
 
-  /* ============================================================
-     LOAD FIX PLAN
-  ============================================================ */
-  async function loadFixPlan() {
-    if (!vendor || !org) return;
+    setFailingRules(Array.isArray(json.failingRules) ? json.failingRules : []);
+  } catch (err) {
+    console.error("[VendorFixPage] Rule Engine V5 error:", err);
+    setEngineError(err.message || "Failed to run Rule Engine V5.");
+  } finally {
+    setEngineLoading(false);
+  }
+}
 
-    try {
-      setFixLoading(true);
-      setFixError("");
-      setFixSteps([]);
-      setFixSubject("");
-      setFixBody("");
-      setFixInternalNotes("");
+/* ============================================================
+   AUTO-RUN RULE ENGINE WHEN CONTEXT IS READY (PATCHED)
+============================================================ */
+useEffect(() => {
+  if (!vendor) return;
 
-      const res = await fetch(
-        `/api/vendor/fix-plan?vendorId=${Number(
-          vendor.id
-        )}&orgId=${Number(org.id)}`
-      );
+  const numericVendorId = Number(vendor.id);
+  const numericOrgId = Number(org?.id || activeOrgId);
 
-      const data = await res.json();
-      if (!data.ok) throw new Error(data.error);
-
-      setFixSteps(data.steps || []);
-      setFixSubject(data.vendorEmailSubject || "");
-      setFixBody(data.vendorEmailBody || "");
-      setFixInternalNotes(data.internalNotes || "");
-    } catch (err) {
-      console.error("[VendorFixPage] fix plan error:", err);
-      setFixError(err.message || "Failed to generate fix plan.");
-    } finally {
-      setFixLoading(false);
-    }
+  if (
+    !numericVendorId ||
+    Number.isNaN(numericVendorId) ||
+    !numericOrgId ||
+    Number.isNaN(numericOrgId)
+  ) {
+    console.warn("Rule Engine auto-run skipped — invalid ids");
+    return;
   }
 
-  /* ============================================================
-     SEND FIX EMAIL
-  ============================================================ */
-  async function sendFixEmail() {
-    if (!vendor || !org || !fixSubject || !fixBody) return;
+  runRuleEngineV5(numericVendorId, numericOrgId);
 
-    try {
-      setSendLoading(true);
-      setSendError("");
-      setSendSuccess("");
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+}, [vendor, org, activeOrgId]);
 
-      const res = await fetch("/api/vendor/send-fix-email", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          vendorId: Number(vendor.id),
-          orgId: Number(org.id),
-          subject: fixSubject,
-          body: fixBody,
-        }),
-      });
 
-      const data = await res.json();
-      if (!data.ok) throw new Error(data.error);
+/* ============================================================
+   LOAD FIX PLAN  (FULLY PATCHED — CORRECT ROUTE)
+============================================================ */
+async function loadFixPlan() {
+  if (!vendor || !org) return;
 
-      setSendSuccess(data.message || `Email sent to ${data.sentTo}`);
-    } catch (err) {
-      console.error("[VendorFixPage] send email error:", err);
-      setSendError(err.message || "Failed to send email.");
-    } finally {
-      setSendLoading(false);
-    }
+  try {
+    setFixLoading(true);
+    setFixError("");
+    setFixSteps([]);
+    setFixSubject("");
+    setFixBody("");
+    setFixInternalNotes("");
+
+    // ⭐ CORRECTED PATH — because file lives in /api/vendor/fix-plan.js
+    const res = await fetch(
+      `/api/vendor/fix-plan?vendorId=${Number(vendor.id)}&orgId=${Number(org.id)}`
+    );
+
+    const data = await res.json();
+
+    if (!data.ok) throw new Error(data.error);
+
+    setFixSteps(data.steps || []);
+    setFixSubject(data.vendorEmailSubject || "");
+    setFixBody(data.vendorEmailBody || "");
+    setFixInternalNotes(data.internalNotes || "");
+  } catch (err) {
+    console.error("[VendorFixPage] fix plan error:", err);
+    setFixError(err.message || "Failed to generate fix plan.");
+  } finally {
+    setFixLoading(false);
   }
+}
 
-  /* ============================================================
-     DOWNLOAD FIX PLAN PDF
-  ============================================================ */
-  async function downloadPDF() {
-    try {
-      const res = await fetch("/api/vendor/fix-plan-pdf", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          vendorName: vendor.name,
-          steps: fixSteps,
-          subject: fixSubject,
-          body: fixBody,
-          internalNotes: fixInternalNotes,
-        }),
-      });
+/* ============================================================
+   SEND FIX EMAIL (PATCHED NUMERIC IDS)
+============================================================ */
+async function sendFixEmail() {
+  if (!vendor || !org || !fixSubject || !fixBody) return;
 
-      if (!res.ok) {
-        const err = await res.json();
-        throw new Error(err.error || "PDF download failed");
-      }
+  try {
+    setSendLoading(true);
+    setSendError("");
+    setSendSuccess("");
 
-      const pdfBlob = await res.blob();
-      const url = window.URL.createObjectURL(pdfBlob);
-      const link = document.createElement("a");
-      link.href = url;
-      link.download = `${vendor.name.replace(/\s+/g, "_")}_Fix_Plan.pdf`;
-      link.click();
-      window.URL.revokeObjectURL(url);
-    } catch (err) {
-      alert("PDF Error: " + err.message);
-    }
+    const res = await fetch("/api/vendor/send-fix-email", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        vendorId: Number(vendor.id),
+        orgId: Number(org.id),
+        subject: fixSubject,
+        body: fixBody,
+      }),
+    });
+
+    const data = await res.json();
+    if (!data.ok) throw new Error(data.error);
+
+    setSendSuccess(data.message || `Email sent to ${data.sentTo}`);
+  } catch (err) {
+    console.error("[VendorFixPage] send email error:", err);
+    setSendError(err.message || "Failed to send email.");
+  } finally {
+    setSendLoading(false);
   }
+}
 
-  /* ============================================================
-     DOWNLOAD ENTERPRISE REPORT PDF
-  ============================================================ */
-  async function downloadEnterprisePDF() {
-    try {
-      const res = await fetch("/api/vendor/enterprise-report-pdf", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          vendor,
-          org,
-          compliance,
-          fixSteps,
-          fixSubject,
-          fixBody,
-          fixInternalNotes,
-          policies,
-        }),
-      });
+/* ============================================================
+   DOWNLOAD FIX PLAN PDF
+============================================================ */
+async function downloadPDF() {
+  try {
+    const res = await fetch("/api/vendor/fix-plan-pdf", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        vendorName: vendor.name,
+        steps: fixSteps,
+        subject: fixSubject,
+        body: fixBody,
+        internalNotes: fixInternalNotes,
+      }),
+    });
 
-      if (!res.ok) {
-        const err = await res.json();
-        throw new Error(err.error || "Enterprise PDF failed");
-      }
-
-      const pdfBlob = await res.blob();
-      const url = window.URL.createObjectURL(pdfBlob);
-      const link = document.createElement("a");
-      link.href = url;
-      link.download = `${vendor.name.replace(
-        /\s+/g,
-        "_"
-      )}_Compliance_Report.pdf`;
-      link.click();
-      window.URL.revokeObjectURL(url);
-    } catch (err) {
-      alert("Enterprise PDF Error: " + err.message);
+    if (!res.ok) {
+      const err = await res.json();
+      throw new Error(err.error || "PDF download failed");
     }
-  }
 
+    const pdfBlob = await res.blob();
+    const url = window.URL.createObjectURL(pdfBlob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `${vendor.name.replace(/\s+/g, "_")}_Fix_Plan.pdf`;
+    link.click();
+    window.URL.revokeObjectURL(url);
+  } catch (err) {
+    alert("PDF Error: " + err.message);
+  }
+}
+
+/* ============================================================
+   DOWNLOAD ENTERPRISE REPORT PDF
+============================================================ */
+async function downloadEnterprisePDF() {
+  try {
+    const res = await fetch("/api/vendor/enterprise-report-pdf", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        vendor,
+        org,
+        compliance,
+        fixSteps,
+        fixSubject,
+        fixBody,
+        fixInternalNotes,
+        policies,
+      }),
+    });
+
+    if (!res.ok) {
+      const err = await res.json();
+      throw new Error(err.error || "Enterprise PDF failed");
+    }
+
+    const pdfBlob = await res.blob();
+    const url = window.URL.createObjectURL(pdfBlob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `${vendor.name.replace(/\s+/g, "_")}_Compliance_Report.pdf`;
+    link.click();
+    window.URL.revokeObjectURL(url);
+  } catch (err) {
+    alert("Enterprise PDF Error: " + err.message);
+  }
+}
   /* ============================================================
      LOADING & ERROR STATES
   ============================================================ */
@@ -1056,7 +1053,6 @@ export default function VendorFixPage() {
             )}
           </div>
         </div>
-
         {/* ============================================================
             NEW — CONTRACT-DERIVED REQUIREMENTS PANEL
         ============================================================ */}
@@ -1081,6 +1077,7 @@ export default function VendorFixPage() {
             >
               Contract-Derived Coverage Requirements
             </h3>
+
             <p
               style={{
                 fontSize: 12,
@@ -1100,15 +1097,12 @@ export default function VendorFixPage() {
               }}
             >
               {allRequirements.map((req, idx) => {
-                const coverageLabel =
-                  req.coverage || req.name || "Coverage";
+                const coverageLabel = req.coverage || req.name || "Coverage";
                 const rawRequired =
                   req.min_required || req.limit || req.value || null;
 
                 const requiredLimit = rawRequired
-                  ? Number(
-                      String(rawRequired).replace(/[^0-9.-]/g, "")
-                    )
+                  ? Number(String(rawRequired).replace(/[^0-9.-]/g, ""))
                   : null;
 
                 const matchingPolicy = policies.find((p) => {
@@ -1119,16 +1113,16 @@ export default function VendorFixPage() {
                   );
                 });
 
-                const policyLimit = matchingPolicy
-                  ? Number(
-                      String(
-                        matchingPolicy.limit_each_occurrence ||
-                          matchingPolicy.auto_limit ||
-                          matchingPolicy.umbrella_limit ||
-                          0
-                      ).replace(/[^0-9.-]/g, "")
-                    )
-                  : null;
+                const policyLimit =
+                  matchingPolicy &&
+                  Number(
+                    String(
+                      matchingPolicy.limit_each_occurrence ||
+                        matchingPolicy.auto_limit ||
+                        matchingPolicy.umbrella_limit ||
+                        0
+                    ).replace(/[^0-9.-]/g, "")
+                  );
 
                 const isMatch =
                   requiredLimit === null ||
@@ -1187,10 +1181,7 @@ export default function VendorFixPage() {
                           <br />
                           Limit:{" "}
                           <strong style={{ color: "#38bdf8" }}>
-                            {matchingPolicy.limit_each_occurrence ||
-                              matchingPolicy.auto_limit ||
-                              matchingPolicy.umbrella_limit ||
-                              "—"}
+                            {policyLimit || "—"}
                           </strong>
                         </>
                       ) : (
@@ -1425,8 +1416,7 @@ export default function VendorFixPage() {
             })}
           </div>
         </div>
-      </div>
-    </div>
+      </div> {/* end MAIN CONTENT WRAPPER */}
+    </div>   {/* end CINEMATIC BACKGROUND */}
   );
-}
-
+} // END OF VendorFixPage
