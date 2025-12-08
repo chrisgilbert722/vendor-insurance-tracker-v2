@@ -158,7 +158,6 @@ export default function VendorFixPage() {
         setLoadingVendor(false);
       }
     }
-
     async function loadComplianceAndElite(vendorId, orgId, vendorPolicies) {
       try {
         setLoadingCompliance(true);
@@ -301,7 +300,6 @@ export default function VendorFixPage() {
       setFixLoading(false);
     }
   }
-
   /* ============================================================
      SEND FIX EMAIL
   ============================================================ */
@@ -477,7 +475,6 @@ export default function VendorFixPage() {
   const allRequirements = Array.isArray(vendor.requirements_json)
     ? vendor.requirements_json
     : [];
-
   /* ============================================================
      MAIN UI — CINEMATIC NEON FIX COCKPIT
   ============================================================ */
@@ -810,7 +807,6 @@ export default function VendorFixPage() {
               </>
             )}
           </div>
-
           {/* RIGHT COLUMN — AI FIX PLAN PANEL */}
           <div
             style={{
@@ -1025,8 +1021,6 @@ export default function VendorFixPage() {
                 </button>
               </>
             )}
-
-            {/* Internal Notes block is optional placeholder here */}
           </div>
         </div>
 
