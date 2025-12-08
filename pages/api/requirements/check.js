@@ -1,75 +1,46 @@
 // pages/api/requirements/check.js
 // ============================================================
-// REQUIREMENTS CHECK ENDPOINT — V5 CINEMATIC BUILD
-// Fixes:
-//  - Missing API route
-//  - HTML returned instead of JSON
-//  - Compliance Summary failing in Fix Cockpit
-//  - Policy field mismatches (uses your REAL DB columns)
+// REQUIREMENTS CHECK ENDPOINT — V5
+// Fixes compliance summary for Fix Cockpit V5
 // ============================================================
 
 import { Client } from "pg";
-import { detectConflicts } from "./../../requirements-v5/conflicts"; // import your conflict logic
-// If conflicts.js does NOT export detectConflicts separately,
-// we will adjust this import — let me know.
+import { detectConflicts } from "../requirements-v5/conflicts";
 
-// ============================================================
-// CONNECT TO NEON (SSL SAFE)
-// ============================================================
+// CONNECTOR
 function getClient() {
   return new Client({
     connectionString:
       process.env.POSTGRES_URL_NO_SSL ||
       process.env.POSTGRES_URL ||
       process.env.DATABASE_URL,
-    ssl: { rejectUnauthorized: false }
+    ssl: { rejectUnauthorized: false },
   });
 }
 
-// ============================================================
-// LOAD REQUIREMENT RULES (V5 uses requirements_rules_v2 + groups)
-// ============================================================
+// LOAD RULES FOR ORG
 async function loadRules(orgId) {
   const client = getClient();
   await client.connect();
 
-  try {
-    const groupsRes = await client.query(
-      `SELECT id, name 
-       FROM requirements_groups_v2 
-       WHERE org_id = $1
-       ORDER BY id ASC`,
-      [orgId]
-    );
+  const groupsRes = await client.query(
+    `SELECT id, name FROM requirements_groups_v2 WHERE org_id = $1 ORDER BY id ASC`,
+    [orgId]
+  );
 
-    const rulesRes = await client.query(
-      `SELECT *
-       FROM requirements_rules_v2
-       WHERE group_id IN (
-         SELECT id FROM requirements_groups_v2 WHERE org_id = $1
-       ) 
-       ORDER BY id ASC`,
-      [orgId]
-    );
+  const rulesRes = await client.query(
+    `SELECT * FROM requirements_rules_v2 WHERE group_id IN (
+        SELECT id FROM requirements_groups_v2 WHERE org_id = $1
+     ) ORDER BY id ASC`,
+    [orgId]
+  );
 
-    return {
-      groups: groupsRes.rows,
-      rules: rulesRes.rows
-    };
-  } finally {
-    await client.end();
-  }
+  await client.end();
+
+  return { groups: groupsRes.rows, rules: rulesRes.rows };
 }
 
-// ============================================================
-// POLICY → RULE CHECKER (NO missing DB columns)
-// ============================================================
-// This evaluates rules against REAL policy fields.
-// Your policies table has EXACTLY:
-// id, created_at, vendor_id, org_id, expiration_date,
-// coverage_type, status, vendor_name, policy_number,
-// carrier, effective_date
-// ============================================================
+// POLICY EVALUATOR (matches your REAL DB schema)
 function evaluateRulesAgainstPolicies(policies, rules) {
   const failing = [];
 
@@ -78,8 +49,7 @@ function evaluateRulesAgainstPolicies(policies, rules) {
     const operator = rule.operator;
     const expected = rule.expected_value;
 
-    // VENDOR HAS MULTIPLE POLICIES, CHECK EACH
-    let policyMatched = false;
+    let matched = false;
 
     for (const p of policies) {
       const value =
@@ -95,29 +65,25 @@ function evaluateRulesAgainstPolicies(policies, rules) {
           ? p.effective_date
           : null;
 
-      // If we can't evaluate the rule, skip
       if (value === null || value === undefined) continue;
-
-      const vString = String(value).toLowerCase();
-      const eString = String(expected).toLowerCase();
 
       let pass = true;
 
       switch (operator) {
         case "equals":
-          pass = vString === eString;
+          pass = String(value).toLowerCase() === String(expected).toLowerCase();
           break;
         case "not_equals":
-          pass = vString !== eString;
-          break;
-        case "contains":
-          pass = vString.includes(eString);
+          pass = String(value).toLowerCase() !== String(expected).toLowerCase();
           break;
         case "gte":
           pass = Number(value) >= Number(expected);
           break;
         case "lte":
           pass = Number(value) <= Number(expected);
+          break;
+        case "contains":
+          pass = String(value).toLowerCase().includes(String(expected).toLowerCase());
           break;
         case "before":
           pass = new Date(value) < new Date(expected);
@@ -129,10 +95,8 @@ function evaluateRulesAgainstPolicies(policies, rules) {
           pass = expected
             .split(",")
             .map((x) => x.trim().toLowerCase())
-            .includes(vString);
+            .includes(String(value).toLowerCase());
           break;
-        default:
-          pass = true;
       }
 
       if (!pass) {
@@ -142,24 +106,23 @@ function evaluateRulesAgainstPolicies(policies, rules) {
           operator,
           expected,
           value,
+          severity: rule.severity,
           message: rule.requirement_text || "Requirement not met",
-          severity: rule.severity || "required"
         });
       } else {
-        policyMatched = true;
+        matched = true;
       }
     }
 
-    // If no policy satisfied this rule
-    if (!policyMatched) {
+    if (!matched) {
       failing.push({
         ruleId: rule.id,
         field_key: field,
         operator,
         expected,
         value: null,
+        severity: rule.severity,
         message: rule.requirement_text || "Requirement not met",
-        severity: rule.severity || "required"
       });
     }
   }
@@ -168,7 +131,7 @@ function evaluateRulesAgainstPolicies(policies, rules) {
 }
 
 // ============================================================
-// MAIN API HANDLER FOR /api/requirements/check
+// MAIN API
 // ============================================================
 export default async function handler(req, res) {
   try {
@@ -179,13 +142,11 @@ export default async function handler(req, res) {
         ok: false,
         error: "Missing vendorId or orgId",
         failingRules: [],
-        conflicts: []
+        conflicts: [],
       });
     }
 
-    // ==============================================
-    // LOAD VENDOR + POLICIES
-    // ==============================================
+    // Load vendor + policies
     const client = getClient();
     await client.connect();
 
@@ -193,63 +154,44 @@ export default async function handler(req, res) {
       `SELECT * FROM vendors WHERE id = $1 LIMIT 1`,
       [vendorId]
     );
-
     if (vendorRes.rows.length === 0) {
       return res.status(404).json({
         ok: false,
         error: "Vendor not found",
         failingRules: [],
-        conflicts: []
+        conflicts: [],
       });
     }
 
-    const vendor = vendorRes.rows[0];
-
     const policiesRes = await client.query(
-      `SELECT *
-       FROM policies
-       WHERE vendor_id = $1
-       ORDER BY created_at DESC`,
+      `SELECT * FROM policies WHERE vendor_id = $1 ORDER BY created_at DESC`,
       [vendorId]
     );
+    await client.end();
 
     const policies = policiesRes.rows;
 
-    await client.end();
-
-    // ==============================================
-    // LOAD RULE ENGINE V5 RULES
-    // ==============================================
+    // Load Rules
     const { groups, rules } = await loadRules(orgId);
 
-    // ==============================================
-    // 1) EVALUATE RULES
-    // ==============================================
+    // Evaluate rules + conflicts
     const failingRules = evaluateRulesAgainstPolicies(policies, rules);
-
-    // ==============================================
-    // 2) DETECT LOGICAL RULE CONFLICTS
-    // ==============================================
     const conflicts = detectConflicts(groups, rules);
 
-    // ==============================================
-    // CLEAN JSON RESPONSE FOR FIX COCKPIT
-    // ==============================================
     return res.status(200).json({
       ok: true,
       vendorId,
       orgId,
       failingRules,
       conflicts,
-      policiesCount: policies.length
+      policiesCount: policies.length,
     });
   } catch (err) {
-    console.error("CHECK API ERROR:", err);
     return res.status(200).json({
       ok: false,
-      error: err.message,
+      error: err.message || "Server error",
       failingRules: [],
-      conflicts: []
+      conflicts: [],
     });
   }
 }
