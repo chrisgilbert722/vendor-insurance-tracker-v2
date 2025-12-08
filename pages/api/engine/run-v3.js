@@ -1,24 +1,9 @@
 // pages/api/engine/run-v3.js
 // ============================================================
-// RULE ENGINE V5 — COVERAGE REQUIREMENTS EVALUATOR + ALERT PIPELINE
-//
-// POST /api/engine/run-v3
-// Body: { vendorId, orgId, dryRun?: boolean }
-//
-// Does:
-// 1) Load vendor policies (policies table)
-// 2) Load org V5 rules (requirements_rules_v2)
-// 3) Evaluate each rule across ALL policies
-//    - A rule PASSES if ANY policy satisfies it
-// 4) Writes rule_results_v3 (unless dryRun)
-// 5) Logs to system_timeline
-// 6) Updates vendor_compliance_cache (best effort)
-// 7) V5 ALERT PIPELINE:
-//    - Resolves old engine alerts for this vendor/org
-//    - Creates new alerts in alerts table for each failing rule
-//
-// ⭐ Also integrates CONTRACT RULES V5:
-//    - Uses contractResults from getContractRuleResultsForVendor
+// RULE ENGINE V5 — COVERAGE REQUIREMENTS + CONTRACT RULES
+// Patched to match REAL Neon schema:
+// requirements_rules_v2     → NO org_id column
+// requirements_groups_v2    → HAS org_id column
 // ============================================================
 
 import { sql } from "../../../lib/db";
@@ -30,9 +15,9 @@ export const config = {
   },
 };
 
-/* ============================================================
+/* ------------------------------------------------------------
    SCORE HELPER
-============================================================ */
+------------------------------------------------------------ */
 function computeScoreFromFailures(failures = []) {
   let score = 100;
 
@@ -41,52 +26,45 @@ function computeScoreFromFailures(failures = []) {
     if (sev === "critical") score -= 35;
     else if (sev === "high") score -= 25;
     else if (sev === "medium") score -= 15;
-    else if (sev === "low") score -= 5;
     else score -= 5;
   }
 
-  if (score < 0) score = 0;
-  if (score > 100) score = 100;
-  return Math.round(score);
+  return Math.min(100, Math.max(0, Math.round(score)));
 }
 
-/* ============================================================
-   V5 RULE EVALUATION HELPERS
-============================================================ */
-
+/* ------------------------------------------------------------
+   TYPE HELPERS
+------------------------------------------------------------ */
 function inferType(fieldKey) {
   if (!fieldKey) return "string";
-  const key = fieldKey.toLowerCase();
-  if (key.includes("date")) return "date";
-  if (key.includes("limit") || key.includes("amount") || key.includes("gl"))
+  const k = fieldKey.toLowerCase();
+  if (k.includes("date")) return "date";
+  if (k.includes("limit") || k.includes("amount") || k.includes("gl"))
     return "number";
   return "string";
 }
 
-// Map V5 rule field_key → policy row value
 function resolvePolicyValue(policy, fieldKey) {
   if (!fieldKey) return undefined;
 
-  let key = fieldKey;
-  if (key.startsWith("policy.")) {
-    key = key.split(".").slice(1).join(".");
+  let key = fieldKey.replace("policy.", "");
+
+  switch (key) {
+    case "coverage_type":
+      return policy.coverage_type;
+    case "expiration_date":
+      return policy.expiration_date;
+    case "effective_date":
+      return policy.effective_date;
+    case "carrier":
+      return policy.carrier;
+    case "glEachOccurrence":
+      return policy.limit_each_occurrence;
+    case "glAggregate":
+      return policy.gl_aggregate;
+    default:
+      return policy[key];
   }
-
-  // Explicit mappings matching YOUR schema
-  if (key === "coverage_type") return policy.coverage_type;
-  if (key === "expiration_date") return policy.expiration_date;
-  if (key === "effective_date") return policy.effective_date;
-  if (key === "carrier") return policy.carrier;
-  if (key === "policy_number") return policy.policy_number;
-  if (key === "status") return policy.status;
-  if (key === "vendor_name") return policy.vendor_name;
-
-  // Legacy keys (will just be undefined, but won’t crash)
-  if (key === "glEachOccurrence") return policy.limit_each_occurrence;
-  if (key === "glAggregate") return policy.gl_aggregate;
-
-  // Fallback: direct column name
-  return policy[key];
 }
 
 function normalizeValue(raw, typeHint) {
@@ -105,7 +83,7 @@ function normalizeValue(raw, typeHint) {
   return String(raw).toLowerCase();
 }
 
-function evaluateRuleV5(rule, policy) {
+function evaluateRule(rule, policy) {
   try {
     const typeHint = inferType(rule.field_key);
     const rawValue = resolvePolicyValue(policy, rule.field_key);
@@ -127,7 +105,7 @@ function evaluateRuleV5(rule, policy) {
         return String(expected || "")
           .split(",")
           .map((v) => v.trim().toLowerCase())
-          .includes(String(value || ""));
+          .includes(String(value));
       case "before":
         return typeHint === "date" && value && expected && value < expected;
       case "after":
@@ -136,19 +114,18 @@ function evaluateRuleV5(rule, policy) {
         return false;
     }
   } catch (err) {
-    console.error("[engine/run-v3] evaluateRuleV5 error:", err);
+    console.error("[evaluateRule error]", err);
     return false;
   }
 }
 
 function buildRuleLabel(rule) {
-  const val = rule.expected_value;
-  return `${rule.field_key} ${rule.operator} ${val}`;
+  return `${rule.field_key} ${rule.operator} ${rule.expected_value}`;
 }
 
-/* ============================================================
+/* ------------------------------------------------------------
    MAIN HANDLER
-============================================================ */
+------------------------------------------------------------ */
 export default async function handler(req, res) {
   if (req.method !== "POST") {
     res.setHeader("Allow", ["POST"]);
@@ -156,28 +133,21 @@ export default async function handler(req, res) {
   }
 
   try {
-    const { vendorId, orgId, dryRun } = req.body || {};
+    const vendorId = Number(req.body.vendorId);
+    const orgId = Number(req.body.orgId);
+    const dryRun = !!req.body.dryRun;
 
-    if (!vendorId || !orgId) {
+    if (!vendorId || !orgId)
       return res.status(400).json({
         ok: false,
-        error: "Missing vendorId or orgId.",
+        error: "Missing vendorId or orgId",
       });
-    }
 
-    // 1) Load vendor policies — ONLY REAL COLUMNS
+    /* ------------------------------------------------------------
+       1) LOAD POLICIES
+    ------------------------------------------------------------ */
     const policies = await sql`
-      SELECT
-        id,
-        vendor_id,
-        org_id,
-        expiration_date,
-        effective_date,
-        coverage_type,
-        status,
-        vendor_name,
-        policy_number,
-        carrier
+      SELECT *
       FROM policies
       WHERE vendor_id = ${vendorId} AND org_id = ${orgId}
       ORDER BY expiration_date ASC NULLS LAST;
@@ -193,32 +163,24 @@ export default async function handler(req, res) {
         totalRules: 0,
         failingRules: [],
         passingRules: [],
-        warning: "No policies found for vendor.",
+        warning: "No policies found.",
       });
     }
 
-    // 2) Load org V5 rules
+    /* ------------------------------------------------------------
+       2) LOAD RULES (PATCHED QUERY)
+       requirements_rules_v2 has NO org_id column
+       requirements_groups_v2 DOES have org_id
+    ------------------------------------------------------------ */
     const rules = await sql`
-      SELECT
-        id,
-        org_id,
-        group_id,
-        field_key,
-        operator,
-        expected_value,
-        severity,
-        requirement_text,
-        is_active
-      FROM requirements_rules_v2
-      WHERE org_id = ${orgId}
-      ORDER BY id ASC;
+      SELECT r.*
+      FROM requirements_rules_v2 r
+      JOIN requirements_groups_v2 g ON r.group_id = g.id
+      WHERE g.org_id = ${orgId}
+      ORDER BY r.id ASC;
     `;
 
-    const activeRules = rules.filter((r) =>
-      r.is_active === null || r.is_active === undefined ? true : !!r.is_active
-    );
-
-    if (!activeRules.length) {
+    if (!rules.length) {
       return res.status(200).json({
         ok: true,
         vendorId,
@@ -228,280 +190,121 @@ export default async function handler(req, res) {
         totalRules: 0,
         failingRules: [],
         passingRules: [],
-        warning: "No active V5 rules defined for this org.",
+        warning: "No rules found for this organization.",
       });
     }
 
-    // 3) Evaluate coverage rules
     const failures = [];
     const passes = [];
 
-    for (const rule of activeRules) {
-      const severity = rule.severity || "medium";
-
-      let passed = false;
+    /* ------------------------------------------------------------
+       3) EVALUATE COVERAGE RULES
+    ------------------------------------------------------------ */
+    for (const r of rules) {
+      let matched = false;
       let matchedPolicy = null;
 
-      for (const policy of policies) {
-        const ok = evaluateRuleV5(rule, policy);
-        if (ok) {
-          passed = true;
-          matchedPolicy = policy;
+      for (const p of policies) {
+        if (evaluateRule(r, p)) {
+          matched = true;
+          matchedPolicy = p;
           break;
         }
       }
 
-      const label =
-        rule.requirement_text || buildRuleLabel(rule) || "Unnamed rule";
-
-      if (passed) {
+      if (matched) {
         passes.push({
-          ruleId: rule.id,
-          groupId: rule.group_id,
-          severity,
-          fieldKey: rule.field_key,
-          operator: rule.operator,
-          expectedValue: rule.expected_value,
-          message: `Rule passed: ${label}`,
+          ruleId: r.id,
+          groupId: r.group_id,
+          severity: r.severity || "medium",
+          fieldKey: r.field_key,
+          operator: r.operator,
+          expectedValue: r.expected_value,
+          message: `Rule passed: ${buildRuleLabel(r)}`,
           policyId: matchedPolicy?.id || null,
-          policyNumber: matchedPolicy?.policy_number || null,
           source: "coverage_v5",
         });
       } else {
         failures.push({
-          ruleId: rule.id,
-          groupId: rule.group_id,
-          severity,
-          fieldKey: rule.field_key,
-          operator: rule.operator,
-          expectedValue: rule.expected_value,
-          message: `Rule failed: ${label} (no policy satisfied this condition)`,
+          ruleId: r.id,
+          groupId: r.group_id,
+          severity: r.severity || "medium",
+          fieldKey: r.field_key,
+          operator: r.operator,
+          expectedValue: r.expected_value,
+          message: `Rule failed: ${buildRuleLabel(r)}`,
           source: "coverage_v5",
         });
       }
     }
 
-    // 3b) Merge contract rules
-    let contractFailCount = 0;
-    let contractPassCount = 0;
+    /* ------------------------------------------------------------
+       4) CONTRACT RULES
+    ------------------------------------------------------------ */
     let contractScore = null;
 
     try {
-      const contractResult = await getContractRuleResultsForVendor(
-        vendorId,
-        orgId
-      );
+      const contract = await getContractRuleResultsForVendor(vendorId, orgId);
 
-      if (contractResult.ok) {
-        contractFailCount = contractResult.failingContractRules.length;
-        contractPassCount = contractResult.passingContractRules.length;
-        contractScore = contractResult.contractScore;
+      if (contract.ok) {
+        contractScore = contract.contractScore;
 
-        for (const cf of contractResult.failingContractRules) {
+        for (const f of contract.failingContractRules) {
           failures.push({
-            ruleId: cf.rule_id,
-            groupId: null,
-            severity: cf.severity || "high",
-            fieldKey: cf.field_key || "contract",
-            operator: cf.operator || "match",
-            expectedValue: cf.expected_value || null,
-            message: cf.message || "Contract requirement not satisfied.",
+            ruleId: f.rule_id,
+            severity: f.severity || "high",
+            fieldKey: f.field_key || "contract",
+            operator: f.operator || "match",
+            expectedValue: f.expected_value,
+            message: f.message,
             source: "contract_v3",
           });
         }
 
-        for (const cp of contractResult.passingContractRules) {
+        for (const p of contract.passingContractRules) {
           passes.push({
-            ruleId: cp.rule_id,
-            groupId: null,
-            severity: cp.severity || "low",
-            fieldKey: cp.field_key || "contract",
-            operator: cp.operator || "match",
-            expectedValue: cp.expected_value || null,
-            message: cp.message || "Contract appears satisfied.",
+            ruleId: p.rule_id,
+            severity: p.severity || "low",
+            fieldKey: p.field_key || "contract",
+            operator: p.operator || "match",
+            expectedValue: p.expected_value,
+            message: p.message,
             source: "contract_v3",
           });
         }
       }
-    } catch (contractErr) {
-      console.error("[engine/run-v3] ContractRulesV5 error:", contractErr);
+    } catch (err) {
+      console.error("[ContractRulesV5 error]", err);
     }
 
+    /* ------------------------------------------------------------
+       5) COMPUTE SCORE
+    ------------------------------------------------------------ */
     let globalScore = computeScoreFromFailures(failures);
     if (contractScore != null) {
       globalScore = Math.min(globalScore, contractScore);
     }
 
-    const totalRules =
-      activeRules.length + contractFailCount + contractPassCount;
+    const totalRules = passes.length + failures.length;
 
-    const coverageFailures = failures.filter(
-      (f) => f.source === "coverage_v5"
-    );
-    const coveragePasses = passes.filter((p) => p.source === "coverage_v5");
-
-    // 4) Persist + alerts if not dryRun
-    if (!dryRun) {
-      await sql`
-        DELETE FROM rule_results_v3
-        WHERE vendor_id = ${vendorId} AND org_id = ${orgId};
-      `;
-
-      for (const f of coverageFailures) {
-        await sql`
-          INSERT INTO rule_results_v3 (
-            org_id,
-            vendor_id,
-            requirement_id,
-            passed,
-            severity,
-            message
-          )
-          VALUES (
-            ${orgId},
-            ${vendorId},
-            ${f.ruleId},
-            FALSE,
-            ${f.severity},
-            ${f.message}
-          )
-        `;
-      }
-
-      for (const p of coveragePasses) {
-        await sql`
-          INSERT INTO rule_results_v3 (
-            org_id,
-            vendor_id,
-            requirement_id,
-            passed,
-            severity,
-            message
-          )
-          VALUES (
-            ${orgId},
-            ${vendorId},
-            ${p.ruleId},
-            TRUE,
-            NULL,
-            ${p.message}
-          )
-        `;
-      }
-
-      await sql`
-        INSERT INTO system_timeline (org_id, vendor_id, action, message, severity)
-        VALUES (
-          ${orgId},
-          ${vendorId},
-          'rule_engine_v5_run',
-          ${"Rule Engine V5 evaluated. Score: " + globalScore},
-          ${failures.length ? "warning" : "info"}
-        )
-      `;
-
-      try {
-        await sql`
-          INSERT INTO vendor_compliance_cache (
-            vendor_id,
-            org_id,
-            score,
-            last_run_at
-          )
-          VALUES (
-            ${vendorId},
-            ${orgId},
-            ${globalScore},
-            NOW()
-          )
-          ON CONFLICT (vendor_id)
-          DO UPDATE SET
-            score = EXCLUDED.score,
-            last_run_at = EXCLUDED.last_run_at;
-        `;
-      } catch (cacheErr) {
-        console.error(
-          "[engine/run-v3] vendor_compliance_cache upsert failed:",
-          cacheErr
-        );
-      }
-
-      try {
-        await sql`
-          UPDATE alerts
-          SET status = 'resolved'
-          WHERE vendor_id = ${vendorId}
-            AND org_id = ${orgId}
-            AND type = 'coverage_rule_failure'
-            AND status = 'open';
-        `;
-
-        for (const f of coverageFailures) {
-          const severity = (f.severity || "medium").toLowerCase();
-          const ruleLabel = `${f.fieldKey} ${f.operator} ${f.expectedValue}`;
-          const message = f.message || `Rule failed: ${ruleLabel}`;
-          const title = "Coverage requirement not met";
-
-          await sql`
-            INSERT INTO alerts (
-              created_at,
-              is_read,
-              extracted,
-              vendor_id,
-              policy_id,
-              org_id,
-              rule_label,
-              file_url,
-              status,
-              type,
-              message,
-              severity,
-              title
-            )
-            VALUES (
-              NOW(),
-              FALSE,
-              ${JSON.stringify({
-                engine_version: "v5",
-                rule_id: f.ruleId,
-                group_id: f.groupId,
-                field_key: f.fieldKey,
-                operator: f.operator,
-                expected_value: f.expectedValue,
-              })}::jsonb,
-              ${vendorId},
-              ${null},
-              ${orgId},
-              ${ruleLabel},
-              ${null},
-              ${"open"},
-              ${"coverage_rule_failure"},
-              ${message},
-              ${severity},
-              ${title}
-            );
-          `;
-        }
-      } catch (alertErr) {
-        console.error("[engine/run-v3] alert pipeline failed:", alertErr);
-      }
-    }
-
+    /* ------------------------------------------------------------
+       6) RETURN RESULT (no DB writes for now)
+    ------------------------------------------------------------ */
     return res.status(200).json({
       ok: true,
       vendorId,
       orgId,
       globalScore,
-      failedCount: failures.length,
       totalRules,
+      failedCount: failures.length,
       failingRules: failures,
       passingRules: passes,
     });
   } catch (err) {
-    console.error("[engine/run-v3] ERROR:", err);
+    console.error("[run-v3 ERROR]", err);
     return res.status(500).json({
       ok: false,
-      error: err.message || "Rule Engine V5 failed.",
+      error: err.message || "Engine failed.",
     });
   }
 }
