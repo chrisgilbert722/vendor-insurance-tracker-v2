@@ -63,7 +63,22 @@ function AppShell({ Component, pageProps }) {
     path.startsWith(r.replace("/complete", ""))
   );
 
-  // Global loading guard
+  /* ============================================================
+     FIX: DO NOT APPLY LOGIN REDIRECTS TO API ROUTES
+  ============================================================ */
+  if (router.asPath.startsWith("/api")) {
+    return (
+      <OrgProvider>
+        <Layout>
+          <Component {...pageProps} />
+        </Layout>
+      </OrgProvider>
+    );
+  }
+
+  /* ============================================================
+     GLOBAL LOADING
+  ============================================================ */
   if (initializing || loadingOnboarding) {
     return (
       <div
@@ -82,13 +97,17 @@ function AppShell({ Component, pageProps }) {
     );
   }
 
-  // Logged out redirect
+  /* ============================================================
+     LOGIN REDIRECT (FOR PAGE ROUTES ONLY)
+  ============================================================ */
   if (!isLoggedIn && !PUBLIC_ROUTES.includes(path)) {
     router.replace(`/auth/login?redirect=${encodeURIComponent(router.asPath)}`);
     return null;
   }
 
-  // ❗ DO NOT REDIRECT UNTIL onboardingStep is LOADED
+  /* ============================================================
+     ONBOARDING REDIRECT LOGIC
+  ============================================================ */
   if (isLoggedIn && onboardingStep !== null) {
     // If still onboarding
     if (onboardingStep < 6) {
@@ -106,7 +125,9 @@ function AppShell({ Component, pageProps }) {
     }
   }
 
-  // Render layout
+  /* ============================================================
+     RENDER APP LAYOUT
+  ============================================================ */
   return (
     <OrgProvider>
       <Layout>
