@@ -71,7 +71,7 @@ function detectConflicts(groups, rules) {
   }
 
   // ---------------------------------------
-  // 0) ORIGINAL GL LIMIT MISMATCH (your existing logic)
+  // 0) ORIGINAL GL LIMIT MISMATCH
   // ---------------------------------------
   {
     const glRules = rules.filter(
@@ -97,10 +97,9 @@ function detectConflicts(groups, rules) {
 
   // ---------------------------------------
   // 1) DUPLICATE RULES
-  // Same group, field, operator, expected_value, severity
   // ---------------------------------------
   {
-    const map = new Map(); // key -> [rules]
+    const map = new Map();
 
     for (const r of rules) {
       const key = `${ruleKey(r)}::${r.operator || ""}::${String(
@@ -123,10 +122,9 @@ function detectConflicts(groups, rules) {
 
   // ---------------------------------------
   // 2) EQUALS vs NOT_EQUALS conflicts
-  // Same group+field+value, opposing operator
   // ---------------------------------------
   {
-    const byFieldValue = new Map(); // group+field+value -> { equals:[], notEquals:[] }
+    const byFieldValue = new Map();
 
     for (const r of rules) {
       if (!r.field_key) continue;
@@ -165,10 +163,9 @@ function detectConflicts(groups, rules) {
 
   // ---------------------------------------
   // 3) RANGE CONTRADICTIONS (gte / lte)
-  // Example: gte 2M and lte 1M on the same field
   // ---------------------------------------
   {
-    const byField = new Map(); // group+field -> { gte:[], lte:[] }
+    const byField = new Map();
 
     for (const r of rules) {
       if (!r.field_key) continue;
@@ -181,7 +178,7 @@ function detectConflicts(groups, rules) {
 
       const bucket = byField.get(key);
       const n = toNumberSafe(r.expected_value);
-      if (n === null) continue; // not numeric, skip range logic
+      if (n === null) continue;
 
       if (r.operator === "gte") bucket.gte.push({ ...r, n });
       else bucket.lte.push({ ...r, n });
@@ -203,11 +200,10 @@ function detectConflicts(groups, rules) {
   }
 
   // ---------------------------------------
-  // 4) EQUALS with multiple different values on same field
-  // Same group + field, equals operator, different values
+  // 4) MULTIPLE equals-values
   // ---------------------------------------
   {
-    const byFieldEquals = new Map(); // group+field -> {value -> [rules]}
+    const byFieldEquals = new Map();
 
     for (const r of rules) {
       if (!r.field_key || r.operator !== "equals") continue;
@@ -224,7 +220,6 @@ function detectConflicts(groups, rules) {
     for (const [fieldKey, valueMap] of byFieldEquals.entries()) {
       if (valueMap.size <= 1) continue;
 
-      // There are multiple distinct equals-values
       const values = Array.from(valueMap.keys());
       const involvedRules = [];
       for (const list of valueMap.values()) {
@@ -233,17 +228,14 @@ function detectConflicts(groups, rules) {
 
       conflicts.push({
         type: "MULTIPLE_EQUALS_VALUES",
-        message: `Field has multiple 'equals' rules with different values (${values.join(
-          ", "
-        )}).`,
+        message: `Field has multiple 'equals' rules with different values (${values.join(", ")}).`,
         rules: involvedRules.map((r) => r.id),
       });
     }
   }
 
   // ---------------------------------------
-  // 5) Coverage Type overlaps / contradictions
-  // equals vs not_equals on policy.coverage_type
+  // 5) Coverage Type overlaps
   // ---------------------------------------
   {
     const coverageRules = rules.filter(
@@ -251,8 +243,8 @@ function detectConflicts(groups, rules) {
     );
 
     if (coverageRules.length > 0) {
-      const equalsMap = new Map(); // value -> [rule]
-      const notEqualsMap = new Map(); // value -> [rule]
+      const equalsMap = new Map();
+      const notEqualsMap = new Map();
 
       for (const r of coverageRules) {
         const valueKey = String(r.expected_value || "")
@@ -286,173 +278,3 @@ function detectConflicts(groups, rules) {
   {
     const missing = rules.filter(
       (r) => r.expected_value === null || r.expected_value === undefined
-    );
-    if (missing.length) {
-      conflicts.push({
-        type: "MISSING_EXPECTED_VALUE",
-        message: "Some rules are missing an expected_value.",
-        rules: missing.map((r) => r.id),
-      });
-    }
-  }
-
-  return conflicts;
-}
-
-// ============================================================
-// AI EXPLANATION LAYER — V5
-// Takes baseline conflicts + groups + rules
-// Returns array of objects describing each conflict.
-// ============================================================
-async function aiExplainConflicts(conflicts, groups, rules) {
-  if (!conflicts.length) return [];
-
-  const openai = new OpenAI({
-    apiKey: process.env.OPENAI_API_KEY,
-  });
-
-  const prompt = `
-You are an insurance compliance AI.
-
-We detected the following LOGICAL conflicts in our rule engine:
-
-CONFLICTS:
-${JSON.stringify(conflicts, null, 2)}
-
-GROUPS:
-${JSON.stringify(groups, null, 2)}
-
-RULES:
-${JSON.stringify(rules, null, 2)}
-
-For EACH item in CONFLICTS, return an explanation in the SAME ORDER.
-
-Respond ONLY with valid JSON, in this exact format:
-
-[
-  {
-    "type": "GL_LIMIT_MISMATCH",
-    "summary": "Short human summary of the conflict.",
-    "impact": "What this could cause in the real world.",
-    "suggestion": "Clear recommendation on how to fix or clean up these rules."
-  }
-]
-
-RULES:
-- The array MUST be the same length as the 'conflicts' array.
-- 'type' MUST match the incoming conflict type.
-- Do NOT include any text outside the JSON.
-`;
-
-  try {
-    const completion = await openai.chat.completions.create({
-      model: "gpt-4.1-mini",
-      messages: [{ role: "user", content: prompt }],
-      temperature: 0.1,
-    });
-
-    let content = completion?.choices?.[0]?.message?.content?.trim() || "";
-
-    if (!content) {
-      // AI returned nothing
-      return [
-        {
-          type: "AI_EMPTY_RESPONSE",
-          summary: "AI returned no explanation for conflicts.",
-          impact: "The conflicts still exist but lack human explanation.",
-          suggestion: "Try running the conflict scan again or review rules manually.",
-        },
-      ];
-    }
-
-    // Strip markdown fences if present
-    if (content.startsWith("```")) {
-      content = content.replace(/```json|```/g, "").trim();
-    }
-
-    try {
-      const parsed = JSON.parse(content);
-      if (!Array.isArray(parsed)) {
-        throw new Error("AI response was not an array.");
-      }
-      return parsed;
-    } catch (err) {
-      return [
-        {
-          type: "AI_PARSE_ERROR",
-          summary: "AI returned invalid JSON.",
-          impact: "Human-readable explanations are unavailable.",
-          suggestion: content.substring(0, 200),
-        },
-      ];
-    }
-  } catch (err) {
-    return [
-      {
-        type: "AI_ERROR",
-        summary: "AI request failed.",
-        impact: "Cannot determine conflict impact from AI.",
-        suggestion: err.message || "Try again later.",
-      },
-    ];
-  }
-}
-
-// ============================================================
-// MAIN API HANDLER (NEVER RETURNS INVALID JSON)
-// ============================================================
-export default async function handler(req, res) {
-  try {
-    const { orgId } = req.query;
-
-    if (!orgId) {
-      return res.status(400).json({
-        ok: false,
-        error: "Missing orgId.",
-        logicConflicts: [],
-        aiDetails: [],
-      });
-    }
-
-    // Step 1 — load data
-    const { groups, rules } = await loadGroupsAndRules(orgId);
-
-    // Step 2 — pure logic conflict detection (V5)
-    const logicConflicts = detectConflicts(groups, rules);
-
-    // Step 3 — AI-enhanced explanations (aligned by index)
-    const aiRaw = await aiExplainConflicts(logicConflicts, groups, rules);
-
-    // Step 4 — Shape response for UI: aiDetails[]
-    const aiDetails = logicConflicts.map((conflict, idx) => {
-      const ai = aiRaw[idx] || {};
-      return {
-        type: ai.type || conflict.type,
-        summary: ai.summary || ai.explanation || conflict.message,
-        impact: ai.impact || "",
-        suggestion:
-          ai.suggestion ||
-          ai.recommendation ||
-          "Review these rules and adjust thresholds or remove duplicates.",
-        // V5 UI expects 'rules' for highlighting; keep ruleIds alias if needed anywhere else
-        rules: conflict.rules || conflict.ruleIds || [],
-        ruleIds: conflict.rules || conflict.ruleIds || [],
-      };
-    });
-
-    return res.status(200).json({
-      ok: true,
-      orgId,
-      logicConflicts,
-      aiDetails,
-    });
-  } catch (err) {
-    // ALWAYS return JSON so UI never breaks
-    return res.status(200).json({
-      ok: false,
-      error: err.message || "Unknown server error.",
-      logicConflicts: [],
-      aiDetails: [],
-    });
-  }
-}
