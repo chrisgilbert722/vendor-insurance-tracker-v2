@@ -11,9 +11,9 @@
 //  • Contract risk score
 //  • AI summary
 //  • Required coverages & minimums
-//  • Contract mismatches / issues
+//  • Contract mismatches / issues (with severity)
 //  • Latest contract document link
-//  • ⭐ AI “Fix Email” generator for contract issues
+//  • AI “Fix Email” generator for contract issues
 // ============================================================
 
 import { useRouter } from "next/router";
@@ -141,16 +141,13 @@ export default function ContractReviewPage() {
   // ==========================
   const { vendor, org, documents } = data;
 
-  // Contract intel (support multiple shapes just in case)
   const contractJson = vendor.contract_json || null;
   const contractScore =
-    vendor.contract_score ??
-    vendor.contract_risk_score ??
-    null;
+    vendor.contract_score ?? vendor.contract_risk_score ?? null;
 
   const contractIssues =
-    vendor.contract_mismatches ||
     vendor.contract_issues_json ||
+    vendor.contract_mismatches ||
     [];
 
   const latestContract =
@@ -536,10 +533,22 @@ export default function ContractReviewPage() {
                         color: sevColor,
                       }}
                     >
-                      {issue.code || "CONTRACT_ISSUE"} ·{" "}
+                      {issue.label || issue.code || "CONTRACT_ISSUE"} ·{" "}
                       {String(sev).toUpperCase()}
                     </div>
                     <div>{issue.message || "Contract requirement not met."}</div>
+
+                    {issue.recommended_fix && (
+                      <div
+                        style={{
+                          fontSize: 11,
+                          marginTop: 4,
+                          color: GP.neonGold,
+                        }}
+                      >
+                        Recommended Fix: {issue.recommended_fix}
+                      </div>
+                    )}
                   </div>
                 );
               })}
