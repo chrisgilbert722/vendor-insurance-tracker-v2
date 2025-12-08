@@ -35,14 +35,15 @@ function AppShell({ Component, pageProps }) {
   const [loadingOnboarding, setLoadingOnboarding] = useState(true);
 
   /* ============================================================
-     ABSOLUTE FIX: API ROUTES MUST NOT USE THE APP SHELL
+     ABSOLUTE HARD STOP:
+     NEVER render ANYTHING for /api/* — return null IMMEDIATELY
   ============================================================ */
-  if (router.asPath.startsWith("/api")) {
-    return null; // Render NOTHING for API paths → API returns raw JSON
+  if (typeof window !== "undefined" && router.asPath.startsWith("/api")) {
+    return null;
   }
 
   /* ============================================================
-     LOAD ORG ONBOARDING INFO (NORMAL APP LOGIC)
+     LOAD ORG ONBOARDING INFO
   ============================================================ */
   useEffect(() => {
     if (!isLoggedIn || !org?.id) {
@@ -72,7 +73,7 @@ function AppShell({ Component, pageProps }) {
   );
 
   /* ============================================================
-     GLOBAL LOADING
+     GLOBAL LOADING (APP ROUTES ONLY)
   ============================================================ */
   if (initializing || loadingOnboarding) {
     return (
@@ -93,7 +94,7 @@ function AppShell({ Component, pageProps }) {
   }
 
   /* ============================================================
-     LOGIN REDIRECT (FOR PAGE ROUTES ONLY)
+     LOGIN REDIRECT FOR APP ROUTES ONLY
   ============================================================ */
   if (!isLoggedIn && !PUBLIC_ROUTES.includes(path)) {
     router.replace(`/auth/login?redirect=${encodeURIComponent(router.asPath)}`);
@@ -101,10 +102,9 @@ function AppShell({ Component, pageProps }) {
   }
 
   /* ============================================================
-     ONBOARDING WORKFLOW
+     ONBOARDING REDIRECTS
   ============================================================ */
   if (isLoggedIn && onboardingStep !== null) {
-    // Not finished → force correct onboarding step
     if (onboardingStep < 6) {
       const required = ONBOARDING_STEPS[onboardingStep];
       if (!path.startsWith(required)) {
@@ -113,7 +113,6 @@ function AppShell({ Component, pageProps }) {
       }
     }
 
-    // Finished → block onboarding pages
     if (onboardingStep >= 6 && isOnboardingPage) {
       router.replace("/dashboard");
       return null;
@@ -121,7 +120,7 @@ function AppShell({ Component, pageProps }) {
   }
 
   /* ============================================================
-     RENDER NORMAL APP SHELL
+     NORMAL APP RENDER
   ============================================================ */
   return (
     <OrgProvider>
