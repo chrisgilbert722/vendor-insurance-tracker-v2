@@ -28,7 +28,7 @@ export default async function handler(req, res) {
   // ⭐ FIX: Force SSL for Neon + Vercel
   const client = new Client({
     connectionString,
-    ssl: { rejectUnauthorized: false }
+    ssl: { rejectUnauthorized: false },
   });
 
   try {
@@ -56,11 +56,11 @@ export default async function handler(req, res) {
       vendor = vendorResult.rows[0];
 
       /* -------------------------------------------
-         Load organization
+         Load organization (FIX: use correct table name)
       ------------------------------------------- */
       if (vendor.org_id) {
         const orgResult = await client.query(
-          `SELECT * FROM orgs WHERE id = $1 LIMIT 1`,
+          `SELECT * FROM organizations WHERE id = $1 LIMIT 1`,
           [vendor.org_id]
         );
         organization = orgResult.rows[0] || null;
@@ -103,8 +103,8 @@ export default async function handler(req, res) {
         ...vendor.contract_requirements.map((r) => ({
           name: r.label,
           limit: r.value,
-          source: "contract"
-        }))
+          source: "contract",
+        })),
       ];
     }
 
@@ -122,10 +122,10 @@ export default async function handler(req, res) {
           contract_requirements: [],
           contract_mismatches: [],
           contract_status: "unknown",
-          requirements_json: []
+          requirements_json: [],
         },
         organization: { id: "demo-org", name: "Demo Organization" },
-        policies: []
+        policies: [],
       });
     }
 
@@ -144,7 +144,7 @@ export default async function handler(req, res) {
       ok: true,
       vendor,
       organization,
-      policies
+      policies,
     });
   } catch (err) {
     console.error("[Vendor API error]:", err);
