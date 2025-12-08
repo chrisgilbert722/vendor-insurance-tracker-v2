@@ -1,6 +1,6 @@
 // components/VendorDrawer.js
 // ============================================================
-// Vendor Drawer V7 — Engine V5 • Policies • Docs • Contract Intelligence V3
+// Vendor Drawer V8 — Engine V5 • Policies • Docs • Contract Intelligence V3 (Severity Edition)
 // ============================================================
 
 import { useEffect, useState } from "react";
@@ -17,7 +17,6 @@ import {
 } from "@phosphor-icons/react";
 import { useOrg } from "../context/OrgContext";
 
-// Basic helpers
 function computeTier(score) {
   if (score >= 85) return "Elite Safe";
   if (score >= 70) return "Preferred";
@@ -36,7 +35,7 @@ function formatDate(value) {
 export default function VendorDrawer({ vendor, policies = [], onClose }) {
   const { activeOrgId } = useOrg();
 
-  // Engine state
+  // Engine
   const [engine, setEngine] = useState(null);
   const [engineLoading, setEngineLoading] = useState(true);
   const [engineError, setEngineError] = useState("");
@@ -50,19 +49,20 @@ export default function VendorDrawer({ vendor, policies = [], onClose }) {
   const [docsLoading, setDocsLoading] = useState(true);
   const [docsError, setDocsError] = useState("");
 
-  // ⭐ Contract Intelligence V3
+  // ⭐ Contract Intelligence V3 (severity-enabled)
   const [contractJson, setContractJson] = useState(null);
   const [contractScore, setContractScore] = useState(null);
   const [contractRequirements, setContractRequirements] = useState([]);
   const [contractMismatches, setContractMismatches] = useState([]);
 
-  // Renewal email flow
+  // Renewal email
   const [emailModal, setEmailModal] = useState(false);
   const [emailLoading, setEmailLoading] = useState(false);
   const [emailError, setEmailError] = useState("");
   const [emailData, setEmailData] = useState(null);
+
   // ============================================================
-  // LOAD ENGINE V5 (dryRun)
+  // LOAD ENGINE (dryRun)
   // ============================================================
   useEffect(() => {
     if (!vendor?.id || !activeOrgId) return;
@@ -109,9 +109,10 @@ export default function VendorDrawer({ vendor, policies = [], onClose }) {
         const res = await fetch(
           `/api/alerts/vendor-v3?vendorId=${vendor.id}&orgId=${activeOrgId}`
         );
-        const json = await res.json();
 
-        if (!json.ok) throw new Error(json.error || "Alert load error");
+        const json = await res.json();
+        if (!json.ok) throw new Error(json.error);
+
         setAlerts(json.alerts || []);
       } catch (err) {
         console.error("[VendorDrawer] alerts load error:", err);
@@ -124,7 +125,7 @@ export default function VendorDrawer({ vendor, policies = [], onClose }) {
   }, [vendor?.id, activeOrgId]);
 
   // ============================================================
-  // LOAD DOCUMENTS + CONTRACT INTELLIGENCE (from overview API)
+  // LOAD DOCUMENTS + CONTRACT INTELLIGENCE
   // ============================================================
   useEffect(() => {
     if (!vendor?.id) return;
@@ -136,18 +137,15 @@ export default function VendorDrawer({ vendor, policies = [], onClose }) {
 
         const res = await fetch(`/api/admin/vendor/overview?id=${vendor.id}`);
         const json = await res.json();
-
-        if (!json.ok) throw new Error(json.error || "Failed to load documents.");
+        if (!json.ok) throw new Error(json.error);
 
         setDocuments(json.documents || []);
 
-        // ⭐ Contract Intelligence fields
         setContractJson(json.vendor.contract_json || null);
         setContractScore(json.vendor.contract_score || null);
         setContractRequirements(json.vendor.contract_requirements || []);
         setContractMismatches(json.vendor.contract_mismatches || []);
       } catch (err) {
-        console.error("[VendorDrawer] docs load error:", err);
         setDocsError(err.message || "Failed to load documents.");
       } finally {
         setDocsLoading(false);
@@ -156,6 +154,7 @@ export default function VendorDrawer({ vendor, policies = [], onClose }) {
 
     loadDocs();
   }, [vendor?.id]);
+
   // ============================================================
   // RENEWAL EMAIL (AI)
   // ============================================================
@@ -172,7 +171,7 @@ export default function VendorDrawer({ vendor, policies = [], onClose }) {
       });
 
       const json = await res.json();
-      if (!json.ok) throw new Error(json.error || "Failed to generate email.");
+      if (!json.ok) throw new Error(json.error);
 
       setEmailData(json);
     } catch (err) {
@@ -185,19 +184,11 @@ export default function VendorDrawer({ vendor, policies = [], onClose }) {
   const score = engine?.globalScore ?? null;
   const failingRules = engine?.failingRules || [];
   const tier = score != null ? computeTier(score) : "Unknown";
-  return (
-    <>
-      {/* BACKDROP */}
-      <div
-        className="fixed inset-0 bg-black/60 backdrop-blur-sm z-40"
-        onClick={onClose}
-      />
-
       {/* MAIN PANEL */}
       <div className="fixed inset-x-0 bottom-0 md:bottom-6 md:right-6 md:left-auto z-50 flex justify-center md:justify-end pointer-events-none">
         <div className="pointer-events-auto w-full max-w-6xl max-h-[90vh] rounded-3xl border border-slate-800 bg-gradient-to-b from-slate-950/95 via-slate-950 to-slate-950/98 shadow-[0_24px_80px_rgba(0,0,0,0.95)] p-6 md:p-8 grid md:grid-cols-[1.2fr,1.4fr,1.4fr] gap-6 overflow-hidden">
 
-          {/* LEFT COLUMN */}
+          {/* ================= LEFT COLUMN ================= */}
           <div className="flex flex-col gap-5 pr-4 border-r border-slate-800/70">
             
             {/* HEADER */}
@@ -238,16 +229,16 @@ export default function VendorDrawer({ vendor, policies = [], onClose }) {
               ) : engineError ? (
                 <div className="text-[11px] text-rose-400">{engineError}</div>
               ) : (
-                <>
-                  <div className="flex justify-between items-baseline">
-                    <div>
-                      <div className="text-3xl font-bold bg-gradient-to-r from-emerald-400 via-lime-300 to-amber-300 bg-clip-text text-transparent">
-                        {score}
-                      </div>
-                      <div className="text-[11px] text-slate-400">Global score</div>
+                <div className="flex justify-between items-baseline">
+                  <div>
+                    <div className="text-3xl font-bold bg-gradient-to-r from-emerald-400 via-lime-300 to-amber-300 bg-clip-text text-transparent">
+                      {score}
+                    </div>
+                    <div className="text-[11px] text-slate-400">
+                      Global score
                     </div>
                   </div>
-                </>
+                </div>
               )}
             </div>
 
@@ -266,13 +257,15 @@ export default function VendorDrawer({ vendor, policies = [], onClose }) {
                 <ul className="pl-0 list-none text-[11px] text-slate-200 space-y-1">
                   {alerts.slice(0, 5).map((a, idx) => (
                     <li key={idx}>
-                      <span className={
-                        a.severity === "critical"
-                          ? "text-rose-400"
-                          : a.severity === "high"
-                          ? "text-amber-300"
-                          : "text-sky-300"
-                      }>
+                      <span
+                        className={
+                          a.severity === "critical"
+                            ? "text-rose-400"
+                            : a.severity === "high"
+                            ? "text-amber-300"
+                            : "text-sky-300"
+                        }
+                      >
                         [{a.severity}] {a.code}
                       </span>{" "}
                       — {a.message}
@@ -323,46 +316,102 @@ export default function VendorDrawer({ vendor, policies = [], onClose }) {
               MIDDLE COLUMN — POLICIES
           ============================================================= */}
           <div className="flex flex-col gap-4 border-r border-slate-800/70 pr-4">
+            
             <div className="flex items-center gap-2 mb-1">
               <ListBullets size={18} className="text-slate-200" />
               <h3 className="text-sm font-semibold">Policies</h3>
             </div>
 
             {policies.length === 0 ? (
-              <div className="text-sm text-slate-400">No policies found for this vendor.</div>
+              <div className="text-sm text-slate-400">
+                No policies found for this vendor.
+              </div>
             ) : (
               <div className="space-y-3 max-h-[70vh] overflow-y-auto pr-1">
+
                 {policies.map((p) => (
                   <div
                     key={p.id}
                     className="p-3 rounded-2xl border border-slate-800 bg-slate-900/60"
                   >
+                    {/* Policy Header */}
                     <div className="flex justify-between">
                       <div>
                         <div className="text-[11px] uppercase tracking-[0.12em] text-slate-400">
                           {p.coverage_type || "Coverage"}
                         </div>
+
                         <div className="text-sm font-semibold text-slate-50 mt-1">
-                          {p.carrier || "Unknown carrier"}
+                          {p.carrier || "Unknown Carrier"}
                         </div>
+
                         <div className="text-[11px] text-slate-400 mt-1">
                           Policy #: {p.policy_number || "—"}
                         </div>
                       </div>
 
+                      {/* Expiration */}
                       <div className="text-right text-[11px] text-slate-400">
                         <div>Expires:</div>
                         <div className="text-slate-100">
                           {formatDate(p.expiration_date)}
                         </div>
+
+                        {p.expiration_date && (
+                          <div className="text-[10px] text-slate-500 mt-1">
+                            {(() => {
+                              const d = new Date(p.expiration_date);
+                              const daysLeft = Math.floor(
+                                (d - new Date()) / 86400000
+                              );
+                              if (Number.isNaN(daysLeft)) return "";
+                              return `(${daysLeft} days left)`;
+                            })()}
+                          </div>
+                        )}
                       </div>
+                    </div>
+
+                    {/* Optional — Limits Display */}
+                    <div className="mt-2 grid grid-cols-2 gap-3 text-[11px] text-slate-300">
+                      {p.limit_each_occurrence != null && (
+                        <div>
+                          <span className="text-slate-400">Each Occurrence: </span>
+                          <span className="text-slate-200">
+                            {p.limit_each_occurrence}
+                          </span>
+                        </div>
+                      )}
+
+                      {p.auto_limit != null && (
+                        <div>
+                          <span className="text-slate-400">Auto Limit: </span>
+                          <span className="text-slate-200">{p.auto_limit}</span>
+                        </div>
+                      )}
+
+                      {p.work_comp_limit != null && (
+                        <div>
+                          <span className="text-slate-400">Work Comp: </span>
+                          <span className="text-slate-200">
+                            {p.work_comp_limit}
+                          </span>
+                        </div>
+                      )}
+
+                      {p.umbrella_limit != null && (
+                        <div>
+                          <span className="text-slate-400">Umbrella: </span>
+                          <span className="text-slate-200">{p.umbrella_limit}</span>
+                        </div>
+                      )}
                     </div>
                   </div>
                 ))}
+
               </div>
             )}
           </div>
-
           {/* =============================================================
               RIGHT COLUMN — DOCUMENT INTELLIGENCE + CONTRACT DETAILS
           ============================================================= */}
@@ -380,7 +429,7 @@ export default function VendorDrawer({ vendor, policies = [], onClose }) {
               <div className="space-y-4 max-h-[70vh] overflow-y-auto pr-1">
 
                 {/* ======================================================
-                    ⭐ CONTRACT INTELLIGENCE — FULL PANEL
+                    ⭐ CONTRACT INTELLIGENCE — FULL PANEL (V3)
                 ====================================================== */}
                 {contractJson && (
                   <div className="p-4 rounded-2xl border border-amber-300/40 bg-amber-950/20">
@@ -391,42 +440,69 @@ export default function VendorDrawer({ vendor, policies = [], onClose }) {
                       </h3>
                     </div>
 
-                    {/* SUMMARY */}
+                    {/* CONTRACT SUMMARY */}
                     {contractJson.summary && (
-                      <div className="text-xs text-amber-100 whitespace-pre-wrap mb-3">
+                      <div className="text-xs text-amber-100 whitespace-pre-wrap mb-3 leading-snug">
                         {contractJson.summary}
                       </div>
                     )}
 
-                    {/* REQUIREMENTS */}
+                    {/* ======================================================
+                        REQUIRED COVERAGES (Contract Requirements)
+                    ====================================================== */}
                     {contractRequirements.length > 0 && (
                       <>
                         <div className="text-xs uppercase tracking-wider text-slate-300 mb-1">
-                          Required Coverages
+                          Required Coverages (Contract)
                         </div>
 
                         {contractRequirements.map((r, idx) => (
-                          <div key={idx} className="text-xs text-slate-200 mb-1">
-                            <strong className="text-amber-300">{r.label}:</strong>{" "}
+                          <div
+                            key={idx}
+                            className="text-xs text-slate-200 mb-1"
+                          >
+                            <strong className="text-amber-300">
+                              {r.label}:
+                            </strong>{" "}
                             {r.value}
                           </div>
                         ))}
                       </>
                     )}
 
-                    {/* MISMATCHES */}
+                    {/* ======================================================
+                        MISMATCHES w/ Severity + Recommended Fix
+                    ====================================================== */}
                     {contractMismatches.length > 0 && (
                       <>
                         <div className="text-xs uppercase tracking-wider text-red-300 mt-3 mb-1">
-                          Mismatches
+                          Mismatches (AI Detected)
                         </div>
 
                         {contractMismatches.map((m, idx) => (
                           <div
                             key={idx}
-                            className="text-xs bg-red-900/40 border border-red-700/40 p-2 rounded-xl mb-1 text-red-200"
+                            className="p-2 rounded-xl mb-2 bg-red-900/40 border border-red-700/40 text-red-200 text-xs"
                           >
-                            <strong>{m.label}:</strong> {m.message}
+                            {/* Severity */}
+                            <div className="font-semibold mb-1">
+                              {m.severity
+                                ? `[${m.severity.toUpperCase()}] `
+                                : ""}
+                              {m.label}
+                            </div>
+
+                            {/* Message */}
+                            <div className="leading-snug mb-1">
+                              {m.message}
+                            </div>
+
+                            {/* Recommended Fix */}
+                            {m.recommended_fix && (
+                              <div className="text-amber-300 text-[11px] mt-1">
+                                <strong>Fix:</strong> {m.recommended_fix}
+                              </div>
+                            )}
                           </div>
                         ))}
                       </>
@@ -445,7 +521,7 @@ export default function VendorDrawer({ vendor, policies = [], onClose }) {
                 )}
 
                 {/* ======================================================
-                    OTHER DOCUMENTS (W9, License, Endorsements, etc.)
+                    OTHER DOCUMENTS LIST (Non-contract docs)
                 ====================================================== */}
                 {documents
                   .filter((d) => d.document_type !== "contract")
@@ -460,6 +536,7 @@ export default function VendorDrawer({ vendor, policies = [], onClose }) {
                         key={doc.id}
                         className="p-3 rounded-2xl border border-slate-800 bg-slate-900/60"
                       >
+                        {/* Document Header */}
                         <div className="flex justify-between items-start">
                           <div>
                             <div className="text-[11px] uppercase tracking-[0.12em] text-slate-400">
@@ -482,6 +559,7 @@ export default function VendorDrawer({ vendor, policies = [], onClose }) {
                           )}
                         </div>
 
+                        {/* AI Summary */}
                         <div className="mt-2 text-[11px] text-slate-300 leading-snug whitespace-pre-wrap">
                           {summary}
                         </div>
@@ -491,14 +569,13 @@ export default function VendorDrawer({ vendor, policies = [], onClose }) {
               </div>
             )}
           </div>
-        </div>
-      </div>
       {/* =============================================================
-          RENEWAL EMAIL MODAL
+          RENEWAL EMAIL MODAL (AI-Generated Vendor Renewal Email)
       ============================================================= */}
       {emailModal && (
         <div className="fixed inset-0 flex items-center justify-center bg-black/60 z-[60]">
           <div className="bg-slate-950 text-slate-100 w-full max-w-xl rounded-2xl border border-slate-700 p-6 shadow-2xl relative">
+
             {/* Close Button */}
             <button
               className="absolute right-4 top-4 text-slate-400 hover:text-slate-200"
@@ -511,16 +588,25 @@ export default function VendorDrawer({ vendor, policies = [], onClose }) {
               <XIcon size={20} />
             </button>
 
+            {/* HEADER */}
             <h2 className="text-lg font-bold mb-3 flex items-center gap-2">
               <EnvelopeSimple size={18} />
               Renewal Request Email
             </h2>
 
-            {emailLoading && <p className="text-sm text-slate-400">Generating…</p>}
+            {/* LOADING */}
+            {emailLoading && (
+              <p className="text-sm text-slate-400">Generating…</p>
+            )}
+
+            {/* ERROR */}
             {emailError && (
               <p className="text-sm text-rose-400 mb-2">{emailError}</p>
             )}
 
+            {/* =========================================================
+                SUCCESS → SHOW GENERATED SUBJECT + BODY
+            ========================================================= */}
             {emailData && (
               <>
                 {/* SUBJECT */}
@@ -529,6 +615,7 @@ export default function VendorDrawer({ vendor, policies = [], onClose }) {
                   <div className="bg-slate-900 border border-slate-700 p-3 rounded-lg text-xs mt-1">
                     {emailData.subject}
                   </div>
+
                   <button
                     onClick={() =>
                       navigator.clipboard.writeText(emailData.subject)
@@ -545,6 +632,7 @@ export default function VendorDrawer({ vendor, policies = [], onClose }) {
                   <pre className="bg-slate-900 border border-slate-700 p-3 rounded-lg text-xs whitespace-pre-wrap mt-1 max-h-60 overflow-y-auto">
                     {emailData.body}
                   </pre>
+
                   <button
                     onClick={() =>
                       navigator.clipboard.writeText(emailData.body)
@@ -554,6 +642,174 @@ export default function VendorDrawer({ vendor, policies = [], onClose }) {
                     Copy Body
                   </button>
                 </div>
+              </>
+            )}
+          </div>
+        </div>
+      )}
+      {/* =============================================================
+          AI RENEWAL EMAIL MODAL — UPGRADED WITH:
+          ✔ Contract Mismatches
+          ✔ Contract Requirements
+          ✔ Broker Email Mode
+          ✔ 3-Step Renewal Sequence Generator
+      ============================================================= */}
+      {emailModal && (
+        <div className="fixed inset-0 flex items-center justify-center bg-black/60 z-[60]">
+          <div className="bg-slate-950 text-slate-100 w-full max-w-3xl rounded-2xl border border-slate-700 p-6 shadow-2xl relative">
+
+            {/* CLOSE BTN */}
+            <button
+              className="absolute right-4 top-4 text-slate-400 hover:text-slate-200"
+              onClick={() => {
+                setEmailModal(false);
+                setEmailData(null);
+                setEmailError("");
+                setSequence(null);
+                setBrokerEmail(null);
+              }}
+            >
+              <XIcon size={20} />
+            </button>
+
+            {/* TITLE */}
+            <h2 className="text-lg font-bold mb-3 flex items-center gap-2">
+              <EnvelopeSimple size={18} />
+              AI Renewal Communication Center
+            </h2>
+
+            {/* =============================================================
+                STATUS
+            ============================================================= */}
+            {emailLoading && <p className="text-sm text-slate-400">Generating…</p>}
+            {emailError && <p className="text-sm text-rose-400 mb-2">{emailError}</p>}
+
+            {/* =============================================================
+                BUTTON BAR (3 AI MODES)
+            ============================================================= */}
+            <div className="flex gap-3 mb-6">
+
+              {/* Standard Vendor Email */}
+              <button
+                onClick={() => {
+                  setSequence(null);
+                  setBrokerEmail(null);
+                  generateRenewalEmail();
+                }}
+                className="px-3 py-2 text-xs rounded-lg bg-sky-600 hover:bg-sky-500 text-slate-900 font-semibold"
+              >
+                ✉️ Vendor Email (AI)
+              </button>
+
+              {/* Broker Email */}
+              <button
+                onClick={generateBrokerEmail}
+                className="px-3 py-2 text-xs rounded-lg bg-emerald-500 hover:bg-emerald-400 text-slate-900 font-semibold"
+              >
+                🧑‍💼 Broker Email (AI)
+              </button>
+
+              {/* Renewal Sequence */}
+              <button
+                onClick={generateSequence}
+                className="px-3 py-2 text-xs rounded-lg bg-amber-400 hover:bg-amber-300 text-slate-900 font-semibold"
+              >
+                🔥 3-Step Renewal Sequence
+              </button>
+            </div>
+
+            {/* =============================================================
+                CONTRACT MISMATCH DISPLAY (CONTEXT FOR EMAILS)
+            ============================================================= */}
+            {contractMismatches.length > 0 && (
+              <div className="rounded-xl border border-red-700/40 bg-red-900/30 p-3 mb-4">
+                <div className="text-sm text-red-300 font-bold mb-2">
+                  Contract Mismatches (affects wording)
+                </div>
+
+                {contractMismatches.map((m, idx) => (
+                  <div key={idx} className="text-xs text-red-200 mb-1">
+                    <strong>[{m.severity.toUpperCase()}]</strong> {m.label}: {m.message}
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {/* =============================================================
+                MODE 1 → VENDOR EMAIL
+            ============================================================= */}
+            {emailData && !brokerEmail && !sequence && (
+              <>
+                {/* SUBJECT */}
+                <h3 className="text-sm font-semibold">Subject</h3>
+                <div className="bg-slate-900 border border-slate-700 p-3 rounded-lg text-xs mt-1">
+                  {emailData.subject}
+                </div>
+                <button
+                  onClick={() => navigator.clipboard.writeText(emailData.subject)}
+                  className="mt-2 px-3 py-1 bg-slate-800 border border-slate-700 rounded-lg text-xs hover:bg-slate-700"
+                >
+                  Copy Subject
+                </button>
+
+                {/* BODY */}
+                <h3 className="text-sm font-semibold mt-4">Body</h3>
+                <pre className="bg-slate-900 border border-slate-700 p-3 rounded-lg text-xs whitespace-pre-wrap mt-1 max-h-60 overflow-y-auto">
+                  {emailData.body}
+                </pre>
+                <button
+                  onClick={() => navigator.clipboard.writeText(emailData.body)}
+                  className="mt-2 px-3 py-1 bg-slate-800 border border-slate-700 rounded-lg text-xs hover:bg-slate-700"
+                >
+                  Copy Body
+                </button>
+              </>
+            )}
+
+            {/* =============================================================
+                MODE 2 → BROKER EMAIL
+            ============================================================= */}
+            {brokerEmail && (
+              <>
+                <h3 className="text-sm font-semibold">Broker Email (AI)</h3>
+                <pre className="bg-slate-900 border border-slate-700 p-3 rounded-lg text-xs whitespace-pre-wrap mt-1 max-h-64 overflow-y-auto">
+                  {brokerEmail}
+                </pre>
+
+                <button
+                  onClick={() => navigator.clipboard.writeText(brokerEmail)}
+                  className="mt-2 px-3 py-1 bg-emerald-600 border border-emerald-700 rounded-lg text-xs hover:bg-emerald-500"
+                >
+                  Copy Broker Email
+                </button>
+              </>
+            )}
+
+            {/* =============================================================
+                MODE 3 → 3-STEP SEQUENCE
+            ============================================================= */}
+            {sequence && (
+              <>
+                {["Email #1 — Friendly Reminder", "Email #2 — Escalation", "Email #3 — Final Notice"].map(
+                  (title, idx) => (
+                    <div
+                      key={idx}
+                      className="mb-5 p-3 rounded-xl border border-amber-500/40 bg-amber-900/20"
+                    >
+                      <div className="text-xs font-bold text-amber-300 mb-1">{title}</div>
+                      <pre className="text-xs text-amber-100 whitespace-pre-wrap max-h-56 overflow-y-auto">
+                        {sequence[idx]}
+                      </pre>
+
+                      <button
+                        onClick={() => navigator.clipboard.writeText(sequence[idx])}
+                        className="mt-2 px-3 py-1 bg-amber-400 text-slate-900 rounded-lg text-xs font-semibold hover:bg-amber-300"
+                      >
+                        Copy {title}
+                      </button>
+                    </div>
+                  )
+                )}
               </>
             )}
           </div>
