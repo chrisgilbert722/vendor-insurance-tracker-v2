@@ -8,7 +8,7 @@
 // Handles:
 // ✔ W9
 // ✔ Business License
-// ✔ Contracts (auto-rule processing + Contract Intelligence V3 + Sync Requirements)
+// ✔ Contracts (auto-rule processing + Contract Intelligence V3 + Sync Requirements + V5 Engine Auto-Run)
 // ✔ Endorsements
 // ✔ Binders / Dec Pages
 // ✔ Entity Certificates
@@ -47,7 +47,9 @@ export default async function handler(req, res) {
     form.parse(req, async (err, fields, files) => {
       if (err) {
         console.error("[upload-doc] parse error:", err);
-        return res.status(500).json({ ok: false, error: "Upload parse failed." });
+        return res
+          .status(500)
+          .json({ ok: false, error: "Upload parse failed." });
       }
 
       const token = fields.token?.[0] || null;
@@ -56,15 +58,21 @@ export default async function handler(req, res) {
       let docTypeHint = fields.docType?.[0] || null;
 
       const file = files.file;
-      if (!file)
-        return res.status(400).json({ ok: false, error: "Missing file." });
+      if (!file) {
+        return res
+          .status(400)
+          .json({ ok: false, error: "Missing file." });
+      }
 
       const filepath = file.filepath;
       const filename = file.originalFilename;
       const mimetype = file.mimetype;
 
-      if (!filename)
-        return res.status(400).json({ ok: false, error: "Invalid file." });
+      if (!filename) {
+        return res
+          .status(400)
+          .json({ ok: false, error: "Invalid file." });
+      }
 
       const ext = filename.toLowerCase().split(".").pop();
       const allowed = ["pdf", "png", "jpg", "jpeg"];
@@ -87,12 +95,17 @@ export default async function handler(req, res) {
           WHERE token = ${token}
           LIMIT 1
         `;
-        if (!tokenRows.length)
-          return res.status(404).json({ ok: false, error: "Invalid vendor link." });
+        if (!tokenRows.length) {
+          return res
+            .status(404)
+            .json({ ok: false, error: "Invalid vendor link." });
+        }
 
         const t = tokenRows[0];
         if (t.expires_at && new Date(t.expires_at) < new Date()) {
-          return res.status(410).json({ ok: false, error: "Vendor link expired." });
+          return res
+            .status(410)
+            .json({ ok: false, error: "Vendor link expired." });
         }
 
         const vendorRows = await sql`
@@ -101,8 +114,11 @@ export default async function handler(req, res) {
           WHERE id = ${t.vendor_id}
           LIMIT 1
         `;
-        if (!vendorRows.length)
-          return res.status(404).json({ ok: false, error: "Vendor not found." });
+        if (!vendorRows.length) {
+          return res
+            .status(404)
+            .json({ ok: false, error: "Vendor not found." });
+        }
 
         vendor = vendorRows[0];
       } else if (vendorIdField && orgIdField) {
@@ -112,8 +128,11 @@ export default async function handler(req, res) {
           WHERE id = ${vendorIdField}
             AND org_id = ${orgIdField}
         `;
-        if (!vendorRows.length)
-          return res.status(404).json({ ok: false, error: "Vendor not found." });
+        if (!vendorRows.length) {
+          return res
+            .status(404)
+            .json({ ok: false, error: "Vendor not found." });
+        }
 
         vendor = vendorRows[0];
       } else {
@@ -135,14 +154,21 @@ export default async function handler(req, res) {
 
       const { error: uploadErr } = await supabase.storage
         .from(bucket)
-        .upload(uploadPath, buffer, { contentType: mimetype });
+        .upload(uploadPath, buffer, {
+          contentType: mimetype,
+        });
 
       if (uploadErr) {
         console.error("[upload-doc] storage error:", uploadErr);
-        return res.status(500).json({ ok: false, error: "Failed to upload document." });
+        return res.status(500).json({
+          ok: false,
+          error: "Failed to upload document to storage.",
+        });
       }
 
-      const { data: urlData } = supabase.storage.from(bucket).getPublicUrl(uploadPath);
+      const { data: urlData } = supabase.storage
+        .from(bucket)
+        .getPublicUrl(uploadPath);
       const fileUrl = urlData.publicUrl;
 
       await sql`
@@ -159,7 +185,9 @@ export default async function handler(req, res) {
       // ---------------------------------------------------------
       // 3) Classification
       // ---------------------------------------------------------
-      const docType = (docTypeHint || classifyDocument({ filename, mimetype })) || "other";
+      const docType =
+        (docTypeHint || classifyDocument({ filename, mimetype })) ||
+        "other";
 
       if (docType === "coi") {
         return res.status(400).json({
@@ -168,6 +196,9 @@ export default async function handler(req, res) {
         });
       }
 
+      // ---------------------------------------------------------
+      // BASE URL FOR INTERNAL API CALLS
+      // ---------------------------------------------------------
       const BASE_URL =
         process.env.NEXT_PUBLIC_BASE_URL ||
         process.env.APP_URL ||
@@ -184,7 +215,10 @@ export default async function handler(req, res) {
           temperature: 0.2,
           max_tokens: 300,
           messages: [
-            { role: "system", content: "Summarize vendor compliance documents." },
+            {
+              role: "system",
+              content: "Summarize vendor compliance documents.",
+            },
             {
               role: "user",
               content: `A vendor uploaded a ${docType} document:\n${fileUrl}\n\nSummarize key information and relevance to compliance.`,
@@ -216,13 +250,23 @@ export default async function handler(req, res) {
       try {
         let parserUrl = null;
 
-        if (docType === "w9") parserUrl = `${BASE_URL}/api/documents/parse-w9`;
-        else if (docType === "license") parserUrl = `${BASE_URL}/api/documents/parse-license`;
-        else if (docType === "contract") parserUrl = `${BASE_URL}/api/documents/parse-contract`;
-        else if (docType === "endorsement") parserUrl = `${BASE_URL}/api/documents/parse-endorsement`;
-        else if (docType === "binder") parserUrl = `${BASE_URL}/api/documents/parse-binder`;
-        else if (["entity_certificate", "entity", "good_standing"].includes(docType))
+        if (docType === "w9") {
+          parserUrl = `${BASE_URL}/api/documents/parse-w9`;
+        } else if (docType === "license") {
+          parserUrl = `${BASE_URL}/api/documents/parse-license`;
+        } else if (docType === "contract") {
+          parserUrl = `${BASE_URL}/api/documents/parse-contract`;
+        } else if (docType === "endorsement") {
+          parserUrl = `${BASE_URL}/api/documents/parse-endorsement`;
+        } else if (docType === "binder") {
+          parserUrl = `${BASE_URL}/api/documents/parse-binder`;
+        } else if (
+          docType === "entity_certificate" ||
+          docType === "entity" ||
+          docType === "good_standing"
+        ) {
           parserUrl = `${BASE_URL}/api/documents/parse-entity-certificate`;
+        }
 
         if (parserUrl) {
           const parserRes = await fetch(parserUrl, {
@@ -234,11 +278,47 @@ export default async function handler(req, res) {
           const parserJson = await parserRes.json();
 
           if (parserJson.ok) {
-            normalized = {
-              docType,
-              source: parserJson.source || docType + "Parser",
-              ...parserJson,
-            };
+            if (docType === "w9") {
+              normalized = {
+                docType,
+                source: "w9Parser",
+                w9: parserJson.w9 || null,
+              };
+            } else if (docType === "license") {
+              normalized = {
+                docType,
+                source: "licenseParser",
+                license: parserJson.license || null,
+              };
+            } else if (docType === "contract") {
+              normalized = {
+                docType,
+                source: "contractParser",
+                contract: parserJson.contract || null,
+              };
+            } else if (docType === "endorsement") {
+              normalized = {
+                docType,
+                source: "endorsementParser",
+                endorsement: parserJson.endorsement || null,
+              };
+            } else if (docType === "binder") {
+              normalized = {
+                docType,
+                source: "binderParser",
+                binder: parserJson.binder || null,
+              };
+            } else if (
+              docType === "entity_certificate" ||
+              docType === "entity" ||
+              docType === "good_standing"
+            ) {
+              normalized = {
+                docType,
+                source: "entityCertificateParser",
+                entityCertificate: parserJson.entityCertificate || null,
+              };
+            }
           } else {
             normalized = {
               docType,
@@ -246,10 +326,16 @@ export default async function handler(req, res) {
               rawParser: parserJson,
             };
           }
+        } else {
+          normalized = { docType, note: "No specific parser for this docType." };
         }
       } catch (e) {
         console.error("[upload-doc] normalization error:", e);
-        normalized = { docType, error: "Normalization failed", message: e.message };
+        normalized = {
+          docType,
+          error: "Normalization failed",
+          message: e.message,
+        };
       }
 
       // ---------------------------------------------------------
@@ -257,7 +343,12 @@ export default async function handler(req, res) {
       // ---------------------------------------------------------
       const inserted = await sql`
         INSERT INTO vendor_documents (
-          vendor_id, org_id, document_type, file_url, ai_json, uploaded_at
+          vendor_id,
+          org_id,
+          document_type,
+          file_url,
+          ai_json,
+          uploaded_at
         )
         VALUES (
           ${vendorId},
@@ -269,10 +360,11 @@ export default async function handler(req, res) {
         )
         RETURNING id
       `;
+
       const documentId = inserted[0]?.id;
 
       // ---------------------------------------------------------
-      // 7) CONTRACT INTELLIGENCE V3 + REQUIREMENTS SYNC + Legacy Support
+      // 7) CONTRACT PIPELINE — Matching V3 + Sync Requirements + AUTO Rule Engine V5 + Legacy
       // ---------------------------------------------------------
       if (docType === "contract") {
         try {
@@ -291,15 +383,15 @@ export default async function handler(req, res) {
                   ${orgId},
                   ${vendorId},
                   'contract_matching_v3_applied',
-                  'Contract Matching V3 applied to vendor.',
+                  'Contract Matching V3 applied (coverage extraction + mismatch detection).',
                   'info'
                 )
               `;
             } catch (err) {
-              console.error("[contract matching error]", err);
+              console.error("[upload-doc] Contract Matching V3 ERROR:", err);
             }
 
-            // 7B — Contract → Requirements Sync Engine V1
+            // 7B — Contract → Requirements Sync Engine (V1)
             try {
               await fetch(`${BASE_URL}/api/contracts/sync-requirements`, {
                 method: "POST",
@@ -312,22 +404,47 @@ export default async function handler(req, res) {
                 VALUES (
                   ${orgId},
                   ${vendorId},
-                  'contract_requirements_synced',
-                  'Contract requirements synced.',
+                  'contract_sync_requirements_v1',
+                  'Contract → Requirements Sync Engine updated vendor requirements_json.',
                   'info'
                 )
               `;
             } catch (err) {
-              console.error("[sync requirements error]", err);
+              console.error("[upload-doc] Contract Sync Engine ERROR:", err);
             }
 
-            // 7C — LEGACY rules-v3 auto-process (optional)
+            // 7C — AUTO-RUN RULE ENGINE V5 (run-v3 endpoint)
             try {
-              await fetch(`${BASE_URL}/api/admin/rules-v3/auto-process-contract`, {
+              await fetch(`${BASE_URL}/api/engine/run-v3`, {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ documentId }),
+                body: JSON.stringify({ vendorId, orgId, dryRun: false }),
               });
+
+              await sql`
+                INSERT INTO system_timeline (org_id, vendor_id, action, message, severity)
+                VALUES (
+                  ${orgId},
+                  ${vendorId},
+                  'rule_engine_v5_auto_run',
+                  'Rule Engine V5 auto-run after contract sync.',
+                  'info'
+                )
+              `;
+            } catch (err) {
+              console.error("[upload-doc] Auto-run V5 Engine ERROR:", err);
+            }
+
+            // 7D — LEGACY rules-v3 auto-process (optional)
+            try {
+              await fetch(
+                `${BASE_URL}/api/admin/rules-v3/auto-process-contract`,
+                {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({ documentId }),
+                }
+              );
 
               await sql`
                 INSERT INTO system_timeline (org_id, vendor_id, action, message, severity)
@@ -340,16 +457,16 @@ export default async function handler(req, res) {
                 )
               `;
             } catch (err) {
-              console.error("[legacy auto-process error]", err);
+              console.error("[contract auto-process ERROR]", err);
             }
           }
         } catch (err) {
-          console.error("[CONTRACT V3 pipeline error]", err);
+          console.error("[CONTRACT V3 PIPELINE ERROR]", err);
         }
       }
 
       // ---------------------------------------------------------
-      // 8) Notify Admins
+      // 8) Notify Admin(s)
       // ---------------------------------------------------------
       try {
         const ADMINS = process.env.ADMIN_NOTIFICATION_EMAILS
@@ -384,7 +501,7 @@ You can review this document in your admin dashboard.
       }
 
       // ---------------------------------------------------------
-      // 9) SUCCESS RESPONSE
+      // 9) Success Response
       // ---------------------------------------------------------
       return res.status(200).json({
         ok: true,
@@ -397,6 +514,9 @@ You can review this document in your admin dashboard.
     });
   } catch (err) {
     console.error("[upload-doc ERROR]", err);
-    return res.status(500).json({ ok: false, error: err.message || "Upload failed." });
+    return res.status(500).json({
+      ok: false,
+      error: err.message || "Upload failed.",
+    });
   }
 }
