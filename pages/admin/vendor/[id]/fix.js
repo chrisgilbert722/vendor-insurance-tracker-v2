@@ -160,7 +160,6 @@ export default function VendorFixPage() {
       }
     })();
   }, [id, activeOrgId]);
-
   // ---------- RUN RULE ENGINE ----------
   async function runEngine() {
     if (!vendor?.id || !org?.id) return;
@@ -256,24 +255,33 @@ export default function VendorFixPage() {
     }
   }
 
-  // ---------- PDF HELPERS ----------
+  // ---------- PDF HELPERS (FIXED) ----------
   async function downloadPDF() {
-    if (!vendor) return;
+    if (!vendor || !org) return;
     try {
       const res = await fetch("/api/vendor/fix-plan-pdf", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          vendorName: vendor.name,
-          steps: fixSteps,
-          subject: fixSubject,
-          body: fixBody,
-          internalNotes: fixInternalNotes,
+          vendorId: vendor.id,
+          orgId: org.id,
+          vendorName: vendor.name || "",
+          steps: fixSteps || [],
+          subject: fixSubject || "",
+          body: fixBody || "",
+          internalNotes: fixInternalNotes || "",
         }),
       });
 
-      if (!res.ok) throw new Error("PDF generation failed.");
+      if (!res.ok) {
+        const errText = await res.text().catch(() => "");
+        throw new Error(errText || "PDF generation failed.");
+      }
+
       const blob = await res.blob();
+      if (!blob || blob.size === 0)
+        throw new Error("Empty PDF returned from fix-plan-pdf.");
+
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;
@@ -281,7 +289,8 @@ export default function VendorFixPage() {
       a.click();
       URL.revokeObjectURL(url);
     } catch (err) {
-      alert("PDF Error: " + err.message);
+      console.error("PDF Download Error:", err);
+      alert(err.message);
     }
   }
 
@@ -292,19 +301,28 @@ export default function VendorFixPage() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
+          vendorId: vendor.id,
+          orgId: org.id,
           vendor,
           org,
           compliance,
           fixSteps,
           fixSubject,
           fixBody,
-          fixInternalNotes,
+          internalNotes: fixInternalNotes,
           policies,
         }),
       });
 
-      if (!res.ok) throw new Error("Enterprise PDF failed.");
+      if (!res.ok) {
+        const errText = await res.text().catch(() => "");
+        throw new Error(errText || "Enterprise PDF generation failed.");
+      }
+
       const blob = await res.blob();
+      if (!blob || blob.size === 0)
+        throw new Error("Empty PDF returned from enterprise-report-pdf.");
+
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;
@@ -315,7 +333,8 @@ export default function VendorFixPage() {
       a.click();
       URL.revokeObjectURL(url);
     } catch (err) {
-      alert("Enterprise PDF Error: " + err.message);
+      console.error("Enterprise PDF Download Error:", err);
+      alert(err.message);
     }
   }
 
@@ -605,7 +624,6 @@ export default function VendorFixPage() {
             )}
           </div>
         </div>
-
         {/* FIX PLAN V5 */}
         <div
           style={{
