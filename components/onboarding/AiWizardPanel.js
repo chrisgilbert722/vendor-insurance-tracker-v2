@@ -3,6 +3,7 @@
 // Receives: { orgId, step, stepIndex, totalSteps, wizardState, setWizardState }
 
 import VendorsUploadStep from "./VendorsUploadStep";
+import VendorsMapStep from "./VendorsMapStep";
 
 export default function AiWizardPanel({
   orgId,
@@ -12,12 +13,12 @@ export default function AiWizardPanel({
   wizardState,
   setWizardState,
 }) {
-  if (!step) {
-    return null;
-  }
+  if (!step) return null;
 
-  // Route to the correct step component based on step.id from ai-wizard.js
   switch (step.id) {
+    /* ---------------------------------------------------------
+       STEP 2 — CSV Upload
+    --------------------------------------------------------- */
     case "vendors-upload":
       return (
         <VendorsUploadStep
@@ -27,15 +28,32 @@ export default function AiWizardPanel({
         />
       );
 
-    // You can add more cases here later:
-    // case "vendors-map":
+    /* ---------------------------------------------------------
+       STEP 3 — Column Mapping
+    --------------------------------------------------------- */
+    case "vendors-map":
+      return (
+        <VendorsMapStep
+          wizardState={wizardState}
+          setWizardState={setWizardState}
+        />
+      );
+
+    /* ---------------------------------------------------------
+       FUTURE STEPS (PLACEHOLDERS UNTIL WIRED)
+    --------------------------------------------------------- */
     // case "vendors-analyze":
     // case "contracts-upload":
     // case "rules-generate":
-    // etc.
+    // case "fix-plans":
+    // case "company-profile":
+    // case "team-brokers":
+    // case "review-launch":
 
+    /* ---------------------------------------------------------
+       DEFAULT — Placeholder until we wire the next step
+    --------------------------------------------------------- */
     default:
-      // Temporary placeholder for steps not wired yet
       return (
         <div
           style={{
@@ -58,9 +76,11 @@ export default function AiWizardPanel({
           >
             {step.title || step.label}
           </h2>
+
           <p style={{ marginTop: 6 }}>
-            This wizard step ({step.id}) has not been fully wired yet. You can
-            continue through the wizard while we hook in the detailed UI.
+            This wizard step (<strong>{step.id}</strong>) hasn’t been wired yet.
+            You can continue using the wizard while we connect the remaining
+            steps.
           </p>
         </div>
       );
