@@ -4,6 +4,7 @@
 
 import VendorsUploadStep from "./VendorsUploadStep";
 import VendorsMapStep from "./VendorsMapStep";
+import VendorsAnalyzeStep from "./VendorsAnalyzeStep";
 
 export default function AiWizardPanel({
   orgId,
@@ -40,18 +41,19 @@ export default function AiWizardPanel({
       );
 
     /* ---------------------------------------------------------
-       FUTURE STEPS (PLACEHOLDERS UNTIL WIRED)
+       STEP 4 — AI Vendor Analysis
     --------------------------------------------------------- */
-    // case "vendors-analyze":
-    // case "contracts-upload":
-    // case "rules-generate":
-    // case "fix-plans":
-    // case "company-profile":
-    // case "team-brokers":
-    // case "review-launch":
+    case "vendors-analyze":
+      return (
+        <VendorsAnalyzeStep
+          orgId={orgId}
+          wizardState={wizardState}
+          setWizardState={setWizardState}
+        />
+      );
 
     /* ---------------------------------------------------------
-       DEFAULT — Placeholder until we wire the next step
+       DEFAULT — Placeholder for not-yet-wired steps
     --------------------------------------------------------- */
     default:
       return (
@@ -79,8 +81,7 @@ export default function AiWizardPanel({
 
           <p style={{ marginTop: 6 }}>
             This wizard step (<strong>{step.id}</strong>) hasn’t been wired yet.
-            You can continue using the wizard while we connect the remaining
-            steps.
+            You can continue using the wizard while the remaining steps are connected.
           </p>
         </div>
       );
