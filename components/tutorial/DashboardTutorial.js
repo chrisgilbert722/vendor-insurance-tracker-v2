@@ -1,7 +1,9 @@
 // components/tutorial/DashboardTutorial.js
-// Dashboard Tutorial V2 — Cinematic Neon Spotlight Mode
+// Dashboard Tutorial V3 — Cinematic Neon Spotlight Mode
 
-import { useState, useEffect } from "react";
+import React, { useState, useEffect } from "react";
+import SpotlightLayer from "./SpotlightLayer";
+import ArrowPointer from "./ArrowPointer";
 
 const TUTORIAL_STEPS = [
   {
@@ -45,13 +47,14 @@ in a single place. Drill in with one click, or manage them in bulk from this das
 export default function DashboardTutorial({ onFinish, anchors = {} }) {
   const [stepIndex, setStepIndex] = useState(0);
   const [highlightRect, setHighlightRect] = useState(null);
+  const [showDoneTooltip, setShowDoneTooltip] = useState(false);
 
   const step = TUTORIAL_STEPS[stepIndex];
   const totalSteps = TUTORIAL_STEPS.length;
   const atFirst = stepIndex === 0;
   const atLast = stepIndex === totalSteps - 1;
 
-  // Compute highlight rect + auto-scroll to target
+  // Compute highlight rect + auto-scroll whenever step changes
   useEffect(() => {
     const ref = anchors[step.id];
     if (!ref || !ref.current) {
@@ -64,8 +67,7 @@ export default function DashboardTutorial({ onFinish, anchors = {} }) {
 
     setHighlightRect({ top, left, width, height });
 
-    // Auto scroll to bring highlighted area into view
-    const scrollTarget = top + window.scrollY - 120; // offset so it's not under top edge
+    const scrollTarget = top + window.scrollY - 140;
     window.scrollTo({
       top: scrollTarget < 0 ? 0 : scrollTarget,
       behavior: "smooth",
@@ -74,7 +76,12 @@ export default function DashboardTutorial({ onFinish, anchors = {} }) {
 
   function handleNext() {
     if (atLast) {
-      if (typeof onFinish === "function") onFinish();
+      // Show a quick "Done" tooltip and then finish
+      setShowDoneTooltip(true);
+      setTimeout(() => {
+        setShowDoneTooltip(false);
+        if (typeof onFinish === "function") onFinish();
+      }, 1100);
       return;
     }
     setStepIndex((idx) => Math.min(idx + 1, totalSteps - 1));
@@ -94,33 +101,15 @@ export default function DashboardTutorial({ onFinish, anchors = {} }) {
         position: "fixed",
         inset: 0,
         zIndex: 99999,
-        background: "rgba(15,23,42,0.88)",
-        backdropFilter: "blur(6px)",
+        // darker dim, more cinematic
+        background: "rgba(3,7,18,0.92)",
+        backdropFilter: "blur(8px)",
         display: "flex",
         alignItems: "center",
         justifyContent: "center",
         pointerEvents: "auto",
       }}
     >
-      {/* Highlight box / spotlight */}
-      {highlightRect && (
-        <div
-          style={{
-            position: "fixed",
-            top: highlightRect.top - 10,
-            left: highlightRect.left - 10,
-            width: highlightRect.width + 20,
-            height: highlightRect.height + 20,
-            borderRadius: 20,
-            border: "2px solid rgba(56,189,248,0.95)",
-            boxShadow:
-              "0 0 30px rgba(56,189,248,0.85), 0 0 60px rgba(59,130,246,0.7)",
-            pointerEvents: "none",
-            transition: "all 0.25s ease-out",
-          }}
-        />
-      )}
-
       {/* Ambient Glow */}
       <div
         style={{
@@ -134,6 +123,10 @@ export default function DashboardTutorial({ onFinish, anchors = {} }) {
           zIndex: -1,
         }}
       />
+
+      {/* Spotlight highlight + arrow */}
+      <SpotlightLayer rect={highlightRect} />
+      <ArrowPointer rect={highlightRect} />
 
       {/* Center Card */}
       <div
@@ -265,8 +258,9 @@ export default function DashboardTutorial({ onFinish, anchors = {} }) {
             color: "#a5b4fc",
           }}
         >
-          Tip: The glowing frame shows the live area this step is describing.
-          As you move through the tour, watch how AI-powered panels light up.
+          Tip: The glowing frame and arrow show the live area this step is
+          describing. As you move through the tour, watch how different AI
+          panels light up.
         </div>
 
         {/* Controls */}
@@ -278,7 +272,7 @@ export default function DashboardTutorial({ onFinish, anchors = {} }) {
             marginTop: 20,
           }}
         >
-          {/* Left side: Skip */}
+          {/* Left: Skip */}
           <button
             type="button"
             onClick={handleSkip}
@@ -295,7 +289,7 @@ export default function DashboardTutorial({ onFinish, anchors = {} }) {
             Skip tutorial
           </button>
 
-          {/* Right side: Back / Next */}
+          {/* Right: Back / Next */}
           <div style={{ display: "flex", gap: 8 }}>
             <button
               type="button"
@@ -340,6 +334,24 @@ export default function DashboardTutorial({ onFinish, anchors = {} }) {
             </button>
           </div>
         </div>
+
+        {/* DONE TOOLTIP */}
+        {showDoneTooltip && (
+          <div
+            style={{
+              marginTop: 14,
+              padding: 10,
+              borderRadius: 10,
+              background: "rgba(22,163,74,0.2)",
+              border: "1px solid rgba(34,197,94,0.9)",
+              fontSize: 12,
+              color: "#bbf7d0",
+              textAlign: "center",
+            }}
+          >
+            ✅ Tutorial complete — your AI compliance cockpit is ready to use.
+          </div>
+        )}
       </div>
     </div>
   );
