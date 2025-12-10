@@ -1,6 +1,6 @@
 // pages/dashboard.js — Dashboard V5 (Cinematic Intelligence Cockpit)
 
-import { useEffect, useState, useRef } from "react";
+import { useEffect, useState } from "react";
 import VendorDrawer from "../components/VendorDrawer";
 import { useRole } from "../lib/useRole";
 import { useOrg } from "../context/OrgContext";
@@ -10,8 +10,11 @@ import EliteStatusPill from "../components/elite/EliteStatusPill";
 import OnboardingHeroCard from "../components/onboarding/OnboardingHeroCard";
 import OnboardingBanner from "../components/onboarding/OnboardingBanner";
 
-// DASHBOARD TUTORIAL OVERLAY (spotlight engine lives inside this)
-import DashboardTutorial from "../components/tutorial/DashboardTutorial";
+// SPOTLIGHT ENGINE V3
+import {
+  useDashboardSpotlightV3,
+  DashboardSpotlightV3,
+} from "../components/DashboardSpotlightV3";
 
 // CHARTS (Risk + Compliance Intelligence)
 import ComplianceTrajectoryChart from "../components/charts/ComplianceTrajectoryChart";
@@ -305,19 +308,13 @@ function summarizeEngineHealth(engineMap) {
     total: vendors.length,
   };
 }
+
 /* ============================================================
    MAIN DASHBOARD COMPONENT
 ============================================================ */
 function Dashboard() {
   const { isAdmin, isManager } = useRole();
   const { activeOrgId } = useOrg();
-
-  // Spotlight anchors for tutorial (Option B)
-  const riskRef = useRef(null);
-  const kpiRef = useRef(null);
-  const alertsRef = useRef(null);
-  const renewalsRef = useRef(null);
-  const policiesRef = useRef(null);
 
   // STATE
   const [onboardingComplete, setOnboardingComplete] = useState(true);
@@ -350,12 +347,43 @@ function Dashboard() {
   const [systemTimeline, setSystemTimeline] = useState([]);
   const [systemTimelineLoading, setSystemTimelineLoading] = useState(true);
 
-  // DASHBOARD TUTORIAL VISIBILITY
-  const [showTutorial, setShowTutorial] = useState(false);
+  // SPOTLIGHT ENGINE V3 — DATA-SPOTLIGHT TARGETS
+  const spotlight = useDashboardSpotlightV3([
+    {
+      selector: "[data-spotlight='score-box']",
+      title: "Your Global Compliance Score",
+      description:
+        "This shows your live, AI-driven compliance score across all vendors and policies. If this goes down, something is wrong.",
+    },
+    {
+      selector: "[data-spotlight='kpi-strip']",
+      title: "AI Fix Plans & KPIs",
+      description:
+        "These KPIs summarize expired COIs, upcoming expirations, and Elite Engine fails. They tell you where to look first each day.",
+    },
+    {
+      selector: "[data-spotlight='alerts-panel']",
+      title: "Alerts & Coverage Gaps",
+      description:
+        "All missing coverage, low limits, and rule failures show here. Use this to see which vendors are causing immediate risk.",
+    },
+    {
+      selector: "[data-spotlight='renewals-panel']",
+      title: "Renewals & Expirations",
+      description:
+        "This panel shows upcoming policy expirations and renewal backlog. It replaces spreadsheets and manual follow-up lists.",
+    },
+    {
+      selector: "[data-spotlight='vendor-table']",
+      title: "Vendor Policy Cockpit",
+      description:
+        "Every vendor with COIs is listed here with AI scoring, rule results, and flags. Click any row to open the full vendor drawer.",
+    },
+  ]);
 
   /* ============================================================
-     ONBOARDING + TUTORIAL STATUS (COMBINED)
-============================================================ */
+     ONBOARDING STATUS (NO TUTORIAL LOGIC HERE)
+  ============================================================ */
   useEffect(() => {
     if (!activeOrgId) return;
 
@@ -366,52 +394,28 @@ function Dashboard() {
         if (!json.ok) return;
 
         const done = !!json.onboardingComplete;
-        const tutorialEnabled = json.dashboardTutorialEnabled === true;
-
         setOnboardingComplete(done);
         setShowHero(!done);
-
-        let seen = false;
-        try {
-          seen = localStorage.getItem("dashboard_tutorial_seen") === "true";
-        } catch {}
-
-        if (tutorialEnabled && !seen) {
-          setShowTutorial(true);
-        }
       } catch (err) {
-        console.error("[dashboard] onboarding/tutorial status error:", err);
+        console.error("[dashboard] onboarding status error:", err);
       }
     })();
   }, [activeOrgId]);
 
   /* ============================================================
-     FORCE TUTORIAL WHEN ?tutorial=1 (Replay from sidebar)
-============================================================ */
+     FORCE TUTORIAL WHEN ?tutorial=1 (manual-only otherwise)
+  ============================================================ */
   useEffect(() => {
     if (typeof window === "undefined") return;
-
     const params = new URLSearchParams(window.location.search);
-    const force = params.get("tutorial") === "1";
-
-    if (force) {
-      try {
-        localStorage.setItem("dashboard_tutorial_seen", "false");
-      } catch {}
-      setShowTutorial(true);
+    if (params.get("tutorial") === "1") {
+      spotlight.start(0);
     }
-  }, []);
+  }, [spotlight.start]);
 
-  /* FINISH TUTORIAL */
-  const handleFinishTutorial = () => {
-    setShowTutorial(false);
-    try {
-      localStorage.setItem("dashboard_tutorial_seen", "true");
-    } catch {}
-  };
   /* ============================================================
      ONBOARDING BANNER DISMISS
-============================================================ */
+  ============================================================ */
   useEffect(() => {
     try {
       const stored = localStorage.getItem("onboardingBannerDismissed");
@@ -431,8 +435,8 @@ function Dashboard() {
   };
 
   /* ============================================================
-     AUTO-OPEN CHECKLIST ON IDLE
-============================================================ */
+     AUTO-OPEN CHECKLIST ON IDLE (chatbot trigger)
+  ============================================================ */
   useEffect(() => {
     if (onboardingComplete) return;
 
@@ -463,7 +467,7 @@ function Dashboard() {
 
   /* ============================================================
      DASHBOARD METRICS
-============================================================ */
+  ============================================================ */
   useEffect(() => {
     if (!activeOrgId) return;
 
@@ -483,7 +487,7 @@ function Dashboard() {
 
   /* ============================================================
      LOAD POLICIES
-============================================================ */
+  ============================================================ */
   useEffect(() => {
     (async () => {
       try {
@@ -497,9 +501,10 @@ function Dashboard() {
       }
     })();
   }, []);
+
   /* ============================================================
      ELITE ENGINE — COI Evaluation
-============================================================ */
+  ============================================================ */
   useEffect(() => {
     if (!policies.length) return;
 
@@ -550,7 +555,7 @@ function Dashboard() {
 
   /* ============================================================
      RULE ENGINE V5 — run-v3
-============================================================ */
+  ============================================================ */
   useEffect(() => {
     if (!policies.length || !activeOrgId) return;
 
@@ -635,7 +640,7 @@ function Dashboard() {
 
   /* ============================================================
      ELITE SUMMARY COUNTS
-============================================================ */
+  ============================================================ */
   useEffect(() => {
     let pass = 0,
       warn = 0,
@@ -653,7 +658,7 @@ function Dashboard() {
 
   /* ============================================================
      ALERTS V2 SUMMARY
-============================================================ */
+  ============================================================ */
   useEffect(() => {
     if (!activeOrgId) return;
 
@@ -671,9 +676,10 @@ function Dashboard() {
     const interval = setInterval(loadAlerts, 15000);
     return () => clearInterval(interval);
   }, [activeOrgId]);
+
   /* ============================================================
      SYSTEM TIMELINE
-============================================================ */
+  ============================================================ */
   useEffect(() => {
     const loadTimeline = async () => {
       try {
@@ -736,9 +742,10 @@ function Dashboard() {
         return b.total - a.total;
       })
     : [];
+
   /* ============================================================
      MAIN RENDER
-============================================================ */
+  ============================================================ */
   return (
     <div
       style={{
@@ -873,34 +880,54 @@ function Dashboard() {
             </span>
           </div>
 
-          {/* ORG COMPLIANCE CTA */}
-          {(isAdmin || isManager) && (
-            <a
-              href="/admin/org-compliance"
+          {/* ORG COMPLIANCE CTA + TUTORIAL BUTTON */}
+          <div style={{ marginTop: 12, display: "flex", gap: 10, flexWrap: "wrap" }}>
+            {(isAdmin || isManager) && (
+              <a
+                href="/admin/org-compliance"
+                style={{
+                  display: "inline-flex",
+                  alignItems: "center",
+                  padding: "8px 14px",
+                  borderRadius: 12,
+                  background:
+                    "radial-gradient(circle at top left,#16a34a,#22c55e,#020617)",
+                  border: "1px solid rgba(34,197,94,0.6)",
+                  color: "#bbf7d0",
+                  fontSize: 13,
+                  fontWeight: 600,
+                  cursor: "pointer",
+                  textDecoration: "none",
+                  boxShadow:
+                    "0 0 18px rgba(34,197,94,0.35),0 0 32px rgba(21,128,61,0.25)",
+                }}
+              >
+                🏢 View Org Compliance Dashboard
+              </a>
+            )}
+
+            <button
+              type="button"
+              onClick={() => spotlight.start(0)}
               style={{
-                marginTop: 12,
-                display: "inline-flex",
-                alignItems: "center",
                 padding: "8px 14px",
                 borderRadius: 12,
+                border: "1px solid rgba(56,189,248,0.7)",
                 background:
-                  "radial-gradient(circle at top left,#16a34a,#22c55e,#020617)",
-                border: "1px solid rgba(34,197,94,0.6)",
-                color: "#bbf7d0",
-                fontSize: 13,
+                  "radial-gradient(circle at top left,#0f172a,#020617)",
+                color: GP.neonBlue,
+                fontSize: 12,
                 fontWeight: 600,
                 cursor: "pointer",
-                textDecoration: "none",
-                boxShadow:
-                  "0 0 18px rgba(34,197,94,0.35),0 0 32px rgba(21,128,61,0.25)",
+                boxShadow: "0 0 16px rgba(56,189,248,0.3)",
               }}
             >
-              🏢 View Org Compliance Dashboard
-            </a>
-          )}
+              ✨ Start Dashboard Tour
+            </button>
+          </div>
 
-          {/* KPI STRIP (tutorial anchor) */}
-          <div ref={kpiRef}>
+          {/* KPI STRIP (data-spotlight="kpi-strip") */}
+          <div data-spotlight="kpi-strip">
             <div
               style={{
                 marginTop: 20,
@@ -950,7 +977,8 @@ function Dashboard() {
             </div>
           </div>
         </div>
-        {/* RIGHT SIDE — Donut + Elite Snapshot */}
+
+        {/* RIGHT SIDE — Donut + Elite Snapshot (data-spotlight="score-box") */}
         <div
           style={{
             display: "flex",
@@ -960,8 +988,8 @@ function Dashboard() {
             paddingTop: 28,
           }}
         >
-          {/* GLOBAL SCORE DONUT (tutorial anchor: riskRef) */}
-          <div ref={riskRef}>
+          {/* GLOBAL SCORE DONUT */}
+          <div data-spotlight="score-box">
             <div
               style={{
                 position: "relative",
@@ -1213,9 +1241,10 @@ function Dashboard() {
           )}
         </div>
       </div>
-      {/* ALERTS V2 PANEL (tutorial anchor: alertsRef) */}
+
+      {/* ALERTS V2 PANEL (data-spotlight="alerts-panel") */}
       {showAlerts && (
-        <div ref={alertsRef}>
+        <div data-spotlight="alerts-panel">
           <div
             style={{
               marginBottom: 26,
@@ -1413,8 +1442,8 @@ function Dashboard() {
       <CriticalVendorWatchlist orgId={activeOrgId} />
       <AlertHeatSignature orgId={activeOrgId} />
 
-      {/* RENEWAL INTELLIGENCE (tutorial anchor: renewalsRef) */}
-      <div ref={renewalsRef}>
+      {/* RENEWAL INTELLIGENCE (data-spotlight="renewals-panel") */}
+      <div data-spotlight="renewals-panel">
         <RenewalHeatmap range={90} />
         <RenewalBacklog />
       </div>
@@ -1433,6 +1462,7 @@ function Dashboard() {
         <RenewalCalendar range={60} />
         <RenewalAiSummary orgId={activeOrgId} />
       </div>
+
       {/* SYSTEM TIMELINE */}
       <div
         style={{
@@ -1535,8 +1565,8 @@ function Dashboard() {
         )}
       </div>
 
-      {/* POLICIES TABLE — tutorial anchor: policiesRef */}
-      <div ref={policiesRef}>
+      {/* POLICIES TABLE — data-spotlight="vendor-table" */}
+      <div data-spotlight="vendor-table">
         <h2
           style={{
             marginTop: 32,
@@ -1758,22 +1788,12 @@ function Dashboard() {
         )}
       </div>
 
-      {/* DASHBOARD TUTORIAL OVERLAY (Spotlight Engine Host) */}
-      {showTutorial && (
-        <DashboardTutorial
-          onFinish={handleFinishTutorial}
-          anchors={{
-            risk: riskRef,
-            fixPlans: kpiRef,
-            alerts: alertsRef,
-            renewals: renewalsRef,
-            vendors: policiesRef,
-          }}
-        />
-      )}
+      {/* SPOTLIGHT OVERLAY HOST */}
+      <DashboardSpotlightV3 spotlight={spotlight} />
     </div>
   );
 }
+
 /* =======================================
    SEVERITY BOX COMPONENT
 ======================================= */
@@ -1810,6 +1830,7 @@ function SeverityBox({ label, count, color }) {
     </div>
   );
 }
+
 /* =======================================
    MINI KPI COMPONENT
 ======================================= */
@@ -1845,6 +1866,7 @@ function MiniKpi({ label, value, color, icon }) {
     </div>
   );
 }
+
 /* =======================================
    TABLE HEAD + CELL STYLES
 ======================================= */
