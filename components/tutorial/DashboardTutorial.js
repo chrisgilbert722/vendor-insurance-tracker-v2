@@ -1,7 +1,7 @@
 // components/tutorial/DashboardTutorial.js
-// Dashboard Tutorial Overlay — Cinematic First-Run Experience
+// Dashboard Tutorial V2 — Cinematic Neon Spotlight Mode
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 
 const TUTORIAL_STEPS = [
   {
@@ -13,12 +13,11 @@ as vendors upload COIs, rules run, and fix plans are applied. Use it as your sin
 glance view of overall risk.`,
   },
   {
-    id: "fix-plans",
-    title: "AI Fix Plans Ready to Send",
+    id: "fixPlans",
+    title: "AI Fix Plans & KPIs",
     body: `
-Fix Cockpit has already analyzed vendor gaps and drafted fix plans and email language.
-You don't start from a blank page — you just review and send. This alone saves hours
-of manual chasing and writing.`,
+This strip shows high-level KPIs driven by AI: expired policies, critical expirations,
+warnings, and Elite engine fails. It tells you where to focus before issues become fire drills.`,
   },
   {
     id: "alerts",
@@ -29,29 +28,49 @@ an alert. You can sort by severity, vendor, or coverage type to decide what to t
   },
   {
     id: "renewals",
-    title: "Renewal Intelligence is Turned On",
+    title: "Renewal Intelligence Turned On",
     body: `
-The system tracks expirations and upcoming renewals so you don't live in a spreadsheet.
-Use the renewal views to see what’s at risk in the next 30, 60, or 90 days — before
-it becomes a fire drill.`,
+The system tracks expirations and upcoming renewals so you don't live in spreadsheets.
+Use these panels to see what's at risk in the next 30, 60, or 90 days before it becomes chaos.`,
   },
   {
     id: "vendors",
-    title: "Your Vendors Are Now in One Cockpit",
+    title: "Your Vendors in One Cockpit",
     body: `
 Every onboarded vendor now has a profile, policies, risk summary, fix plan, and alerts
-in a single place. Drill in with one click, or manage them in bulk from this dashboard.
-You're ready to run this like a modern compliance operation.`,
+in a single place. Drill in with one click, or manage them in bulk from this dashboard.`,
   },
 ];
 
-export default function DashboardTutorial({ onFinish }) {
+export default function DashboardTutorial({ onFinish, anchors = {} }) {
   const [stepIndex, setStepIndex] = useState(0);
+  const [highlightRect, setHighlightRect] = useState(null);
 
   const step = TUTORIAL_STEPS[stepIndex];
   const totalSteps = TUTORIAL_STEPS.length;
   const atFirst = stepIndex === 0;
   const atLast = stepIndex === totalSteps - 1;
+
+  // Compute highlight rect + auto-scroll to target
+  useEffect(() => {
+    const ref = anchors[step.id];
+    if (!ref || !ref.current) {
+      setHighlightRect(null);
+      return;
+    }
+
+    const rect = ref.current.getBoundingClientRect();
+    const { top, left, width, height } = rect;
+
+    setHighlightRect({ top, left, width, height });
+
+    // Auto scroll to bring highlighted area into view
+    const scrollTarget = top + window.scrollY - 120; // offset so it's not under top edge
+    window.scrollTo({
+      top: scrollTarget < 0 ? 0 : scrollTarget,
+      behavior: "smooth",
+    });
+  }, [stepIndex, anchors, step.id]);
 
   function handleNext() {
     if (atLast) {
@@ -83,6 +102,25 @@ export default function DashboardTutorial({ onFinish }) {
         pointerEvents: "auto",
       }}
     >
+      {/* Highlight box / spotlight */}
+      {highlightRect && (
+        <div
+          style={{
+            position: "fixed",
+            top: highlightRect.top - 10,
+            left: highlightRect.left - 10,
+            width: highlightRect.width + 20,
+            height: highlightRect.height + 20,
+            borderRadius: 20,
+            border: "2px solid rgba(56,189,248,0.95)",
+            boxShadow:
+              "0 0 30px rgba(56,189,248,0.85), 0 0 60px rgba(59,130,246,0.7)",
+            pointerEvents: "none",
+            transition: "all 0.25s ease-out",
+          }}
+        />
+      )}
+
       {/* Ambient Glow */}
       <div
         style={{
@@ -215,7 +253,7 @@ export default function DashboardTutorial({ onFinish }) {
           </div>
         </div>
 
-        {/* Fake highlight hint / caption */}
+        {/* Hint */}
         <div
           style={{
             marginTop: 12,
@@ -227,9 +265,8 @@ export default function DashboardTutorial({ onFinish }) {
             color: "#a5b4fc",
           }}
         >
-          Tip: Look for the glowing panels on the dashboard — risk, fix plans,
-          alerts, and renewals are all live and already running. This tour is
-          just showing you where the engines you just configured are working.
+          Tip: The glowing frame shows the live area this step is describing.
+          As you move through the tour, watch how AI-powered panels light up.
         </div>
 
         {/* Controls */}
