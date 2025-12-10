@@ -1,5 +1,5 @@
 // pages/api/onboarding/status.js
-// Returns whether onboarding is complete for an org
+// Returns onboarding status, progress %, and dashboard tutorial flag
 
 import { sql } from "../../../lib/db";
 
@@ -18,9 +18,12 @@ export default async function handler(req, res) {
         .json({ ok: false, error: "Missing orgId in query." });
     }
 
-    // Adjust table/columns here if your schema is slightly different
+    // Pull ALL onboarding-related fields
     const rows = await sql`
-      SELECT onboarding_step, first_upload_at
+      SELECT 
+        onboarding_step,
+        first_upload_at,
+        dashboard_tutorial_enabled
       FROM organizations
       WHERE id = ${orgId}
       LIMIT 1;
@@ -34,17 +37,33 @@ export default async function handler(req, res) {
 
     const org = rows[0];
 
+    // ------------------------------------------------------
+    // EXTRACT FIELDS
+    // ------------------------------------------------------
     const onboardingStep = org.onboarding_step ?? 0;
     const hasUpload = !!org.first_upload_at;
+    const dashboardTutorialEnabled = !!org.dashboard_tutorial_enabled;
 
-    // You can tune this logic, but this is the basic idea:
-    const isComplete = onboardingStep >= 6 || hasUpload;
+    // Wizard is considered complete if:
+    // - onboarding_step >= 10 (full wizard), OR
+    // - first upload exists (legacy condition)
+    const onboardingComplete =
+      onboardingStep >= 10 || hasUpload;
+
+    // Progress ring logic for Sidebar
+    const totalSteps = 10; // AI Wizard has 10 steps
+    const progressPercent = Math.min(
+      100,
+      Math.round((onboardingStep / totalSteps) * 100)
+    );
 
     return res.status(200).json({
       ok: true,
-      onboardingComplete: isComplete,
+      onboardingComplete,
       onboardingStep,
       hasUpload,
+      dashboardTutorialEnabled,
+      progressPercent,
     });
   } catch (err) {
     console.error("[onboarding/status] ERROR:", err);
