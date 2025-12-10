@@ -9,6 +9,7 @@ import ContractsUploadStep from "./ContractsUploadStep";
 import RulesGenerateStep from "./RulesGenerateStep";
 import FixPlansStep from "./FixPlansStep";
 import CompanyProfileStep from "./CompanyProfileStep";
+import TeamBrokersStep from "./TeamBrokersStep";
 
 export default function AiWizardPanel({
   orgId,
@@ -105,7 +106,18 @@ export default function AiWizardPanel({
       );
 
     // ---------------------------------------------------------
-    // DEFAULT — Placeholder for not-yet-wired steps
+    // STEP 9 — Team & Broker Invitations
+    // ---------------------------------------------------------
+    case "team-brokers":
+      return (
+        <TeamBrokersStep
+          wizardState={wizardState}
+          setWizardState={setWizardState}
+        />
+      );
+
+    // ---------------------------------------------------------
+    // DEFAULT — Not yet wired
     // ---------------------------------------------------------
     default:
       return (
@@ -130,11 +142,10 @@ export default function AiWizardPanel({
           >
             {step.title || step.label}
           </h2>
-
           <p style={{ marginTop: 6 }}>
-            This wizard step (<strong>{step.id}</strong>) hasn’t been wired yet.
-            You can continue using the wizard while we connect the remaining
-            steps.
+            This wizard step (<strong>{step.id}</strong>) hasn’t been wired in
+            yet.  
+            You can continue through the wizard while remaining steps are added.
           </p>
         </div>
       );
