@@ -1,5 +1,5 @@
 // pages/api/onboarding/status.js
-// Returns onboarding status, progress %, and dashboard tutorial flag
+// Returns onboarding + tutorial state for an org
 
 import { sql } from "../../../lib/db";
 
@@ -13,16 +13,16 @@ export default async function handler(req, res) {
     const { orgId } = req.query;
 
     if (!orgId) {
-      return res
-        .status(400)
-        .json({ ok: false, error: "Missing orgId in query." });
+      return res.status(400).json({
+        ok: false,
+        error: "Missing orgId in query."
+      });
     }
 
-    // Pull ALL onboarding-related fields
+    // 🟢 FIXED: only select columns that actually exist
     const rows = await sql`
-      SELECT 
+      SELECT
         onboarding_step,
-        first_upload_at,
         dashboard_tutorial_enabled
       FROM organizations
       WHERE id = ${orgId}
@@ -30,45 +30,31 @@ export default async function handler(req, res) {
     `;
 
     if (!rows.length) {
-      return res
-        .status(404)
-        .json({ ok: false, error: "Organization not found." });
+      return res.status(404).json({
+        ok: false,
+        error: "Organization not found."
+      });
     }
 
     const org = rows[0];
 
-    // ------------------------------------------------------
-    // EXTRACT FIELDS
-    // ------------------------------------------------------
     const onboardingStep = org.onboarding_step ?? 0;
-    const hasUpload = !!org.first_upload_at;
-    const dashboardTutorialEnabled = !!org.dashboard_tutorial_enabled;
+    const dashboardTutorialEnabled = org.dashboard_tutorial_enabled === true;
 
-    // Wizard is considered complete if:
-    // - onboarding_step >= 10 (full wizard), OR
-    // - first upload exists (legacy condition)
-    const onboardingComplete =
-      onboardingStep >= 10 || hasUpload;
-
-    // Progress ring logic for Sidebar
-    const totalSteps = 10; // AI Wizard has 10 steps
-    const progressPercent = Math.min(
-      100,
-      Math.round((onboardingStep / totalSteps) * 100)
-    );
+    // You decide when onboarding is "complete"
+    const onboardingComplete = onboardingStep >= 6;
 
     return res.status(200).json({
       ok: true,
       onboardingComplete,
       onboardingStep,
-      hasUpload,
-      dashboardTutorialEnabled,
-      progressPercent,
+      dashboardTutorialEnabled
     });
   } catch (err) {
     console.error("[onboarding/status] ERROR:", err);
-    return res
-      .status(500)
-      .json({ ok: false, error: err.message || "Status failed." });
+    return res.status(500).json({
+      ok: false,
+      error: err.message || "Status failed."
+    });
   }
 }
