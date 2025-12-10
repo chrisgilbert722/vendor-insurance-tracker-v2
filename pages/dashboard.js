@@ -2141,7 +2141,8 @@ const td = {
   color: "#e5e7eb",
 };
 
-// =======================================
-// END OF DASHBOARD V5 CINEMATIC INTELLIGENCE FILE
-// =======================================
- 
+/* =======================================
+   END OF DASHBOARD V5 CINEMATIC INTELLIGENCE FILE
+======================================= */
+
+export default Dashboard;
