@@ -1,4 +1,4 @@
-// components/Sidebar.js — Tactical Neon Rail V12 (Enhanced Onboarding Integration)
+// components/Sidebar.js — Tactical Neon Rail V13 (Tutorial Replay Added)
 import React, { useEffect, useState } from "react";
 import { useOrg } from "../context/OrgContext";
 
@@ -9,7 +9,7 @@ export default function Sidebar({ pathname, isAdmin, isManager, isViewer }) {
   const [wizardProgress, setWizardProgress] = useState(0);
 
   // ================================================================
-  // FETCH ONBOARDING STATUS + PROGRESS FROM API
+  // FETCH ONBOARDING STATUS + PROGRESS
   // ================================================================
   useEffect(() => {
     async function fetchStatus() {
@@ -23,7 +23,7 @@ export default function Sidebar({ pathname, isAdmin, isManager, isViewer }) {
 
         if (json.ok) {
           setOnboardingComplete(!!json.onboardingComplete);
-          setWizardProgress(json.progressPercent || 0); // 0–100%
+          setWizardProgress(json.progressPercent || 0);
         }
       } catch (err) {
         console.error("[Sidebar] onboarding status error:", err);
@@ -36,7 +36,6 @@ export default function Sidebar({ pathname, isAdmin, isManager, isViewer }) {
   const onboardingActive =
     pathname.startsWith("/onboarding") && !onboardingComplete;
 
-  // Neon pulse animation for Onboard button
   const pulseStyle = onboardingActive
     ? {
         boxShadow:
@@ -45,7 +44,6 @@ export default function Sidebar({ pathname, isAdmin, isManager, isViewer }) {
       }
     : {};
 
-  // Progress Ring SVG component (next to AI Wizard)
   function ProgressRing({ percent }) {
     const size = 26;
     const stroke = 4;
@@ -115,10 +113,7 @@ export default function Sidebar({ pathname, isAdmin, isManager, isViewer }) {
         ⚡
       </div>
 
-      {/* ================================================================
-         MAIN NAVIGATION
-      ================================================================ */}
-
+      {/* MAIN NAVIGATION */}
       <RailLink
         href="/dashboard"
         label="Dashboard"
@@ -160,9 +155,7 @@ export default function Sidebar({ pathname, isAdmin, isManager, isViewer }) {
         />
       )}
 
-      {/* ================================================================
-         ⭐ AI ONBOARDING WIZARD (If NOT completed)
-      ================================================================ */}
+      {/* ⭐ AI ONBOARDING WIZARD */}
       {!onboardingComplete && isAdmin && (
         <RailLink
           href="/onboarding/ai-wizard"
@@ -173,9 +166,7 @@ export default function Sidebar({ pathname, isAdmin, isManager, isViewer }) {
         />
       )}
 
-      {/* ================================================================
-         ⭐ AI COVERAGE INTEL
-      ================================================================ */}
+      {/* ⭐ AI COVERAGE INTEL */}
       {isAdmin && (
         <RailLink
           href="/admin/coverage-intel"
@@ -185,9 +176,7 @@ export default function Sidebar({ pathname, isAdmin, isManager, isViewer }) {
         />
       )}
 
-      {/* ================================================================
-         ⭐ RULE ENGINE V5
-      ================================================================ */}
+      {/* ⭐ RULE ENGINE V5 */}
       {isAdmin && (
         <RailLink
           href="/admin/requirements-v5"
@@ -197,9 +186,7 @@ export default function Sidebar({ pathname, isAdmin, isManager, isViewer }) {
         />
       )}
 
-      {/* ================================================================
-         ⭐ AI RULE LAB V6
-      ================================================================ */}
+      {/* ⭐ AI RULE LAB */}
       {isAdmin && (
         <RailLink
           href="/admin/rules/ai-builder"
@@ -209,22 +196,62 @@ export default function Sidebar({ pathname, isAdmin, isManager, isViewer }) {
         />
       )}
 
-      {/* ================================================================
-         ⭐ AI SETUP CENTER (after onboarding complete)
-      ================================================================ */}
+      {/* ⭐ AI SETUP CENTER */}
       {onboardingComplete && isAdmin && (
         <RailLink
           href="/admin/ai-setup-center"
           label="AI Setup"
           icon="🧠"
-          active={pathname === "/admin/ai-setup-center"}
           extraBadge="✓"
+          active={pathname === "/admin/ai-setup-center"}
         />
       )}
 
-      {/* ================================================================
-         EXECUTIVE AI DASHBOARD
-      ================================================================ */}
+      {/* ⭐ REPLAY TUTORIAL (NEW) */}
+      {isAdmin && (
+        <button
+          onClick={() => {
+            try {
+              localStorage.removeItem("dashboard_tutorial_seen");
+            } catch {}
+            window.location.href = "/dashboard?tutorial=1";
+          }}
+          style={{
+            width: "100%",
+            padding: "14px 0",
+            marginBottom: 8,
+            border: "none",
+            background: "transparent",
+            display: "flex",
+            flexDirection: "column",
+            alignItems: "center",
+            cursor: "pointer",
+          }}
+        >
+          <span
+            style={{
+              fontSize: 20,
+              marginBottom: 6,
+              color: "#38bdf8",
+              textShadow: "0 0 12px rgba(56,189,248,0.9)",
+            }}
+          >
+            ↻
+          </span>
+          <span
+            style={{
+              fontSize: 11,
+              textTransform: "uppercase",
+              color: "#e5e7eb",
+              letterSpacing: "0.08em",
+            }}
+          >
+            Tutorial
+          </span>
+        </button>
+      )}
+
+      {/* EXEC AI */}
       {isAdmin && (
         <RailLink
           href="/admin/renewals"
@@ -248,7 +275,7 @@ export default function Sidebar({ pathname, isAdmin, isManager, isViewer }) {
 }
 
 /* ===============================================================
-   RailLink Component (w/ Onboarding Enhancements)
+   RailLink Component
 =============================================================== */
 function RailLink({ href, label, icon, active, extraStyle = {}, extraBadge }) {
   return (
@@ -269,18 +296,10 @@ function RailLink({ href, label, icon, active, extraStyle = {}, extraBadge }) {
         boxShadow: active ? "0 0 14px rgba(56,189,248,0.55)" : "none",
 
         transition: "all 0.18s ease",
-
         ...extraStyle,
       }}
     >
-      <div
-        style={{
-          position: "relative",
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "center",
-        }}
-      >
+      <div style={{ position: "relative" }}>
         <span
           style={{
             fontSize: typeof icon === "string" ? 20 : 0,
@@ -290,7 +309,7 @@ function RailLink({ href, label, icon, active, extraStyle = {}, extraBadge }) {
             transition: "0.2s",
           }}
         >
-          {typeof icon === "string" ? icon : icon}
+          {icon}
         </span>
 
         {extraBadge && (
@@ -300,7 +319,7 @@ function RailLink({ href, label, icon, active, extraStyle = {}, extraBadge }) {
               top: -4,
               right: -10,
               fontSize: 12,
-              background: "rgba(34,197,94,0.9)",
+              background: "rgba(34,197,94,0.95)",
               padding: "1px 5px",
               borderRadius: 999,
               color: "#ecfdf5",
@@ -318,7 +337,6 @@ function RailLink({ href, label, icon, active, extraStyle = {}, extraBadge }) {
           letterSpacing: "0.08em",
           textTransform: "uppercase",
           opacity: active ? 1 : 0.6,
-          transition: "0.2s",
         }}
       >
         {label}
