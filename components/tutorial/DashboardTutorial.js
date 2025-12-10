@@ -1,242 +1,216 @@
 // components/tutorial/DashboardTutorial.js
-// ============================================================
-// CINEMATIC DASHBOARD TUTORIAL V3
-// Full spotlight engine + arrows + fade + smooth motion
-// Compatible with dashboard.js anchors: risk, fixPlans, alerts, renewals, vendors
-// ============================================================
+// Dashboard Tutorial — Spotlight, lighter dimming, auto-scroll
 
-import React, { useEffect, useState, useRef } from "react";
+import { useEffect, useState } from "react";
 
-// ---- STEP DEFINITIONS -------------------------------------------------------
 const STEPS = [
   {
     id: "risk",
-    title: "Your Global Compliance Risk Score",
+    title: "Your Global Compliance Score",
     body: `
-AI continuously evaluates every vendor, policy, expiration, and rule.
-This score updates LIVE — it's the single fastest way to see your compliance health.`,
+This shows your live, AI-driven compliance score across all vendors and policies.
+If this goes down, something is wrong.`,
   },
   {
     id: "fixPlans",
-    title: "AI Fix Plans Are Already Running",
+    title: "AI Fix Plans & KPIs",
     body: `
-Fix Cockpit built fix plans and email drafts for vendors with missing coverage,
-expired COIs, or low limits. You can send them instantly.`,
+These KPIs summarize expired COIs, upcoming expirations, and Elite Engine fails.
+They tell you where to look first each day.`,
   },
   {
     id: "alerts",
-    title: "Coverage Issues & Alerts",
+    title: "Alerts & Coverage Gaps",
     body: `
-All missing policies, low limits, expired certificates, and rule failures show here.
-This is your day-to-day mission panel.`,
+All missing coverage, low limits, and rule failures show here.
+Use this to see which vendors are causing immediate risk.`,
   },
   {
     id: "renewals",
-    title: "Renewal Intelligence Activated",
+    title: "Renewals & Expirations",
     body: `
-AI predicts upcoming expirations, overdue renewals, and renewal risk.
-This replaces spreadsheets and manual reminders.`,
+This panel shows upcoming policy expirations and renewal backlog.
+It replaces spreadsheets and manual follow-up lists.`,
   },
   {
     id: "vendors",
-    title: "Your Full Vendor Cockpit",
+    title: "Vendor Policy Cockpit",
     body: `
-Every vendor now has a profile, policies, alerts, fix plan, and rule analysis.
-Drill into any vendor with one click.`,
+Every vendor with COIs is listed here with AI scoring, rule results, and flags.
+Click any row to open the full vendor drawer.`,
   },
 ];
 
-// ---- LERP UTILITY -----------------------------------------------------------
-const lerp = (a, b, t) => a + (b - a) * t;
-
-// ---- MAIN COMPONENT ---------------------------------------------------------
 export default function DashboardTutorial({ anchors, onFinish }) {
   const [stepIndex, setStepIndex] = useState(0);
-  const [spot, setSpot] = useState(null); // final animated rect
+  const [rect, setRect] = useState(null);
 
-  const activeStep = STEPS[stepIndex];
-  const activeAnchor = anchors[activeStep.id];
-
-  const anim = useRef({ x: 0, y: 0, w: 0, h: 0 });
-  const target = useRef({ x: 0, y: 0, w: 0, h: 0 });
-
-  // ---- GET DOM RECT ---------------------------------------------------------
-  function computeRect() {
-    if (!activeAnchor?.current) return null;
-    const r = activeAnchor.current.getBoundingClientRect();
-    return { x: r.left, y: r.top, w: r.width, h: r.height };
-  }
-
-  // ---- UPDATE TARGET WHEN STEP CHANGES --------------------------------------
-  useEffect(() => {
-    const rect = computeRect();
-    if (rect) {
-      target.current = rect;
-    }
-  }, [stepIndex, activeAnchor]);
-
-  // ---- SMOOTH ANIMATION LOOP ------------------------------------------------
-  useEffect(() => {
-    let frame;
-    function update() {
-      anim.current.x = lerp(anim.current.x, target.current.x, 0.14);
-      anim.current.y = lerp(anim.current.y, target.current.y, 0.14);
-      anim.current.w = lerp(anim.current.w, target.current.w, 0.14);
-      anim.current.h = lerp(anim.current.h, target.current.h, 0.14);
-
-      setSpot({ ...anim.current });
-      frame = requestAnimationFrame(update);
-    }
-    update();
-    return () => cancelAnimationFrame(frame);
-  }, []);
-
-  // ---- RECALCULATE RECT ON RESIZE / SCROLL ---------------------------------
-  useEffect(() => {
-    if (!activeAnchor?.current) return;
-
-    function refresh() {
-      const rect = computeRect();
-      if (rect) target.current = rect;
-    }
-
-    refresh();
-
-    const obs = new ResizeObserver(refresh);
-    obs.observe(activeAnchor.current);
-
-    window.addEventListener("scroll", refresh, { passive: true });
-    window.addEventListener("resize", refresh);
-
-    return () => {
-      obs.disconnect();
-      window.removeEventListener("scroll", refresh);
-      window.removeEventListener("resize", refresh);
-    };
-  }, [activeAnchor]);
-
-  if (!spot) return null;
-
-  // ---- CONTROL HANDLERS -----------------------------------------------------
+  const step = STEPS[stepIndex];
   const atFirst = stepIndex === 0;
   const atLast = stepIndex === STEPS.length - 1;
 
-  const next = () => {
-    if (atLast) return finish();
+  const anchorRef = anchors?.[step.id];
+
+  // Auto-scroll the highlighted section into view when step changes
+  useEffect(() => {
+    if (!anchorRef?.current || typeof window === "undefined") return;
+
+    const el = anchorRef.current;
+    const box = el.getBoundingClientRect();
+    const scrollY =
+      box.top + window.scrollY - window.innerHeight / 2 + box.height / 2;
+
+    window.scrollTo({
+      top: scrollY < 0 ? 0 : scrollY,
+      behavior: "smooth",
+    });
+  }, [stepIndex, anchorRef]);
+
+  // Track highlight rectangle for current anchor
+  useEffect(() => {
+    if (!anchorRef?.current || typeof window === "undefined") {
+      setRect(null);
+      return;
+    }
+
+    function updateRect() {
+      const box = anchorRef.current.getBoundingClientRect();
+      setRect({
+        top: box.top,
+        left: box.left,
+        width: box.width,
+        height: box.height,
+      });
+    }
+
+    updateRect();
+
+    window.addEventListener("scroll", updateRect, { passive: true });
+    window.addEventListener("resize", updateRect);
+
+    return () => {
+      window.removeEventListener("scroll", updateRect);
+      window.removeEventListener("resize", updateRect);
+    };
+  }, [anchorRef, stepIndex]);
+
+  const handleNext = () => {
+    if (atLast) {
+      if (typeof onFinish === "function") onFinish();
+      return;
+    }
     setStepIndex((i) => Math.min(i + 1, STEPS.length - 1));
   };
-  const back = () => setStepIndex((i) => Math.max(i - 1, 0));
-  const skip = () => finish();
 
-  const finish = () => {
+  const handleBack = () => {
+    setStepIndex((i) => Math.max(i - 1, 0));
+  };
+
+  const handleSkip = () => {
     if (typeof onFinish === "function") onFinish();
   };
 
-  // ---- SPOTLIGHT VISUAL DIMENSIONS ------------------------------------------
-  const padding = 12;
-  const ringX = spot.x - padding;
-  const ringY = spot.y - padding;
-  const ringW = spot.w + padding * 2;
-  const ringH = spot.h + padding * 2;
-  const centerX = ringX + ringW / 2;
-
   return (
-    <>
-      {/* DARK BACKDROP */}
-      <div
-        style={{
-          position: "fixed",
-          inset: 0,
-          background: "rgba(0,0,0,0.68)",
-          backdropFilter: "blur(3px)",
-          zIndex: 99998,
-          pointerEvents: "auto",
-        }}
-        onClick={(e) => e.stopPropagation()} // prevent closing
-      />
+    <div
+      style={{
+        position: "fixed",
+        inset: 0,
+        zIndex: 99999,
+        // Lighter dim — you can still see the dashboard
+        background: "rgba(15,23,42,0.55)",
+        backdropFilter: "blur(4px)",
+        pointerEvents: "none",
+      }}
+    >
+      {/* Highlight box */}
+      {rect && (
+        <div
+          style={{
+            position: "fixed",
+            top: rect.top - 8,
+            left: rect.left - 8,
+            width: rect.width + 16,
+            height: rect.height + 16,
+            borderRadius: 16,
+            border: "2px solid rgba(56,189,248,0.95)",
+            boxShadow:
+              "0 0 25px rgba(56,189,248,0.85), 0 0 40px rgba(59,130,246,0.7)",
+            pointerEvents: "none",
+          }}
+        />
+      )}
 
-      {/* SPOTLIGHT HOLE */}
+      {/* Tutorial Card — bottom center, always visible */}
       <div
         style={{
           position: "fixed",
-          left: ringX,
-          top: ringY,
-          width: ringW,
-          height: ringH,
-          borderRadius: 18,
-          zIndex: 99999,
-          boxShadow: `
-            0 0 0 9999px rgba(0,0,0,0.72),
-            0 0 32px rgba(56,189,248,0.45),
-            0 0 46px rgba(148,163,184,0.35)
-          `,
-          transition: "box-shadow 0.35s ease",
-          pointerEvents: "none",
-        }}
-      />
-
-      {/* SIDECARD: TITLE + BODY + CONTROLS */}
-      <div
-        style={{
-          position: "fixed",
-          top: ringY + ringH / 2 - 120,
-          left: Math.min(centerX + ringW / 2 + 40, window.innerWidth - 380),
-          width: 340,
-          padding: 24,
-          borderRadius: 18,
+          bottom: 32,
+          left: "50%",
+          transform: "translateX(-50%)",
+          width: "100%",
+          maxWidth: 560,
+          borderRadius: 20,
+          padding: 18,
           background:
-            "radial-gradient(circle at top left,rgba(15,23,42,0.98),rgba(15,23,42,0.92))",
-          border: "1px solid rgba(148,163,184,0.35)",
-          boxShadow: "0 12px 40px rgba(0,0,0,0.55)",
-          zIndex: 100000,
+            "radial-gradient(circle at top left,rgba(15,23,42,0.98),rgba(15,23,42,0.94))",
+          border: "1px solid rgba(148,163,184,0.55)",
+          boxShadow:
+            "0 16px 45px rgba(0,0,0,0.75), 0 0 40px rgba(56,189,248,0.25)",
           color: "#e5e7eb",
+          pointerEvents: "auto",
+          fontFamily: "system-ui",
         }}
       >
-        {/* Header Badge */}
+        {/* Header */}
         <div
           style={{
             display: "inline-flex",
             gap: 6,
             padding: "3px 9px",
             borderRadius: 999,
-            border: "1px solid rgba(148,163,184,0.3)",
+            border: "1px solid rgba(148,163,184,0.4)",
             background:
-              "linear-gradient(120deg,rgba(15,23,42,0.92),rgba(15,23,42,0.55))",
-            marginBottom: 10,
+              "linear-gradient(120deg,rgba(15,23,42,0.9),rgba(15,23,42,0.65))",
+            marginBottom: 8,
             fontSize: 10,
-            letterSpacing: "0.12em",
+            letterSpacing: "0.16em",
             textTransform: "uppercase",
             color: "#9ca3af",
           }}
         >
-          Dashboard Tour
+          <span>Dashboard Tour</span>
+          <span style={{ color: "#38bdf8" }}>
+            {stepIndex + 1}/{STEPS.length}
+          </span>
         </div>
 
         {/* Title */}
         <h2
           style={{
-            fontSize: 20,
             margin: 0,
             marginBottom: 6,
+            fontSize: 18,
+            fontWeight: 600,
             background: "linear-gradient(90deg,#38bdf8,#a855f7)",
             WebkitBackgroundClip: "text",
             color: "transparent",
           }}
         >
-          {activeStep.title}
+          {step.title}
         </h2>
 
         {/* Body */}
         <p
           style={{
-            whiteSpace: "pre-line",
+            margin: 0,
+            marginBottom: 12,
             fontSize: 13,
             color: "#cbd5f5",
-            marginBottom: 18,
-            lineHeight: "1.5",
+            whiteSpace: "pre-line",
+            lineHeight: 1.5,
           }}
         >
-          {activeStep.body}
+          {step.body.trim()}
         </p>
 
         {/* Controls */}
@@ -245,50 +219,51 @@ export default function DashboardTutorial({ anchors, onFinish }) {
             display: "flex",
             justifyContent: "space-between",
             alignItems: "center",
-            marginTop: 6,
+            marginTop: 8,
           }}
         >
-          {/* Skip */}
           <button
-            onClick={skip}
+            type="button"
+            onClick={handleSkip}
             style={{
               background: "transparent",
               border: "none",
               color: "#9ca3af",
+              fontSize: 12,
+              cursor: "pointer",
               textDecoration: "underline",
               textUnderlineOffset: 3,
-              cursor: "pointer",
-              fontSize: 12,
             }}
           >
-            Skip
+            Skip tutorial
           </button>
 
           <div style={{ display: "flex", gap: 8 }}>
-            {/* Back */}
             <button
+              type="button"
+              onClick={handleBack}
               disabled={atFirst}
-              onClick={back}
               style={{
-                padding: "8px 12px",
+                padding: "7px 12px",
                 borderRadius: 999,
-                border: "1px solid rgba(71,85,105,0.8)",
+                border: "1px solid rgba(71,85,105,0.9)",
                 background: atFirst
-                  ? "rgba(15,23,42,0.6)"
+                  ? "rgba(15,23,42,0.7)"
                   : "rgba(15,23,42,0.95)",
                 color: atFirst ? "#6b7280" : "#e5e7eb",
-                cursor: atFirst ? "not-allowed" : "pointer",
                 fontSize: 12,
+                cursor: atFirst ? "not-allowed" : "pointer",
+                opacity: atFirst ? 0.6 : 1,
               }}
             >
               ← Back
             </button>
 
-            {/* Next */}
             <button
-              onClick={next}
+              type="button"
+              onClick={handleNext}
               style={{
-                padding: "8px 18px",
+                padding: "7px 16px",
                 borderRadius: 999,
                 border: "1px solid rgba(59,130,246,0.9)",
                 background: atLast
@@ -300,7 +275,7 @@ export default function DashboardTutorial({ anchors, onFinish }) {
                 cursor: "pointer",
                 boxShadow: atLast
                   ? "0 0 18px rgba(34,197,94,0.55)"
-                  : "0 0 18px rgba(59,130,246,0.45)",
+                  : "0 0 18px rgba(59,130,246,0.55)",
               }}
             >
               {atLast ? "Finish →" : "Next →"}
@@ -308,6 +283,6 @@ export default function DashboardTutorial({ anchors, onFinish }) {
           </div>
         </div>
       </div>
-    </>
+    </div>
   );
 }
