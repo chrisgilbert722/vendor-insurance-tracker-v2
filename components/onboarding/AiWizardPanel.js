@@ -5,6 +5,7 @@
 import VendorsUploadStep from "./VendorsUploadStep";
 import VendorsMapStep from "./VendorsMapStep";
 import VendorsAnalyzeStep from "./VendorsAnalyzeStep";
+import ContractsUploadStep from "./ContractsUploadStep";
 
 export default function AiWizardPanel({
   orgId,
@@ -46,6 +47,18 @@ export default function AiWizardPanel({
     case "vendors-analyze":
       return (
         <VendorsAnalyzeStep
+          orgId={orgId}
+          wizardState={wizardState}
+          setWizardState={setWizardState}
+        />
+      );
+
+    /* ---------------------------------------------------------
+       STEP 5 — Contract Upload & AI Requirement Extraction
+    --------------------------------------------------------- */
+    case "contracts-upload":
+      return (
+        <ContractsUploadStep
           orgId={orgId}
           wizardState={wizardState}
           setWizardState={setWizardState}
