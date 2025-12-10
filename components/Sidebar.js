@@ -1,29 +1,86 @@
-// components/Sidebar.js — Tactical Neon Rail V10 (Cleaned for GOD MODE)
+// components/Sidebar.js — Tactical Neon Rail V12 (Enhanced Onboarding Integration)
 import React, { useEffect, useState } from "react";
 import { useOrg } from "../context/OrgContext";
 
 export default function Sidebar({ pathname, isAdmin, isManager, isViewer }) {
   const { activeOrgId } = useOrg() || {};
-  const [onboardingComplete, setOnboardingComplete] = useState(true);
 
-  // Fetch onboarding status for AI Setup visibility
+  const [onboardingComplete, setOnboardingComplete] = useState(true);
+  const [wizardProgress, setWizardProgress] = useState(0);
+
+  // ================================================================
+  // FETCH ONBOARDING STATUS + PROGRESS FROM API
+  // ================================================================
   useEffect(() => {
     async function fetchStatus() {
       if (!activeOrgId) return;
+
       try {
         const res = await fetch(
           `/api/onboarding/status?orgId=${encodeURIComponent(activeOrgId)}`
         );
         const json = await res.json();
+
         if (json.ok) {
           setOnboardingComplete(!!json.onboardingComplete);
+          setWizardProgress(json.progressPercent || 0); // 0–100%
         }
       } catch (err) {
         console.error("[Sidebar] onboarding status error:", err);
       }
     }
+
     fetchStatus();
   }, [activeOrgId]);
+
+  const onboardingActive =
+    pathname.startsWith("/onboarding") && !onboardingComplete;
+
+  // Neon pulse animation for Onboard button
+  const pulseStyle = onboardingActive
+    ? {
+        boxShadow:
+          "0 0 18px rgba(56,189,248,0.75), 0 0 28px rgba(56,189,248,0.55)",
+        background: "rgba(56,189,248,0.14)",
+      }
+    : {};
+
+  // Progress Ring SVG component (next to AI Wizard)
+  function ProgressRing({ percent }) {
+    const size = 26;
+    const stroke = 4;
+    const radius = (size - stroke) / 2;
+    const circumference = 2 * Math.PI * radius;
+    const dashOffset = circumference - (percent / 100) * circumference;
+
+    return (
+      <svg width={size} height={size} style={{ marginBottom: 6 }}>
+        <circle
+          cx={size / 2}
+          cy={size / 2}
+          r={radius}
+          stroke="rgba(100,116,139,0.35)"
+          strokeWidth={stroke}
+          fill="transparent"
+        />
+        <circle
+          cx={size / 2}
+          cy={size / 2}
+          r={radius}
+          stroke="#38bdf8"
+          strokeWidth={stroke}
+          fill="transparent"
+          strokeDasharray={circumference}
+          strokeDashoffset={dashOffset}
+          strokeLinecap="round"
+          style={{
+            filter: "drop-shadow(0 0 6px rgba(56,189,248,0.9))",
+            transition: "stroke-dashoffset 0.35s ease",
+          }}
+        />
+      </svg>
+    );
+  }
 
   return (
     <div
@@ -58,7 +115,9 @@ export default function Sidebar({ pathname, isAdmin, isManager, isViewer }) {
         ⚡
       </div>
 
-      {/* ===== MAIN NAVIGATION ===== */}
+      {/* ================================================================
+         MAIN NAVIGATION
+      ================================================================ */}
 
       <RailLink
         href="/dashboard"
@@ -101,7 +160,22 @@ export default function Sidebar({ pathname, isAdmin, isManager, isViewer }) {
         />
       )}
 
-      {/* ⭐ COVERAGE INTEL ⭐ */}
+      {/* ================================================================
+         ⭐ AI ONBOARDING WIZARD (If NOT completed)
+      ================================================================ */}
+      {!onboardingComplete && isAdmin && (
+        <RailLink
+          href="/onboarding/ai-wizard"
+          label="Onboard"
+          icon={<ProgressRing percent={wizardProgress} />}
+          active={onboardingActive}
+          extraStyle={pulseStyle}
+        />
+      )}
+
+      {/* ================================================================
+         ⭐ AI COVERAGE INTEL
+      ================================================================ */}
       {isAdmin && (
         <RailLink
           href="/admin/coverage-intel"
@@ -111,7 +185,9 @@ export default function Sidebar({ pathname, isAdmin, isManager, isViewer }) {
         />
       )}
 
-      {/* ⭐ REQUIREMENTS ENGINE ⭐ */}
+      {/* ================================================================
+         ⭐ RULE ENGINE V5
+      ================================================================ */}
       {isAdmin && (
         <RailLink
           href="/admin/requirements-v5"
@@ -121,7 +197,9 @@ export default function Sidebar({ pathname, isAdmin, isManager, isViewer }) {
         />
       )}
 
-      {/* ⭐ AI RULE LAB (RULE BUILDER V6) ⭐ */}
+      {/* ================================================================
+         ⭐ AI RULE LAB V6
+      ================================================================ */}
       {isAdmin && (
         <RailLink
           href="/admin/rules/ai-builder"
@@ -131,17 +209,22 @@ export default function Sidebar({ pathname, isAdmin, isManager, isViewer }) {
         />
       )}
 
-      {/* ⭐ AI SETUP CENTER (AFTER ONBOARDING COMPLETE) ⭐ */}
+      {/* ================================================================
+         ⭐ AI SETUP CENTER (after onboarding complete)
+      ================================================================ */}
       {onboardingComplete && isAdmin && (
         <RailLink
           href="/admin/ai-setup-center"
           label="AI Setup"
           icon="🧠"
           active={pathname === "/admin/ai-setup-center"}
+          extraBadge="✓"
         />
       )}
 
-      {/* ⭐ EXECUTIVE AI DASHBOARD ⭐ */}
+      {/* ================================================================
+         EXECUTIVE AI DASHBOARD
+      ================================================================ */}
       {isAdmin && (
         <RailLink
           href="/admin/renewals"
@@ -151,7 +234,7 @@ export default function Sidebar({ pathname, isAdmin, isManager, isViewer }) {
         />
       )}
 
-      {/* ===== LOGOUT ===== */}
+      {/* LOGOUT */}
       <div style={{ marginTop: "auto" }}>
         <RailLink
           href="/auth/login"
@@ -164,10 +247,10 @@ export default function Sidebar({ pathname, isAdmin, isManager, isViewer }) {
   );
 }
 
-/* ===========================================
-   Rail Link Component
-=========================================== */
-function RailLink({ href, label, icon, active }) {
+/* ===============================================================
+   RailLink Component (w/ Onboarding Enhancements)
+=============================================================== */
+function RailLink({ href, label, icon, active, extraStyle = {}, extraBadge }) {
   return (
     <a
       href={href}
@@ -186,19 +269,48 @@ function RailLink({ href, label, icon, active }) {
         boxShadow: active ? "0 0 14px rgba(56,189,248,0.55)" : "none",
 
         transition: "all 0.18s ease",
+
+        ...extraStyle,
       }}
     >
-      <span
+      <div
         style={{
-          fontSize: 20,
-          marginBottom: 6,
-          color: active ? "#38bdf8" : "#94a3af",
-          textShadow: active ? "0 0 12px rgba(56,189,248,0.9)" : "none",
-          transition: "0.2s",
+          position: "relative",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
         }}
       >
-        {icon}
-      </span>
+        <span
+          style={{
+            fontSize: typeof icon === "string" ? 20 : 0,
+            marginBottom: 6,
+            color: active ? "#38bdf8" : "#94a3af",
+            textShadow: active ? "0 0 12px rgba(56,189,248,0.9)" : "none",
+            transition: "0.2s",
+          }}
+        >
+          {typeof icon === "string" ? icon : icon}
+        </span>
+
+        {extraBadge && (
+          <span
+            style={{
+              position: "absolute",
+              top: -4,
+              right: -10,
+              fontSize: 12,
+              background: "rgba(34,197,94,0.9)",
+              padding: "1px 5px",
+              borderRadius: 999,
+              color: "#ecfdf5",
+            }}
+          >
+            {extraBadge}
+          </span>
+        )}
+      </div>
+
       <span
         style={{
           fontSize: 11,
