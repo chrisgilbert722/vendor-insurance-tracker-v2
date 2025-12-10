@@ -137,9 +137,9 @@ export default function ContractsUploadStep({
       </h2>
 
       <p style={{ fontSize: 13, color: "#9ca3af" }}>
-        Upload any contract documents (PDF), insurance requirements, endorsements,
-        or sample COIs. AI will extract coverage requirements and convert them
-        into structured rules for you.
+        Upload contract documents, insurance requirements, endorsements, or sample
+        COIs. AI will extract coverage requirements and convert them into structured
+        rules for you.
       </p>
 
       {/* Upload box */}
@@ -163,9 +163,7 @@ export default function ContractsUploadStep({
           style={{ display: "none" }}
         />
 
-        <div
-          style={{ fontSize: 14, color: "#e5e7eb", marginBottom: 6 }}
-        >
+        <div style={{ fontSize: 14, color: "#e5e7eb", marginBottom: 6 }}>
           {files.length
             ? `${files.length} file(s) selected`
             : "Click or drop PDF files (contracts, endorsements, COIs)"}
@@ -232,8 +230,10 @@ export default function ContractsUploadStep({
           <ul style={{ margin: 0, paddingLeft: 18, fontSize: 12 }}>
             {uploaded.map((f, idx) => (
               <li key={idx} style={{ marginBottom: 4 }}>
-                {f.name}  
-                <span style={{ color: "#64748b" }}> ({Math.round(f.size / 1024)} KB)</span>
+                {f.name}{" "}
+                <span style={{ color: "#64748b" }}>
+                  ({Math.round(f.size / 1024)} KB)
+                </span>
               </li>
             ))}
           </ul>
@@ -294,4 +294,14 @@ export default function ContractsUploadStep({
                   {req.coverage || req.type}:
                 </strong>{" "}
                 {req.limit || req.value || "—"}
-                {req.notes && (
+                {req.notes ? (
+                  <span style={{ color: "#9ca3af" }}> — {req.notes}</span>
+                ) : null}
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+    </div>
+  );
+}
