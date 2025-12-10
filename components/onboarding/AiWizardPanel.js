@@ -6,6 +6,7 @@ import VendorsUploadStep from "./VendorsUploadStep";
 import VendorsMapStep from "./VendorsMapStep";
 import VendorsAnalyzeStep from "./VendorsAnalyzeStep";
 import ContractsUploadStep from "./ContractsUploadStep";
+import RulesGenerateStep from "./RulesGenerateStep";
 
 export default function AiWizardPanel({
   orgId,
@@ -18,9 +19,7 @@ export default function AiWizardPanel({
   if (!step) return null;
 
   switch (step.id) {
-    /* ---------------------------------------------------------
-       STEP 2 — CSV Upload
-    --------------------------------------------------------- */
+    // STEP 2 — CSV Upload
     case "vendors-upload":
       return (
         <VendorsUploadStep
@@ -30,9 +29,7 @@ export default function AiWizardPanel({
         />
       );
 
-    /* ---------------------------------------------------------
-       STEP 3 — Column Mapping
-    --------------------------------------------------------- */
+    // STEP 3 — Column Mapping
     case "vendors-map":
       return (
         <VendorsMapStep
@@ -41,9 +38,7 @@ export default function AiWizardPanel({
         />
       );
 
-    /* ---------------------------------------------------------
-       STEP 4 — AI Vendor Analysis
-    --------------------------------------------------------- */
+    // STEP 4 — AI Vendor Analysis
     case "vendors-analyze":
       return (
         <VendorsAnalyzeStep
@@ -53,9 +48,7 @@ export default function AiWizardPanel({
         />
       );
 
-    /* ---------------------------------------------------------
-       STEP 5 — Contract Upload & AI Requirement Extraction
-    --------------------------------------------------------- */
+    // STEP 5 — Contract Upload & AI Requirement Extraction
     case "contracts-upload":
       return (
         <ContractsUploadStep
@@ -65,9 +58,17 @@ export default function AiWizardPanel({
         />
       );
 
-    /* ---------------------------------------------------------
-       DEFAULT — Placeholder for not-yet-wired steps
-    --------------------------------------------------------- */
+    // STEP 6 — AI Rule Generation
+    case "rules-generate":
+      return (
+        <RulesGenerateStep
+          orgId={orgId}
+          wizardState={wizardState}
+          setWizardState={setWizardState}
+        />
+      );
+
+    // DEFAULT — Placeholder for not-yet-wired steps
     default:
       return (
         <div
@@ -94,7 +95,8 @@ export default function AiWizardPanel({
 
           <p style={{ marginTop: 6 }}>
             This wizard step (<strong>{step.id}</strong>) hasn’t been wired yet.
-            You can continue using the wizard while the remaining steps are connected.
+            You can continue using the wizard while the remaining steps are
+            connected.
           </p>
         </div>
       );
