@@ -3,9 +3,9 @@
 // DASHBOARD SPOTLIGHT ENGINE V3 — FULL FILE
 // - 4 Mask Panels (perfect cutout highlight)
 // - No blur over spotlight target
-// - Async selector retry (fixes missing Step 3)
+// - Async selector retry (fixes missing elements)
 // - Auto-scroll centering
-// - Smooth transitions
+// - Medium-width cinematic text panel
 // ============================================================
 
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -118,8 +118,10 @@ export function useDashboardSpotlightV3(stepConfig = []) {
 
     computeRectForCurrentStep(0, { scrollIntoView: true });
 
-    const handleResize = () => computeRectForCurrentStep(0, { scrollIntoView: false });
-    const handleScroll = () => computeRectForCurrentStep(0, { scrollIntoView: false });
+    const handleResize = () =>
+      computeRectForCurrentStep(0, { scrollIntoView: false });
+    const handleScroll = () =>
+      computeRectForCurrentStep(0, { scrollIntoView: false });
 
     window.addEventListener("resize", handleResize);
     window.addEventListener("scroll", handleScroll, true);
@@ -134,14 +136,19 @@ export function useDashboardSpotlightV3(stepConfig = []) {
   const start = useCallback(
     (startIndex = 0) => {
       if (!stepsRef.current.length) return;
-      const safeIndex = Math.min(Math.max(0, startIndex), stepsRef.current.length - 1);
+      const safeIndex = Math.min(
+        Math.max(0, startIndex),
+        stepsRef.current.length - 1
+      );
       setIndex(safeIndex);
     },
     []
   );
 
   const next = useCallback(() => {
-    setIndex((prev) => (prev + 1 < stepsRef.current.length ? prev + 1 : -1));
+    setIndex((prev) =>
+      prev + 1 < stepsRef.current.length ? prev + 1 : -1
+    );
   }, []);
 
   const back = useCallback(() => {
@@ -185,9 +192,26 @@ export function DashboardSpotlightOverlayV3({
   const { top, left, width, height } = rect;
   const isLast = index + 1 === total;
 
+  // Decide whether to place panel above or below
+  let infoTop = top + height + 20;
+  if (typeof window !== "undefined") {
+    const viewportH = window.innerHeight || 800;
+    const panelHeight = 190; // approx
+    if (infoTop + panelHeight > viewportH - 20 && top > panelHeight + 40) {
+      infoTop = top - panelHeight - 20; // place above
+    }
+  }
+
   return (
-    <div style={{ position: "fixed", inset: 0, zIndex: 99999, pointerEvents: "none" }}>
-      {/* TOP MASK */}
+    <div
+      style={{
+        position: "fixed",
+        inset: 0,
+        zIndex: 99999,
+        pointerEvents: "none",
+      }}
+    >
+      {/* MASKS */}
       <div
         onClick={onClose}
         style={{
@@ -201,8 +225,6 @@ export function DashboardSpotlightOverlayV3({
           transition: "all 160ms ease-out",
         }}
       />
-
-      {/* LEFT MASK */}
       <div
         onClick={onClose}
         style={{
@@ -216,8 +238,6 @@ export function DashboardSpotlightOverlayV3({
           transition: "all 160ms ease-out",
         }}
       />
-
-      {/* RIGHT MASK */}
       <div
         onClick={onClose}
         style={{
@@ -231,8 +251,6 @@ export function DashboardSpotlightOverlayV3({
           transition: "all 160ms ease-out",
         }}
       />
-
-      {/* BOTTOM MASK */}
       <div
         onClick={onClose}
         style={{
@@ -256,20 +274,21 @@ export function DashboardSpotlightOverlayV3({
           width,
           height,
           borderRadius: 22,
-          boxShadow: "0 0 0 3px rgba(255,255,255,0.9), 0 0 50px rgba(0,200,255,0.7)",
+          boxShadow:
+            "0 0 0 3px rgba(255,255,255,0.9), 0 0 50px rgba(0,200,255,0.7)",
           pointerEvents: "none",
           transition: "all 160ms ease-out",
         }}
       />
 
-      {/* INFO PANEL */}
+      {/* INFO PANEL — medium width (option B) */}
       <div
         style={{
           position: "absolute",
-          top: top + height + 20,
+          top: infoTop,
           left,
-          width: Math.min(width, 420),
-          maxWidth: 420,
+          width: 360,
+          maxWidth: 360,
           background: "rgba(12,15,22,0.95)",
           border: "1px solid rgba(255,255,255,0.12)",
           borderRadius: 22,
@@ -292,13 +311,26 @@ export function DashboardSpotlightOverlayV3({
           Step {index + 1}/{total}
         </div>
 
-        <div style={{ fontSize: 18, fontWeight: 600, marginBottom: 8 }}>{step.title}</div>
+        <div style={{ fontSize: 18, fontWeight: 600, marginBottom: 8 }}>
+          {step.title}
+        </div>
 
         {step.description && (
-          <div style={{ fontSize: 14, lineHeight: 1.45, opacity: 0.9 }}>{step.description}</div>
+          <div
+            style={{ fontSize: 14, lineHeight: 1.45, opacity: 0.9 }}
+          >
+            {step.description}
+          </div>
         )}
 
-        <div style={{ display: "flex", justifyContent: "space-between", marginTop: 16 }}>
+        <div
+          style={{
+            display: "flex",
+            justifyContent: "space-between",
+            marginTop: 16,
+            alignItems: "center",
+          }}
+        >
           <button
             onClick={onClose}
             style={{
