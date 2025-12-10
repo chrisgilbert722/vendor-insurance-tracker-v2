@@ -1,12 +1,4 @@
 // pages/dashboard.js — Dashboard V5 (Cinematic Intelligence Cockpit)
-// Fully upgraded for:
-// ✔ Rule Engine V5
-// ✔ Alerts V2 Intelligence Engine
-// ✔ vendor_compliance_cache (via engine results)
-// ✔ Policy + Renewal Intelligence V3
-// ✔ Elite Engine Integration
-// ✔ Org Compliance Dashboard wiring
-// ✔ Cinematic Cockpit UI
 
 import { useEffect, useState, useRef } from "react";
 import VendorDrawer from "../components/VendorDrawer";
@@ -18,7 +10,7 @@ import EliteStatusPill from "../components/elite/EliteStatusPill";
 import OnboardingHeroCard from "../components/onboarding/OnboardingHeroCard";
 import OnboardingBanner from "../components/onboarding/OnboardingBanner";
 
-// DASHBOARD TUTORIAL OVERLAY (with highlights)
+// DASHBOARD TUTORIAL OVERLAY (spotlight engine lives inside this)
 import DashboardTutorial from "../components/tutorial/DashboardTutorial";
 
 // CHARTS (Risk + Compliance Intelligence)
@@ -28,7 +20,7 @@ import ExpiringCertsHeatmap from "../components/charts/ExpiringCertsHeatmap";
 import SeverityDistributionChart from "../components/charts/SeverityDistributionChart";
 import RiskTimelineChart from "../components/charts/RiskTimelineChart";
 
-// ALERTS V2 INTELLIGENCE COMPONENTS 🔥
+// ALERTS V2 INTELLIGENCE
 import AlertTimelineChart from "../components/charts/AlertTimelineChart";
 import TopAlertTypes from "../components/charts/TopAlertTypes";
 import AlertAgingKpis from "../components/kpis/AlertAgingKpis";
@@ -316,11 +308,11 @@ function summarizeEngineHealth(engineMap) {
 /* ============================================================
    MAIN DASHBOARD COMPONENT
 ============================================================ */
-export default function Dashboard() {
+function Dashboard() {
   const { isAdmin, isManager } = useRole();
   const { activeOrgId } = useOrg();
 
-  // HIGHLIGHT ANCHORS FOR TUTORIAL (Option B)
+  // Spotlight anchors for tutorial (Option B)
   const riskRef = useRef(null);
   const kpiRef = useRef(null);
   const alertsRef = useRef(null);
@@ -362,8 +354,8 @@ export default function Dashboard() {
   const [showTutorial, setShowTutorial] = useState(false);
 
   /* ============================================================
-     FETCH ONBOARDING STATUS + FIX TUTORIAL TRIGGER
-  ============================================================ */
+     ONBOARDING + TUTORIAL STATUS (COMBINED)
+============================================================ */
   useEffect(() => {
     if (!activeOrgId) return;
 
@@ -371,7 +363,6 @@ export default function Dashboard() {
       try {
         const res = await fetch(`/api/onboarding/status?orgId=${activeOrgId}`);
         const json = await res.json();
-
         if (!json.ok) return;
 
         const done = !!json.onboardingComplete;
@@ -380,39 +371,35 @@ export default function Dashboard() {
         setOnboardingComplete(done);
         setShowHero(!done);
 
-        // Read local tutorial flag
         let seen = false;
         try {
           seen = localStorage.getItem("dashboard_tutorial_seen") === "true";
         } catch {}
 
-        // FIXED:
-        // show tutorial ONLY if backend says it's enabled AND user hasn't seen it
         if (tutorialEnabled && !seen) {
-          console.log("📢 Tutorial enabled — showing overlay");
           setShowTutorial(true);
         }
       } catch (err) {
-        console.error("[dashboard] onboarding status error:", err);
+        console.error("[dashboard] onboarding/tutorial status error:", err);
       }
     })();
   }, [activeOrgId]);
 
   /* ============================================================
-     FIXED — Sidebar Replay Button (Option B)
-     Listens for event to manually open the tutorial
-  ============================================================ */
+     FORCE TUTORIAL WHEN ?tutorial=1 (Replay from sidebar)
+============================================================ */
   useEffect(() => {
-    function runTutorial() {
-      console.log("🎬 Tutorial replay requested");
+    if (typeof window === "undefined") return;
+
+    const params = new URLSearchParams(window.location.search);
+    const force = params.get("tutorial") === "1";
+
+    if (force) {
+      try {
+        localStorage.setItem("dashboard_tutorial_seen", "false");
+      } catch {}
       setShowTutorial(true);
     }
-
-    window.addEventListener("run_dashboard_tutorial", runTutorial);
-
-    return () => {
-      window.removeEventListener("run_dashboard_tutorial", runTutorial);
-    };
   }, []);
 
   /* FINISH TUTORIAL */
@@ -422,10 +409,9 @@ export default function Dashboard() {
       localStorage.setItem("dashboard_tutorial_seen", "true");
     } catch {}
   };
-
   /* ============================================================
      ONBOARDING BANNER DISMISS
-  ============================================================ */
+============================================================ */
   useEffect(() => {
     try {
       const stored = localStorage.getItem("onboardingBannerDismissed");
@@ -443,9 +429,10 @@ export default function Dashboard() {
   const handleStartOnboarding = () => {
     window.location.href = "/onboarding/start";
   };
+
   /* ============================================================
-     AUTO-OPEN CHECKLIST ON IDLE (unchanged)
-  ============================================================ */
+     AUTO-OPEN CHECKLIST ON IDLE
+============================================================ */
   useEffect(() => {
     if (onboardingComplete) return;
 
@@ -475,8 +462,8 @@ export default function Dashboard() {
   }, [onboardingComplete]);
 
   /* ============================================================
-     DASHBOARD METRICS LOAD
-  ============================================================ */
+     DASHBOARD METRICS
+============================================================ */
   useEffect(() => {
     if (!activeOrgId) return;
 
@@ -495,8 +482,8 @@ export default function Dashboard() {
   }, [activeOrgId]);
 
   /* ============================================================
-     LOAD ALL POLICIES
-  ============================================================ */
+     LOAD POLICIES
+============================================================ */
   useEffect(() => {
     (async () => {
       try {
@@ -510,10 +497,9 @@ export default function Dashboard() {
       }
     })();
   }, []);
-
   /* ============================================================
-     ELITE ENGINE (Policy → Elite AI Risk Evaluation)
-  ============================================================ */
+     ELITE ENGINE — COI Evaluation
+============================================================ */
   useEffect(() => {
     if (!policies.length) return;
 
@@ -563,8 +549,8 @@ export default function Dashboard() {
   }, [policies, eliteMap]);
 
   /* ============================================================
-     RULE ENGINE V5 — run-v3 (Full vendor evaluation)
-  ============================================================ */
+     RULE ENGINE V5 — run-v3
+============================================================ */
   useEffect(() => {
     if (!policies.length || !activeOrgId) return;
 
@@ -610,7 +596,6 @@ export default function Dashboard() {
             return;
           }
 
-          // Update compliance map
           setComplianceMap((prev) => ({
             ...prev,
             [vendorId]: {
@@ -621,7 +606,6 @@ export default function Dashboard() {
             },
           }));
 
-          // Save rule engine evaluation
           setEngineMap((prev) => ({
             ...prev,
             [vendorId]: {
@@ -651,7 +635,7 @@ export default function Dashboard() {
 
   /* ============================================================
      ELITE SUMMARY COUNTS
-  ============================================================ */
+============================================================ */
   useEffect(() => {
     let pass = 0,
       warn = 0,
@@ -669,7 +653,7 @@ export default function Dashboard() {
 
   /* ============================================================
      ALERTS V2 SUMMARY
-  ============================================================ */
+============================================================ */
   useEffect(() => {
     if (!activeOrgId) return;
 
@@ -688,8 +672,8 @@ export default function Dashboard() {
     return () => clearInterval(interval);
   }, [activeOrgId]);
   /* ============================================================
-     SYSTEM TIMELINE (Automated compliance events)
-  ============================================================ */
+     SYSTEM TIMELINE
+============================================================ */
   useEffect(() => {
     const loadTimeline = async () => {
       try {
@@ -709,18 +693,14 @@ export default function Dashboard() {
     return () => clearInterval(int);
   }, []);
 
-  /* ============================================================
-     DRAWER HANDLERS (Vendor drawer on row click)
-  ============================================================ */
+  /* DRAWER HANDLERS */
   const openDrawer = (vendorId) => {
     const vendorPolicies = policies.filter((p) => p.vendor_id === vendorId);
-
     setDrawerVendor({
       id: vendorId,
       name: vendorPolicies[0]?.vendor_name || "Vendor",
       engine: engineMap[vendorId],
     });
-
     setDrawerPolicies(vendorPolicies);
     setDrawerOpen(true);
   };
@@ -731,9 +711,7 @@ export default function Dashboard() {
     setDrawerPolicies([]);
   };
 
-  /* ============================================================
-     FILTERED POLICIES (Search bar)
-  ============================================================ */
+  /* FILTERED POLICIES */
   const filtered = policies.filter((p) => {
     const t = filterText.toLowerCase();
     return (
@@ -745,15 +723,12 @@ export default function Dashboard() {
     );
   });
 
-  /* ============================================================
-     DERIVED METRICS (V5 engine outputs)
-  ============================================================ */
+  /* DERIVED METRICS */
   const engineHealth = summarizeEngineHealth(engineMap);
   const avgScore = engineHealth.avg;
   const totalVendors = engineHealth.total;
   const alertsCount = alertSummary?.total || 0;
 
-  /* Sort vendors by critical → high → total alerts */
   const alertVendorsList = alertSummary
     ? Object.values(alertSummary.vendors || {}).sort((a, b) => {
         if (b.critical !== a.critical) return b.critical - a.critical;
@@ -761,10 +736,9 @@ export default function Dashboard() {
         return b.total - a.total;
       })
     : [];
-
   /* ============================================================
-     BEGIN MAIN RENDER
-  ============================================================ */
+     MAIN RENDER
+============================================================ */
   return (
     <div
       style={{
@@ -775,9 +749,7 @@ export default function Dashboard() {
         color: GP.text,
       }}
     >
-      {/* ======================================================
-         ONBOARDING COCKPIT PREVIEW LAYER
-      ====================================================== */}
+      {/* ONBOARDING COCKPIT LAYER */}
       {!onboardingComplete && (
         <>
           {showHero && (
@@ -797,9 +769,7 @@ export default function Dashboard() {
         </>
       )}
 
-      {/* ======================================================
-         HERO PANEL — CINEMATIC TOP HEADER
-      ====================================================== */}
+      {/* HERO COMMAND PANEL */}
       <div
         className="cockpit-hero cockpit-pulse"
         style={{
@@ -817,11 +787,8 @@ export default function Dashboard() {
           position: "relative",
         }}
       >
-        {/* ======================================================
-           LEFT SIDE — TITLE + HEALTH + KPI STRIP
-        ====================================================== */}
+        {/* LEFT SIDE */}
         <div style={{ paddingTop: 22 }}>
-          {/* Subheading */}
           <div
             style={{
               position: "absolute",
@@ -836,7 +803,6 @@ export default function Dashboard() {
             DASHBOARD V5 • GLOBAL COMPLIANCE ENGINE
           </div>
 
-          {/* MAIN TITLE */}
           <h1
             style={{
               fontSize: 30,
@@ -852,7 +818,6 @@ export default function Dashboard() {
             Vendor Insurance Intelligence
           </h1>
 
-          {/* DESCRIPTION */}
           <p
             style={{
               marginTop: 8,
@@ -862,13 +827,11 @@ export default function Dashboard() {
               lineHeight: 1.5,
             }}
           >
-            Live AI-powered oversight across all vendors, policies, expirations,  
+            Live AI-powered oversight across all vendors, policies, expirations,
             alerts, and rule engines. This is your command center.
           </p>
 
-          {/* ======================================================
-             AI SYSTEM HEALTH PILL — Highlighted Area
-          ====================================================== */}
+          {/* AI System Health */}
           <div
             style={{
               marginTop: 12,
@@ -909,9 +872,8 @@ export default function Dashboard() {
               <strong style={{ color: GP.neonRed }}>{alertsCount}</strong>
             </span>
           </div>
-          {/* ======================================================
-             ORG COMPLIANCE TILE — ADMIN / MANAGER ONLY
-          ====================================================== */}
+
+          {/* ORG COMPLIANCE CTA */}
           {(isAdmin || isManager) && (
             <a
               href="/admin/org-compliance"
@@ -937,9 +899,7 @@ export default function Dashboard() {
             </a>
           )}
 
-          {/* ======================================================
-             KPI METRIC STRIP — WRAPPED IN kpiRef (tutorial anchor)
-          ====================================================== */}
+          {/* KPI STRIP (tutorial anchor) */}
           <div ref={kpiRef}>
             <div
               style={{
@@ -949,7 +909,6 @@ export default function Dashboard() {
                 gap: 12,
               }}
             >
-              {/* ORG HEALTH KPI */}
               <MiniKpi
                 label="Org Health"
                 value={Number.isFinite(avgScore) ? avgScore : "—"}
@@ -964,28 +923,24 @@ export default function Dashboard() {
                 }
                 icon="🏢"
               />
-
               <MiniKpi
                 label="Expired"
                 value={dashboard?.alerts?.expired ?? 0}
                 color={GP.neonRed}
                 icon="🔥"
               />
-
               <MiniKpi
                 label="Critical ≤30d"
                 value={dashboard?.alerts?.critical30d ?? 0}
                 color={GP.neonGold}
                 icon="⚠️"
               />
-
               <MiniKpi
                 label="Warning ≤90d"
                 value={dashboard?.alerts?.warning90d ?? 0}
                 color={GP.neonBlue}
                 icon="🟡"
               />
-
               <MiniKpi
                 label="Elite Fails"
                 value={dashboard?.alerts?.eliteFails ?? 0}
@@ -995,10 +950,7 @@ export default function Dashboard() {
             </div>
           </div>
         </div>
-
-        {/* ======================================================
-           RIGHT SIDE — GLOBAL SCORE DONUT + ELITE SNAPSHOT
-        ====================================================== */}
+        {/* RIGHT SIDE — Donut + Elite Snapshot */}
         <div
           style={{
             display: "flex",
@@ -1008,9 +960,7 @@ export default function Dashboard() {
             paddingTop: 28,
           }}
         >
-          {/* ======================================================
-             GLOBAL SCORE DONUT — TUTORIAL HIGHLIGHT (riskRef)
-          ====================================================== */}
+          {/* GLOBAL SCORE DONUT (tutorial anchor: riskRef) */}
           <div ref={riskRef}>
             <div
               style={{
@@ -1025,7 +975,6 @@ export default function Dashboard() {
                   "0 0 50px rgba(34,197,94,0.45),0 0 80px rgba(148,163,184,0.3)",
               }}
             >
-              {/* Inner circle */}
               <div
                 style={{
                   position: "absolute",
@@ -1035,8 +984,6 @@ export default function Dashboard() {
                     "radial-gradient(circle at 30% 0,#020617,#020617 60%,#000)",
                 }}
               />
-
-              {/* Score text */}
               <div
                 style={{
                   position: "relative",
@@ -1059,7 +1006,6 @@ export default function Dashboard() {
                 >
                   Global Score
                 </div>
-
                 <div
                   style={{
                     fontSize: 32,
@@ -1072,15 +1018,12 @@ export default function Dashboard() {
                 >
                   {dashboardLoading ? "—" : Number(avgScore).toFixed(0)}
                 </div>
-
                 <div style={{ fontSize: 10, color: GP.textMuted }}>/100</div>
               </div>
             </div>
           </div>
 
-          {/* ======================================================
-             ELITE ENGINE SNAPSHOT
-          ====================================================== */}
+          {/* Elite Snapshot */}
           <div
             style={{
               borderRadius: 18,
@@ -1093,7 +1036,6 @@ export default function Dashboard() {
             <div style={{ fontSize: 12, color: GP.textSoft, marginBottom: 6 }}>
               Elite Engine Snapshot
             </div>
-
             <div
               style={{
                 display: "flex",
@@ -1105,7 +1047,6 @@ export default function Dashboard() {
               <span>PASS</span>
               <span>{eliteSummary.pass}</span>
             </div>
-
             <div
               style={{
                 display: "flex",
@@ -1117,7 +1058,6 @@ export default function Dashboard() {
               <span>WARN</span>
               <span>{eliteSummary.warn}</span>
             </div>
-
             <div
               style={{
                 display: "flex",
@@ -1133,9 +1073,7 @@ export default function Dashboard() {
         </div>
       </div>
 
-      {/* ======================================================
-         RULE ENGINE V5 — HEALTH WIDGET (BEGIN)
-      ====================================================== */}
+      {/* RULE ENGINE V5 HEALTH WIDGET */}
       <div
         style={{
           marginBottom: 24,
@@ -1151,9 +1089,6 @@ export default function Dashboard() {
           justifyContent: "space-between",
         }}
       >
-        {/* ======================================================
-           RULE ENGINE V5 — HEALTH WIDGET (CONTINUED)
-        ====================================================== */}
         <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
           <div
             style={{
@@ -1171,7 +1106,6 @@ export default function Dashboard() {
           >
             🧠
           </div>
-
           <div>
             <div
               style={{
@@ -1183,7 +1117,6 @@ export default function Dashboard() {
             >
               Rule Engine V5
             </div>
-
             <div style={{ fontSize: 14, color: GP.text }}>
               Avg Score:{" "}
               <strong
@@ -1200,16 +1133,15 @@ export default function Dashboard() {
               >
                 {engineHealth.total ? engineHealth.avg : "—"}
               </strong>{" "}
-              · Vendors Evaluated: <strong>{engineHealth.total}</strong> ·
-              Failing Vendors:{" "}
+              · Vendors Evaluated:{" "}
+              <strong>{engineHealth.total || 0}</strong> · Failing Vendors:{" "}
               <strong style={{ color: GP.neonRed }}>
-                {engineHealth.fails}
+                {engineHealth.fails || 0}
               </strong>
             </div>
           </div>
         </div>
 
-        {/* RIGHT SIDE OF HEALTH WIDGET (Critical, warnings, Org Dashboard button) */}
         <div
           style={{
             display: "flex",
@@ -1222,10 +1154,9 @@ export default function Dashboard() {
           <div>
             Critical Findings:{" "}
             <strong style={{ color: GP.neonRed }}>
-              {engineHealth.critical}
+              {engineHealth.critical || 0}
             </strong>
           </div>
-
           <div
             style={{
               padding: "4px 10px",
@@ -1282,10 +1213,7 @@ export default function Dashboard() {
           )}
         </div>
       </div>
-
-      {/* ======================================================
-         ALERTS V2 PANEL — WRAPPED IN alertsRef (Tutorial Anchor)
-      ====================================================== */}
+      {/* ALERTS V2 PANEL (tutorial anchor: alertsRef) */}
       {showAlerts && (
         <div ref={alertsRef}>
           <div
@@ -1298,7 +1226,6 @@ export default function Dashboard() {
               boxShadow: "0 16px 40px rgba(15,23,42,0.9)",
             }}
           >
-            {/* HEADER ROW */}
             <div
               style={{
                 display: "flex",
@@ -1320,7 +1247,6 @@ export default function Dashboard() {
                 >
                   Alerts V2 Overview
                 </div>
-
                 <div style={{ fontSize: 14, color: GP.text }}>
                   {alertSummary
                     ? `${alertSummary.total} open alerts across ${
@@ -1331,9 +1257,6 @@ export default function Dashboard() {
               </div>
             </div>
 
-            {/* ======================================================
-               ALERT SEVERITY COUNTER GRID
-            ====================================================== */}
             {alertSummary && (
               <div
                 style={{
@@ -1348,19 +1271,16 @@ export default function Dashboard() {
                   count={alertSummary.countsBySeverity?.critical ?? 0}
                   color={GP.neonRed}
                 />
-
                 <SeverityBox
                   label="High"
                   count={alertSummary.countsBySeverity?.high ?? 0}
                   color={GP.neonGold}
                 />
-
                 <SeverityBox
                   label="Medium"
                   count={alertSummary.countsBySeverity?.medium ?? 0}
                   color={GP.neonBlue}
                 />
-
                 <SeverityBox
                   label="Low"
                   count={alertSummary.countsBySeverity?.low ?? 0}
@@ -1368,9 +1288,7 @@ export default function Dashboard() {
                 />
               </div>
             )}
-            {/* ======================================================
-               VENDOR LIST WITH ALERTS
-            ====================================================== */}
+
             {alertSummary && alertVendorsList.length > 0 && (
               <div
                 style={{
@@ -1411,7 +1329,6 @@ export default function Dashboard() {
                       <th style={{ ...th, fontSize: 11 }}>Latest</th>
                     </tr>
                   </thead>
-
                   <tbody>
                     {alertVendorsList.slice(0, 12).map((v) => (
                       <tr
@@ -1446,10 +1363,7 @@ export default function Dashboard() {
                             </span>
                           ) : (
                             <span
-                              style={{
-                                fontSize: 11,
-                                color: GP.textMuted,
-                              }}
+                              style={{ fontSize: 11, color: GP.textMuted }}
                             >
                               —
                             </span>
@@ -1463,7 +1377,9 @@ export default function Dashboard() {
             )}
 
             {!alertSummary && (
-              <div style={{ fontSize: 12, color: GP.textSoft, marginTop: 8 }}>
+              <div
+                style={{ fontSize: 12, color: GP.textSoft, marginTop: 8 }}
+              >
                 Loading alert summary…
               </div>
             )}
@@ -1471,9 +1387,7 @@ export default function Dashboard() {
         </div>
       )}
 
-      {/* ======================================================
-         TELEMETRY CHARTS (Top Row)
-      ====================================================== */}
+      {/* TELEMETRY CHARTS */}
       <div
         className="cockpit-telemetry"
         style={{
@@ -1488,16 +1402,10 @@ export default function Dashboard() {
         <PassFailDonutChart overview={dashboard} />
       </div>
 
-      {/* ======================================================
-         EXPIRATIONS + SEVERITY + RISK TIMELINE
-      ====================================================== */}
       <ExpiringCertsHeatmap policies={policies} />
       <SeverityDistributionChart overview={dashboard} />
       <RiskTimelineChart policies={policies} />
 
-      {/* ======================================================
-         ALERT INTELLIGENCE — WEAPON PACK
-      ====================================================== */}
       <AlertTimelineChart orgId={activeOrgId} />
       <TopAlertTypes orgId={activeOrgId} />
       <AlertAgingKpis orgId={activeOrgId} />
@@ -1505,9 +1413,7 @@ export default function Dashboard() {
       <CriticalVendorWatchlist orgId={activeOrgId} />
       <AlertHeatSignature orgId={activeOrgId} />
 
-      {/* ======================================================
-         RENEWAL INTELLIGENCE V3 — TUTORIAL ANCHOR
-      ====================================================== */}
+      {/* RENEWAL INTELLIGENCE (tutorial anchor: renewalsRef) */}
       <div ref={renewalsRef}>
         <RenewalHeatmap range={90} />
         <RenewalBacklog />
@@ -1527,9 +1433,7 @@ export default function Dashboard() {
         <RenewalCalendar range={60} />
         <RenewalAiSummary orgId={activeOrgId} />
       </div>
-      {/* ======================================================
-         SYSTEM TIMELINE — Automated Compliance Events
-      ====================================================== */}
+      {/* SYSTEM TIMELINE */}
       <div
         style={{
           marginTop: 16,
@@ -1631,9 +1535,7 @@ export default function Dashboard() {
         )}
       </div>
 
-      {/* ======================================================
-         POLICIES TABLE — Tutorial Spotlight Anchor
-      ====================================================== */}
+      {/* POLICIES TABLE — tutorial anchor: policiesRef */}
       <div ref={policiesRef}>
         <h2
           style={{
@@ -1647,7 +1549,6 @@ export default function Dashboard() {
           Policies
         </h2>
 
-        {/* SEARCH BAR */}
         <input
           type="text"
           placeholder="Search vendors, carriers, policy #, coverage…"
@@ -1719,12 +1620,10 @@ export default function Dashboard() {
                   {filtered.map((p) => {
                     const risk = computeRisk(p);
                     const flags = risk.flags || [];
-
                     const elite = eliteMap[p.vendor_id];
                     const compliance = complianceMap[p.vendor_id];
                     const ai = computeAiRisk({ risk, elite, compliance });
                     const engine = engineMap[p.vendor_id];
-
                     const v3Tier =
                       engine && typeof engine.globalScore === "number"
                         ? computeV3Tier(engine.globalScore)
@@ -1746,8 +1645,6 @@ export default function Dashboard() {
                         <td style={td}>{p.coverage_type}</td>
                         <td style={td}>{p.expiration_date || "—"}</td>
                         <td style={td}>{risk.daysLeft ?? "—"}</td>
-
-                        {/* RISK STATUS BADGE */}
                         <td
                           style={{
                             ...td,
@@ -1760,8 +1657,6 @@ export default function Dashboard() {
                             : risk.severity.charAt(0).toUpperCase() +
                               risk.severity.slice(1)}
                         </td>
-
-                        {/* RISK TIER */}
                         <td style={{ ...td, textAlign: "center" }}>
                           <span
                             style={{
@@ -1777,8 +1672,6 @@ export default function Dashboard() {
                             {risk.tier}
                           </span>
                         </td>
-
-                        {/* AI RISK BAR */}
                         <td
                           style={{
                             ...td,
@@ -1819,58 +1712,9 @@ export default function Dashboard() {
                             />
                           </div>
                         </td>
-
-                        {/* RULE ENGINE V5 */}
-                        <td style={{ ...td, textAlign: "center" }}>
-                          {!engine || engine.loading ? (
-                            <span style={{ fontSize: 11, color: GP.textMuted }}>
-                              Running…
-                            </span>
-                          ) : engine.error ? (
-                            <span style={{ fontSize: 11, color: GP.neonRed }}>
-                              Error
-                            </span>
-                          ) : (
-                            <div
-                              style={{
-                                display: "flex",
-                                flexDirection: "column",
-                                alignItems: "center",
-                                gap: 3,
-                              }}
-                            >
-                              <span
-                                style={{
-                                  fontSize: 13,
-                                  fontWeight: 600,
-                                  color:
-                                    engine.globalScore >= 80
-                                      ? GP.neonGreen
-                                      : engine.globalScore >= 60
-                                      ? GP.neonGold
-                                      : GP.neonRed,
-                                }}
-                              >
-                                {engine.globalScore}
-                              </span>
-                              <span
-                                style={{
-                                  fontSize: 10,
-                                  color: GP.textSoft,
-                                }}
-                              >
-                                {v3Tier}
-                              </span>
-                            </div>
-                          )}
-                        </td>
-
-                        {/* COMPLIANCE BADGE */}
                         <td style={{ ...td, textAlign: "center" }}>
                           {renderComplianceBadge(p.vendor_id, complianceMap)}
                         </td>
-
-                        {/* ELITE ENGINE BADGE */}
                         <td style={{ ...td, textAlign: "center" }}>
                           {elite && !elite.loading && !elite.error ? (
                             <EliteStatusPill status={elite.overall} />
@@ -1884,8 +1728,6 @@ export default function Dashboard() {
                             </span>
                           )}
                         </td>
-
-                        {/* FLAGS */}
                         <td style={{ ...td, textAlign: "center" }}>
                           {flags.length > 0 ? (
                             <span
@@ -1905,7 +1747,6 @@ export default function Dashboard() {
               </table>
             </div>
 
-            {/* DRAWER */}
             {drawerOpen && drawerVendor && (
               <VendorDrawer
                 vendor={drawerVendor}
@@ -1917,9 +1758,7 @@ export default function Dashboard() {
         )}
       </div>
 
-      {/* ======================================================
-         DASHBOARD TUTORIAL OVERLAY
-      ====================================================== */}
+      {/* DASHBOARD TUTORIAL OVERLAY (Spotlight Engine Host) */}
       {showTutorial && (
         <DashboardTutorial
           onFinish={handleFinishTutorial}
@@ -1959,7 +1798,6 @@ function SeverityBox({ label, count, color }) {
       >
         {label}
       </div>
-
       <div
         style={{
           fontSize: 18,
@@ -1972,7 +1810,6 @@ function SeverityBox({ label, count, color }) {
     </div>
   );
 }
-
 /* =======================================
    MINI KPI COMPONENT
 ======================================= */
@@ -1991,12 +1828,10 @@ function MiniKpi({ label, value, color, icon }) {
       }}
     >
       <div style={{ fontSize: 18 }}>{icon}</div>
-
       <div>
         <div style={{ fontSize: 12, color: GP.textSoft, marginBottom: 2 }}>
           {label}
         </div>
-
         <div
           style={{
             fontSize: 16,
@@ -2010,117 +1845,6 @@ function MiniKpi({ label, value, color, icon }) {
     </div>
   );
 }
-
-/* =======================================
-   TABLE HEAD + CELL STYLES
-======================================= */
-const th = {
-  padding: "10px 12px",
-  background: "rgba(15,23,42,0.98)",
-  color: "#9ca3af",
-  fontWeight: 600,
-  textAlign: "left",
-  fontSize: 12,
-  borderBottom: "1px solid rgba(51,65,85,0.8)",
-};
-
-const td = {
-  padding: "10px 12px",
-  borderBottom: "1px solid rgba(51,65,85,0.5)",
-  fontSize: 12,
-  color: "#e5e7eb",
-};
-          </>
-        )}
-      </div>
-
-      {/* DASHBOARD TUTORIAL OVERLAY */}
-      {showTutorial && (
-        <DashboardTutorial
-          onFinish={handleFinishTutorial}
-          anchors={{
-            risk: riskRef,
-            fixPlans: kpiRef,
-            alerts: alertsRef,
-            renewals: renewalsRef,
-            vendors: policiesRef,
-          }}
-        />
-      )}
-    </div>
-    {/* END main dashboard wrapper */}
-  );
-}
-/* =======================================
-   SEVERITY BOX COMPONENT
-======================================= */
-function SeverityBox({ label, count, color }) {
-  return (
-    <div
-      style={{
-        border: `1px solid ${color}55`,
-        borderRadius: 12,
-        padding: "10px 8px",
-        background: "rgba(15,23,42,0.9)",
-        textAlign: "center",
-      }}
-    >
-      <div
-        style={{
-          fontSize: 11,
-          color,
-          marginBottom: 2,
-          fontWeight: 600,
-        }}
-      >
-        {label}
-      </div>
-
-      <div
-        style={{
-          fontSize: 18,
-          fontWeight: 700,
-          color,
-        }}
-      >
-        {count}
-      </div>
-    </div>
-  );
-}
-
-/* =======================================
-   MINI KPI COMPONENT
-======================================= */
-function MiniKpi({ label, value, color, icon }) {
-  return (
-    <div
-      style={{
-        borderRadius: 16,
-        padding: 10,
-        border: "1px solid rgba(51,65,85,0.9)",
-        background:
-          "radial-gradient(circle at top left,rgba(15,23,42,0.98),rgba(15,23,42,0.94))",
-        display: "flex",
-        alignItems: "center",
-        gap: 10,
-      }}
-    >
-      <div style={{ fontSize: 18 }}>{icon}</div>
-
-      <div>
-        <div style={{ fontSize: 12, color: GP.textSoft, marginBottom: 2 }}>
-          {label}
-        </div>
-
-        <div style={{ fontSize: 16, fontWeight: 600, color }}>
-          {value}
-        </div>
-      </div>
-    </div>
-  );
-}
-
 /* =======================================
    TABLE HEAD + CELL STYLES
 ======================================= */
@@ -2141,8 +1865,8 @@ const td = {
   color: "#e5e7eb",
 };
 
-/* =======================================
-   END OF DASHBOARD V5 CINEMATIC INTELLIGENCE FILE
-======================================= */
+// =======================================
+// END OF DASHBOARD V5 CINEMATIC INTELLIGENCE FILE
+// =======================================
 
 export default Dashboard;
