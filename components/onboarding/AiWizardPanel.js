@@ -8,6 +8,7 @@ import VendorsAnalyzeStep from "./VendorsAnalyzeStep";
 import ContractsUploadStep from "./ContractsUploadStep";
 import RulesGenerateStep from "./RulesGenerateStep";
 import FixPlansStep from "./FixPlansStep";
+import CompanyProfileStep from "./CompanyProfileStep";
 
 export default function AiWizardPanel({
   orgId,
@@ -92,6 +93,18 @@ export default function AiWizardPanel({
       );
 
     // ---------------------------------------------------------
+    // STEP 8 — Company Profile
+    // ---------------------------------------------------------
+    case "company-profile":
+      return (
+        <CompanyProfileStep
+          orgId={orgId}
+          wizardState={wizardState}
+          setWizardState={setWizardState}
+        />
+      );
+
+    // ---------------------------------------------------------
     // DEFAULT — Placeholder for not-yet-wired steps
     // ---------------------------------------------------------
     default:
@@ -127,4 +140,3 @@ export default function AiWizardPanel({
       );
   }
 }
-
