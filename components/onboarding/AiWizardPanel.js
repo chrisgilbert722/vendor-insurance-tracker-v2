@@ -1,6 +1,5 @@
 // components/onboarding/AiWizardPanel.js
-// AI Onboarding Wizard V5 — Step Router
-// Receives: { orgId, step, stepIndex, totalSteps, wizardState, setWizardState }
+// AI Onboarding Wizard V5 — Master Step Router
 
 import VendorsUploadStep from "./VendorsUploadStep";
 import VendorsMapStep from "./VendorsMapStep";
@@ -10,6 +9,7 @@ import RulesGenerateStep from "./RulesGenerateStep";
 import FixPlansStep from "./FixPlansStep";
 import CompanyProfileStep from "./CompanyProfileStep";
 import TeamBrokersStep from "./TeamBrokersStep";
+import ReviewLaunchStep from "./ReviewLaunchStep";
 
 export default function AiWizardPanel({
   orgId,
@@ -22,9 +22,9 @@ export default function AiWizardPanel({
   if (!step) return null;
 
   switch (step.id) {
-    // ---------------------------------------------------------
-    // STEP 2 — CSV Upload
-    // ---------------------------------------------------------
+    /* ---------------------------------------------------------
+       STEP 2 — CSV Upload
+    --------------------------------------------------------- */
     case "vendors-upload":
       return (
         <VendorsUploadStep
@@ -34,9 +34,9 @@ export default function AiWizardPanel({
         />
       );
 
-    // ---------------------------------------------------------
-    // STEP 3 — Column Mapping
-    // ---------------------------------------------------------
+    /* ---------------------------------------------------------
+       STEP 3 — Column Mapping
+    --------------------------------------------------------- */
     case "vendors-map":
       return (
         <VendorsMapStep
@@ -45,9 +45,9 @@ export default function AiWizardPanel({
         />
       );
 
-    // ---------------------------------------------------------
-    // STEP 4 — AI Vendor Analysis
-    // ---------------------------------------------------------
+    /* ---------------------------------------------------------
+       STEP 4 — AI Vendor Analysis
+    --------------------------------------------------------- */
     case "vendors-analyze":
       return (
         <VendorsAnalyzeStep
@@ -57,9 +57,9 @@ export default function AiWizardPanel({
         />
       );
 
-    // ---------------------------------------------------------
-    // STEP 5 — Contract Upload & AI Requirement Extraction
-    // ---------------------------------------------------------
+    /* ---------------------------------------------------------
+       STEP 5 — Contract Upload & AI Requirement Extraction
+    --------------------------------------------------------- */
     case "contracts-upload":
       return (
         <ContractsUploadStep
@@ -69,9 +69,9 @@ export default function AiWizardPanel({
         />
       );
 
-    // ---------------------------------------------------------
-    // STEP 6 — AI Rule Generation
-    // ---------------------------------------------------------
+    /* ---------------------------------------------------------
+       STEP 6 — AI Rule Generation ( + Apply Rules to Engine V5)
+    --------------------------------------------------------- */
     case "rules-generate":
       return (
         <RulesGenerateStep
@@ -81,9 +81,9 @@ export default function AiWizardPanel({
         />
       );
 
-    // ---------------------------------------------------------
-    // STEP 7 — AI Fix Plans
-    // ---------------------------------------------------------
+    /* ---------------------------------------------------------
+       STEP 7 — AI Fix Plans
+    --------------------------------------------------------- */
     case "fix-plans":
       return (
         <FixPlansStep
@@ -93,9 +93,9 @@ export default function AiWizardPanel({
         />
       );
 
-    // ---------------------------------------------------------
-    // STEP 8 — Company Profile
-    // ---------------------------------------------------------
+    /* ---------------------------------------------------------
+       STEP 8 — Company Profile (Branding + Contacts)
+    --------------------------------------------------------- */
     case "company-profile":
       return (
         <CompanyProfileStep
@@ -105,9 +105,9 @@ export default function AiWizardPanel({
         />
       );
 
-    // ---------------------------------------------------------
-    // STEP 9 — Team & Broker Invitations
-    // ---------------------------------------------------------
+    /* ---------------------------------------------------------
+       STEP 9 — Team & Broker Invitations
+    --------------------------------------------------------- */
     case "team-brokers":
       return (
         <TeamBrokersStep
@@ -116,9 +116,21 @@ export default function AiWizardPanel({
         />
       );
 
-    // ---------------------------------------------------------
-    // DEFAULT — Not yet wired
-    // ---------------------------------------------------------
+    /* ---------------------------------------------------------
+       STEP 10 — Final Review & Launch System
+    --------------------------------------------------------- */
+    case "review-launch":
+      return (
+        <ReviewLaunchStep
+          orgId={orgId}
+          wizardState={wizardState}
+          setWizardState={setWizardState}
+        />
+      );
+
+    /* ---------------------------------------------------------
+       DEFAULT — Not yet wired
+    --------------------------------------------------------- */
     default:
       return (
         <div
@@ -142,10 +154,10 @@ export default function AiWizardPanel({
           >
             {step.title || step.label}
           </h2>
+
           <p style={{ marginTop: 6 }}>
-            This wizard step (<strong>{step.id}</strong>) hasn’t been wired in
-            yet.  
-            You can continue through the wizard while remaining steps are added.
+            This wizard step (<strong>{step.id}</strong>) has not been wired in
+            yet. Please continue—you’re ahead of competitors even without it.
           </p>
         </div>
       );
