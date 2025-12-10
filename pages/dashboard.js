@@ -2030,7 +2030,11 @@ const td = {
   fontSize: 12,
   color: "#e5e7eb",
 };
-      {/* DASHBOARD TUTORIAL OVERLAY — Option B (with anchors) */}
+          </>
+        )}
+      </div>
+
+      {/* DASHBOARD TUTORIAL OVERLAY */}
       {showTutorial && (
         <DashboardTutorial
           onFinish={handleFinishTutorial}
@@ -2043,22 +2047,100 @@ const td = {
           }}
         />
       )}
-    </div>  {/* END main dashboard wrapper */}
+    </div>
+    {/* END main dashboard wrapper */}
+  );
+}
+/* =======================================
+   SEVERITY BOX COMPONENT
+======================================= */
+function SeverityBox({ label, count, color }) {
+  return (
+    <div
+      style={{
+        border: `1px solid ${color}55`,
+        borderRadius: 12,
+        padding: "10px 8px",
+        background: "rgba(15,23,42,0.9)",
+        textAlign: "center",
+      }}
+    >
+      <div
+        style={{
+          fontSize: 11,
+          color,
+          marginBottom: 2,
+          fontWeight: 600,
+        }}
+      >
+        {label}
+      </div>
+
+      <div
+        style={{
+          fontSize: 18,
+          fontWeight: 700,
+          color,
+        }}
+      >
+        {count}
+      </div>
+    </div>
   );
 }
 
 /* =======================================
-   SEVERITY BOX COMPONENT (already defined)
-   MINI KPI COMPONENT (already defined)
-   TABLE STYLES (already defined)
+   MINI KPI COMPONENT
 ======================================= */
+function MiniKpi({ label, value, color, icon }) {
+  return (
+    <div
+      style={{
+        borderRadius: 16,
+        padding: 10,
+        border: "1px solid rgba(51,65,85,0.9)",
+        background:
+          "radial-gradient(circle at top left,rgba(15,23,42,0.98),rgba(15,23,42,0.94))",
+        display: "flex",
+        alignItems: "center",
+        gap: 10,
+      }}
+    >
+      <div style={{ fontSize: 18 }}>{icon}</div>
 
-// No additional exports needed.
-// Dashboard component already exported as default.
+      <div>
+        <div style={{ fontSize: 12, color: GP.textSoft, marginBottom: 2 }}>
+          {label}
+        </div>
+
+        <div style={{ fontSize: 16, fontWeight: 600, color }}>
+          {value}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* =======================================
+   TABLE HEAD + CELL STYLES
+======================================= */
+const th = {
+  padding: "10px 12px",
+  background: "rgba(15,23,42,0.98)",
+  color: "#9ca3af",
+  fontWeight: 600,
+  textAlign: "left",
+  fontSize: 12,
+  borderBottom: "1px solid rgba(51,65,85,0.8)",
+};
+
+const td = {
+  padding: "10px 12px",
+  borderBottom: "1px solid rgba(51,65,85,0.5)",
+  fontSize: 12,
+  color: "#e5e7eb",
+};
+
 // =======================================
 // END OF DASHBOARD V5 CINEMATIC INTELLIGENCE FILE
 // =======================================
-
-// No additional exports needed.
-// All helper components and styles are defined above.
-// The Dashboard component's default export is already declared.
