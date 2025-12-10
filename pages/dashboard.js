@@ -382,7 +382,7 @@ function Dashboard() {
   ]);
 
   /* ============================================================
-     ONBOARDING STATUS (NO TUTORIAL LOGIC HERE)
+     ONBOARDING STATUS
   ============================================================ */
   useEffect(() => {
     if (!activeOrgId) return;
@@ -978,75 +978,83 @@ function Dashboard() {
           </div>
         </div>
 
-        {/* RIGHT SIDE — Donut + Elite Snapshot (data-spotlight="score-box") */}
+        {/* RIGHT SIDE — SCORE + ELITE SNAPSHOT (data-spotlight="score-box") */}
         <div
+          data-spotlight="score-box"
           style={{
             display: "flex",
             flexDirection: "column",
             alignItems: "flex-end",
-            gap: 16,
+            gap: 20,
             paddingTop: 28,
           }}
         >
           {/* GLOBAL SCORE DONUT */}
-          <div data-spotlight="score-box">
+          <div
+            style={{
+              position: "relative",
+              width: 180,
+              height: 180,
+              borderRadius: "50%",
+              background:
+                "conic-gradient(from 220deg,#22c55e,#a3e635,#facc15,#fb7185,#0f172a)",
+              padding: 8,
+              boxShadow:
+                "0 0 60px rgba(34,197,94,0.5),0 0 90px rgba(148,163,184,0.35)",
+            }}
+          >
+            <div
+              style={{
+                position: "absolute",
+                inset: 16,
+                borderRadius: "50%",
+                background:
+                  "radial-gradient(circle at 30% 0,#020617,#020617 60%,#000)",
+              }}
+            />
             <div
               style={{
                 position: "relative",
-                width: 160,
-                height: 160,
-                borderRadius: "50%",
-                background:
-                  "conic-gradient(from 220deg,#22c55e,#a3e635,#facc15,#fb7185,#0f172a)",
-                padding: 5,
-                boxShadow:
-                  "0 0 50px rgba(34,197,94,0.45),0 0 80px rgba(148,163,184,0.3)",
+                zIndex: 1,
+                height: "100%",
+                display: "flex",
+                flexDirection: "column",
+                alignItems: "center",
+                justifyContent: "center",
+                gap: 4,
               }}
             >
               <div
                 style={{
-                  position: "absolute",
-                  inset: 12,
-                  borderRadius: "50%",
-                  background:
-                    "radial-gradient(circle at 30% 0,#020617,#020617 60%,#000)",
-                }}
-              />
-              <div
-                style={{
-                  position: "relative",
-                  zIndex: 1,
-                  height: "100%",
-                  display: "flex",
-                  flexDirection: "column",
-                  alignItems: "center",
-                  justifyContent: "center",
+                  fontSize: 11,
+                  letterSpacing: "0.12em",
+                  textTransform: "uppercase",
+                  color: GP.textSoft,
                 }}
               >
-                <div
-                  style={{
-                    fontSize: 11,
-                    letterSpacing: "0.1em",
-                    textTransform: "uppercase",
-                    color: GP.textSoft,
-                    marginBottom: 2,
-                  }}
-                >
-                  Global Score
-                </div>
-                <div
-                  style={{
-                    fontSize: 32,
-                    fontWeight: 700,
-                    background:
-                      "linear-gradient(120deg,#22c55e,#bef264,#facc15)",
-                    WebkitBackgroundClip: "text",
-                    color: "transparent",
-                  }}
-                >
-                  {dashboardLoading ? "—" : Number(avgScore).toFixed(0)}
-                </div>
-                <div style={{ fontSize: 10, color: GP.textMuted }}>/100</div>
+                Global Score
+              </div>
+              <div
+                style={{
+                  fontSize: 36,
+                  fontWeight: 700,
+                  background:
+                    "linear-gradient(120deg,#22c55e,#bef264,#facc15)",
+                  WebkitBackgroundClip: "text",
+                  color: "transparent",
+                  lineHeight: 1,
+                }}
+              >
+                {dashboardLoading ? "—" : Number(avgScore).toFixed(0)}
+              </div>
+              <div
+                style={{
+                  fontSize: 11,
+                  color: GP.textMuted,
+                  marginTop: 2,
+                }}
+              >
+                /100
               </div>
             </div>
           </div>
@@ -1058,7 +1066,7 @@ function Dashboard() {
               padding: 12,
               border: "1px solid rgba(51,65,85,0.9)",
               background: "rgba(15,23,42,0.98)",
-              minWidth: 220,
+              minWidth: 230,
             }}
           >
             <div style={{ fontSize: 12, color: GP.textSoft, marginBottom: 6 }}>
@@ -1243,7 +1251,7 @@ function Dashboard() {
       </div>
 
       {/* ALERTS V2 PANEL (data-spotlight="alerts-panel") */}
-      {showAlerts && (
+      {(showAlerts || spotlight.index === 2) && (
         <div data-spotlight="alerts-panel">
           <div
             style={{
