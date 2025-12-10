@@ -1,13 +1,96 @@
 // pages/api/onboarding/launch-system.js
-// FINAL ONBOARDING STEP — Activate Org, Save Profile, Save Team, Prepare System Launch
+// FINAL ONBOARDING STEP — Auto-Launch Compliance Engine
+// Includes:
+// ✔ Save company profile
+// ✔ Save team invites
+// ✔ Auto-send magic links
+// ✔ Auto-onboard vendors
+// ✔ Auto-run renewal predictions (stub)
+// ✔ Auto-run Fix Cockpit for all vendors (stub)
+// ✔ Mark onboarding complete
+// ✔ Prepare dashboard tutorial
 
 import { sql } from "../../../lib/db";
 
+// Allow JSON body
 export const config = {
   api: {
     bodyParser: true,
   },
 };
+
+// --------------------------------------------------------------
+// HELPERS
+// --------------------------------------------------------------
+
+// 🔥 1) Send a Magic Link to a user (team or broker)
+async function sendMagicLink(email) {
+  try {
+    await fetch(`${process.env.NEXT_PUBLIC_SITE_URL}/api/auth/send-magic-link`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        email,
+        redirectTo: "/dashboard",
+      }),
+    });
+  } catch (err) {
+    console.error(`[launch-system] Failed to send magic link to ${email}`, err);
+  }
+}
+
+// 🔥 2) Auto-create vendors in DB (stub — you can refine later)
+async function autoCreateVendor(orgId, vendor) {
+  try {
+    // MODIFY TABLE NAME TO MATCH YOUR REAL "vendors" TABLE
+    const result = await sql`
+      INSERT INTO vendors (
+        org_id,
+        name,
+        email,
+        category,
+        created_at
+      )
+      VALUES (
+        ${orgId},
+        ${vendor.name || null},
+        ${vendor.email || null},
+        ${vendor.category || "general"},
+        NOW()
+      )
+      RETURNING id
+    `;
+
+    return result?.[0]?.id || null;
+  } catch (err) {
+    console.error("[launch-system] autoCreateVendor error:", err);
+    return null;
+  }
+}
+
+// 🔥 3) Auto-run Fix Cockpit V5 for vendor (stub)
+async function runFixCockpit(vendorId, orgId) {
+  try {
+    await fetch(`${process.env.NEXT_PUBLIC_SITE_URL}/api/vendor/fix-plan?vendorId=${vendorId}&orgId=${orgId}`);
+    await fetch(`${process.env.NEXT_PUBLIC_SITE_URL}/api/engine/run-v3`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ vendorId, orgId, dryRun: false }),
+    });
+  } catch (err) {
+    console.error("[launch-system] Fix Cockpit auto-run error:", err);
+  }
+}
+
+// 🔥 4) Auto-run renewal prediction (stub)
+async function runRenewalPrediction(vendorId) {
+  try {
+    // You’ll replace this with your real renewal engine route
+    await fetch(`${process.env.NEXT_PUBLIC_SITE_URL}/api/renewals/predict?vendorId=${vendorId}`);
+  } catch (err) {
+    console.error("[launch-system] Renewal prediction error:", err);
+  }
+}
 
 export default async function handler(req, res) {
   if (req.method !== "POST") {
@@ -19,13 +102,13 @@ export default async function handler(req, res) {
   try {
     const {
       orgId,
-      vendors,
-      vendorAi,
-      requirements,
-      rules,
-      fixPlans,
+      vendors = [],
+      vendorAi = {},
+      requirements = [],
+      rules = [],
+      fixPlans = [],
       company,
-      team,
+      team = [],
     } = req.body;
 
     if (!orgId) {
@@ -33,9 +116,8 @@ export default async function handler(req, res) {
     }
 
     // --------------------------------------------------------------
-    // 1) UPDATE COMPANY PROFILE (branding + contacts)
+    // 1) SAVE COMPANY PROFILE
     // --------------------------------------------------------------
-    // MODIFY TABLE NAME TO MATCH YOUR REAL SCHEMA
     try {
       await sql`
         UPDATE orgs
@@ -53,14 +135,12 @@ export default async function handler(req, res) {
       `;
     } catch (err) {
       console.error("[launch-system] Error saving company profile:", err);
-      // You can continue, but it's better to throw:
       throw new Error("Failed to save company profile.");
     }
 
     // --------------------------------------------------------------
-    // 2) SAVE TEAM & BROKER INVITES
+    // 2) SAVE TEAM INVITES + AUTO-SEND MAGIC LINKS
     // --------------------------------------------------------------
-    // Modify this to match your `invites` or `users_pending` table.
     try {
       for (const member of team || []) {
         await sql`
@@ -80,6 +160,9 @@ export default async function handler(req, res) {
           )
           ON CONFLICT (email, org_id) DO NOTHING;
         `;
+
+        // Auto-send magic link
+        await sendMagicLink(member.email);
       }
     } catch (err) {
       console.error("[launch-system] Error saving team invites:", err);
@@ -87,10 +170,30 @@ export default async function handler(req, res) {
     }
 
     // --------------------------------------------------------------
-    // 3) STORE SUMMARY OF AI-ONBOARDING WIZARD (OPTIONAL BUT USEFUL)
+    // 3) AUTO-CREATE VENDORS + AUTO-RUN FIX COCKPIT + AUTO-RUN RENEWAL ENGINE
     // --------------------------------------------------------------
-    // You can use this for analytics, debugging, or audit logs.
+    const vendorIdMap = [];
 
+    try {
+      for (const vendor of vendors) {
+        const vendorId = await autoCreateVendor(orgId, vendor);
+        if (!vendorId) continue;
+
+        vendorIdMap.push({ vendorId, vendor });
+
+        // Auto-run Fix Cockpit for the vendor
+        await runFixCockpit(vendorId, orgId);
+
+        // Auto-run renewal predictions
+        await runRenewalPrediction(vendorId);
+      }
+    } catch (err) {
+      console.error("[launch-system] Vendor auto-onboarding error:", err);
+    }
+
+    // --------------------------------------------------------------
+    // 4) STORE FULL AI-ONBOARDING HISTORY
+    // --------------------------------------------------------------
     try {
       await sql`
         INSERT INTO onboarding_history (
@@ -118,11 +221,10 @@ export default async function handler(req, res) {
       `;
     } catch (err) {
       console.warn("[launch-system] Warning: onboarding_history insert failed.");
-      // Not fatal, but log it.
     }
 
     // --------------------------------------------------------------
-    // 4) MARK ORG AS “ONBOARDING COMPLETE”
+    // 5) MARK ORG AS ONBOARDING COMPLETE
     // --------------------------------------------------------------
     try {
       await sql`
@@ -136,11 +238,25 @@ export default async function handler(req, res) {
     }
 
     // --------------------------------------------------------------
+    // 6) ENABLE DASHBOARD TUTORIAL
+    // --------------------------------------------------------------
+    try {
+      await sql`
+        UPDATE orgs
+        SET dashboard_tutorial_enabled = TRUE
+        WHERE id = ${orgId};
+      `;
+    } catch (err) {
+      console.error("[launch-system] Dashboard tutorial flag failed:", err);
+    }
+
+    // --------------------------------------------------------------
     // SUCCESS RESPONSE
     // --------------------------------------------------------------
     return res.status(200).json({
       ok: true,
-      message: "System launched. Org is now active.",
+      message: "System launched. Org is now fully active.",
+      vendorCount: vendorIdMap.length,
     });
   } catch (err) {
     console.error("[launch-system] ERROR:", err);
