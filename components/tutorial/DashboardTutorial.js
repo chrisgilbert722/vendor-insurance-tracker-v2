@@ -1,148 +1,194 @@
 // components/tutorial/DashboardTutorial.js
-// Dashboard Tutorial V3 — Cinematic Neon Spotlight Mode
+// ============================================================
+// CINEMATIC DASHBOARD TUTORIAL V3
+// Full spotlight engine + arrows + fade + smooth motion
+// Compatible with dashboard.js anchors: risk, fixPlans, alerts, renewals, vendors
+// ============================================================
 
-import React, { useState, useEffect } from "react";
-import SpotlightLayer from "./SpotlightLayer";
-import ArrowPointer from "./ArrowPointer";
+import React, { useEffect, useState, useRef } from "react";
 
-const TUTORIAL_STEPS = [
+// ---- STEP DEFINITIONS -------------------------------------------------------
+const STEPS = [
   {
     id: "risk",
-    title: "Your Compliance Risk Score is Live",
+    title: "Your Global Compliance Risk Score",
     body: `
-This is your organization's live compliance pulse. AI updates this score automatically
-as vendors upload COIs, rules run, and fix plans are applied. Use it as your single
-glance view of overall risk.`,
+AI continuously evaluates every vendor, policy, expiration, and rule.
+This score updates LIVE — it's the single fastest way to see your compliance health.`,
   },
   {
     id: "fixPlans",
-    title: "AI Fix Plans & KPIs",
+    title: "AI Fix Plans Are Already Running",
     body: `
-This strip shows high-level KPIs driven by AI: expired policies, critical expirations,
-warnings, and Elite engine fails. It tells you where to focus before issues become fire drills.`,
+Fix Cockpit built fix plans and email drafts for vendors with missing coverage,
+expired COIs, or low limits. You can send them instantly.`,
   },
   {
     id: "alerts",
-    title: "Alerts & Coverage Gaps Mapped for You",
+    title: "Coverage Issues & Alerts",
     body: `
-Every missing coverage, low limit, expired policy, or endorsement issue is surfaced as
-an alert. You can sort by severity, vendor, or coverage type to decide what to tackle first.`,
+All missing policies, low limits, expired certificates, and rule failures show here.
+This is your day-to-day mission panel.`,
   },
   {
     id: "renewals",
-    title: "Renewal Intelligence Turned On",
+    title: "Renewal Intelligence Activated",
     body: `
-The system tracks expirations and upcoming renewals so you don't live in spreadsheets.
-Use these panels to see what's at risk in the next 30, 60, or 90 days before it becomes chaos.`,
+AI predicts upcoming expirations, overdue renewals, and renewal risk.
+This replaces spreadsheets and manual reminders.`,
   },
   {
     id: "vendors",
-    title: "Your Vendors in One Cockpit",
+    title: "Your Full Vendor Cockpit",
     body: `
-Every onboarded vendor now has a profile, policies, risk summary, fix plan, and alerts
-in a single place. Drill in with one click, or manage them in bulk from this dashboard.`,
+Every vendor now has a profile, policies, alerts, fix plan, and rule analysis.
+Drill into any vendor with one click.`,
   },
 ];
 
-export default function DashboardTutorial({ onFinish, anchors = {} }) {
+// ---- LERP UTILITY -----------------------------------------------------------
+const lerp = (a, b, t) => a + (b - a) * t;
+
+// ---- MAIN COMPONENT ---------------------------------------------------------
+export default function DashboardTutorial({ anchors, onFinish }) {
   const [stepIndex, setStepIndex] = useState(0);
-  const [highlightRect, setHighlightRect] = useState(null);
-  const [showDoneTooltip, setShowDoneTooltip] = useState(false);
+  const [spot, setSpot] = useState(null); // final animated rect
 
-  const step = TUTORIAL_STEPS[stepIndex];
-  const totalSteps = TUTORIAL_STEPS.length;
-  const atFirst = stepIndex === 0;
-  const atLast = stepIndex === totalSteps - 1;
+  const activeStep = STEPS[stepIndex];
+  const activeAnchor = anchors[activeStep.id];
 
-  // Compute highlight rect + auto-scroll whenever step changes
+  const anim = useRef({ x: 0, y: 0, w: 0, h: 0 });
+  const target = useRef({ x: 0, y: 0, w: 0, h: 0 });
+
+  // ---- GET DOM RECT ---------------------------------------------------------
+  function computeRect() {
+    if (!activeAnchor?.current) return null;
+    const r = activeAnchor.current.getBoundingClientRect();
+    return { x: r.left, y: r.top, w: r.width, h: r.height };
+  }
+
+  // ---- UPDATE TARGET WHEN STEP CHANGES --------------------------------------
   useEffect(() => {
-    const ref = anchors[step.id];
-    if (!ref || !ref.current) {
-      setHighlightRect(null);
-      return;
+    const rect = computeRect();
+    if (rect) {
+      target.current = rect;
+    }
+  }, [stepIndex, activeAnchor]);
+
+  // ---- SMOOTH ANIMATION LOOP ------------------------------------------------
+  useEffect(() => {
+    let frame;
+    function update() {
+      anim.current.x = lerp(anim.current.x, target.current.x, 0.14);
+      anim.current.y = lerp(anim.current.y, target.current.y, 0.14);
+      anim.current.w = lerp(anim.current.w, target.current.w, 0.14);
+      anim.current.h = lerp(anim.current.h, target.current.h, 0.14);
+
+      setSpot({ ...anim.current });
+      frame = requestAnimationFrame(update);
+    }
+    update();
+    return () => cancelAnimationFrame(frame);
+  }, []);
+
+  // ---- RECALCULATE RECT ON RESIZE / SCROLL ---------------------------------
+  useEffect(() => {
+    if (!activeAnchor?.current) return;
+
+    function refresh() {
+      const rect = computeRect();
+      if (rect) target.current = rect;
     }
 
-    const rect = ref.current.getBoundingClientRect();
-    const { top, left, width, height } = rect;
+    refresh();
 
-    setHighlightRect({ top, left, width, height });
+    const obs = new ResizeObserver(refresh);
+    obs.observe(activeAnchor.current);
 
-    const scrollTarget = top + window.scrollY - 140;
-    window.scrollTo({
-      top: scrollTarget < 0 ? 0 : scrollTarget,
-      behavior: "smooth",
-    });
-  }, [stepIndex, anchors, step.id]);
+    window.addEventListener("scroll", refresh, { passive: true });
+    window.addEventListener("resize", refresh);
 
-  function handleNext() {
-    if (atLast) {
-      // Show a quick "Done" tooltip and then finish
-      setShowDoneTooltip(true);
-      setTimeout(() => {
-        setShowDoneTooltip(false);
-        if (typeof onFinish === "function") onFinish();
-      }, 1100);
-      return;
-    }
-    setStepIndex((idx) => Math.min(idx + 1, totalSteps - 1));
-  }
+    return () => {
+      obs.disconnect();
+      window.removeEventListener("scroll", refresh);
+      window.removeEventListener("resize", refresh);
+    };
+  }, [activeAnchor]);
 
-  function handleBack() {
-    setStepIndex((idx) => Math.max(idx - 1, 0));
-  }
+  if (!spot) return null;
 
-  function handleSkip() {
+  // ---- CONTROL HANDLERS -----------------------------------------------------
+  const atFirst = stepIndex === 0;
+  const atLast = stepIndex === STEPS.length - 1;
+
+  const next = () => {
+    if (atLast) return finish();
+    setStepIndex((i) => Math.min(i + 1, STEPS.length - 1));
+  };
+  const back = () => setStepIndex((i) => Math.max(i - 1, 0));
+  const skip = () => finish();
+
+  const finish = () => {
     if (typeof onFinish === "function") onFinish();
-  }
+  };
+
+  // ---- SPOTLIGHT VISUAL DIMENSIONS ------------------------------------------
+  const padding = 12;
+  const ringX = spot.x - padding;
+  const ringY = spot.y - padding;
+  const ringW = spot.w + padding * 2;
+  const ringH = spot.h + padding * 2;
+  const centerX = ringX + ringW / 2;
 
   return (
-    <div
-      style={{
-        position: "fixed",
-        inset: 0,
-        zIndex: 99999,
-        // darker dim, more cinematic
-        background: "rgba(3,7,18,0.92)",
-        backdropFilter: "blur(8px)",
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "center",
-        pointerEvents: "auto",
-      }}
-    >
-      {/* Ambient Glow */}
+    <>
+      {/* DARK BACKDROP */}
       <div
         style={{
-          position: "absolute",
-          width: 900,
-          height: 900,
-          borderRadius: "50%",
-          background:
-            "radial-gradient(circle, rgba(56,189,248,0.35), transparent 65%)",
-          filter: "blur(120px)",
-          zIndex: -1,
+          position: "fixed",
+          inset: 0,
+          background: "rgba(0,0,0,0.68)",
+          backdropFilter: "blur(3px)",
+          zIndex: 99998,
+          pointerEvents: "auto",
+        }}
+        onClick={(e) => e.stopPropagation()} // prevent closing
+      />
+
+      {/* SPOTLIGHT HOLE */}
+      <div
+        style={{
+          position: "fixed",
+          left: ringX,
+          top: ringY,
+          width: ringW,
+          height: ringH,
+          borderRadius: 18,
+          zIndex: 99999,
+          boxShadow: `
+            0 0 0 9999px rgba(0,0,0,0.72),
+            0 0 32px rgba(56,189,248,0.45),
+            0 0 46px rgba(148,163,184,0.35)
+          `,
+          transition: "box-shadow 0.35s ease",
+          pointerEvents: "none",
         }}
       />
 
-      {/* Spotlight highlight + arrow */}
-      <SpotlightLayer rect={highlightRect} />
-      <ArrowPointer rect={highlightRect} />
-
-      {/* Center Card */}
+      {/* SIDECARD: TITLE + BODY + CONTROLS */}
       <div
         style={{
-          width: "100%",
-          maxWidth: 640,
-          borderRadius: 24,
+          position: "fixed",
+          top: ringY + ringH / 2 - 120,
+          left: Math.min(centerX + ringW / 2 + 40, window.innerWidth - 380),
+          width: 340,
           padding: 24,
+          borderRadius: 18,
           background:
-            "radial-gradient(circle at top left,rgba(15,23,42,0.98),rgba(15,23,42,0.95))",
-          border: "1px solid rgba(148,163,184,0.5)",
-          boxShadow: `
-            0 0 50px rgba(15,23,42,0.95),
-            0 0 80px rgba(15,23,42,0.9),
-            inset 0 0 20px rgba(15,23,42,0.9)
-          `,
+            "radial-gradient(circle at top left,rgba(15,23,42,0.98),rgba(15,23,42,0.92))",
+          border: "1px solid rgba(148,163,184,0.35)",
+          boxShadow: "0 12px 40px rgba(0,0,0,0.55)",
+          zIndex: 100000,
           color: "#e5e7eb",
         }}
       >
@@ -150,118 +196,48 @@ export default function DashboardTutorial({ onFinish, anchors = {} }) {
         <div
           style={{
             display: "inline-flex",
-            alignItems: "center",
-            gap: 8,
-            padding: "4px 10px",
+            gap: 6,
+            padding: "3px 9px",
             borderRadius: 999,
-            border: "1px solid rgba(148,163,184,0.5)",
+            border: "1px solid rgba(148,163,184,0.3)",
             background:
-              "linear-gradient(120deg,rgba(15,23,42,0.9),rgba(15,23,42,0.6))",
+              "linear-gradient(120deg,rgba(15,23,42,0.92),rgba(15,23,42,0.55))",
             marginBottom: 10,
+            fontSize: 10,
+            letterSpacing: "0.12em",
+            textTransform: "uppercase",
+            color: "#9ca3af",
           }}
         >
-          <span
-            style={{
-              fontSize: 11,
-              textTransform: "uppercase",
-              letterSpacing: "0.16em",
-              color: "#9ca3af",
-            }}
-          >
-            Dashboard Tour
-          </span>
-          <span
-            style={{
-              fontSize: 11,
-              textTransform: "uppercase",
-              letterSpacing: "0.16em",
-              color: "#38bdf8",
-            }}
-          >
-            First Run
-          </span>
+          Dashboard Tour
         </div>
 
-        {/* Title + Progress */}
-        <div
+        {/* Title */}
+        <h2
           style={{
-            display: "flex",
-            justifyContent: "space-between",
-            gap: 12,
-            alignItems: "flex-start",
-            marginBottom: 12,
+            fontSize: 20,
+            margin: 0,
+            marginBottom: 6,
+            background: "linear-gradient(90deg,#38bdf8,#a855f7)",
+            WebkitBackgroundClip: "text",
+            color: "transparent",
           }}
         >
-          <div>
-            <h2
-              style={{
-                margin: 0,
-                fontSize: 22,
-                fontWeight: 600,
-              }}
-            >
-              {step.title}
-            </h2>
-            <p
-              style={{
-                marginTop: 6,
-                fontSize: 13,
-                lineHeight: 1.5,
-                color: "#9ca3af",
-                whiteSpace: "pre-line",
-              }}
-            >
-              {step.body.trim()}
-            </p>
-          </div>
+          {activeStep.title}
+        </h2>
 
-          {/* Step indicator */}
-          <div
-            style={{
-              textAlign: "right",
-              fontSize: 11,
-              color: "#9ca3af",
-              minWidth: 80,
-            }}
-          >
-            <div
-              style={{
-                fontSize: 24,
-                fontWeight: 600,
-                color: "#e5e7eb",
-              }}
-            >
-              {stepIndex + 1}
-              <span
-                style={{
-                  fontSize: 14,
-                  color: "#64748b",
-                  marginLeft: 2,
-                }}
-              >
-                /{totalSteps}
-              </span>
-            </div>
-            <div style={{ marginTop: 2 }}>steps</div>
-          </div>
-        </div>
-
-        {/* Hint */}
-        <div
+        {/* Body */}
+        <p
           style={{
-            marginTop: 12,
-            padding: 12,
-            borderRadius: 14,
-            border: "1px dashed rgba(148,163,184,0.5)",
-            background: "rgba(15,23,42,0.9)",
-            fontSize: 12,
-            color: "#a5b4fc",
+            whiteSpace: "pre-line",
+            fontSize: 13,
+            color: "#cbd5f5",
+            marginBottom: 18,
+            lineHeight: "1.5",
           }}
         >
-          Tip: The glowing frame and arrow show the live area this step is
-          describing. As you move through the tour, watch how different AI
-          panels light up.
-        </div>
+          {activeStep.body}
+        </p>
 
         {/* Controls */}
         <div
@@ -269,51 +245,48 @@ export default function DashboardTutorial({ onFinish, anchors = {} }) {
             display: "flex",
             justifyContent: "space-between",
             alignItems: "center",
-            marginTop: 20,
+            marginTop: 6,
           }}
         >
-          {/* Left: Skip */}
+          {/* Skip */}
           <button
-            type="button"
-            onClick={handleSkip}
+            onClick={skip}
             style={{
-              border: "none",
               background: "transparent",
+              border: "none",
               color: "#9ca3af",
-              fontSize: 12,
-              cursor: "pointer",
               textDecoration: "underline",
               textUnderlineOffset: 3,
+              cursor: "pointer",
+              fontSize: 12,
             }}
           >
-            Skip tutorial
+            Skip
           </button>
 
-          {/* Right: Back / Next */}
           <div style={{ display: "flex", gap: 8 }}>
+            {/* Back */}
             <button
-              type="button"
-              onClick={handleBack}
               disabled={atFirst}
+              onClick={back}
               style={{
-                padding: "8px 14px",
+                padding: "8px 12px",
                 borderRadius: 999,
-                border: "1px solid rgba(71,85,105,0.9)",
+                border: "1px solid rgba(71,85,105,0.8)",
                 background: atFirst
-                  ? "rgba(15,23,42,0.7)"
+                  ? "rgba(15,23,42,0.6)"
                   : "rgba(15,23,42,0.95)",
                 color: atFirst ? "#6b7280" : "#e5e7eb",
-                fontSize: 12,
                 cursor: atFirst ? "not-allowed" : "pointer",
-                opacity: atFirst ? 0.6 : 1,
+                fontSize: 12,
               }}
             >
               ← Back
             </button>
 
+            {/* Next */}
             <button
-              type="button"
-              onClick={handleNext}
+              onClick={next}
               style={{
                 padding: "8px 18px",
                 borderRadius: 999,
@@ -327,32 +300,14 @@ export default function DashboardTutorial({ onFinish, anchors = {} }) {
                 cursor: "pointer",
                 boxShadow: atLast
                   ? "0 0 18px rgba(34,197,94,0.55)"
-                  : "0 0 18px rgba(59,130,246,0.55)",
+                  : "0 0 18px rgba(59,130,246,0.45)",
               }}
             >
-              {atLast ? "Finish →" : "Next step →"}
+              {atLast ? "Finish →" : "Next →"}
             </button>
           </div>
         </div>
-
-        {/* DONE TOOLTIP */}
-        {showDoneTooltip && (
-          <div
-            style={{
-              marginTop: 14,
-              padding: 10,
-              borderRadius: 10,
-              background: "rgba(22,163,74,0.2)",
-              border: "1px solid rgba(34,197,94,0.9)",
-              fontSize: 12,
-              color: "#bbf7d0",
-              textAlign: "center",
-            }}
-          >
-            ✅ Tutorial complete — your AI compliance cockpit is ready to use.
-          </div>
-        )}
       </div>
-    </div>
+    </>
   );
 }
