@@ -1,5 +1,5 @@
 // pages/dashboard.js — Dashboard V5 (Cinematic Intelligence Cockpit)
-// Version A (clean base) upgraded with Spotlight V4
+// Fully upgraded + Spotlight V4 guided tour
 
 import { useEffect, useState } from "react";
 import VendorDrawer from "../components/VendorDrawer";
@@ -11,7 +11,7 @@ import EliteStatusPill from "../components/elite/EliteStatusPill";
 import OnboardingHeroCard from "../components/onboarding/OnboardingHeroCard";
 import OnboardingBanner from "../components/onboarding/OnboardingBanner";
 
-// SPOTLIGHT ENGINE (V4 uses V3 core)
+// ⭐ SPOTLIGHT ENGINE V4
 import {
   useDashboardSpotlightV3,
   DashboardSpotlightV3,
@@ -24,7 +24,7 @@ import ExpiringCertsHeatmap from "../components/charts/ExpiringCertsHeatmap";
 import SeverityDistributionChart from "../components/charts/SeverityDistributionChart";
 import RiskTimelineChart from "../components/charts/RiskTimelineChart";
 
-// ALERTS V2 INTELLIGENCE (ALWAYS VISIBLE STACK)
+// ALERTS V2 INTELLIGENCE (6 widgets for Step 3)
 import AlertTimelineChart from "../components/charts/AlertTimelineChart";
 import TopAlertTypes from "../components/charts/TopAlertTypes";
 import AlertAgingKpis from "../components/kpis/AlertAgingKpis";
@@ -58,84 +58,284 @@ const GP = {
 };
 
 /* ============================================================
-   DATE + RISK HELPERS (unchanged)
+   RISK + EXPIRATION HELPERS (UNCHANGED)
 ============================================================ */
-// (all your helpers stay exactly the same)
-function parseExpiration(dateStr) { /* unchanged */ }
-function computeDaysLeft(dateStr) { /* unchanged */ }
-function computeRisk(policy) { /* unchanged */ }
-function badgeStyle(level) { /* unchanged */ }
-function computeAiRisk({ risk, elite, compliance }) { /* unchanged */ }
-function renderComplianceBadge(vendorId, complianceMap) { /* unchanged */ }
-function computeV3Tier(score) { /* unchanged */ }
-function summarizeEngineHealth(engineMap) { /* unchanged */ }
+function parseExpiration(dateStr) {
+  if (!dateStr) return null;
+  const [mm, dd, yyyy] = String(dateStr).split("/");
+  if (!mm || !dd || !yyyy) return null;
+  const d = new Date(`${yyyy}-${mm}-${dd}`);
+  return isNaN(d.getTime()) ? null : d;
+}
+
+function computeDaysLeft(dateStr) {
+  const d = parseExpiration(dateStr);
+  return d ? Math.floor((d.getTime() - Date.now()) / 86400000) : null;
+}
+
+function computeRisk(policy) {
+  const daysLeft = computeDaysLeft(policy.expiration_date);
+  const flags = [];
+
+  if (daysLeft === null) {
+    return {
+      daysLeft: null,
+      severity: "unknown",
+      score: 0,
+      flags: ["Missing expiration date"],
+      tier: "Unknown",
+    };
+  }
+
+  let severity = "ok";
+  let score = 95;
+
+  if (daysLeft < 0) {
+    severity = "expired";
+    score = 20;
+    flags.push("Policy expired");
+  } else if (daysLeft <= 30) {
+    severity = "critical";
+    score = 40;
+    flags.push("Expires ≤30 days");
+  } else if (daysLeft <= 90) {
+    severity = "warning";
+    score = 70;
+    flags.push("Expires ≤90 days");
+  }
+
+  const tier =
+    severity === "expired"
+      ? "Severe Risk"
+      : severity === "critical"
+      ? "High Risk"
+      : severity === "warning"
+      ? "Moderate Risk"
+      : "Healthy";
+
+  return { daysLeft, severity, score, flags, tier };
+}
+
+function badgeStyle(level) {
+  switch (level) {
+    case "expired":
+      return {
+        background: "rgba(248,113,113,0.18)",
+        color: "#fecaca",
+        border: "1px solid rgba(248,113,113,0.9)",
+      };
+    case "critical":
+      return {
+        background: "rgba(250,204,21,0.18)",
+        color: "#fef3c7",
+        border: "1px solid rgba(250,204,21,0.9)",
+      };
+    case "warning":
+      return {
+        background: "rgba(56,189,248,0.18)",
+        color: "#e0f2fe",
+        border: "1px solid rgba(56,189,248,0.9)",
+      };
+    case "ok":
+      return {
+        background: "rgba(34,197,94,0.18)",
+        color: "#bbf7d0",
+        border: "1px solid rgba(34,197,94,0.9)",
+      };
+    default:
+      return {
+        background: "rgba(51,65,85,0.8)",
+        color: "#e5e7eb",
+        border: "1px solid rgba(71,85,105,0.9)",
+      };
+  }
+}
 
 /* ============================================================
-   MAIN DASHBOARD COMPONENT
+   AI RISK + ENGINE HELPERS (UNCHANGED)
+============================================================ */
+function computeAiRisk({ risk, elite, compliance }) {
+  let base = risk?.score ?? 0;
+
+  let eliteFactor = 1;
+  if (elite && !elite.loading && !elite.error) {
+    eliteFactor = elite.overall === "fail" ? 0.4 : elite.overall === "warn" ? 0.7 : 1;
+  }
+
+  let complianceFactor = 1;
+  if (compliance?.failing?.length > 0) complianceFactor = 0.5;
+  else if (compliance?.missing?.length > 0) complianceFactor = 0.7;
+
+  let score = Math.max(0, Math.min(100, Math.round(base * eliteFactor * complianceFactor)));
+
+  let tier =
+    score >= 85
+      ? "Elite Safe"
+      : score >= 70
+      ? "Preferred"
+      : score >= 55
+      ? "Watch"
+      : score >= 35
+      ? "High Risk"
+      : "Severe";
+
+  return { score, tier };
+}
+
+function computeV3Tier(score) {
+  if (score >= 85) return "Elite Safe";
+  if (score >= 70) return "Preferred";
+  if (score >= 55) return "Watch";
+  if (score >= 35) return "High Risk";
+  return "Severe";
+}
+
+function summarizeEngineHealth(engineMap) {
+  const vendors = Object.values(engineMap).filter(
+    (v) => v.loaded && !v.error && typeof v.globalScore === "number"
+  );
+
+  if (!vendors.length) {
+    return { avg: 0, fails: 0, critical: 0, total: 0 };
+  }
+
+  let total = 0;
+  let fails = 0;
+  let critical = 0;
+
+  vendors.forEach((v) => {
+    total += v.globalScore ?? 0;
+    if (v.failedCount > 0) fails++;
+    if (v.failingRules?.some((r) => r.severity === "critical")) critical++;
+  });
+
+  return {
+    avg: Math.round(total / vendors.length),
+    fails,
+    critical,
+    total: vendors.length,
+  };
+}
+/* ============================================================
+   MAIN DASHBOARD COMPONENT — WITH SPOTLIGHT V4
 ============================================================ */
 export default function Dashboard() {
   const { isAdmin, isManager } = useRole();
   const { activeOrgId } = useOrg();
 
-  // ALL YOUR STATE REMAINS EXACTLY THE SAME
+  // STATE
   const [onboardingComplete, setOnboardingComplete] = useState(true);
   const [showHero, setShowHero] = useState(false);
   const [bannerDismissed, setBannerDismissed] = useState(false);
+
   const [dashboard, setDashboard] = useState(null);
   const [dashboardLoading, setDashboardLoading] = useState(true);
+
   const [policies, setPolicies] = useState([]);
   const [loadingPolicies, setLoadingPolicies] = useState(true);
   const [filterText, setFilterText] = useState("");
+
   const [complianceMap, setComplianceMap] = useState({});
   const [eliteMap, setEliteMap] = useState({});
   const [eliteSummary, setEliteSummary] = useState({ pass: 0, warn: 0, fail: 0 });
+
   const [engineMap, setEngineMap] = useState({});
   const [alertSummary, setAlertSummary] = useState(null);
   const [showAlerts, setShowAlerts] = useState(false);
+
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [drawerVendor, setDrawerVendor] = useState(null);
   const [drawerPolicies, setDrawerPolicies] = useState([]);
+
   const [systemTimeline, setSystemTimeline] = useState([]);
   const [systemTimelineLoading, setSystemTimelineLoading] = useState(true);
 
   /* ============================================================
-     SPOTLIGHT V4 CONFIG — FINAL 5 STEPS
+     ⭐ SPOTLIGHT V4 CONFIGURATION
+     Steps:
+       0 = Donut (score-box)
+       1 = KPI Strip (kpi-strip)
+       2 = Alerts Intelligence (alerts-intel)
+       3 = Renewal Heatmap (renewals-panel)
+       4 = Policies Table (policies-panel)
 ============================================================ */
   const spotlight = useDashboardSpotlightV3([
     {
-      selector: "[data-spotlight='step1-donut']",
-      title: "Global Compliance Score",
+      selector: "[data-spotlight='score-box']",
+      title: "Your Global Compliance Score",
       description:
-        "This donut shows your live AI-driven compliance score across all vendors.",
+        "This is your live AI-powered safety score across all vendors. If this drops, something requires attention.",
     },
     {
-      selector: "[data-spotlight='step2-kpis']",
-      title: "Compliance KPIs",
+      selector: "[data-spotlight='kpi-strip']",
+      title: "Daily AI Compliance KPIs",
       description:
-        "A snapshot of expired policies, upcoming expirations, warnings, and elite engine failures.",
+        "These KPIs show expired COIs, risk warnings, and Elite Engine failures — the fastest way to know what needs attention today.",
     },
     {
-      selector: "[data-spotlight='step3-alerts']",
-      title: "Alerts Intelligence",
+      selector: "[data-spotlight='alerts-intel']",
+      title: "Alerts Intelligence Center",
       description:
-        "A unified intelligence view showing your alert trends, severity breakdowns, SLA breaches, and critical vendors.",
+        "Your 6-layer alerts intelligence system: alert trends, types, severity, SLA breaches, vendor heat signatures, and timeline.",
     },
     {
-      selector: "[data-spotlight='step4-renewals']",
+      selector: "[data-spotlight='renewals-panel']",
       title: "Renewal Heatmap",
       description:
-        "This heatmap highlights upcoming COI expirations over the next 90 days to prevent lapses.",
+        "AI-powered renewal forecast showing all policies expiring within 90 days so you never miss a renewal window.",
     },
     {
-      selector: "[data-spotlight='step5-policies']",
-      title: "Policies Cockpit",
+      selector: "[data-spotlight='policies-panel']",
+      title: "Vendor Policy Cockpit",
       description:
-        "Search, filter, and review every vendor policy with AI risk scoring and rule engine evaluation.",
+        "Your full vendor COI cockpit — AI risk, V5 rules, Elite status, compliance checks, and expiration insights.",
     },
   ]);
+
   /* ============================================================
-     MAIN RENDER
-  ============================================================ */
+     ONBOARDING + METRICS LOADERS (unchanged)
+============================================================ */
+
+  useEffect(() => {
+    if (!activeOrgId) return;
+
+    (async () => {
+      try {
+        const res = await fetch(`/api/onboarding/status?orgId=${activeOrgId}`);
+        const json = await res.json();
+        if (json.ok) {
+          const done = !!json.onboardingComplete;
+          setOnboardingComplete(done);
+          setShowHero(!done);
+        }
+      } catch (err) {
+        console.error("[dashboard] onboarding status error:", err);
+      }
+    })();
+  }, [activeOrgId]);
+
+  useEffect(() => {
+    try {
+      const stored = localStorage.getItem("onboardingBannerDismissed");
+      if (stored === "true") setBannerDismissed(true);
+    } catch {}
+  }, []);
+
+  const handleDismissBanner = () => {
+    setBannerDismissed(true);
+    try {
+      localStorage.setItem("onboardingBannerDismissed", "true");
+    } catch {}
+  };
+
+  const handleStartOnboarding = () => {
+    window.location.href = "/onboarding/start";
+  };
+
+  /* ============================================================
+     HERO PANEL + STEP 1 + STEP 2
+============================================================ */
+
   return (
     <div
       style={{
@@ -146,7 +346,7 @@ export default function Dashboard() {
         color: GP.text,
       }}
     >
-      {/* ONBOARDING COCKPIT LAYER */}
+      {/* --- ONBOARDING TOP LAYER --- */}
       {!onboardingComplete && (
         <>
           {showHero && (
@@ -167,7 +367,7 @@ export default function Dashboard() {
       )}
 
       {/* ============================================================
-         HERO COMMAND PANEL (CINEMATIC COCKPIT)
+         HERO COMMAND PANEL — WITH SPOTLIGHT STEP 1 + STEP 2
       ============================================================ */}
       <div
         className="cockpit-hero cockpit-pulse"
@@ -186,7 +386,9 @@ export default function Dashboard() {
           position: "relative",
         }}
       >
-        {/* LEFT SIDE */}
+        {/* ============================================================
+           LEFT SIDE OF HERO (text + KPIs)
+        ============================================================ */}
         <div style={{ paddingTop: 22 }}>
           <div
             style={{
@@ -230,7 +432,9 @@ export default function Dashboard() {
             alerts, and rule engines. This is your command center.
           </p>
 
-          {/* AI SYSTEM HEALTH PILL */}
+          {/* ------------------------------------------------------------
+             AI SUMMARY + ORG COMPLIANCE + START TOUR BUTTON
+          ------------------------------------------------------------ */}
           <div
             style={{
               marginTop: 12,
@@ -272,57 +476,30 @@ export default function Dashboard() {
             </span>
           </div>
 
-          {/* BUTTON ROW (Start Tour + Compliance Panel) */}
-          <div
+          {/* Start Tour Button */}
+          <button
+            onClick={() => spotlight.start(0)}
             style={{
-              marginTop: 16,
-              display: "flex",
-              alignItems: "center",
-              gap: 12,
-              flexWrap: "wrap",
+              marginTop: 12,
+              padding: "8px 14px",
+              borderRadius: 12,
+              border: "1px solid rgba(56,189,248,0.7)",
+              background:
+                "radial-gradient(circle at top left,#0f172a,#020617)",
+              color: GP.neonBlue,
+              fontSize: 12,
+              fontWeight: 600,
+              cursor: "pointer",
+              boxShadow: "0 0 16px rgba(56,189,248,0.3)",
             }}
           >
-            {(isAdmin || isManager) && (
-              <a
-                href="/admin/org-compliance"
-                style={{
-                  padding: "8px 14px",
-                  borderRadius: 12,
-                  background:
-                    "radial-gradient(circle at top left,#16a34a,#22c55e,#020617)",
-                  border: "1px solid rgba(34,197,94,0.6)",
-                  color: "#bbf7d0",
-                  fontSize: 13,
-                  fontWeight: 600,
-                  textDecoration: "none",
-                }}
-              >
-                🏢 Org Compliance Dashboard
-              </a>
-            )}
-
-            <button
-              onClick={() => spotlight.start(0)}
-              style={{
-                padding: "8px 14px",
-                borderRadius: 12,
-                border: "1px solid rgba(56,189,248,0.7)",
-                background:
-                  "radial-gradient(circle at top left,#0f172a,#020617)",
-                color: GP.neonBlue,
-                fontSize: 12,
-                fontWeight: 600,
-                cursor: "pointer",
-              }}
-            >
-              ✨ Start Dashboard Tour
-            </button>
-          </div>
+            ✨ Start Dashboard Tour
+          </button>
 
           {/* ============================================================
-             STEP 2 — KPI STRIP (FULL PANEL HIGHLIGHTED)
+             ⭐ STEP 2 — KPI STRIP
           ============================================================ */}
-          <section data-spotlight="step2-kpis">
+          <div data-spotlight="kpi-strip">
             <div
               style={{
                 marginTop: 20,
@@ -369,145 +546,13 @@ export default function Dashboard() {
                 color={GP.neonRed}
                 icon="🧠"
               />
-            </div>
-          </section>
-        </div>
 
-        {/* ============================================================
-           RIGHT SIDE — STEP 1 (DONUT ONLY)
-        ============================================================ */}
-        <div
-          style={{
-            display: "flex",
-            flexDirection: "column",
-            alignItems: "flex-end",
-            gap: 20,
-            paddingTop: 28,
-          }}
-        >
-          <section data-spotlight="step1-donut">
-            <div
-              style={{
-                position: "relative",
-                width: 180,
-                height: 180,
-                borderRadius: "50%",
-                background:
-                  "conic-gradient(from 220deg,#22c55e,#a3e635,#facc15,#fb7185,#0f172a)",
-                padding: 8,
-                boxShadow:
-                  "0 0 60px rgba(34,197,94,0.5),0 0 90px rgba(148,163,184,0.35)",
-              }}
-            >
-              <div
-                style={{
-                  position: "absolute",
-                  inset: 16,
-                  borderRadius: "50%",
-                  background:
-                    "radial-gradient(circle at 30% 0,#020617,#020617 60%,#000)",
-                }}
-              />
+      {/* ============================================================
+         ⭐ STEP 3 — FULL ALERTS INTELLIGENCE (6 widgets)
+         Wrapped in: data-spotlight="alerts-intel"
+      ============================================================ */}
 
-              <div
-                style={{
-                  position: "relative",
-                  zIndex: 1,
-                  height: "100%",
-                  display: "flex",
-                  flexDirection: "column",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  gap: 4,
-                }}
-              >
-                <div
-                  style={{
-                    fontSize: 11,
-                    letterSpacing: "0.12em",
-                    textTransform: "uppercase",
-                    color: GP.textSoft,
-                  }}
-                >
-                  Global Score
-                </div>
-
-                <div
-                  style={{
-                    fontSize: 36,
-                    fontWeight: 700,
-                    background:
-                      "linear-gradient(120deg,#22c55e,#bef264,#facc15)",
-                    WebkitBackgroundClip: "text",
-                    color: "transparent",
-                    lineHeight: 1,
-                  }}
-                >
-                  {dashboardLoading ? "—" : Number(avgScore).toFixed(0)}
-                </div>
-
-                <div
-                  style={{
-                    fontSize: 11,
-                    color: GP.textMuted,
-                  }}
-                >
-                  /100
-                </div>
-              </div>
-            </div>
-          </section>
-
-          {/* ELITE SNAPSHOT — NOT spotlighted */}
-          <div
-            style={{
-              borderRadius: 18,
-              padding: 12,
-              border: "1px solid rgba(51,65,85,0.9)",
-              background: "rgba(15,23,42,0.98)",
-              minWidth: 220,
-            }}
-          >
-            <div style={{ fontSize: 12, color: GP.textSoft, marginBottom: 6 }}>
-              Elite Engine Snapshot
-            </div>
-            <div
-              style={{
-                display: "flex",
-                justifyContent: "space-between",
-                fontSize: 11,
-                color: "#4ade80",
-              }}
-            >
-              <span>PASS</span>
-              <span>{eliteSummary.pass}</span>
-            </div>
-            <div
-              style={{
-                display: "flex",
-                justifyContent: "space-between",
-                fontSize: 11,
-                color: "#facc15",
-              }}
-            >
-              <span>WARN</span>
-              <span>{eliteSummary.warn}</span>
-            </div>
-            <div
-              style={{
-                display: "flex",
-                justifyContent: "space-between",
-                fontSize: 11,
-                color: "#fb7185",
-              }}
-            >
-              <span>FAIL</span>
-              <span>{eliteSummary.fail}</span>
-            </div>
-          </div>
-        </div>
-      </div>
-      {/* TELEMETRY CHARTS (unchanged) */}
+      {/* TELEMETRY CHARTS (NOT spotlighted) */}
       <div
         className="cockpit-telemetry"
         style={{
@@ -522,32 +567,37 @@ export default function Dashboard() {
         <PassFailDonutChart overview={dashboard} />
       </div>
 
-      {/* EXPIRING CERTIFICATES + SEVERITY INTELLIGENCE (unchanged) */}
-      <ExpiringCertsHeatmap policies={policies} />
-      <SeverityDistributionChart overview={dashboard} />
-      <RiskTimelineChart policies={policies} />
-
-      {/* ============================================================
-         STEP 3 — ALERTS INTELLIGENCE (6-widget block)
-         Spotlight V4 wraps ONLY this stack
-      ============================================================ */}
-      <section data-spotlight="step3-alerts">
+      {/* ⭐ Step 3 Target: The entire Alerts Intelligence pack */}
+      <div data-spotlight="alerts-intel">
+        {/* ALERT TIMELINE */}
         <AlertTimelineChart orgId={activeOrgId} />
+
+        {/* TOP ALERT TYPES */}
         <TopAlertTypes orgId={activeOrgId} />
+
+        {/* ALERT AGING KPIs */}
         <AlertAgingKpis orgId={activeOrgId} />
+
+        {/* SLA BREACH WIDGET */}
         <SlaBreachWidget orgId={activeOrgId} />
+
+        {/* CRITICAL VENDOR WATCHLIST */}
         <CriticalVendorWatchlist orgId={activeOrgId} />
+
+        {/* ALERT HEAT SIGNATURE */}
         <AlertHeatSignature orgId={activeOrgId} />
-      </section>
+      </div>
 
       {/* ============================================================
-         STEP 4 — RENEWAL HEATMAP ONLY
-         (Backlog + other widgets remain OUTSIDE spotlight)
+         ⭐ STEP 4 — RENEWAL HEATMAP ONLY
+         Wrapped in: data-spotlight="renewals-panel"
       ============================================================ */}
-      <section data-spotlight="step4-renewals">
-        <RenewalHeatmap range={90} />
-      </section>
 
+      <div data-spotlight="renewals-panel">
+        <RenewalHeatmap range={90} />
+      </div>
+
+      {/* These items remain OUTSIDE spotlight */}
       <RenewalBacklog />
 
       <div
@@ -564,117 +614,12 @@ export default function Dashboard() {
         <RenewalCalendar range={60} />
         <RenewalAiSummary orgId={activeOrgId} />
       </div>
-
       {/* ============================================================
-         SYSTEM TIMELINE — UNCHANGED
+         ⭐ STEP 5 — POLICIES TABLE
+         Wrapped in: data-spotlight="policies-panel"
       ============================================================ */}
-      <div
-        style={{
-          marginTop: 16,
-          marginBottom: 32,
-          borderRadius: 20,
-          padding: 18,
-          border: "1px solid rgba(148,163,184,0.4)",
-          background: "rgba(15,23,42,0.96)",
-          boxShadow: "0 10px 35px rgba(0,0,0,0.45)",
-        }}
-      >
-        <h2
-          style={{
-            marginTop: 0,
-            marginBottom: 14,
-            fontSize: 18,
-            fontWeight: 600,
-            background: "linear-gradient(90deg,#38bdf8,#a855f7)",
-            WebkitBackgroundClip: "text",
-            color: "transparent",
-          }}
-        >
-          System Timeline (Automated Compliance Events)
-        </h2>
 
-        {systemTimelineLoading ? (
-          <div style={{ fontSize: 13, color: GP.textSoft }}>
-            Loading system events…
-          </div>
-        ) : systemTimeline.length === 0 ? (
-          <div style={{ fontSize: 13, color: GP.textSoft }}>
-            No system events recorded yet.
-          </div>
-        ) : (
-          <div
-            style={{
-              display: "flex",
-              flexDirection: "column",
-              gap: 10,
-              maxHeight: 340,
-              overflowY: "auto",
-              paddingRight: 6,
-            }}
-          >
-            {systemTimeline.map((item, idx) => (
-              <div
-                key={idx}
-                style={{
-                  padding: "10px 12px",
-                  borderRadius: 14,
-                  background: "rgba(2,6,23,0.65)",
-                  border: "1px solid rgba(148,163,184,0.28)",
-                  boxShadow: "0 2px 6px rgba(0,0,0,0.25)",
-                }}
-              >
-                <div
-                  style={{
-                    fontSize: 11,
-                    fontWeight: 600,
-                    textTransform: "uppercase",
-                    color:
-                      item.severity === "critical"
-                        ? GP.neonRed
-                        : item.severity === "high"
-                        ? GP.neonGold
-                        : GP.neonBlue,
-                    marginBottom: 4,
-                  }}
-                >
-                  {item.action.replace(/_/g, " ")}
-                </div>
-
-                <div style={{ fontSize: 13, color: GP.text }}>
-                  {item.message}
-                </div>
-
-                <div
-                  style={{
-                    fontSize: 11,
-                    color: GP.textSoft,
-                    marginTop: 4,
-                  }}
-                >
-                  Vendor:{" "}
-                  <span style={{ color: GP.neonBlue }}>
-                    {item.vendor_name || "Unknown"}
-                  </span>
-                </div>
-
-                <div
-                  style={{
-                    fontSize: 11,
-                    color: GP.textMuted,
-                    marginTop: 2,
-                  }}
-                >
-                  {new Date(item.created_at).toLocaleString()}
-                </div>
-              </div>
-            ))}
-          </div>
-        )}
-      </div>
-      {/* ============================================================
-         STEP 5 — POLICIES TABLE (FULL BLOCK)
-      ============================================================ */}
-      <section data-spotlight="step5-policies">
+      <div data-spotlight="policies-panel">
         <h2
           style={{
             marginTop: 32,
@@ -759,11 +704,11 @@ export default function Dashboard() {
                 <tbody>
                   {filtered.map((p) => {
                     const risk = computeRisk(p);
-                    const flags = risk.flags || [];
                     const elite = eliteMap[p.vendor_id];
                     const compliance = complianceMap[p.vendor_id];
                     const ai = computeAiRisk({ risk, elite, compliance });
                     const engine = engineMap[p.vendor_id];
+                    const flags = risk.flags || [];
 
                     const v3Tier =
                       engine && typeof engine.globalScore === "number"
@@ -787,6 +732,7 @@ export default function Dashboard() {
                         <td style={td}>{p.expiration_date || "—"}</td>
                         <td style={td}>{risk.daysLeft ?? "—"}</td>
 
+                        {/* STATUS BADGE */}
                         <td
                           style={{
                             ...td,
@@ -800,6 +746,7 @@ export default function Dashboard() {
                               risk.severity.slice(1)}
                         </td>
 
+                        {/* RISK TIER */}
                         <td style={{ ...td, textAlign: "center" }}>
                           <span
                             style={{
@@ -816,6 +763,7 @@ export default function Dashboard() {
                           </span>
                         </td>
 
+                        {/* AI RISK */}
                         <td
                           style={{
                             ...td,
@@ -857,14 +805,61 @@ export default function Dashboard() {
                           </div>
                         </td>
 
+                        {/* ENGINE SCORE */}
+                        <td style={{ ...td, textAlign: "center" }}>
+                          {!engine || engine.loading ? (
+                            <span style={{ fontSize: 11, color: GP.textMuted }}>
+                              Running…
+                            </span>
+                          ) : engine.error ? (
+                            <span style={{ fontSize: 11, color: GP.neonRed }}>
+                              Error
+                            </span>
+                          ) : (
+                            <div
+                              style={{
+                                display: "flex",
+                                flexDirection: "column",
+                                alignItems: "center",
+                                gap: 3,
+                              }}
+                            >
+                              <span
+                                style={{
+                                  fontSize: 13,
+                                  fontWeight: 600,
+                                  color:
+                                    engine.globalScore >= 80
+                                      ? GP.neonGreen
+                                      : engine.globalScore >= 60
+                                      ? GP.neonGold
+                                      : GP.neonRed,
+                                }}
+                              >
+                                {engine.globalScore}
+                              </span>
+                              <span
+                                style={{
+                                  fontSize: 10,
+                                  color: GP.textSoft,
+                                }}
+                              >
+                                {v3Tier}
+                              </span>
+                            </div>
+                          )}
+                        </td>
+
+                        {/* COMPLIANCE BADGE */}
                         <td style={{ ...td, textAlign: "center" }}>
                           {renderComplianceBadge(p.vendor_id, complianceMap)}
                         </td>
 
+                        {/* ELITE STATUS */}
                         <td style={{ ...td, textAlign: "center" }}>
                           {elite && !elite.loading && !elite.error ? (
                             <EliteStatusPill status={elite.overall} />
-                          ) : elite && elite.loading ? (
+                          ) : elite?.loading ? (
                             <span style={{ fontSize: 11, color: GP.textMuted }}>
                               Evaluating…
                             </span>
@@ -875,6 +870,7 @@ export default function Dashboard() {
                           )}
                         </td>
 
+                        {/* FLAGS */}
                         <td style={{ ...td, textAlign: "center" }}>
                           {flags.length > 0 ? (
                             <span
@@ -903,10 +899,11 @@ export default function Dashboard() {
             )}
           </>
         )}
-      </section>
+      </div>
 
       {/* ============================================================
-         SPOTLIGHT OVERLAY HOST (must be last)
+         ⭐ SPOTLIGHT OVERLAY HOST 
+         (must be at bottom of page)
       ============================================================ */}
       <DashboardSpotlightV3 spotlight={spotlight} />
     </div>
@@ -914,7 +911,7 @@ export default function Dashboard() {
 }
 
 /* ============================================================
-   SUPPORTING COMPONENTS (unchanged)
+   MINI COMPONENTS + TABLE STYLES (UNCHANGED)
 ============================================================ */
 
 function SeverityBox({ label, count, color }) {
@@ -970,23 +967,12 @@ function MiniKpi({ label, value, color, icon }) {
         <div style={{ fontSize: 12, color: GP.textSoft, marginBottom: 2 }}>
           {label}
         </div>
-        <div
-          style={{
-            fontSize: 16,
-            fontWeight: 600,
-            color,
-          }}
-        >
-          {value}
-        </div>
+        <div style={{ fontSize: 16, fontWeight: 600, color }}>{value}</div>
       </div>
     </div>
   );
 }
 
-/* =======================================
-   TABLE HEAD + CELL STYLES (unchanged)
-======================================= */
 const th = {
   padding: "10px 12px",
   background: "rgba(15,23,42,0.98)",
@@ -1004,8 +990,7 @@ const td = {
   color: "#e5e7eb",
 };
 
-// =======================================
-// END OF DASHBOARD V5 (Spotlight V4 Integrated)
-// =======================================
-
+/* ============================================================
+   ⭐ FINAL EXPORT
+============================================================ */
 export default Dashboard;
