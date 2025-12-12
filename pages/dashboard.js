@@ -1,9 +1,3 @@
-// =======================================
-// DASHBOARD.JS — FULL FILE (1/13)
-// pages/dashboard.js — Dashboard V5 (Cinematic Intelligence Cockpit)
-// ✅ Includes: Safe Telemetry + Post-Tour CTA + Tutorial onEvent wiring
-// =======================================
-
 import { useEffect, useState, useRef } from "react";
 import VendorDrawer from "../components/VendorDrawer";
 import { useRole } from "../lib/useRole";
@@ -150,10 +144,6 @@ function badgeStyle(level) {
       };
   }
 }
-// =======================================
-// DASHBOARD.JS — FULL FILE (2/13)
-// =======================================
-
 /* ============================================================
    AI RISK (Risk + Elite + V5 Compliance)
 ============================================================ */
@@ -312,9 +302,6 @@ function summarizeEngineHealth(engineMap) {
     total: vendors.length,
   };
 }
-// =======================================
-// DASHBOARD.JS — FULL FILE (3/13)
-// =======================================
 
 /* ============================================================
    MAIN DASHBOARD COMPONENT
