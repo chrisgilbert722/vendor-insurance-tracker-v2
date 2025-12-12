@@ -1,7 +1,7 @@
 // components/tutorial/DashboardTutorial.js
-// Dashboard Tutorial — TRUE Spotlight V4 (stable, cinematic, no reset)
+// Dashboard Tutorial — TRUE Spotlight V4 (stable, cinematic, no blur bugs)
 
-import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useState } from "react";
 
 const STEPS = [
   {
@@ -20,19 +20,19 @@ const STEPS = [
     id: "alerts",
     title: "Alerts & Coverage Gaps",
     body:
-      "This is your Alerts Intelligence layer — timelines, types, aging, SLA breaches, watchlists, and heat.",
+      "This is your Alerts Intelligence layer — timelines, types, aging, SLA breaches, watchlists, and heat. This is where risk becomes visible.",
   },
   {
     id: "renewals",
     title: "Renewals & Expirations",
     body:
-      "Upcoming renewals and backlog live here so nothing slips through the cracks.",
+      "Upcoming renewals and expiration backlog live here so nothing slips through the cracks.",
   },
   {
     id: "vendors",
     title: "Vendor Policy Cockpit",
     body:
-      "Every vendor is scored, explained, and traceable in one place. Click any row for details.",
+      "Every vendor is scored, explained, and traceable in one place. Click any row for full details.",
   },
 ];
 
@@ -40,86 +40,125 @@ export default function DashboardTutorial({ anchors, onFinish }) {
   const [stepIndex, setStepIndex] = useState(0);
   const [rect, setRect] = useState(null);
 
-  const lastRect = useRef(null);
   const step = STEPS[stepIndex];
   const anchorRef = anchors?.[step.id];
 
-  // Wait for anchor to exist, DO NOT unmount
+  /* -------------------------------------------------------
+     FORCE ALERTS OPEN FOR STEP 3 (CRITICAL FIX)
+  ------------------------------------------------------- */
+  useEffect(() => {
+    if (step.id !== "alerts") return;
+
+    // Dispatch event your dashboard already listens to
+    window.dispatchEvent(new CustomEvent("dashboard_force_open_alerts"));
+  }, [step.id]);
+
+  /* -------------------------------------------------------
+     WAIT FOR ANCHOR, THEN MEASURE + SCROLL
+  ------------------------------------------------------- */
   useLayoutEffect(() => {
     if (!anchorRef?.current) return;
 
     const el = anchorRef.current;
-    const box = el.getBoundingClientRect();
 
-    const r = {
-      top: Math.max(12, box.top - 10),
-      left: Math.max(12, box.left - 10),
-      width: box.width + 20,
-      height: box.height + 20,
+    el.scrollIntoView({
+      behavior: "smooth",
+      block: "center",
+    });
+
+    const measure = () => {
+      const b = el.getBoundingClientRect();
+      setRect({
+        top: b.top,
+        left: b.left,
+        width: b.width,
+        height: b.height,
+      });
     };
 
-    lastRect.current = r;
-    setRect(r);
+    measure();
+    window.addEventListener("resize", measure);
+    window.addEventListener("scroll", measure, { passive: true });
+
+    return () => {
+      window.removeEventListener("resize", measure);
+      window.removeEventListener("scroll", measure);
+    };
   }, [stepIndex, anchorRef]);
 
-  // Follow scroll / resize WITHOUT losing state
-  useEffect(() => {
-    function update() {
-      if (!anchorRef?.current) return;
-      const box = anchorRef.current.getBoundingClientRect();
-      const r = {
-        top: Math.max(12, box.top - 10),
-        left: Math.max(12, box.left - 10),
-        width: box.width + 20,
-        height: box.height + 20,
-      };
-      lastRect.current = r;
-      setRect(r);
+  if (!rect) return null;
+
+  const next = () => {
+    if (stepIndex === STEPS.length - 1) {
+      onFinish?.();
+    } else {
+      setStepIndex((i) => i + 1);
     }
+  };
 
-    window.addEventListener("scroll", update, { passive: true });
-    window.addEventListener("resize", update);
-    return () => {
-      window.removeEventListener("scroll", update);
-      window.removeEventListener("resize", update);
-    };
-  }, [anchorRef]);
+  const back = () => setStepIndex((i) => Math.max(0, i - 1));
 
-  const activeRect = rect || lastRect.current;
-  if (!activeRect) return null;
-
-  const isLast = stepIndex === STEPS.length - 1;
-
+  /* -------------------------------------------------------
+     TRUE SPOTLIGHT OVERLAY (NO BLUR ON TARGET)
+  ------------------------------------------------------- */
   return (
-    <div
-      style={{
-        position: "fixed",
-        inset: 0,
-        zIndex: 100000,
-        pointerEvents: "none",
-      }}
-    >
-      {/* DARK OVERLAY */}
+    <div style={{ position: "fixed", inset: 0, zIndex: 99999 }}>
+      {/* TOP */}
       <div
         style={{
           position: "fixed",
-          inset: 0,
-          background: "rgba(2,6,23,0.75)",
+          top: 0,
+          left: 0,
+          right: 0,
+          height: rect.top,
+          background: "rgba(2,6,23,0.72)",
+        }}
+      />
+      {/* LEFT */}
+      <div
+        style={{
+          position: "fixed",
+          top: rect.top,
+          left: 0,
+          width: rect.left,
+          height: rect.height,
+          background: "rgba(2,6,23,0.72)",
+        }}
+      />
+      {/* RIGHT */}
+      <div
+        style={{
+          position: "fixed",
+          top: rect.top,
+          left: rect.left + rect.width,
+          right: 0,
+          height: rect.height,
+          background: "rgba(2,6,23,0.72)",
+        }}
+      />
+      {/* BOTTOM */}
+      <div
+        style={{
+          position: "fixed",
+          top: rect.top + rect.height,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          background: "rgba(2,6,23,0.72)",
         }}
       />
 
-      {/* SPOTLIGHT HOLE */}
+      {/* HIGHLIGHT */}
       <div
         style={{
           position: "fixed",
-          top: activeRect.top,
-          left: activeRect.left,
-          width: activeRect.width,
-          height: activeRect.height,
+          top: rect.top - 6,
+          left: rect.left - 6,
+          width: rect.width + 12,
+          height: rect.height + 12,
           borderRadius: 18,
-          boxShadow:
-            "0 0 0 9999px rgba(2,6,23,0.75), 0 0 45px rgba(56,189,248,0.95)",
-          border: "2px solid rgba(56,189,248,1)",
+          border: "2px solid #38bdf8",
+          boxShadow: "0 0 45px rgba(56,189,248,0.9)",
           pointerEvents: "none",
         }}
       />
@@ -128,73 +167,47 @@ export default function DashboardTutorial({ anchors, onFinish }) {
       <div
         style={{
           position: "fixed",
-          bottom: 32,
-          left: "50%",
-          transform: "translateX(-50%)",
-          width: "100%",
-          maxWidth: 560,
+          top: rect.top + rect.height + 18,
+          left: Math.max(24, rect.left),
+          maxWidth: 480,
           background:
-            "radial-gradient(circle at top left, rgba(15,23,42,0.98), rgba(15,23,42,0.92))",
-          borderRadius: 20,
+            "radial-gradient(circle at top left,rgba(15,23,42,0.98),rgba(15,23,42,0.94))",
+          borderRadius: 18,
           padding: 18,
           border: "1px solid rgba(148,163,184,0.45)",
           boxShadow:
-            "0 20px 50px rgba(0,0,0,0.85), 0 0 40px rgba(56,189,248,0.35)",
+            "0 18px 55px rgba(0,0,0,0.85),0 0 40px rgba(56,189,248,0.35)",
           color: "#e5e7eb",
+          zIndex: 100000,
           pointerEvents: "auto",
         }}
       >
-        <div
-          style={{
-            fontSize: 11,
-            letterSpacing: "0.14em",
-            textTransform: "uppercase",
-            color: "#9ca3af",
-            marginBottom: 6,
-          }}
-        >
-          Dashboard Tour {stepIndex + 1}/{STEPS.length}
+        <div style={{ fontSize: 11, color: "#9ca3af", marginBottom: 6 }}>
+          DASHBOARD TOUR {stepIndex + 1}/{STEPS.length}
         </div>
 
-        <h3
-          style={{
-            margin: "4px 0",
-            fontSize: 18,
-            background: "linear-gradient(90deg,#38bdf8,#a855f7)",
-            WebkitBackgroundClip: "text",
-            color: "transparent",
-          }}
-        >
+        <h3 style={{ margin: "0 0 6px", color: "#38bdf8" }}>
           {step.title}
         </h3>
 
-        <p
-          style={{
-            fontSize: 13,
-            lineHeight: 1.55,
-            color: "#cbd5f5",
-            marginBottom: 14,
-          }}
-        >
-          {step.body}
-        </p>
+        <p style={{ fontSize: 13, lineHeight: 1.5 }}>{step.body}</p>
 
         <div
           style={{
             display: "flex",
             justifyContent: "space-between",
-            alignItems: "center",
+            marginTop: 14,
           }}
         >
           <button
-            onClick={() => setStepIndex((i) => Math.max(i - 1, 0))}
+            onClick={back}
             disabled={stepIndex === 0}
             style={{
-              background: "transparent",
-              border: "1px solid rgba(71,85,105,0.8)",
-              color: stepIndex === 0 ? "#64748b" : "#e5e7eb",
-              borderRadius: 999,
               padding: "6px 14px",
+              borderRadius: 999,
+              border: "1px solid rgba(148,163,184,0.4)",
+              background: "rgba(15,23,42,0.85)",
+              color: "#cbd5f5",
               cursor: stepIndex === 0 ? "not-allowed" : "pointer",
             }}
           >
@@ -202,27 +215,24 @@ export default function DashboardTutorial({ anchors, onFinish }) {
           </button>
 
           <button
-            onClick={() =>
-              isLast ? onFinish?.() : setStepIndex((i) => i + 1)
-            }
+            onClick={next}
             style={{
+              padding: "6px 18px",
               borderRadius: 999,
-              padding: "8px 20px",
-              border: "none",
+              border: "1px solid rgba(59,130,246,0.9)",
+              background:
+                stepIndex === STEPS.length - 1
+                  ? "radial-gradient(circle at top left,#22c55e,#16a34a)"
+                  : "radial-gradient(circle at top left,#3b82f6,#1d4ed8)",
+              color: "#ecfeff",
               fontWeight: 600,
               cursor: "pointer",
-              color: "#e0f2fe",
-              background: isLast
-                ? "radial-gradient(circle at top left,#22c55e,#16a34a,#052e16)"
-                : "radial-gradient(circle at top left,#3b82f6,#1d4ed8,#0f172a)",
-              boxShadow: "0 0 18px rgba(59,130,246,0.6)",
             }}
           >
-            {isLast ? "Finish →" : "Next →"}
+            {stepIndex === STEPS.length - 1 ? "Finish →" : "Next →"}
           </button>
         </div>
       </div>
     </div>
   );
 }
-
