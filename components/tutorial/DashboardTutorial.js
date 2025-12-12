@@ -1,5 +1,5 @@
 // components/tutorial/DashboardTutorial.js
-// Dashboard Tutorial — Spotlight V5 (Fixed, Deterministic, Cinematic)
+// Dashboard Tutorial — Spotlight V5 (Polished, Stable, Deterministic)
 
 import { useEffect, useLayoutEffect, useState } from "react";
 
@@ -50,49 +50,53 @@ export default function DashboardTutorial({ anchors, onFinish }) {
   const isLast = stepIndex === STEPS.length - 1;
 
   /* ============================================================
-     STEP 3 — FORCE ALERTS PANEL OPEN (WAIT UNTIL READY)
+     LOCK SCROLL DURING TUTORIAL (POLISH)
+  ============================================================ */
+  useEffect(() => {
+    const original = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.body.style.overflow = original;
+    };
+  }, []);
+
+  /* ============================================================
+     STEP 3 — FORCE ALERTS PANEL OPEN (SAFE)
   ============================================================ */
   useEffect(() => {
     if (step.id !== "alerts") return;
 
     window.dispatchEvent(new Event("dashboard_open_alerts"));
 
-    // Wait until alertsRef actually exists in the DOM
     let tries = 0;
-    const waitForAlerts = setInterval(() => {
+    const wait = setInterval(() => {
       if (anchors?.alerts?.current) {
-        clearInterval(waitForAlerts);
+        clearInterval(wait);
         measure();
       }
-      tries++;
-      if (tries > 20) clearInterval(waitForAlerts);
+      if (++tries > 20) clearInterval(wait);
     }, 50);
 
-    return () => clearInterval(waitForAlerts);
+    return () => clearInterval(wait);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [step.id]);
 
   /* ============================================================
-     SCROLL INTO VIEW (AFTER ANCHOR EXISTS)
+     SCROLL INTO VIEW
   ============================================================ */
   useEffect(() => {
     if (!anchorRef?.current) return;
-
-    anchorRef.current.scrollIntoView({
-      behavior: "smooth",
-      block: "center",
-    });
+    anchorRef.current.scrollIntoView({ behavior: "smooth", block: "center" });
   }, [stepIndex, anchorRef]);
 
   /* ============================================================
-     MEASURE HIGHLIGHT RECT (STABLE)
+     MEASURE RECT (STABLE)
   ============================================================ */
   const measure = () => {
     if (!anchorRef?.current) {
       setRect(null);
       return;
     }
-
     const box = anchorRef.current.getBoundingClientRect();
     setRect({
       top: box.top - 12,
@@ -106,7 +110,6 @@ export default function DashboardTutorial({ anchors, onFinish }) {
     measure();
     window.addEventListener("resize", measure);
     window.addEventListener("scroll", measure, { passive: true });
-
     return () => {
       window.removeEventListener("resize", measure);
       window.removeEventListener("scroll", measure);
@@ -116,11 +119,8 @@ export default function DashboardTutorial({ anchors, onFinish }) {
 
   if (!rect) return null;
 
-  /* ============================================================
-     TOOLTIP POSITIONING
-  ============================================================ */
   const tooltipTop = isLast
-    ? Math.max(24, rect.top - 220) // FORCE ABOVE FOR STEP 5
+    ? Math.max(24, rect.top - 220)
     : rect.top + rect.height + 20;
 
   /* ============================================================
@@ -133,17 +133,14 @@ export default function DashboardTutorial({ anchors, onFinish }) {
         inset: 0,
         zIndex: 99999,
         pointerEvents: "none",
+        animation: "fadeIn 220ms ease-out",
       }}
     >
-      {/* DARK MASK (CUT-OUT SPOTLIGHT) */}
+      {/* SPOTLIGHT MASK */}
       <svg
         width="100%"
         height="100%"
-        style={{
-          position: "fixed",
-          inset: 0,
-          pointerEvents: "none",
-        }}
+        style={{ position: "fixed", inset: 0 }}
       >
         <defs>
           <mask id="spotlight-mask">
@@ -163,7 +160,7 @@ export default function DashboardTutorial({ anchors, onFinish }) {
         <rect
           width="100%"
           height="100%"
-          fill="rgba(2,6,23,0.6)"
+          fill="rgba(2,6,23,0.55)"
           mask="url(#spotlight-mask)"
         />
       </svg>
@@ -177,9 +174,9 @@ export default function DashboardTutorial({ anchors, onFinish }) {
           width: rect.width,
           height: rect.height,
           borderRadius: 18,
-          border: "2px solid rgba(56,189,248,0.95)",
+          border: "2px solid rgba(56,189,248,0.85)",
           boxShadow:
-            "0 0 35px rgba(56,189,248,0.85), inset 0 0 18px rgba(56,189,248,0.25)",
+            "0 0 22px rgba(56,189,248,0.6), inset 0 0 12px rgba(56,189,248,0.18)",
           pointerEvents: "none",
         }}
       />
@@ -189,17 +186,18 @@ export default function DashboardTutorial({ anchors, onFinish }) {
         style={{
           position: "fixed",
           top: tooltipTop,
-          left: Math.max(24, rect.left),
+          left: Math.max(24, Math.min(rect.left, window.innerWidth - 560)),
           maxWidth: 520,
           borderRadius: 20,
           padding: 18,
           background:
             "radial-gradient(circle at top left,rgba(15,23,42,0.98),rgba(15,23,42,0.94))",
-          border: "1px solid rgba(148,163,184,0.55)",
+          border: "1px solid rgba(148,163,184,0.5)",
           boxShadow:
-            "0 18px 50px rgba(0,0,0,0.85), 0 0 30px rgba(56,189,248,0.25)",
+            "0 14px 40px rgba(0,0,0,0.8), 0 0 20px rgba(56,189,248,0.2)",
           color: "#e5e7eb",
           pointerEvents: "auto",
+          animation: "fadeUp 240ms ease-out",
         }}
       >
         <div
@@ -276,14 +274,25 @@ export default function DashboardTutorial({ anchors, onFinish }) {
               fontWeight: 600,
               cursor: "pointer",
               boxShadow: isLast
-                ? "0 0 20px rgba(34,197,94,0.6)"
-                : "0 0 20px rgba(59,130,246,0.6)",
+                ? "0 0 14px rgba(34,197,94,0.5)"
+                : "0 0 14px rgba(59,130,246,0.5)",
             }}
           >
             {isLast ? "Finish →" : "Next →"}
           </button>
         </div>
       </div>
+
+      <style jsx>{`
+        @keyframes fadeIn {
+          from { opacity: 0 }
+          to { opacity: 1 }
+        }
+        @keyframes fadeUp {
+          from { opacity: 0; transform: translateY(6px); }
+          to { opacity: 1; transform: translateY(0); }
+        }
+      `}</style>
     </div>
   );
 }
