@@ -1,5 +1,5 @@
 // components/tutorial/DashboardTutorial.js
-// Dashboard Tutorial — Spotlight V5 (Stable, Cinematic, Safe)
+// Dashboard Tutorial — Spotlight V5 (Fixed, Deterministic, Cinematic)
 
 import { useEffect, useLayoutEffect, useState } from "react";
 
@@ -50,18 +50,30 @@ export default function DashboardTutorial({ anchors, onFinish }) {
   const isLast = stepIndex === STEPS.length - 1;
 
   /* ============================================================
-     STEP 3 — FORCE ALERTS OPEN (SAFE)
+     STEP 3 — FORCE ALERTS PANEL OPEN (WAIT UNTIL READY)
   ============================================================ */
   useEffect(() => {
     if (step.id !== "alerts") return;
 
-    // Let dashboard open alerts normally
-    const event = new CustomEvent("dashboard_open_alerts");
-    window.dispatchEvent(event);
+    window.dispatchEvent(new Event("dashboard_open_alerts"));
+
+    // Wait until alertsRef actually exists in the DOM
+    let tries = 0;
+    const waitForAlerts = setInterval(() => {
+      if (anchors?.alerts?.current) {
+        clearInterval(waitForAlerts);
+        measure();
+      }
+      tries++;
+      if (tries > 20) clearInterval(waitForAlerts);
+    }, 50);
+
+    return () => clearInterval(waitForAlerts);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [step.id]);
 
   /* ============================================================
-     SCROLL TARGET INTO VIEW
+     SCROLL INTO VIEW (AFTER ANCHOR EXISTS)
   ============================================================ */
   useEffect(() => {
     if (!anchorRef?.current) return;
@@ -70,27 +82,27 @@ export default function DashboardTutorial({ anchors, onFinish }) {
       behavior: "smooth",
       block: "center",
     });
-  }, [stepIndex]);
+  }, [stepIndex, anchorRef]);
 
   /* ============================================================
-     MEASURE HIGHLIGHT RECT (POST-LAYOUT)
+     MEASURE HIGHLIGHT RECT (STABLE)
   ============================================================ */
-  useLayoutEffect(() => {
+  const measure = () => {
     if (!anchorRef?.current) {
       setRect(null);
       return;
     }
 
-    const measure = () => {
-      const box = anchorRef.current.getBoundingClientRect();
-      setRect({
-        top: box.top - 10,
-        left: box.left - 10,
-        width: box.width + 20,
-        height: box.height + 20,
-      });
-    };
+    const box = anchorRef.current.getBoundingClientRect();
+    setRect({
+      top: box.top - 12,
+      left: box.left - 12,
+      width: box.width + 24,
+      height: box.height + 24,
+    });
+  };
 
+  useLayoutEffect(() => {
     measure();
     window.addEventListener("resize", measure);
     window.addEventListener("scroll", measure, { passive: true });
@@ -99,12 +111,17 @@ export default function DashboardTutorial({ anchors, onFinish }) {
       window.removeEventListener("resize", measure);
       window.removeEventListener("scroll", measure);
     };
-  }, [anchorRef, stepIndex]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [stepIndex, anchorRef]);
 
   if (!rect) return null;
 
-  const tooltipAbove =
-    rect.top + rect.height + 240 > window.innerHeight;
+  /* ============================================================
+     TOOLTIP POSITIONING
+  ============================================================ */
+  const tooltipTop = isLast
+    ? Math.max(24, rect.top - 220) // FORCE ABOVE FOR STEP 5
+    : rect.top + rect.height + 20;
 
   /* ============================================================
      RENDER
@@ -118,16 +135,40 @@ export default function DashboardTutorial({ anchors, onFinish }) {
         pointerEvents: "none",
       }}
     >
-      {/* BACKDROP */}
-      <div
+      {/* DARK MASK (CUT-OUT SPOTLIGHT) */}
+      <svg
+        width="100%"
+        height="100%"
         style={{
           position: "fixed",
           inset: 0,
-          background: "rgba(2,6,23,0.55)",
+          pointerEvents: "none",
         }}
-      />
+      >
+        <defs>
+          <mask id="spotlight-mask">
+            <rect width="100%" height="100%" fill="white" />
+            <rect
+              x={rect.left}
+              y={rect.top}
+              width={rect.width}
+              height={rect.height}
+              rx="18"
+              ry="18"
+              fill="black"
+            />
+          </mask>
+        </defs>
 
-      {/* HIGHLIGHT BOX */}
+        <rect
+          width="100%"
+          height="100%"
+          fill="rgba(2,6,23,0.6)"
+          mask="url(#spotlight-mask)"
+        />
+      </svg>
+
+      {/* HIGHLIGHT BORDER */}
       <div
         style={{
           position: "fixed",
@@ -147,9 +188,7 @@ export default function DashboardTutorial({ anchors, onFinish }) {
       <div
         style={{
           position: "fixed",
-          top: tooltipAbove
-            ? rect.top - 200
-            : rect.top + rect.height + 20,
+          top: tooltipTop,
           left: Math.max(24, rect.left),
           maxWidth: 520,
           borderRadius: 20,
@@ -163,7 +202,6 @@ export default function DashboardTutorial({ anchors, onFinish }) {
           pointerEvents: "auto",
         }}
       >
-        {/* STEP COUNTER */}
         <div
           style={{
             fontSize: 11,
@@ -176,7 +214,6 @@ export default function DashboardTutorial({ anchors, onFinish }) {
           Step {stepIndex + 1} / {STEPS.length}
         </div>
 
-        {/* TITLE */}
         <h3
           style={{
             margin: "0 0 8px",
@@ -190,7 +227,6 @@ export default function DashboardTutorial({ anchors, onFinish }) {
           {step.title}
         </h3>
 
-        {/* BODY */}
         <p
           style={{
             margin: 0,
@@ -202,7 +238,6 @@ export default function DashboardTutorial({ anchors, onFinish }) {
           {step.body}
         </p>
 
-        {/* CONTROLS */}
         <div
           style={{
             display: "flex",
