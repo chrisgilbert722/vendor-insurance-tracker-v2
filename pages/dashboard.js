@@ -1,4 +1,8 @@
+// =======================================
+// DASHBOARD.JS — FULL FILE (1/13)
 // pages/dashboard.js — Dashboard V5 (Cinematic Intelligence Cockpit)
+// ✅ Includes: Safe Telemetry + Post-Tour CTA + Tutorial onEvent wiring
+// =======================================
 
 import { useEffect, useState, useRef } from "react";
 import VendorDrawer from "../components/VendorDrawer";
@@ -146,6 +150,9 @@ function badgeStyle(level) {
       };
   }
 }
+// =======================================
+// DASHBOARD.JS — FULL FILE (2/13)
+// =======================================
 
 /* ============================================================
    AI RISK (Risk + Elite + V5 Compliance)
@@ -305,6 +312,10 @@ function summarizeEngineHealth(engineMap) {
     total: vendors.length,
   };
 }
+// =======================================
+// DASHBOARD.JS — FULL FILE (3/13)
+// =======================================
+
 /* ============================================================
    MAIN DASHBOARD COMPONENT
 ============================================================ */
@@ -342,20 +353,43 @@ function Dashboard() {
   const [engineMap, setEngineMap] = useState({});
   const [alertSummary, setAlertSummary] = useState(null);
   const [showAlerts, setShowAlerts] = useState(false);
-// ============================================================
-// DASHBOARD TUTORIAL — FORCE ALERTS PANEL OPEN (STEP 3 FIX)
-// ============================================================
-useEffect(() => {
-  const forceOpenAlerts = () => {
-    setShowAlerts(true);
+
+  // ============================================================
+  // ✅ POST-TOUR CTA (Monetization Layer)
+  // ============================================================
+  const [showPostTourCta, setShowPostTourCta] = useState(false);
+
+  // ============================================================
+  // ✅ SAFE TELEMETRY (Never breaks)
+  // ============================================================
+  const track = async (event, meta = {}) => {
+    try {
+      fetch("/api/telemetry/event", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          event,
+          page: "dashboard",
+          meta,
+        }),
+      }).catch(() => {});
+    } catch {}
   };
 
-  window.addEventListener("dashboard_open_alerts", forceOpenAlerts);
+  // ============================================================
+  // DASHBOARD TUTORIAL — FORCE ALERTS PANEL OPEN (STEP 3 FIX)
+  // ============================================================
+  useEffect(() => {
+    const forceOpenAlerts = () => {
+      setShowAlerts(true);
+    };
 
-  return () => {
-    window.removeEventListener("dashboard_open_alerts", forceOpenAlerts);
-  };
-}, []);
+    window.addEventListener("dashboard_open_alerts", forceOpenAlerts);
+
+    return () => {
+      window.removeEventListener("dashboard_open_alerts", forceOpenAlerts);
+    };
+  }, []);
 
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [drawerVendor, setDrawerVendor] = useState(null);
@@ -366,6 +400,9 @@ useEffect(() => {
 
   // DASHBOARD TUTORIAL VISIBILITY
   const [showTutorial, setShowTutorial] = useState(false);
+// =======================================
+// DASHBOARD.JS — FULL FILE (4/13)
+// =======================================
 
   /* ============================================================
      ONBOARDING + TUTORIAL STATUS (COMBINED)
@@ -416,13 +453,22 @@ useEffect(() => {
     }
   }, []);
 
-  /* FINISH TUTORIAL */
+  /* ============================================================
+     ✅ FINISH TUTORIAL (PATCHED)
+     - Sets CTA visible
+     - Telemetry: tutorial_finish
+============================================================ */
   const handleFinishTutorial = () => {
     setShowTutorial(false);
+    setShowPostTourCta(true);
+
     try {
       localStorage.setItem("dashboard_tutorial_seen", "true");
     } catch {}
+
+    track("tutorial_finish");
   };
+
   /* ============================================================
      ONBOARDING BANNER DISMISS
 ============================================================ */
@@ -443,6 +489,9 @@ useEffect(() => {
   const handleStartOnboarding = () => {
     window.location.href = "/onboarding/start";
   };
+// =======================================
+// DASHBOARD.JS — FULL FILE (5/13)
+// =======================================
 
   /* ============================================================
      AUTO-OPEN CHECKLIST ON IDLE
@@ -511,6 +560,10 @@ useEffect(() => {
       }
     })();
   }, []);
+// =======================================
+// DASHBOARD.JS — FULL FILE (6/13)
+// =======================================
+
   /* ============================================================
      ELITE ENGINE — COI Evaluation
 ============================================================ */
@@ -646,6 +699,9 @@ useEffect(() => {
         });
     });
   }, [policies, activeOrgId, engineMap]);
+// =======================================
+// DASHBOARD.JS — FULL FILE (7/13)
+// =======================================
 
   /* ============================================================
      ELITE SUMMARY COUNTS
@@ -685,6 +741,7 @@ useEffect(() => {
     const interval = setInterval(loadAlerts, 15000);
     return () => clearInterval(interval);
   }, [activeOrgId]);
+
   /* ============================================================
      SYSTEM TIMELINE
 ============================================================ */
@@ -750,6 +807,10 @@ useEffect(() => {
         return b.total - a.total;
       })
     : [];
+// =======================================
+// DASHBOARD.JS — FULL FILE (8/13)
+// =======================================
+
   /* ============================================================
      MAIN RENDER
 ============================================================ */
@@ -964,6 +1025,10 @@ useEffect(() => {
             </div>
           </div>
         </div>
+// =======================================
+// DASHBOARD.JS — FULL FILE (9/13)
+// =======================================
+
         {/* RIGHT SIDE — Donut + Elite Snapshot */}
         <div
           style={{
@@ -1155,6 +1220,9 @@ useEffect(() => {
             </div>
           </div>
         </div>
+// =======================================
+// DASHBOARD.JS — FULL FILE (10/13)
+// =======================================
 
         <div
           style={{
@@ -1227,6 +1295,7 @@ useEffect(() => {
           )}
         </div>
       </div>
+
       {/* ALERTS V2 PANEL (tutorial anchor: alertsRef) */}
       {showAlerts && (
         <div ref={alertsRef}>
@@ -1302,6 +1371,9 @@ useEffect(() => {
                 />
               </div>
             )}
+// =======================================
+// DASHBOARD.JS — FULL FILE (11/13)
+// =======================================
 
             {alertSummary && alertVendorsList.length > 0 && (
               <div
@@ -1376,9 +1448,7 @@ useEffect(() => {
                               {v.latest.code} · {v.latest.message}
                             </span>
                           ) : (
-                            <span
-                              style={{ fontSize: 11, color: GP.textMuted }}
-                            >
+                            <span style={{ fontSize: 11, color: GP.textMuted }}>
                               —
                             </span>
                           )}
@@ -1391,9 +1461,7 @@ useEffect(() => {
             )}
 
             {!alertSummary && (
-              <div
-                style={{ fontSize: 12, color: GP.textSoft, marginTop: 8 }}
-              >
+              <div style={{ fontSize: 12, color: GP.textSoft, marginTop: 8 }}>
                 Loading alert summary…
               </div>
             )}
@@ -1447,6 +1515,10 @@ useEffect(() => {
         <RenewalCalendar range={60} />
         <RenewalAiSummary orgId={activeOrgId} />
       </div>
+// =======================================
+// DASHBOARD.JS — FULL FILE (12/13)
+// =======================================
+
       {/* SYSTEM TIMELINE */}
       <div
         style={{
@@ -1592,6 +1664,9 @@ useEffect(() => {
             No matching policies.
           </div>
         )}
+// =======================================
+// DASHBOARD.JS — FULL FILE (13/13)
+// =======================================
 
         {!loadingPolicies && filtered.length > 0 && (
           <>
@@ -1726,6 +1801,9 @@ useEffect(() => {
                             />
                           </div>
                         </td>
+
+                        {/* NOTE: Your original file had header columns for V5 Engine + Compliance.
+                           Keeping your existing row structure unchanged (only your existing badge render). */}
                         <td style={{ ...td, textAlign: "center" }}>
                           {renderComplianceBadge(p.vendor_id, complianceMap)}
                         </td>
@@ -1776,6 +1854,7 @@ useEffect(() => {
       {showTutorial && (
         <DashboardTutorial
           onFinish={handleFinishTutorial}
+          onEvent={(name, data) => track(name, data)}
           anchors={{
             risk: riskRef,
             fixPlans: kpiRef,
@@ -1785,9 +1864,135 @@ useEffect(() => {
           }}
         />
       )}
+
+      {/* ✅ POST-TOUR CTA PANEL (Monetization Layer) */}
+      {showPostTourCta && (
+        <div
+          style={{
+            position: "fixed",
+            right: 24,
+            bottom: 24,
+            zIndex: 99998,
+            width: 420,
+            borderRadius: 18,
+            padding: 14,
+            border: "1px solid rgba(148,163,184,0.45)",
+            background: "rgba(15,23,42,0.96)",
+            boxShadow:
+              "0 18px 55px rgba(0,0,0,0.65), 0 0 28px rgba(56,189,248,0.22)",
+            color: "#e5e7eb",
+          }}
+        >
+          <div
+            style={{
+              fontSize: 11,
+              letterSpacing: "0.14em",
+              textTransform: "uppercase",
+              color: "rgba(148,163,184,0.8)",
+            }}
+          >
+            Tour completed
+          </div>
+
+          <div style={{ marginTop: 6, fontSize: 15, fontWeight: 700 }}>
+            Want us to fix everything automatically?
+          </div>
+
+          <div
+            style={{
+              marginTop: 6,
+              fontSize: 13,
+              color: "rgba(203,213,245,0.9)",
+              lineHeight: 1.4,
+            }}
+          >
+            Run a full compliance scan, review alerts, or upload a new COI now.
+          </div>
+
+          <div style={{ display: "flex", gap: 10, marginTop: 12, flexWrap: "wrap" }}>
+            <a
+              href="/admin/org-compliance"
+              onClick={() => track("cta_click", { cta: "org_compliance" })}
+              style={{
+                padding: "8px 14px",
+                borderRadius: 999,
+                border: "1px solid rgba(56,189,248,0.85)",
+                background:
+                  "radial-gradient(circle at top left,#3b82f6,#1d4ed8,#0f172a)",
+                color: "#e0f2fe",
+                fontSize: 13,
+                fontWeight: 700,
+                textDecoration: "none",
+                boxShadow: "0 0 18px rgba(59,130,246,0.55)",
+              }}
+            >
+              Run Compliance Scan →
+            </a>
+
+            <button
+              type="button"
+              onClick={() => {
+                setShowAlerts(true);
+                setShowPostTourCta(false);
+                track("cta_click", { cta: "view_alerts" });
+              }}
+              style={{
+                padding: "8px 14px",
+                borderRadius: 999,
+                border: "1px solid rgba(250,204,21,0.55)",
+                background: "rgba(15,23,42,0.9)",
+                color: "#fef3c7",
+                fontSize: 13,
+                fontWeight: 700,
+                cursor: "pointer",
+              }}
+            >
+              View Alerts
+            </button>
+
+            <a
+              href="/upload-coi"
+              onClick={() => track("cta_click", { cta: "upload_coi" })}
+              style={{
+                padding: "8px 14px",
+                borderRadius: 999,
+                border: "1px solid rgba(34,197,94,0.55)",
+                background: "rgba(15,23,42,0.9)",
+                color: "#bbf7d0",
+                fontSize: 13,
+                fontWeight: 700,
+                textDecoration: "none",
+              }}
+            >
+              Upload COI
+            </a>
+
+            <button
+              type="button"
+              onClick={() => {
+                setShowPostTourCta(false);
+                track("cta_dismiss");
+              }}
+              style={{
+                marginLeft: "auto",
+                padding: "8px 12px",
+                borderRadius: 999,
+                border: "1px solid rgba(148,163,184,0.35)",
+                background: "transparent",
+                color: "rgba(148,163,184,0.9)",
+                fontSize: 13,
+                cursor: "pointer",
+              }}
+            >
+              Dismiss
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
+
 /* =======================================
    SEVERITY BOX COMPONENT
 ======================================= */
@@ -1824,6 +2029,7 @@ function SeverityBox({ label, count, color }) {
     </div>
   );
 }
+
 /* =======================================
    MINI KPI COMPONENT
 ======================================= */
@@ -1859,6 +2065,7 @@ function MiniKpi({ label, value, color, icon }) {
     </div>
   );
 }
+
 /* =======================================
    TABLE HEAD + CELL STYLES
 ======================================= */
@@ -1884,3 +2091,4 @@ const td = {
 // =======================================
 
 export default Dashboard;
+
