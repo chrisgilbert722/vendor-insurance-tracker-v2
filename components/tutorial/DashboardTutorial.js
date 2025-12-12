@@ -1,7 +1,7 @@
 // components/tutorial/DashboardTutorial.js
-// Dashboard Tutorial — Spotlight V4 (RECT cutout, stable, cinematic)
+// Dashboard Tutorial — Spotlight V4 (stable, non-breaking)
 
-import { useEffect, useLayoutEffect, useState } from "react";
+import { useEffect, useState } from "react";
 
 const STEPS = [
   {
@@ -20,7 +20,7 @@ const STEPS = [
     id: "alerts",
     title: "Alerts & Coverage Gaps",
     body:
-      "This is your Alerts Intelligence layer: timelines, severities, SLA breaches, and high-risk vendors.",
+      "This is your Alerts Intelligence layer: timelines, alert types, aging, SLA breaches, watchlists, and heat signatures.",
   },
   {
     id: "renewals",
@@ -43,102 +43,96 @@ export default function DashboardTutorial({ anchors, onFinish }) {
   const step = STEPS[stepIndex];
   const anchorRef = anchors?.[step.id];
 
-  /* -------------------------------------------------
-     FORCE ALERTS OPEN BEFORE STEP 3 MEASURES
-  --------------------------------------------------*/
+  /* ============================================================
+     FORCE ALERTS OPEN FOR STEP 3
+  ============================================================ */
   useEffect(() => {
     if (step.id !== "alerts") return;
 
-    // fire once, async-safe
-    requestAnimationFrame(() => {
-      window.dispatchEvent(new CustomEvent("dashboard_force_alerts_open"));
-    });
+    // Click Alerts toggle safely
+    const btn = document.querySelector(
+      "button[aria-label='Alerts'], button:has-text('Alerts')"
+    );
+    if (btn) btn.click();
   }, [step.id]);
 
-  /* -------------------------------------------------
-     MEASURE TARGET RECT (layout-safe)
-  --------------------------------------------------*/
-  useLayoutEffect(() => {
-    if (!anchorRef?.current) {
-      setRect(null);
-      return;
-    }
+  /* ============================================================
+     WAIT FOR ANCHOR TO EXIST (NO DISAPPEARING)
+  ============================================================ */
+  useEffect(() => {
+    if (!anchorRef?.current) return;
 
-    const measure = () => {
-      const el = anchorRef.current;
-      const box = el.getBoundingClientRect();
-
+    const updateRect = () => {
+      const b = anchorRef.current.getBoundingClientRect();
       setRect({
-        top: Math.max(box.top - 12, 8),
-        left: Math.max(box.left - 12, 8),
-        width: box.width + 24,
-        height: box.height + 24,
+        top: b.top - 10,
+        left: b.left - 10,
+        width: b.width + 20,
+        height: b.height + 20,
       });
     };
 
-    measure();
-    window.addEventListener("resize", measure);
-    window.addEventListener("scroll", measure, { passive: true });
+    updateRect();
+
+    window.addEventListener("scroll", updateRect, { passive: true });
+    window.addEventListener("resize", updateRect);
 
     return () => {
-      window.removeEventListener("resize", measure);
-      window.removeEventListener("scroll", measure);
+      window.removeEventListener("scroll", updateRect);
+      window.removeEventListener("resize", updateRect);
     };
   }, [anchorRef, stepIndex]);
 
-  if (!rect) return null;
+  /* ============================================================
+     AUTO SCROLL INTO VIEW
+  ============================================================ */
+  useEffect(() => {
+    if (!anchorRef?.current) return;
+    anchorRef.current.scrollIntoView({
+      behavior: "smooth",
+      block: "center",
+    });
+  }, [stepIndex, anchorRef]);
 
   const atFirst = stepIndex === 0;
   const atLast = stepIndex === STEPS.length - 1;
 
+  const next = () =>
+    setStepIndex((i) => Math.min(i + 1, STEPS.length - 1));
+  const back = () => setStepIndex((i) => Math.max(i - 1, 0));
+
+  /* ============================================================
+     RENDER (DO NOT UNMOUNT IF rect IS NULL)
+  ============================================================ */
   return (
-    <div
-      style={{
-        position: "fixed",
-        inset: 0,
-        zIndex: 99999,
-        pointerEvents: "none",
-      }}
-    >
-      {/* DARK OVERLAY */}
+    <div style={{ position: "fixed", inset: 0, zIndex: 99999 }}>
+      {/* DIM OVERLAY (NO BLUR ON TARGET) */}
       <div
         style={{
           position: "fixed",
           inset: 0,
-          background: "rgba(2,6,23,0.75)",
-        }}
-      />
-
-      {/* CUTOUT RECT */}
-      <div
-        style={{
-          position: "fixed",
-          top: rect.top,
-          left: rect.left,
-          width: rect.width,
-          height: rect.height,
-          background: "transparent",
-          boxShadow: "0 0 0 9999px rgba(2,6,23,0.75)",
-          borderRadius: 18,
+          background: "rgba(2,6,23,0.65)",
           pointerEvents: "none",
         }}
       />
 
-      {/* NEON BORDER */}
-      <div
-        style={{
-          position: "fixed",
-          top: rect.top,
-          left: rect.left,
-          width: rect.width,
-          height: rect.height,
-          borderRadius: 18,
-          border: "2px solid #38bdf8",
-          boxShadow:
-            "0 0 30px rgba(56,189,248,0.9), 0 0 60px rgba(56,189,248,0.6)",
-          pointerEvents: "none",
-        }}
-      />
+      {/* HIGHLIGHT */}
+      {rect && (
+        <div
+          style={{
+            position: "fixed",
+            top: rect.top,
+            left: rect.left,
+            width: rect.width,
+            height: rect.height,
+            borderRadius: 18,
+            border: "2px solid #38bdf8",
+            boxShadow:
+              "0 0 35px rgba(56,189,248,0.9), inset 0 0 0 9999px rgba(0,0,0,0)",
+            pointerEvents: "none",
+          }}
+        />
+      )}
 
       {/* TOOLTIP */}
       <div
@@ -147,15 +141,15 @@ export default function DashboardTutorial({ anchors, onFinish }) {
           bottom: 32,
           left: "50%",
           transform: "translateX(-50%)",
-          width: "100%",
           maxWidth: 520,
+          width: "calc(100% - 32px)",
           background:
             "radial-gradient(circle at top left,rgba(15,23,42,0.98),rgba(15,23,42,0.94))",
-          borderRadius: 20,
+          borderRadius: 18,
           padding: 18,
-          border: "1px solid rgba(148,163,184,0.55)",
+          border: "1px solid rgba(148,163,184,0.45)",
           boxShadow:
-            "0 20px 60px rgba(0,0,0,0.8), 0 0 40px rgba(56,189,248,0.25)",
+            "0 18px 45px rgba(0,0,0,0.85), 0 0 35px rgba(56,189,248,0.25)",
           color: "#e5e7eb",
           pointerEvents: "auto",
         }}
@@ -183,14 +177,7 @@ export default function DashboardTutorial({ anchors, onFinish }) {
           {step.title}
         </h3>
 
-        <p
-          style={{
-            fontSize: 13,
-            lineHeight: 1.5,
-            color: "#cbd5f5",
-            marginBottom: 14,
-          }}
-        >
+        <p style={{ fontSize: 13, lineHeight: 1.5, color: "#cbd5f5" }}>
           {step.body}
         </p>
 
@@ -199,15 +186,18 @@ export default function DashboardTutorial({ anchors, onFinish }) {
             display: "flex",
             justifyContent: "space-between",
             alignItems: "center",
+            marginTop: 14,
           }}
         >
           <button
+            onClick={back}
             disabled={atFirst}
-            onClick={() => setStepIndex((i) => Math.max(i - 1, 0))}
             style={{
-              background: "transparent",
-              border: "none",
-              color: atFirst ? "#6b7280" : "#9ca3af",
+              padding: "6px 14px",
+              borderRadius: 999,
+              background: "rgba(15,23,42,0.8)",
+              border: "1px solid rgba(71,85,105,0.8)",
+              color: atFirst ? "#6b7280" : "#e5e7eb",
               cursor: atFirst ? "not-allowed" : "pointer",
             }}
           >
@@ -215,23 +205,18 @@ export default function DashboardTutorial({ anchors, onFinish }) {
           </button>
 
           <button
-            onClick={() => {
-              if (atLast) onFinish();
-              else setStepIndex((i) => i + 1);
-            }}
+            onClick={atLast ? onFinish : next}
             style={{
-              padding: "8px 18px",
+              padding: "7px 18px",
               borderRadius: 999,
-              border: "1px solid rgba(59,130,246,0.9)",
               background: atLast
-                ? "radial-gradient(circle at top left,#22c55e,#16a34a,#052e16)"
-                : "radial-gradient(circle at top left,#3b82f6,#1d4ed8,#0f172a)",
-              color: "#e0f2fe",
+                ? "linear-gradient(90deg,#22c55e,#16a34a)"
+                : "linear-gradient(90deg,#3b82f6,#1d4ed8)",
+              border: "none",
+              color: "#ecfeff",
               fontWeight: 600,
+              boxShadow: "0 0 18px rgba(56,189,248,0.55)",
               cursor: "pointer",
-              boxShadow: atLast
-                ? "0 0 18px rgba(34,197,94,0.6)"
-                : "0 0 18px rgba(59,130,246,0.6)",
             }}
           >
             {atLast ? "Finish →" : "Next →"}
