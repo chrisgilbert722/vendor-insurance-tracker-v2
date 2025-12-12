@@ -1,10 +1,10 @@
 // components/tutorial/DashboardTutorial.js
 // Dashboard Tutorial — Spotlight V5 (Fixed, Deterministic, Cinematic)
 // FULL FILE — CLEAN COPY / PASTE
-// ✅ Telemetry-safe (onEvent optional)
-// ✅ No behavior regressions
+// ✅ Overlay teardown fixed
+// ✅ CTA clicks no longer blocked
+// ✅ Telemetry-safe
 // ✅ All spotlight math preserved
-// ✅ Step 3 alert force preserved
 
 import { useEffect, useLayoutEffect, useState } from "react";
 
@@ -68,7 +68,7 @@ export default function DashboardTutorial({ anchors, onFinish, onEvent }) {
   }, [stepIndex]);
 
   /* ============================================================
-     STEP 3 — FORCE ALERTS PANEL OPEN (WAIT UNTIL READY)
+     STEP 3 — FORCE ALERTS PANEL OPEN
 ============================================================ */
   useEffect(() => {
     if (step.id !== "alerts") return;
@@ -134,7 +134,7 @@ export default function DashboardTutorial({ anchors, onFinish, onEvent }) {
   if (!rect) return null;
 
   /* ============================================================
-     TOOLTIP POSITIONING (FIX STEP 1 WIDTH + LEFT SHIFT)
+     TOOLTIP POSITIONING
 ============================================================ */
   const TOOLTIP_WIDTH = 520;
 
@@ -160,11 +160,7 @@ export default function DashboardTutorial({ anchors, onFinish, onEvent }) {
       }}
     >
       {/* DARK MASK */}
-      <svg
-        width="100%"
-        height="100%"
-        style={{ position: "fixed", inset: 0 }}
-      >
+      <svg width="100%" height="100%" style={{ position: "fixed", inset: 0 }}>
         <defs>
           <mask id="spotlight-mask">
             <rect width="100%" height="100%" fill="white" />
@@ -211,7 +207,6 @@ export default function DashboardTutorial({ anchors, onFinish, onEvent }) {
           top: tooltipTop,
           left: tooltipLeft,
           width: TOOLTIP_WIDTH,
-          maxWidth: TOOLTIP_WIDTH,
           borderRadius: 20,
           padding: 18,
           background:
@@ -248,14 +243,7 @@ export default function DashboardTutorial({ anchors, onFinish, onEvent }) {
           {step.title}
         </h3>
 
-        <p
-          style={{
-            margin: 0,
-            fontSize: 14,
-            lineHeight: 1.5,
-            color: "#cbd5f5",
-          }}
-        >
+        <p style={{ margin: 0, fontSize: 14, lineHeight: 1.5, color: "#cbd5f5" }}>
           {step.body}
         </p>
 
@@ -292,12 +280,16 @@ export default function DashboardTutorial({ anchors, onFinish, onEvent }) {
           <button
             onClick={() => {
               if (typeof onEvent === "function") {
-                onEvent("tutorial_next", {
+                onEvent("tutorial_finish", {
                   stepId: step.id,
                   stepIndex,
                 });
               }
-              isLast ? onFinish() : setStepIndex((i) => i + 1);
+
+              // 🔑 CRITICAL FIX: allow overlay to unmount before CTA appears
+              setTimeout(() => {
+                onFinish();
+              }, 0);
             }}
             style={{
               padding: "8px 18px",
