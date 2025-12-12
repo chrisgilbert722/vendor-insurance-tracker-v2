@@ -44,7 +44,6 @@ export default function AlertsCockpitV3() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [selectedAlertId, setSelectedAlertId] = useState(null);
-  const [aiExplainingId, setAiExplainingId] = useState(null);
 
   const [toast, setToast] = useState({
     open: false,
@@ -112,6 +111,47 @@ export default function AlertsCockpitV3() {
       });
     } catch (err) {
       setToast({ open: true, type: "error", message: err.message });
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function handleRequestCoi(alert) {
+    if (!canEdit) return;
+
+    try {
+      setSaving(true);
+
+      // Optimistic UI update
+      setAlerts((prev) =>
+        prev.map((a) =>
+          a.id === alert.id ? { ...a, status: "in_review" } : a
+        )
+      );
+
+      const res = await fetch("/api/alerts-v2/request-coi", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ alertId: alert.id }),
+      });
+
+      const json = await res.json();
+      if (!json.ok) throw new Error(json.error);
+
+      setToast({
+        open: true,
+        type: "success",
+        message: "COI request sent to vendor.",
+      });
+    } catch (err) {
+      setToast({
+        open: true,
+        type: "error",
+        message: err.message || "Failed to request COI",
+      });
+
+      // Revert on failure
+      loadAlerts();
     } finally {
       setSaving(false);
     }
@@ -208,33 +248,31 @@ export default function AlertsCockpitV3() {
                   <div style={{ display: "flex", gap: 10, marginTop: 14 }}>
                     {selectedAlert.fix.action === "request_coi" && (
                       <button
+                        disabled={saving}
                         style={{
                           padding: "8px 14px",
                           borderRadius: 999,
                           border: "1px solid rgba(34,197,94,0.6)",
                           background: "rgba(15,23,42,0.9)",
                           color: "#bbf7d0",
+                          opacity: saving ? 0.6 : 1,
+                          cursor: saving ? "not-allowed" : "pointer",
                         }}
-                        onClick={() =>
-                          setToast({
-                            open: true,
-                            type: "success",
-                            message:
-                              "Request COI action coming next (A4).",
-                          })
-                        }
+                        onClick={() => handleRequestCoi(selectedAlert)}
                       >
                         Request COI
                       </button>
                     )}
 
                     <button
+                      disabled={saving}
                       style={{
                         padding: "8px 14px",
                         borderRadius: 999,
                         border: "1px solid rgba(148,163,184,0.4)",
                         background: "transparent",
                         color: "#e5e7eb",
+                        opacity: saving ? 0.6 : 1,
                       }}
                       onClick={() => handleResolve(selectedAlert)}
                     >
@@ -259,4 +297,3 @@ export default function AlertsCockpitV3() {
     </div>
   );
 }
-
