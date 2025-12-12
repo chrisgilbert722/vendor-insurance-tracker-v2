@@ -84,7 +84,7 @@ export default function DashboardTutorial({ anchors, onFinish }) {
   }, [stepIndex, anchorRef]);
 
   /* ============================================================
-     MEASURE HIGHLIGHT RECT (STABLE)
+     MEASURE HIGHLIGHT RECT
   ============================================================ */
   const measure = () => {
     if (!anchorRef?.current) {
@@ -116,16 +116,18 @@ export default function DashboardTutorial({ anchors, onFinish }) {
   if (!rect) return null;
 
   /* ============================================================
-     TOOLTIP POSITIONING (CLICK-SAFE FIX)
+     TOOLTIP POSITIONING (FIX STEP 1 WIDTH + LEFT SHIFT)
   ============================================================ */
-  const tooltipHeight = 210;
-  const wouldOverlap =
-    rect.top + rect.height + tooltipHeight + 20 > window.innerHeight;
+  const TOOLTIP_WIDTH = 520;
 
-  const tooltipTop =
-    isLast || wouldOverlap
-      ? Math.max(24, rect.top - tooltipHeight - 20)
-      : rect.top + rect.height + 20;
+  const tooltipTop = isLast
+    ? Math.max(24, rect.top - 220)
+    : rect.top + rect.height + 20;
+
+  const tooltipLeft =
+    stepIndex === 0
+      ? Math.max(24, rect.left + rect.width - TOOLTIP_WIDTH)
+      : Math.max(24, rect.left);
 
   /* ============================================================
      RENDER
@@ -139,15 +141,11 @@ export default function DashboardTutorial({ anchors, onFinish }) {
         pointerEvents: "none",
       }}
     >
-      {/* DARK MASK (CUT-OUT SPOTLIGHT) */}
+      {/* DARK MASK */}
       <svg
         width="100%"
         height="100%"
-        style={{
-          position: "fixed",
-          inset: 0,
-          pointerEvents: "none",
-        }}
+        style={{ position: "fixed", inset: 0 }}
       >
         <defs>
           <mask id="spotlight-mask">
@@ -193,8 +191,9 @@ export default function DashboardTutorial({ anchors, onFinish }) {
         style={{
           position: "fixed",
           top: tooltipTop,
-          left: Math.max(24, rect.left),
-          maxWidth: 520,
+          left: tooltipLeft,
+          width: TOOLTIP_WIDTH,
+          maxWidth: TOOLTIP_WIDTH,
           borderRadius: 20,
           padding: 18,
           background:
