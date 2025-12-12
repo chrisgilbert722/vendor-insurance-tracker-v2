@@ -1,6 +1,7 @@
 // pages/api/vendor/upload-coi.js
 // V5 Upload → AI Parse → Store → Auto-Run Engine → Notify
 // Now also feeds Document → Alert Intelligence V2.
+// NOW ALSO: A5 — Auto-Resolve matching alerts on successful COI upload.
 // ===============================================================
 
 import formidable from "formidable";
@@ -16,6 +17,27 @@ import { runDocumentAlertIntelligenceV2 } from "../../../lib/documentAlertIntell
 export const config = {
   api: { bodyParser: false },
 };
+
+function getBaseUrl(req) {
+  // Prefer explicit config
+  const envBase =
+    process.env.NEXT_PUBLIC_BASE_URL ||
+    process.env.APP_URL ||
+    (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : "");
+
+  if (envBase) return envBase.replace(/\/+$/, "");
+
+  // Fallback (local dev)
+  const host =
+    req?.headers?.["x-forwarded-host"] || req?.headers?.host || "localhost:3000";
+  const proto = req?.headers?.["x-forwarded-proto"] || "http";
+  return `${proto}://${host}`;
+}
+
+function normalizeCoverageType(v) {
+  if (!v) return null;
+  return String(v).trim().toLowerCase();
+}
 
 export default async function handler(req, res) {
   try {
@@ -59,7 +81,9 @@ export default async function handler(req, res) {
         LIMIT 1
       `;
       if (!tokenRows.length)
-        return res.status(404).json({ ok: false, error: "Invalid vendor token." });
+        return res
+          .status(404)
+          .json({ ok: false, error: "Invalid vendor token." });
 
       const t = tokenRows[0];
 
@@ -78,9 +102,7 @@ export default async function handler(req, res) {
 
       // org_id from token remains the source of truth, but we also have vendor.org_id
       vendor = { ...vendorRows[0], org_id: t.org_id };
-    }
-
-    else if (vendorIdField && orgIdField) {
+    } else if (vendorIdField && orgIdField) {
       // Admin Upload Flow
       const vendorRows = await sql`
         SELECT id, vendor_name, email, phone, category, org_id, requirements_json
@@ -91,9 +113,7 @@ export default async function handler(req, res) {
         return res.status(404).json({ ok: false, error: "Vendor not found." });
 
       vendor = vendorRows[0];
-    }
-
-    else {
+    } else {
       return res.status(400).json({
         ok: false,
         error: "Missing token OR vendorId + orgId.",
@@ -118,15 +138,13 @@ export default async function handler(req, res) {
 
     if (uploadErr) throw uploadErr;
 
-    const { data: urlData } = supabase.storage
-      .from("uploads")
-      .getPublicUrl(fileName);
+    const { data: urlData } = supabase.storage.from("uploads").getPublicUrl(fileName);
 
     const fileUrl = urlData.publicUrl;
 
     await sql`
       INSERT INTO system_timeline (org_id, vendor_id, action, message, severity)
-      VALUES (${orgId}, ${vendorId}, 'vendor_uploaded_coi', ${'Uploaded COI: ' + fileName}, 'info')
+      VALUES (${orgId}, ${vendorId}, 'vendor_uploaded_coi', ${"Uploaded COI: " + fileName}, 'info')
     `;
 
     // -------------------------------------------------------------
@@ -147,7 +165,7 @@ export default async function handler(req, res) {
 
       await sql`
         INSERT INTO system_timeline (org_id, vendor_id, action, message, severity)
-        VALUES (${orgId}, ${vendorId}, 'ai_parse_failed', ${'AI failed: ' + err.message}, 'critical')
+        VALUES (${orgId}, ${vendorId}, 'ai_parse_failed', ${"AI failed: " + err.message}, 'critical')
       `;
     }
 
@@ -168,6 +186,8 @@ export default async function handler(req, res) {
     // 6) Document → Alert Intelligence V2 (NEW)
     // -------------------------------------------------------------
     let intelResult = null;
+    let coverageTypeForResolve = null;
+
     try {
       // Normalize AI output into a document object the engine understands
       const docForIntel = {
@@ -181,6 +201,8 @@ export default async function handler(req, res) {
         ...ai,
         fileUrl,
       };
+
+      coverageTypeForResolve = normalizeCoverageType(docForIntel.coverageType);
 
       intelResult = await runDocumentAlertIntelligenceV2({
         orgId,
@@ -199,7 +221,7 @@ export default async function handler(req, res) {
 
       await sql`
         INSERT INTO system_timeline (org_id, vendor_id, action, message, severity)
-        VALUES (${orgId}, ${vendorId}, 'document_intel_v2_failed', ${'Intelligence V2 error: ' + err.message}, 'critical')
+        VALUES (${orgId}, ${vendorId}, 'document_intel_v2_failed', ${"Intelligence V2 error: " + err.message}, 'critical')
       `;
     }
 
@@ -207,7 +229,9 @@ export default async function handler(req, res) {
     // 7) AUTO-RUN RULE ENGINE V5  (unchanged)
     // -------------------------------------------------------------
     try {
-      await fetch(`${process.env.NEXT_PUBLIC_BASE_URL || ''}/api/engine/run-v3`, {
+      const baseUrl = getBaseUrl(req);
+
+      await fetch(`${baseUrl}/api/engine/run-v3`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -227,6 +251,87 @@ export default async function handler(req, res) {
       await sql`
         INSERT INTO system_timeline (org_id, vendor_id, action, message, severity)
         VALUES (${orgId}, ${vendorId}, 'engine_v5_auto_run_failed', ${err.message}, 'critical')
+      `;
+    }
+
+    // -------------------------------------------------------------
+    // 7.5) A5 — AUTO-RESOLVE MATCHING ALERTS ON UPLOAD
+    // -------------------------------------------------------------
+    let autoResolved = { attempted: 0, resolved: 0, ids: [] };
+
+    try {
+      const baseUrl = getBaseUrl(req);
+
+      // Find candidate alerts for this vendor/org that are still open or in_review.
+      // If we can infer coverageType from AI/Intel, use it to narrow.
+      const coverageNorm = coverageTypeForResolve;
+
+      const candidateAlerts = coverageNorm
+        ? await sql`
+            SELECT id
+            FROM alerts_v2
+            WHERE org_id = ${orgId}
+              AND vendor_id = ${vendorId}
+              AND status IN ('open', 'in_review')
+              AND (
+                LOWER(COALESCE(metadata->>'coverage_type', metadata->>'coverageType', '')) = ${coverageNorm}
+                OR LOWER(COALESCE(metadata->>'coverage', '')) = ${coverageNorm}
+              )
+            ORDER BY id DESC
+            LIMIT 50
+          `
+        : await sql`
+            SELECT id
+            FROM alerts_v2
+            WHERE org_id = ${orgId}
+              AND vendor_id = ${vendorId}
+              AND status IN ('open', 'in_review')
+            ORDER BY id DESC
+            LIMIT 50
+          `;
+
+      if (candidateAlerts?.length) {
+        autoResolved.attempted = candidateAlerts.length;
+
+        for (const row of candidateAlerts) {
+          const alertId = row.id;
+
+          const r = await fetch(`${baseUrl}/api/alerts-v2/resolve`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              alertId,
+              resolvedBy: "system",
+              resolutionNote: "Auto-resolved via COI upload",
+            }),
+          });
+
+          const j = await r.json().catch(() => ({}));
+          if (j?.ok) {
+            autoResolved.resolved += 1;
+            autoResolved.ids.push(alertId);
+          }
+        }
+
+        if (autoResolved.resolved > 0) {
+          await sql`
+            INSERT INTO system_timeline (org_id, vendor_id, action, message, severity)
+            VALUES (
+              ${orgId},
+              ${vendorId},
+              'alerts_auto_resolved',
+              ${`Auto-resolved ${autoResolved.resolved}/${autoResolved.attempted} alerts via COI upload`},
+              'info'
+            )
+          `;
+        }
+      }
+    } catch (err) {
+      console.error("[A5 auto-resolve ERROR]:", err);
+
+      await sql`
+        INSERT INTO system_timeline (org_id, vendor_id, action, message, severity)
+        VALUES (${orgId}, ${vendorId}, 'alerts_auto_resolve_failed', ${"Auto-resolve error: " + err.message}, 'critical')
       `;
     }
 
@@ -252,7 +357,7 @@ Thank you!
 
         await sql`
           INSERT INTO system_timeline (org_id, vendor_id, action, message, severity)
-          VALUES (${orgId}, ${vendorId}, 'vendor_email_sent', ${'Confirmation sent to ' + vendor.email}, 'info')
+          VALUES (${orgId}, ${vendorId}, 'vendor_email_sent', ${"Confirmation sent to " + vendor.email}, 'info')
         `;
       }
     } catch (err) {
@@ -284,6 +389,9 @@ COI URL:
 ${fileUrl}
 
 This COI has been automatically processed by the V5 Rule Engine and Document Intelligence V2.
+
+Auto-resolved alerts:
+${autoResolved?.resolved || 0}
           `,
         });
       }
@@ -303,8 +411,8 @@ This COI has been automatically processed by the V5 Rule Engine and Document Int
       intelligence: intelResult,
       engine: "auto-run V5 executed",
       mode: token ? "vendor_portal" : "admin",
+      autoResolve: autoResolved,
     });
-
   } catch (err) {
     console.error("[upload-coi ERROR]:", err);
 
@@ -319,4 +427,3 @@ This COI has been automatically processed by the V5 Rule Engine and Document Int
     });
   }
 }
-
