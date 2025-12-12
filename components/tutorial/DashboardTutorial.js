@@ -1,7 +1,7 @@
 // components/tutorial/DashboardTutorial.js
-// Dashboard Tutorial — Spotlight V5 (Stable, Non-Blurring, Cinematic)
+// Dashboard Tutorial — TRUE Spotlight V5 (stable, cinematic, non-blurring)
 
-import { useEffect, useState } from "react";
+import { useEffect, useLayoutEffect, useState } from "react";
 
 const STEPS = [
   {
@@ -26,7 +26,7 @@ const STEPS = [
     id: "renewals",
     title: "Renewals & Expirations",
     body:
-      "Upcoming renewals and expiration backlog live here so nothing slips through the cracks.",
+      "Upcoming renewals and backlog live here so nothing slips through the cracks.",
   },
   {
     id: "vendors",
@@ -43,45 +43,35 @@ export default function DashboardTutorial({ anchors, onFinish }) {
   const step = STEPS[stepIndex];
   const anchorRef = anchors?.[step.id];
 
-  /* ---------------------------------------------------------
-     WAIT UNTIL ANCHOR EXISTS (CRITICAL FIX)
-  --------------------------------------------------------- */
-  useEffect(() => {
-    if (!anchorRef) return;
+  /* -------------------------------
+     SCROLL + MEASURE (STABLE)
+  -------------------------------- */
+  useLayoutEffect(() => {
+    if (!anchorRef?.current) return;
 
-    let tries = 0;
-    const maxTries = 20;
+    const el = anchorRef.current;
 
-    const waitForAnchor = () => {
-      if (anchorRef.current) {
-        updateRect();
-        scrollToAnchor();
-        return;
-      }
-      tries++;
-      if (tries < maxTries) {
-        requestAnimationFrame(waitForAnchor);
-      }
-    };
+    el.scrollIntoView({
+      behavior: "smooth",
+      block: "center",
+    });
 
-    const updateRect = () => {
-      const box = anchorRef.current.getBoundingClientRect();
+    const measure = () => {
+      const b = el.getBoundingClientRect();
       setRect({
-        top: box.top,
-        left: box.left,
-        width: box.width,
-        height: box.height,
+        top: Math.max(b.top - 12, 8),
+        left: Math.max(b.left - 12, 8),
+        width: Math.min(b.width + 24, window.innerWidth - 16),
+        height: Math.min(b.height + 24, window.innerHeight - 16),
       });
     };
 
-    const scrollToAnchor = () => {
-      const box = anchorRef.current.getBoundingClientRect();
-      const y =
-        box.top + window.scrollY - window.innerHeight * 0.3;
-      window.scrollTo({ top: y < 0 ? 0 : y, behavior: "smooth" });
-    };
+    // Measure immediately and again after paint
+    measure();
+    requestAnimationFrame(measure);
 
-    waitForAnchor();
+    window.addEventListener("resize", measure);
+    return () => window.removeEventListener("resize", measure);
   }, [stepIndex, anchorRef]);
 
   if (!rect) return null;
@@ -89,182 +79,157 @@ export default function DashboardTutorial({ anchors, onFinish }) {
   const atFirst = stepIndex === 0;
   const atLast = stepIndex === STEPS.length - 1;
 
-  /* ---------------------------------------------------------
-     OVERLAY PANELS (NO BLUR ON TARGET)
-  --------------------------------------------------------- */
-  const overlayStyle = {
+  /* -------------------------------
+     TOOLTIP POSITIONING
+  -------------------------------- */
+  const showTooltipAbove =
+    rect.top + rect.height + 220 > window.innerHeight;
+
+  const tooltipStyle = {
     position: "fixed",
-    background: "rgba(2,6,23,0.72)",
-    zIndex: 99998,
-    pointerEvents: "none",
+    left: Math.max(24, rect.left),
+    maxWidth: 520,
+    zIndex: 100002,
+    background:
+      "radial-gradient(circle at top left,rgba(15,23,42,0.98),rgba(15,23,42,0.94))",
+    borderRadius: 18,
+    padding: 18,
+    border: "1px solid rgba(148,163,184,0.45)",
+    boxShadow:
+      "0 20px 60px rgba(0,0,0,0.85), 0 0 40px rgba(56,189,248,0.35)",
+    color: "#e5e7eb",
+    pointerEvents: "auto",
+    ...(showTooltipAbove
+      ? { top: Math.max(12, rect.top - 220) }
+      : { top: rect.top + rect.height + 20 }),
   };
 
-  const panels = [
-    { top: 0, left: 0, width: "100%", height: rect.top },
-    {
-      top: rect.top,
-      left: 0,
-      width: rect.left,
-      height: rect.height,
-    },
-    {
-      top: rect.top,
-      left: rect.left + rect.width,
-      width: "100%",
-      height: rect.height,
-    },
-    {
-      top: rect.top + rect.height,
-      left: 0,
-      width: "100%",
-      height: "100%",
-    },
-  ];
-
-  /* ---------------------------------------------------------
-     TOOLTIP POSITION
-  --------------------------------------------------------- */
-  const tooltipTop = atLast
-    ? 24
-    : rect.top + rect.height + 24;
-
   return (
-    <>
-      {panels.map((p, i) => (
-        <div key={i} style={{ ...overlayStyle, ...p }} />
-      ))}
-
-      {/* Highlight Border */}
+    <div style={{ position: "fixed", inset: 0, zIndex: 100000 }}>
+      {/* DIM OVERLAY (NO BLUR) */}
       <div
         style={{
           position: "fixed",
-          top: rect.top - 8,
-          left: rect.left - 8,
-          width: rect.width + 16,
-          height: rect.height + 16,
-          borderRadius: 20,
-          border: "2px solid #38bdf8",
-          boxShadow:
-            "0 0 30px rgba(56,189,248,0.9)",
-          zIndex: 99999,
+          inset: 0,
+          background: "rgba(2,6,23,0.72)",
           pointerEvents: "none",
         }}
       />
 
-      {/* Tooltip */}
+      {/* CLEAR HOLE */}
       <div
         style={{
           position: "fixed",
-          top: tooltipTop,
-          left: "50%",
-          transform: "translateX(-50%)",
-          maxWidth: 520,
-          padding: 20,
-          borderRadius: 20,
-          background:
-            "radial-gradient(circle at top left,rgba(15,23,42,0.98),rgba(15,23,42,0.94))",
-          border: "1px solid rgba(148,163,184,0.5)",
-          boxShadow:
-            "0 20px 60px rgba(0,0,0,0.8)",
-          color: "#e5e7eb",
-          zIndex: 100000,
-          pointerEvents: "auto",
+          top: rect.top,
+          left: rect.left,
+          width: rect.width,
+          height: rect.height,
+          background: "transparent",
+          boxShadow: "0 0 0 9999px rgba(2,6,23,0.72)",
+          borderRadius: 18,
+          pointerEvents: "none",
         }}
-      >
+      />
+
+      {/* GLOW BORDER */}
+      <div
+        style={{
+          position: "fixed",
+          top: rect.top,
+          left: rect.left,
+          width: rect.width,
+          height: rect.height,
+          borderRadius: 18,
+          border: "2px solid rgba(56,189,248,0.95)",
+          boxShadow:
+            "0 0 35px rgba(56,189,248,0.9), inset 0 0 20px rgba(56,189,248,0.25)",
+          pointerEvents: "none",
+        }}
+      />
+
+      {/* TOOLTIP */}
+      <div style={tooltipStyle}>
         <div
           style={{
             fontSize: 11,
             letterSpacing: "0.14em",
+            textTransform: "uppercase",
             color: "#9ca3af",
             marginBottom: 6,
           }}
         >
-          DASHBOARD TOUR {stepIndex + 1}/{STEPS.length}
+          Dashboard Tour {stepIndex + 1}/{STEPS.length}
         </div>
 
         <h3
           style={{
-            margin: "4px 0 8px",
-            color: "#38bdf8",
+            margin: "0 0 8px",
             fontSize: 18,
+            fontWeight: 600,
+            background: "linear-gradient(90deg,#38bdf8,#a855f7)",
+            WebkitBackgroundClip: "text",
+            color: "transparent",
           }}
         >
           {step.title}
         </h3>
 
-        <p style={{ fontSize: 14, lineHeight: 1.5 }}>
+        <p
+          style={{
+            margin: 0,
+            fontSize: 13,
+            lineHeight: 1.55,
+            color: "#cbd5f5",
+          }}
+        >
           {step.body}
         </p>
 
         <div
           style={{
+            marginTop: 16,
             display: "flex",
             justifyContent: "space-between",
-            marginTop: 16,
-            gap: 12,
+            alignItems: "center",
           }}
         >
           <button
-            onClick={() => setStepIndex(i => Math.max(0, i - 1))}
+            onClick={() => setStepIndex((i) => Math.max(0, i - 1))}
             disabled={atFirst}
-            style={buttonStyle(atFirst, "secondary")}
+            style={{
+              padding: "6px 14px",
+              borderRadius: 999,
+              background: "rgba(15,23,42,0.9)",
+              border: "1px solid rgba(148,163,184,0.35)",
+              color: atFirst ? "#6b7280" : "#e5e7eb",
+              cursor: atFirst ? "not-allowed" : "pointer",
+            }}
           >
             ← Back
           </button>
 
           <button
             onClick={() =>
-              atLast
-                ? onFinish?.()
-                : setStepIndex(i => i + 1)
+              atLast ? onFinish?.() : setStepIndex((i) => i + 1)
             }
-            style={buttonStyle(false, atLast ? "success" : "primary")}
+            style={{
+              padding: "8px 20px",
+              borderRadius: 999,
+              background: atLast
+                ? "linear-gradient(90deg,#22c55e,#16a34a)"
+                : "linear-gradient(90deg,#3b82f6,#2563eb)",
+              border: "none",
+              color: "#e5e7eb",
+              fontWeight: 600,
+              cursor: "pointer",
+              boxShadow:
+                "0 0 18px rgba(59,130,246,0.55)",
+            }}
           >
             {atLast ? "Finish →" : "Next →"}
           </button>
         </div>
       </div>
-    </>
+    </div>
   );
-}
-
-/* ---------------------------------------------------------
-   BUTTON STYLES
---------------------------------------------------------- */
-function buttonStyle(disabled, variant) {
-  const base = {
-    padding: "8px 18px",
-    borderRadius: 999,
-    fontSize: 13,
-    fontWeight: 600,
-    cursor: disabled ? "not-allowed" : "pointer",
-    border: "1px solid transparent",
-  };
-
-  if (variant === "secondary") {
-    return {
-      ...base,
-      background: "rgba(15,23,42,0.9)",
-      border: "1px solid rgba(71,85,105,0.8)",
-      color: disabled ? "#6b7280" : "#e5e7eb",
-    };
-  }
-
-  if (variant === "success") {
-    return {
-      ...base,
-      background:
-        "radial-gradient(circle at top left,#22c55e,#16a34a,#052e16)",
-      color: "#dcfce7",
-      boxShadow: "0 0 20px rgba(34,197,94,0.6)",
-    };
-  }
-
-  return {
-    ...base,
-    background:
-      "radial-gradient(circle at top left,#3b82f6,#1d4ed8,#0f172a)",
-    color: "#e0f2fe",
-    boxShadow: "0 0 20px rgba(59,130,246,0.6)",
-  };
 }
