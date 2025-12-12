@@ -1,39 +1,14 @@
 // components/tutorial/DashboardTutorial.js
-// Dashboard Tutorial — TRUE Spotlight V4 (cutout mask, cinematic)
+// Dashboard Tutorial — TRUE Spotlight V4 (FIXED, production-safe)
 
 import { useEffect, useState } from "react";
 
 const STEPS = [
-  {
-    id: "risk",
-    title: "Global Compliance Score",
-    body:
-      "This is your real-time compliance health across all vendors. If this drops, something is wrong.",
-  },
-  {
-    id: "fixPlans",
-    title: "AI Fix Plans & KPIs",
-    body:
-      "These KPIs show expired policies, upcoming expirations, and AI rule failures so you know what to fix first.",
-  },
-  {
-    id: "alerts",
-    title: "Alerts & Coverage Gaps",
-    body:
-      "All missing coverage, low limits, and rule failures appear here. This is your highest-risk area.",
-  },
-  {
-    id: "renewals",
-    title: "Renewals & Expirations",
-    body:
-      "Upcoming renewals and backlog live here. This replaces spreadsheets and manual follow-ups.",
-  },
-  {
-    id: "vendors",
-    title: "Vendor Policy Cockpit",
-    body:
-      "Every vendor is scored and explained in one place. Click any row to see full details and fixes.",
-  },
+  { id: "risk", title: "Global Compliance Score", body: "This is your real-time compliance health across all vendors." },
+  { id: "fixPlans", title: "AI Fix Plans & KPIs", body: "These KPIs tell you exactly what needs attention first." },
+  { id: "alerts", title: "Alerts & Coverage Gaps", body: "All missing coverage and rule failures appear here." },
+  { id: "renewals", title: "Renewals & Expirations", body: "Upcoming renewals and backlog live here." },
+  { id: "vendors", title: "Vendor Policy Cockpit", body: "Every vendor is scored and explained in one place." },
 ];
 
 export default function DashboardTutorial({ anchors, onFinish }) {
@@ -42,35 +17,39 @@ export default function DashboardTutorial({ anchors, onFinish }) {
 
   const step = STEPS[stepIndex];
   const anchorRef = anchors?.[step.id];
-  const isLastStep = step.id === "vendors";
 
   /* ============================================================
-     AUTO-SCROLL ANCHOR INTO VIEW
-============================================================ */
+     FORCE ALERTS OPEN BEFORE STEP 3 MEASURES
+  ============================================================ */
   useEffect(() => {
-    if (!anchorRef?.current || typeof window === "undefined") return;
+    if (step.id !== "alerts") return;
 
-    const el = anchorRef.current;
-    const box = el.getBoundingClientRect();
-    const scrollY =
-      box.top + window.scrollY - window.innerHeight / 2 + box.height / 2;
+    const btn =
+      document.querySelector("button[aria-label='Alerts']") ||
+      document.querySelector("button[data-alerts-toggle]");
 
-    window.scrollTo({
-      top: scrollY < 0 ? 0 : scrollY,
-      behavior: "smooth",
-    });
-  }, [stepIndex, anchorRef]);
-
-  /* ============================================================
-     TRACK HIGHLIGHT RECT
-============================================================ */
-  useEffect(() => {
-    if (!anchorRef?.current || typeof window === "undefined") {
-      setRect(null);
-      return;
+    if (btn) {
+      btn.click();
     }
+  }, [step.id]);
 
-    const update = () => {
+  /* ============================================================
+     WAIT FOR DOM TO EXIST (CRITICAL FIX)
+  ============================================================ */
+  useEffect(() => {
+    if (!anchorRef) return;
+
+    let attempts = 0;
+
+    const tryLocate = () => {
+      if (!anchorRef.current) {
+        attempts++;
+        if (attempts < 20) {
+          requestAnimationFrame(tryLocate);
+        }
+        return;
+      }
+
       const b = anchorRef.current.getBoundingClientRect();
       setRect({
         top: b.top - 12,
@@ -78,49 +57,34 @@ export default function DashboardTutorial({ anchors, onFinish }) {
         width: b.width + 24,
         height: b.height + 24,
       });
+
+      anchorRef.current.scrollIntoView({
+        behavior: "smooth",
+        block: "center",
+      });
     };
 
-    update();
-    window.addEventListener("resize", update);
-    window.addEventListener("scroll", update, { passive: true });
-
-    return () => {
-      window.removeEventListener("resize", update);
-      window.removeEventListener("scroll", update);
-    };
-  }, [anchorRef, stepIndex]);
+    tryLocate();
+  }, [stepIndex, anchorRef]);
 
   if (!rect) return null;
 
+  const isLast = stepIndex === STEPS.length - 1;
+
   return (
-    <div
-      style={{
-        position: "fixed",
-        inset: 0,
-        zIndex: 99999,
-        pointerEvents: "none",
-      }}
-    >
-      {/* DARK MASK WITH CUTOUT */}
+    <div style={{ position: "fixed", inset: 0, zIndex: 99999 }}>
+      {/* DARK MASK */}
       <div
         style={{
           position: "fixed",
           inset: 0,
           background: "rgba(2,6,23,0.7)",
-          WebkitMaskImage: `radial-gradient(
-            circle at ${rect.left + rect.width / 2}px ${rect.top + rect.height / 2}px,
-            transparent ${Math.max(rect.width, rect.height) / 2}px,
-            black ${Math.max(rect.width, rect.height)}px
-          )`,
-          maskImage: `radial-gradient(
-            circle at ${rect.left + rect.width / 2}px ${rect.top + rect.height / 2}px,
-            transparent ${Math.max(rect.width, rect.height) / 2}px,
-            black ${Math.max(rect.width, rect.height)}px
-          )`,
+          WebkitMaskImage: `radial-gradient(circle at ${rect.left + rect.width / 2}px ${rect.top + rect.height / 2}px, transparent ${Math.max(rect.width, rect.height) / 2}px, black ${Math.max(rect.width, rect.height)}px)`,
+          maskImage: `radial-gradient(circle at ${rect.left + rect.width / 2}px ${rect.top + rect.height / 2}px, transparent ${Math.max(rect.width, rect.height) / 2}px, black ${Math.max(rect.width, rect.height)}px)`,
         }}
       />
 
-      {/* HIGHLIGHT BORDER */}
+      {/* HIGHLIGHT */}
       <div
         style={{
           position: "fixed",
@@ -130,132 +94,50 @@ export default function DashboardTutorial({ anchors, onFinish }) {
           height: rect.height,
           borderRadius: 18,
           border: "2px solid #38bdf8",
-          boxShadow:
-            "0 0 35px rgba(56,189,248,0.9), 0 0 60px rgba(59,130,246,0.6)",
+          boxShadow: "0 0 40px rgba(56,189,248,0.9)",
           pointerEvents: "none",
         }}
       />
 
-      {/* TOOLTIP CARD */}
+      {/* TOOLTIP (AUTO POSITION) */}
       <div
         style={{
           position: "fixed",
-          left: "50%",
-          transform: "translateX(-50%)",
-          top: isLastStep ? 24 : rect.top + rect.height + 20,
-          bottom: isLastStep ? "auto" : undefined,
-          width: "100%",
-          maxWidth: 520,
-          background:
-            "radial-gradient(circle at top left,rgba(15,23,42,0.98),rgba(15,23,42,0.94))",
-          borderRadius: 20,
-          padding: 18,
-          border: "1px solid rgba(148,163,184,0.55)",
-          boxShadow:
-            "0 18px 45px rgba(0,0,0,0.8), 0 0 40px rgba(56,189,248,0.25)",
+          top:
+            step.id === "vendors"
+              ? rect.top - 160
+              : rect.top + rect.height + 20,
+          left: Math.max(24, rect.left),
+          maxWidth: 420,
+          background: "rgba(15,23,42,0.98)",
+          borderRadius: 16,
+          padding: 16,
+          border: "1px solid rgba(148,163,184,0.5)",
+          boxShadow: "0 20px 50px rgba(0,0,0,0.8)",
           color: "#e5e7eb",
-          pointerEvents: "auto",
-          fontFamily: "system-ui",
         }}
       >
-        {/* STEP BADGE */}
-        <div
-          style={{
-            display: "inline-flex",
-            gap: 6,
-            padding: "3px 9px",
-            borderRadius: 999,
-            border: "1px solid rgba(148,163,184,0.4)",
-            background:
-              "linear-gradient(120deg,rgba(15,23,42,0.9),rgba(15,23,42,0.65))",
-            marginBottom: 8,
-            fontSize: 10,
-            letterSpacing: "0.16em",
-            textTransform: "uppercase",
-            color: "#9ca3af",
-          }}
-        >
-          <span>Dashboard Tour</span>
-          <span style={{ color: "#38bdf8" }}>
-            {stepIndex + 1}/{STEPS.length}
-          </span>
+        <div style={{ fontSize: 11, letterSpacing: "0.12em", color: "#9ca3af" }}>
+          DASHBOARD TOUR {stepIndex + 1}/{STEPS.length}
         </div>
 
-        {/* TITLE */}
-        <h3
-          style={{
-            margin: "6px 0",
-            fontSize: 18,
-            fontWeight: 600,
-            background: "linear-gradient(90deg,#38bdf8,#a855f7)",
-            WebkitBackgroundClip: "text",
-            color: "transparent",
-          }}
-        >
-          {step.title}
-        </h3>
+        <h3 style={{ margin: "6px 0", color: "#38bdf8" }}>{step.title}</h3>
+        <p style={{ fontSize: 13, lineHeight: 1.5 }}>{step.body}</p>
 
-        {/* BODY */}
-        <p
-          style={{
-            fontSize: 13,
-            lineHeight: 1.5,
-            color: "#cbd5f5",
-            marginBottom: 14,
-          }}
-        >
-          {step.body}
-        </p>
-
-        {/* CONTROLS */}
-        <div
-          style={{
-            display: "flex",
-            justifyContent: "space-between",
-            alignItems: "center",
-          }}
-        >
+        <div style={{ display: "flex", justifyContent: "space-between", marginTop: 12 }}>
           <button
-            type="button"
             onClick={() => setStepIndex((i) => Math.max(i - 1, 0))}
             disabled={stepIndex === 0}
-            style={{
-              background: "transparent",
-              border: "none",
-              color: stepIndex === 0 ? "#6b7280" : "#9ca3af",
-              fontSize: 12,
-              cursor: stepIndex === 0 ? "not-allowed" : "pointer",
-            }}
           >
-            ← Back
+            Back
           </button>
 
           <button
-            type="button"
             onClick={() =>
-              stepIndex === STEPS.length - 1
-                ? onFinish?.()
-                : setStepIndex((i) => i + 1)
+              isLast ? onFinish() : setStepIndex((i) => i + 1)
             }
-            style={{
-              padding: "7px 16px",
-              borderRadius: 999,
-              border: "1px solid rgba(59,130,246,0.9)",
-              background:
-                stepIndex === STEPS.length - 1
-                  ? "radial-gradient(circle at top left,#22c55e,#16a34a,#052e16)"
-                  : "radial-gradient(circle at top left,#3b82f6,#1d4ed8,#0f172a)",
-              color: "#e0f2fe",
-              fontSize: 12,
-              fontWeight: 600,
-              cursor: "pointer",
-              boxShadow:
-                stepIndex === STEPS.length - 1
-                  ? "0 0 18px rgba(34,197,94,0.55)"
-                  : "0 0 18px rgba(59,130,246,0.55)",
-            }}
           >
-            {stepIndex === STEPS.length - 1 ? "Finish →" : "Next →"}
+            {isLast ? "Finish" : "Next"}
           </button>
         </div>
       </div>
