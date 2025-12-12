@@ -1,119 +1,254 @@
 // components/tutorial/DashboardTutorial.js
-// Dashboard Tutorial — Stable Cinematic Spotlight (NO BLUR, NO MASK)
+// Dashboard Tutorial — Spotlight V5 (Stable, Cinematic, Safe)
 
-import { useEffect, useState } from "react";
+import { useEffect, useLayoutEffect, useState } from "react";
 
 const STEPS = [
-  { id: "risk", title: "Global Compliance Score", body: "This shows your live, AI-driven compliance health across all vendors. If this drops, something is wrong." },
-  { id: "fixPlans", title: "AI Fix Plans & KPIs", body: "These KPIs summarize expirations, warnings, and failures so you know what to fix first." },
-  { id: "alerts", title: "Alerts & Coverage Gaps", body: "This is your Alerts Intelligence layer — timelines, types, aging, SLA breaches, watchlists, and heat." },
-  { id: "renewals", title: "Renewals & Expirations", body: "Upcoming renewals and backlog live here so nothing slips through the cracks." },
-  { id: "vendors", title: "Vendor Policy Cockpit", body: "Every vendor is scored, explained, and traceable in one place. Click any row for details." },
+  {
+    id: "risk",
+    title: "Global Compliance Score",
+    body:
+      "This is your real-time compliance health across all vendors. " +
+      "If this drops, something needs immediate attention.",
+  },
+  {
+    id: "fixPlans",
+    title: "AI Fix Plans & KPIs",
+    body:
+      "These KPIs show expired COIs, upcoming expirations, and failed rules. " +
+      "This is where you start every day.",
+  },
+  {
+    id: "alerts",
+    title: "Alerts & Coverage Gaps",
+    body:
+      "All missing coverage, low limits, and rule failures appear here. " +
+      "This section shows exactly which vendors are causing risk.",
+  },
+  {
+    id: "renewals",
+    title: "Renewals & Expirations",
+    body:
+      "Upcoming renewals and backlog live here. " +
+      "This replaces spreadsheets and manual tracking.",
+  },
+  {
+    id: "vendors",
+    title: "Vendor Policy Cockpit",
+    body:
+      "Every vendor is scored and explained in one place. " +
+      "Click any vendor to see full AI analysis.",
+  },
 ];
 
 export default function DashboardTutorial({ anchors, onFinish }) {
   const [stepIndex, setStepIndex] = useState(0);
+  const [rect, setRect] = useState(null);
+
   const step = STEPS[stepIndex];
   const anchorRef = anchors?.[step.id];
+  const isLast = stepIndex === STEPS.length - 1;
 
-  // Auto-scroll to anchor
+  /* ============================================================
+     STEP 3 — FORCE ALERTS OPEN (SAFE)
+  ============================================================ */
+  useEffect(() => {
+    if (step.id !== "alerts") return;
+
+    // Let dashboard open alerts normally
+    const event = new CustomEvent("dashboard_open_alerts");
+    window.dispatchEvent(event);
+  }, [step.id]);
+
+  /* ============================================================
+     SCROLL TARGET INTO VIEW
+  ============================================================ */
   useEffect(() => {
     if (!anchorRef?.current) return;
+
     anchorRef.current.scrollIntoView({
       behavior: "smooth",
       block: "center",
     });
-  }, [stepIndex, anchorRef]);
+  }, [stepIndex]);
 
-  if (!anchorRef?.current) return null;
+  /* ============================================================
+     MEASURE HIGHLIGHT RECT (POST-LAYOUT)
+  ============================================================ */
+  useLayoutEffect(() => {
+    if (!anchorRef?.current) {
+      setRect(null);
+      return;
+    }
 
+    const measure = () => {
+      const box = anchorRef.current.getBoundingClientRect();
+      setRect({
+        top: box.top - 10,
+        left: box.left - 10,
+        width: box.width + 20,
+        height: box.height + 20,
+      });
+    };
+
+    measure();
+    window.addEventListener("resize", measure);
+    window.addEventListener("scroll", measure, { passive: true });
+
+    return () => {
+      window.removeEventListener("resize", measure);
+      window.removeEventListener("scroll", measure);
+    };
+  }, [anchorRef, stepIndex]);
+
+  if (!rect) return null;
+
+  const tooltipAbove =
+    rect.top + rect.height + 240 > window.innerHeight;
+
+  /* ============================================================
+     RENDER
+  ============================================================ */
   return (
     <div
       style={{
         position: "fixed",
         inset: 0,
         zIndex: 99999,
-        background: "rgba(2,6,23,0.55)", // DIM ONLY — NO BLUR
         pointerEvents: "none",
       }}
     >
-      {/* Highlight Frame */}
+      {/* BACKDROP */}
       <div
         style={{
-          position: "absolute",
-          top: anchorRef.current.getBoundingClientRect().top - 8,
-          left: anchorRef.current.getBoundingClientRect().left - 8,
-          width: anchorRef.current.getBoundingClientRect().width + 16,
-          height: anchorRef.current.getBoundingClientRect().height + 16,
-          borderRadius: 20,
-          border: "2px solid #38bdf8",
-          boxShadow: "0 0 40px rgba(56,189,248,0.9)",
+          position: "fixed",
+          inset: 0,
+          background: "rgba(2,6,23,0.55)",
+        }}
+      />
+
+      {/* HIGHLIGHT BOX */}
+      <div
+        style={{
+          position: "fixed",
+          top: rect.top,
+          left: rect.left,
+          width: rect.width,
+          height: rect.height,
+          borderRadius: 18,
+          border: "2px solid rgba(56,189,248,0.95)",
+          boxShadow:
+            "0 0 35px rgba(56,189,248,0.85), inset 0 0 18px rgba(56,189,248,0.25)",
           pointerEvents: "none",
         }}
       />
 
-      {/* Tooltip */}
+      {/* TOOLTIP */}
       <div
         style={{
           position: "fixed",
-          bottom: step.id === "vendors" ? "auto" : 32,
-          top: step.id === "vendors" ? 24 : "auto",
-          left: "50%",
-          transform: "translateX(-50%)",
+          top: tooltipAbove
+            ? rect.top - 200
+            : rect.top + rect.height + 20,
+          left: Math.max(24, rect.left),
           maxWidth: 520,
+          borderRadius: 20,
           padding: 18,
-          borderRadius: 18,
-          background: "rgba(15,23,42,0.98)",
-          border: "1px solid rgba(148,163,184,0.5)",
-          boxShadow: "0 18px 50px rgba(0,0,0,0.8)",
+          background:
+            "radial-gradient(circle at top left,rgba(15,23,42,0.98),rgba(15,23,42,0.94))",
+          border: "1px solid rgba(148,163,184,0.55)",
+          boxShadow:
+            "0 18px 50px rgba(0,0,0,0.85), 0 0 30px rgba(56,189,248,0.25)",
           color: "#e5e7eb",
           pointerEvents: "auto",
         }}
       >
-        <div style={{ fontSize: 11, color: "#9ca3af", letterSpacing: "0.14em" }}>
-          DASHBOARD TOUR {stepIndex + 1}/{STEPS.length}
+        {/* STEP COUNTER */}
+        <div
+          style={{
+            fontSize: 11,
+            letterSpacing: "0.16em",
+            textTransform: "uppercase",
+            color: "#9ca3af",
+            marginBottom: 6,
+          }}
+        >
+          Step {stepIndex + 1} / {STEPS.length}
         </div>
 
-        <h3 style={{ margin: "6px 0", color: "#38bdf8" }}>{step.title}</h3>
-        <p style={{ fontSize: 13, lineHeight: 1.5 }}>{step.body}</p>
+        {/* TITLE */}
+        <h3
+          style={{
+            margin: "0 0 8px",
+            fontSize: 18,
+            fontWeight: 600,
+            background: "linear-gradient(90deg,#38bdf8,#a855f7)",
+            WebkitBackgroundClip: "text",
+            color: "transparent",
+          }}
+        >
+          {step.title}
+        </h3>
 
-        <div style={{ display: "flex", justifyContent: "space-between", marginTop: 14 }}>
+        {/* BODY */}
+        <p
+          style={{
+            margin: 0,
+            fontSize: 14,
+            lineHeight: 1.5,
+            color: "#cbd5f5",
+          }}
+        >
+          {step.body}
+        </p>
+
+        {/* CONTROLS */}
+        <div
+          style={{
+            display: "flex",
+            justifyContent: "space-between",
+            alignItems: "center",
+            marginTop: 16,
+          }}
+        >
           <button
-            onClick={() => setStepIndex(i => Math.max(i - 1, 0))}
+            onClick={() => setStepIndex((i) => Math.max(i - 1, 0))}
             disabled={stepIndex === 0}
-            style={navBtn(false)}
+            style={{
+              background: "transparent",
+              border: "none",
+              color: stepIndex === 0 ? "#6b7280" : "#9ca3af",
+              cursor: stepIndex === 0 ? "default" : "pointer",
+              fontSize: 13,
+            }}
           >
             ← Back
           </button>
 
           <button
             onClick={() =>
-              stepIndex === STEPS.length - 1
-                ? onFinish()
-                : setStepIndex(i => i + 1)
+              isLast ? onFinish() : setStepIndex((i) => i + 1)
             }
-            style={navBtn(true)}
+            style={{
+              padding: "8px 18px",
+              borderRadius: 999,
+              border: "1px solid rgba(56,189,248,0.9)",
+              background: isLast
+                ? "radial-gradient(circle at top left,#22c55e,#16a34a,#052e16)"
+                : "radial-gradient(circle at top left,#3b82f6,#1d4ed8,#0f172a)",
+              color: "#e0f2fe",
+              fontSize: 13,
+              fontWeight: 600,
+              cursor: "pointer",
+              boxShadow: isLast
+                ? "0 0 20px rgba(34,197,94,0.6)"
+                : "0 0 20px rgba(59,130,246,0.6)",
+            }}
           >
-            {stepIndex === STEPS.length - 1 ? "Finish →" : "Next →"}
+            {isLast ? "Finish →" : "Next →"}
           </button>
         </div>
       </div>
     </div>
   );
-}
-
-function navBtn(primary) {
-  return {
-    padding: "8px 18px",
-    borderRadius: 999,
-    border: primary ? "1px solid #38bdf8" : "1px solid rgba(148,163,184,0.4)",
-    background: primary
-      ? "linear-gradient(90deg,#3b82f6,#2563eb)"
-      : "rgba(15,23,42,0.8)",
-    color: "#e5e7eb",
-    fontSize: 13,
-    fontWeight: 600,
-    cursor: "pointer",
-    boxShadow: primary ? "0 0 18px rgba(59,130,246,0.6)" : "none",
-  };
 }
