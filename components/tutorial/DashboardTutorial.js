@@ -1,9 +1,11 @@
 // components/tutorial/DashboardTutorial.js
 // Dashboard Tutorial — Spotlight V5 (Fixed, Deterministic, Cinematic)
 // FULL FILE — CLEAN COPY / PASTE
-// ✅ Overlay teardown fixed
-// ✅ CTA clicks no longer blocked
-// ✅ Telemetry-safe
+// ✅ Fixes: step progression (1→2→3→4→5) restored
+// ✅ Fixes: Finish only runs on last step
+// ✅ Fixes: CTA click-blocking (forces overlay to be non-interactive)
+// ✅ Telemetry-safe (onEvent optional)
+// ✅ Step 3 alert force preserved
 // ✅ All spotlight math preserved
 
 import { useEffect, useLayoutEffect, useState } from "react";
@@ -68,7 +70,7 @@ export default function DashboardTutorial({ anchors, onFinish, onEvent }) {
   }, [stepIndex]);
 
   /* ============================================================
-     STEP 3 — FORCE ALERTS PANEL OPEN
+     STEP 3 — FORCE ALERTS PANEL OPEN (WAIT UNTIL READY)
 ============================================================ */
   useEffect(() => {
     if (step.id !== "alerts") return;
@@ -134,7 +136,7 @@ export default function DashboardTutorial({ anchors, onFinish, onEvent }) {
   if (!rect) return null;
 
   /* ============================================================
-     TOOLTIP POSITIONING
+     TOOLTIP POSITIONING (FIX STEP 1 WIDTH + LEFT SHIFT)
 ============================================================ */
   const TOOLTIP_WIDTH = 520;
 
@@ -148,6 +150,35 @@ export default function DashboardTutorial({ anchors, onFinish, onEvent }) {
       : Math.max(24, rect.left);
 
   /* ============================================================
+     HANDLERS
+============================================================ */
+  const goBack = () => {
+    if (typeof onEvent === "function") {
+      onEvent("tutorial_back", { stepId: step.id, stepIndex });
+    }
+    setStepIndex((i) => Math.max(i - 1, 0));
+  };
+
+  const goNextOrFinish = () => {
+    if (!isLast) {
+      if (typeof onEvent === "function") {
+        onEvent("tutorial_next", { stepId: step.id, stepIndex });
+      }
+      setStepIndex((i) => Math.min(i + 1, STEPS.length - 1));
+      return;
+    }
+
+    if (typeof onEvent === "function") {
+      onEvent("tutorial_finish", { stepId: step.id, stepIndex });
+    }
+
+    // ✅ critical: unmount tutorial first, then CTA becomes clickable
+    setTimeout(() => {
+      onFinish();
+    }, 0);
+  };
+
+  /* ============================================================
      RENDER
 ============================================================ */
   return (
@@ -159,8 +190,12 @@ export default function DashboardTutorial({ anchors, onFinish, onEvent }) {
         pointerEvents: "none",
       }}
     >
-      {/* DARK MASK */}
-      <svg width="100%" height="100%" style={{ position: "fixed", inset: 0 }}>
+      {/* DARK MASK (force non-interactive so it never blocks CTA) */}
+      <svg
+        width="100%"
+        height="100%"
+        style={{ position: "fixed", inset: 0, pointerEvents: "none" }}
+      >
         <defs>
           <mask id="spotlight-mask">
             <rect width="100%" height="100%" fill="white" />
@@ -207,6 +242,7 @@ export default function DashboardTutorial({ anchors, onFinish, onEvent }) {
           top: tooltipTop,
           left: tooltipLeft,
           width: TOOLTIP_WIDTH,
+          maxWidth: TOOLTIP_WIDTH,
           borderRadius: 20,
           padding: 18,
           background:
@@ -243,7 +279,14 @@ export default function DashboardTutorial({ anchors, onFinish, onEvent }) {
           {step.title}
         </h3>
 
-        <p style={{ margin: 0, fontSize: 14, lineHeight: 1.5, color: "#cbd5f5" }}>
+        <p
+          style={{
+            margin: 0,
+            fontSize: 14,
+            lineHeight: 1.5,
+            color: "#cbd5f5",
+          }}
+        >
           {step.body}
         </p>
 
@@ -256,15 +299,7 @@ export default function DashboardTutorial({ anchors, onFinish, onEvent }) {
           }}
         >
           <button
-            onClick={() => {
-              if (typeof onEvent === "function") {
-                onEvent("tutorial_back", {
-                  stepId: step.id,
-                  stepIndex,
-                });
-              }
-              setStepIndex((i) => Math.max(i - 1, 0));
-            }}
+            onClick={goBack}
             disabled={stepIndex === 0}
             style={{
               background: "transparent",
@@ -278,19 +313,7 @@ export default function DashboardTutorial({ anchors, onFinish, onEvent }) {
           </button>
 
           <button
-            onClick={() => {
-              if (typeof onEvent === "function") {
-                onEvent("tutorial_finish", {
-                  stepId: step.id,
-                  stepIndex,
-                });
-              }
-
-              // 🔑 CRITICAL FIX: allow overlay to unmount before CTA appears
-              setTimeout(() => {
-                onFinish();
-              }, 0);
-            }}
+            onClick={goNextOrFinish}
             style={{
               padding: "8px 18px",
               borderRadius: 999,
