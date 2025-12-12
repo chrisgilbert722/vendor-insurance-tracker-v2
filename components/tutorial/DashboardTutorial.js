@@ -84,7 +84,7 @@ export default function DashboardTutorial({ anchors, onFinish }) {
   }, [stepIndex, anchorRef]);
 
   /* ============================================================
-     MEASURE HIGHLIGHT RECT
+     MEASURE HIGHLIGHT RECT (STABLE)
   ============================================================ */
   const measure = () => {
     if (!anchorRef?.current) {
@@ -116,11 +116,16 @@ export default function DashboardTutorial({ anchors, onFinish }) {
   if (!rect) return null;
 
   /* ============================================================
-     TOOLTIP POSITIONING
+     TOOLTIP POSITIONING (CLICK-SAFE FIX)
   ============================================================ */
-  const tooltipTop = isLast
-    ? Math.max(24, rect.top - 220)
-    : rect.top + rect.height + 20;
+  const tooltipHeight = 210;
+  const wouldOverlap =
+    rect.top + rect.height + tooltipHeight + 20 > window.innerHeight;
+
+  const tooltipTop =
+    isLast || wouldOverlap
+      ? Math.max(24, rect.top - tooltipHeight - 20)
+      : rect.top + rect.height + 20;
 
   /* ============================================================
      RENDER
@@ -134,11 +139,15 @@ export default function DashboardTutorial({ anchors, onFinish }) {
         pointerEvents: "none",
       }}
     >
-      {/* DARK MASK */}
+      {/* DARK MASK (CUT-OUT SPOTLIGHT) */}
       <svg
         width="100%"
         height="100%"
-        style={{ position: "fixed", inset: 0 }}
+        style={{
+          position: "fixed",
+          inset: 0,
+          pointerEvents: "none",
+        }}
       >
         <defs>
           <mask id="spotlight-mask">
@@ -163,7 +172,7 @@ export default function DashboardTutorial({ anchors, onFinish }) {
         />
       </svg>
 
-      {/* HIGHLIGHT */}
+      {/* HIGHLIGHT BORDER */}
       <div
         style={{
           position: "fixed",
@@ -175,6 +184,7 @@ export default function DashboardTutorial({ anchors, onFinish }) {
           border: "2px solid rgba(56,189,248,0.95)",
           boxShadow:
             "0 0 35px rgba(56,189,248,0.85), inset 0 0 18px rgba(56,189,248,0.25)",
+          pointerEvents: "none",
         }}
       />
 
@@ -184,8 +194,7 @@ export default function DashboardTutorial({ anchors, onFinish }) {
           position: "fixed",
           top: tooltipTop,
           left: Math.max(24, rect.left),
-          width: 420,               // ✅ FIXED WIDTH (consistent across steps)
-          maxWidth: "calc(100vw - 48px)",
+          maxWidth: 520,
           borderRadius: 20,
           padding: 18,
           background:
@@ -237,6 +246,7 @@ export default function DashboardTutorial({ anchors, onFinish }) {
           style={{
             display: "flex",
             justifyContent: "space-between",
+            alignItems: "center",
             marginTop: 16,
           }}
         >
@@ -247,6 +257,7 @@ export default function DashboardTutorial({ anchors, onFinish }) {
               background: "transparent",
               border: "none",
               color: stepIndex === 0 ? "#6b7280" : "#9ca3af",
+              cursor: stepIndex === 0 ? "default" : "pointer",
               fontSize: 13,
             }}
           >
@@ -267,6 +278,10 @@ export default function DashboardTutorial({ anchors, onFinish }) {
               color: "#e0f2fe",
               fontSize: 13,
               fontWeight: 600,
+              cursor: "pointer",
+              boxShadow: isLast
+                ? "0 0 20px rgba(34,197,94,0.6)"
+                : "0 0 20px rgba(59,130,246,0.6)",
             }}
           >
             {isLast ? "Finish →" : "Next →"}
