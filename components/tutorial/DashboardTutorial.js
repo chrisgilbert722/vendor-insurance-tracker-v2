@@ -1,5 +1,5 @@
 // components/tutorial/DashboardTutorial.js
-// Dashboard Tutorial — TRUE Spotlight V4 (cutout mask, cinematic) — FIXED
+// Dashboard Tutorial — TRUE Spotlight V4.1 (stable, no disappearing steps)
 
 import { useEffect, useRef, useState } from "react";
 
@@ -14,171 +14,146 @@ const STEPS = [
     id: "fixPlans",
     title: "AI Fix Plans & KPIs",
     body:
-      "These KPIs show what needs attention first: expirations, warnings, and failures.",
+      "These KPIs show expired policies, upcoming expirations, and AI rule failures so you know what to fix first.",
   },
   {
     id: "alerts",
     title: "Alerts & Coverage Gaps",
     body:
-      "Your full alerts intelligence layer. This is where missing coverage and rule failures surface.",
+      "All missing coverage, low limits, and rule failures appear here. This is where risk becomes visible.",
   },
   {
     id: "renewals",
     title: "Renewals & Expirations",
     body:
-      "Upcoming renewals and backlog live here, so you never miss a window.",
+      "Upcoming renewals and expiration backlog live here so nothing slips through the cracks.",
   },
   {
     id: "vendors",
     title: "Vendor Policy Cockpit",
     body:
-      "Every vendor is listed with scoring and flags. Click any row to open the full vendor drawer.",
+      "Every vendor is scored, explained, and traceable in one place. Click any row for full details.",
   },
 ];
 
 export default function DashboardTutorial({ anchors, onFinish }) {
   const [stepIndex, setStepIndex] = useState(0);
+
+  // We KEEP last known rect so tutorial never disappears
   const [rect, setRect] = useState(null);
+  const lastRectRef = useRef(null);
 
   const step = STEPS[stepIndex];
   const anchorRef = anchors?.[step.id];
 
-  const cardRef = useRef(null);
-  const [cardH, setCardH] = useState(160);
-
-  // measure tooltip height so we can place it above/below safely
+  /* ---------------------------------------------------------
+     STEP 3: FORCE ALERTS OPEN (SAFE, DELAYED)
+  --------------------------------------------------------- */
   useEffect(() => {
-    const t = setTimeout(() => {
-      if (cardRef.current) {
-        const b = cardRef.current.getBoundingClientRect();
-        if (b.height) setCardH(b.height);
-      }
-    }, 0);
-    return () => clearTimeout(t);
-  }, [stepIndex]);
+    if (step.id !== "alerts") return;
 
-  // IMPORTANT FIX:
-  // reset rect immediately on step change, then wait until the new anchor exists and measure it
+    // Delay one frame so React finishes rendering
+    const id = requestAnimationFrame(() => {
+      const btn = document.querySelector(
+        "button[aria-label='Alerts'], button[data-alert-toggle]"
+      );
+      if (btn) btn.click();
+    });
+
+    return () => cancelAnimationFrame(id);
+  }, [step.id]);
+
+  /* ---------------------------------------------------------
+     AUTO SCROLL INTO VIEW
+  --------------------------------------------------------- */
   useEffect(() => {
-    if (typeof window === "undefined") return;
-
-    setRect(null); // <- THIS is what prevents Step 3 from reusing Step 2’s highlight
-
-    let cancelled = false;
-    let attempts = 0;
-
-    const locateAndMeasure = () => {
-      if (cancelled) return;
-
-      const el = anchorRef?.current;
-      if (!el) {
-        attempts++;
-        if (attempts < 40) requestAnimationFrame(locateAndMeasure);
-        return;
-      }
-
-      const b = el.getBoundingClientRect();
-
-      const pad = step.id === "risk" ? 12 : 10;
-      const nextRect = {
-        top: b.top - pad,
-        left: b.left - pad,
-        width: b.width + pad * 2,
-        height: b.height + pad * 2,
-      };
-
-      setRect(nextRect);
-
-      // scroll AFTER we have a real rect
-      const centerY =
-        b.top + window.scrollY - window.innerHeight / 2 + b.height / 2;
-
-      window.scrollTo({
-        top: Math.max(0, centerY),
-        behavior: "smooth",
-      });
-    };
-
-    locateAndMeasure();
-
-    return () => {
-      cancelled = true;
-    };
-  }, [stepIndex, anchorRef, step.id]);
-
-  // keep rect updated on scroll/resize AFTER it exists
-  useEffect(() => {
-    if (!rect || typeof window === "undefined") return;
     if (!anchorRef?.current) return;
 
+    anchorRef.current.scrollIntoView({
+      behavior: "smooth",
+      block: "center",
+    });
+  }, [stepIndex, anchorRef]);
+
+  /* ---------------------------------------------------------
+     TRACK RECT (STABLE)
+  --------------------------------------------------------- */
+  useEffect(() => {
+    if (!anchorRef?.current) {
+      // Keep last rect instead of killing tutorial
+      setRect(lastRectRef.current);
+      return;
+    }
+
     const update = () => {
-      const el = anchorRef.current;
-      if (!el) return;
-      const b = el.getBoundingClientRect();
+      const box = anchorRef.current.getBoundingClientRect();
+      const r = {
+        top: box.top - 12,
+        left: box.left - 12,
+        width: box.width + 24,
+        height: box.height + 24,
+      };
 
-      const pad = step.id === "risk" ? 12 : 10;
-      setRect({
-        top: b.top - pad,
-        left: b.left - pad,
-        width: b.width + pad * 2,
-        height: b.height + pad * 2,
-      });
+      lastRectRef.current = r;
+      setRect(r);
     };
 
-    window.addEventListener("resize", update);
+    update();
     window.addEventListener("scroll", update, { passive: true });
-    return () => {
-      window.removeEventListener("resize", update);
-      window.removeEventListener("scroll", update);
-    };
-  }, [rect, anchorRef, step.id]);
+    window.addEventListener("resize", update);
 
+    return () => {
+      window.removeEventListener("scroll", update);
+      window.removeEventListener("resize", update);
+    };
+  }, [anchorRef, stepIndex]);
+
+  /* ---------------------------------------------------------
+     NAVIGATION
+  --------------------------------------------------------- */
   const atFirst = stepIndex === 0;
   const atLast = stepIndex === STEPS.length - 1;
 
   const next = () => {
-    if (atLast) return onFinish?.();
-    setStepIndex((i) => Math.min(i + 1, STEPS.length - 1));
+    if (atLast) {
+      onFinish?.();
+    } else {
+      setStepIndex((i) => i + 1);
+    }
   };
 
-  const back = () => setStepIndex((i) => Math.max(i - 1, 0));
+  const back = () => {
+    setStepIndex((i) => Math.max(i - 1, 0));
+  };
 
   if (!rect) return null;
 
-  // tooltip positioning (clamped)
-  const margin = 16;
-  const preferBelow = rect.top + rect.height + 18;
-  const preferAbove = rect.top - cardH - 18;
-
-  let tooltipTop;
-  if (step.id === "vendors") {
-    // Step 5 must be top
-    tooltipTop = 24;
-  } else if (preferBelow + cardH <= window.innerHeight - margin) {
-    tooltipTop = preferBelow;
-  } else {
-    tooltipTop = Math.max(margin, preferAbove);
-  }
-
-  const tooltipLeft = Math.min(
-    Math.max(margin, rect.left),
-    window.innerWidth - margin - 520
-  );
-
-  const cx = rect.left + rect.width / 2;
-  const cy = rect.top + rect.height / 2;
-  const hole = Math.max(rect.width, rect.height) / 2;
+  /* ---------------------------------------------------------
+     TOOLTIP POSITIONING (FIX STEP 5)
+  --------------------------------------------------------- */
+  const tooltipTop =
+    rect.top + rect.height + 20 > window.innerHeight - 220
+      ? rect.top - 180
+      : rect.top + rect.height + 20;
 
   return (
     <div style={{ position: "fixed", inset: 0, zIndex: 99999 }}>
-      {/* DARK MASK WITH CUTOUT */}
+      {/* DARK MASK */}
       <div
         style={{
           position: "fixed",
           inset: 0,
-          background: "rgba(2,6,23,0.72)",
-          WebkitMaskImage: `radial-gradient(circle at ${cx}px ${cy}px, transparent ${hole}px, black ${hole + 140}px)`,
-          maskImage: `radial-gradient(circle at ${cx}px ${cy}px, transparent ${hole}px, black ${hole + 140}px)`,
+          background: "rgba(2,6,23,0.7)",
+          WebkitMaskImage: `radial-gradient(circle at ${
+            rect.left + rect.width / 2
+          }px ${rect.top + rect.height / 2}px,
+            transparent ${Math.max(rect.width, rect.height) / 2}px,
+            black ${Math.max(rect.width, rect.height)}px)`,
+          maskImage: `radial-gradient(circle at ${
+            rect.left + rect.width / 2
+          }px ${rect.top + rect.height / 2}px,
+            transparent ${Math.max(rect.width, rect.height) / 2}px,
+            black ${Math.max(rect.width, rect.height)}px)`,
         }}
       />
 
@@ -192,67 +167,41 @@ export default function DashboardTutorial({ anchors, onFinish }) {
           height: rect.height,
           borderRadius: 18,
           border: "2px solid #38bdf8",
-          boxShadow:
-            "0 0 35px rgba(56,189,248,0.95), 0 0 60px rgba(59,130,246,0.55)",
+          boxShadow: "0 0 40px rgba(56,189,248,0.9)",
           pointerEvents: "none",
         }}
       />
 
       {/* TOOLTIP */}
       <div
-        ref={cardRef}
         style={{
           position: "fixed",
           top: tooltipTop,
-          left: tooltipLeft,
-          width: "min(520px, calc(100vw - 32px))",
-          borderRadius: 20,
-          padding: 18,
-          background:
-            "radial-gradient(circle at top left,rgba(15,23,42,0.98),rgba(15,23,42,0.94))",
-          border: "1px solid rgba(148,163,184,0.55)",
-          boxShadow:
-            "0 18px 45px rgba(0,0,0,0.8), 0 0 40px rgba(56,189,248,0.25)",
+          left: Math.max(24, rect.left),
+          maxWidth: 440,
+          background: "rgba(15,23,42,0.98)",
+          borderRadius: 16,
+          padding: 16,
+          border: "1px solid rgba(148,163,184,0.5)",
+          boxShadow: "0 20px 50px rgba(0,0,0,0.8)",
           color: "#e5e7eb",
-          pointerEvents: "auto",
-          fontFamily: "system-ui",
         }}
       >
         <div
           style={{
-            display: "inline-flex",
-            gap: 8,
-            padding: "3px 10px",
-            borderRadius: 999,
-            border: "1px solid rgba(148,163,184,0.35)",
-            fontSize: 10,
-            letterSpacing: "0.16em",
-            textTransform: "uppercase",
+            fontSize: 11,
+            letterSpacing: "0.12em",
             color: "#9ca3af",
-            marginBottom: 10,
           }}
         >
-          <span>Dashboard Tour</span>
-          <span style={{ color: "#38bdf8" }}>
-            {stepIndex + 1}/{STEPS.length}
-          </span>
+          DASHBOARD TOUR {stepIndex + 1}/{STEPS.length}
         </div>
 
-        <h3
-          style={{
-            margin: 0,
-            marginBottom: 8,
-            fontSize: 18,
-            fontWeight: 650,
-            background: "linear-gradient(90deg,#38bdf8,#a855f7)",
-            WebkitBackgroundClip: "text",
-            color: "transparent",
-          }}
-        >
+        <h3 style={{ margin: "6px 0", color: "#38bdf8" }}>
           {step.title}
         </h3>
 
-        <p style={{ margin: 0, fontSize: 13, lineHeight: 1.55, color: "#cbd5f5" }}>
+        <p style={{ fontSize: 13, lineHeight: 1.5 }}>
           {step.body}
         </p>
 
@@ -260,48 +209,15 @@ export default function DashboardTutorial({ anchors, onFinish }) {
           style={{
             display: "flex",
             justifyContent: "space-between",
-            alignItems: "center",
-            marginTop: 14,
+            marginTop: 12,
           }}
         >
-          <button
-            type="button"
-            onClick={back}
-            disabled={atFirst}
-            style={{
-              padding: "7px 12px",
-              borderRadius: 999,
-              border: "1px solid rgba(71,85,105,0.9)",
-              background: atFirst ? "rgba(15,23,42,0.7)" : "rgba(15,23,42,0.95)",
-              color: atFirst ? "#6b7280" : "#e5e7eb",
-              fontSize: 12,
-              cursor: atFirst ? "not-allowed" : "pointer",
-              opacity: atFirst ? 0.7 : 1,
-            }}
-          >
-            ← Back
+          <button onClick={back} disabled={atFirst}>
+            Back
           </button>
 
-          <button
-            type="button"
-            onClick={next}
-            style={{
-              padding: "7px 16px",
-              borderRadius: 999,
-              border: "1px solid rgba(59,130,246,0.9)",
-              background: atLast
-                ? "radial-gradient(circle at top left,#22c55e,#16a34a,#052e16)"
-                : "radial-gradient(circle at top left,#3b82f6,#1d4ed8,#0f172a)",
-              color: "#e0f2fe",
-              fontSize: 12,
-              fontWeight: 700,
-              cursor: "pointer",
-              boxShadow: atLast
-                ? "0 0 18px rgba(34,197,94,0.55)"
-                : "0 0 18px rgba(59,130,246,0.55)",
-            }}
-          >
-            {atLast ? "Finish →" : "Next →"}
+          <button onClick={next}>
+            {atLast ? "Finish" : "Next"}
           </button>
         </div>
       </div>
