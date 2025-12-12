@@ -1,5 +1,10 @@
 // components/tutorial/DashboardTutorial.js
 // Dashboard Tutorial — Spotlight V5 (Fixed, Deterministic, Cinematic)
+// FULL FILE — CLEAN COPY / PASTE
+// ✅ Telemetry-safe (onEvent optional)
+// ✅ No behavior regressions
+// ✅ All spotlight math preserved
+// ✅ Step 3 alert force preserved
 
 import { useEffect, useLayoutEffect, useState } from "react";
 
@@ -41,7 +46,7 @@ const STEPS = [
   },
 ];
 
-export default function DashboardTutorial({ anchors, onFinish }) {
+export default function DashboardTutorial({ anchors, onFinish, onEvent }) {
   const [stepIndex, setStepIndex] = useState(0);
   const [rect, setRect] = useState(null);
 
@@ -50,8 +55,21 @@ export default function DashboardTutorial({ anchors, onFinish }) {
   const isLast = stepIndex === STEPS.length - 1;
 
   /* ============================================================
+     TELEMETRY — STEP VIEW
+============================================================ */
+  useEffect(() => {
+    if (typeof onEvent === "function") {
+      onEvent("tutorial_step_view", {
+        stepId: step.id,
+        stepIndex,
+      });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [stepIndex]);
+
+  /* ============================================================
      STEP 3 — FORCE ALERTS PANEL OPEN (WAIT UNTIL READY)
-  ============================================================ */
+============================================================ */
   useEffect(() => {
     if (step.id !== "alerts") return;
 
@@ -73,7 +91,7 @@ export default function DashboardTutorial({ anchors, onFinish }) {
 
   /* ============================================================
      SCROLL INTO VIEW
-  ============================================================ */
+============================================================ */
   useEffect(() => {
     if (!anchorRef?.current) return;
 
@@ -85,7 +103,7 @@ export default function DashboardTutorial({ anchors, onFinish }) {
 
   /* ============================================================
      MEASURE HIGHLIGHT RECT
-  ============================================================ */
+============================================================ */
   const measure = () => {
     if (!anchorRef?.current) {
       setRect(null);
@@ -117,7 +135,7 @@ export default function DashboardTutorial({ anchors, onFinish }) {
 
   /* ============================================================
      TOOLTIP POSITIONING (FIX STEP 1 WIDTH + LEFT SHIFT)
-  ============================================================ */
+============================================================ */
   const TOOLTIP_WIDTH = 520;
 
   const tooltipTop = isLast
@@ -131,7 +149,7 @@ export default function DashboardTutorial({ anchors, onFinish }) {
 
   /* ============================================================
      RENDER
-  ============================================================ */
+============================================================ */
   return (
     <div
       style={{
@@ -250,7 +268,15 @@ export default function DashboardTutorial({ anchors, onFinish }) {
           }}
         >
           <button
-            onClick={() => setStepIndex((i) => Math.max(i - 1, 0))}
+            onClick={() => {
+              if (typeof onEvent === "function") {
+                onEvent("tutorial_back", {
+                  stepId: step.id,
+                  stepIndex,
+                });
+              }
+              setStepIndex((i) => Math.max(i - 1, 0));
+            }}
             disabled={stepIndex === 0}
             style={{
               background: "transparent",
@@ -264,9 +290,15 @@ export default function DashboardTutorial({ anchors, onFinish }) {
           </button>
 
           <button
-            onClick={() =>
-              isLast ? onFinish() : setStepIndex((i) => i + 1)
-            }
+            onClick={() => {
+              if (typeof onEvent === "function") {
+                onEvent("tutorial_next", {
+                  stepId: step.id,
+                  stepIndex,
+                });
+              }
+              isLast ? onFinish() : setStepIndex((i) => i + 1);
+            }}
             style={{
               padding: "8px 18px",
               borderRadius: 999,
