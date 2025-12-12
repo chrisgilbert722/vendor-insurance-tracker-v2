@@ -342,6 +342,20 @@ function Dashboard() {
   const [engineMap, setEngineMap] = useState({});
   const [alertSummary, setAlertSummary] = useState(null);
   const [showAlerts, setShowAlerts] = useState(false);
+// ============================================================
+// DASHBOARD TUTORIAL — FORCE ALERTS PANEL OPEN (STEP 3 FIX)
+// ============================================================
+useEffect(() => {
+  const forceOpenAlerts = () => {
+    setShowAlerts(true);
+  };
+
+  window.addEventListener("dashboard_open_alerts", forceOpenAlerts);
+
+  return () => {
+    window.removeEventListener("dashboard_open_alerts", forceOpenAlerts);
+  };
+}, []);
 
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [drawerVendor, setDrawerVendor] = useState(null);
