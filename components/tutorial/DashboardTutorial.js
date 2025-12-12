@@ -1,5 +1,5 @@
 // components/tutorial/DashboardTutorial.js
-// Dashboard Tutorial — Spotlight V5 (Final, Stable, Click-Safe)
+// Dashboard Tutorial — Spotlight V5 (Fixed, Deterministic, Cinematic)
 
 import { useEffect, useLayoutEffect, useState } from "react";
 
@@ -50,11 +50,25 @@ export default function DashboardTutorial({ anchors, onFinish }) {
   const isLast = stepIndex === STEPS.length - 1;
 
   /* ============================================================
-     STEP 3 — FORCE ALERTS PANEL OPEN
+     STEP 3 — FORCE ALERTS PANEL OPEN (WAIT UNTIL READY)
   ============================================================ */
   useEffect(() => {
     if (step.id !== "alerts") return;
+
     window.dispatchEvent(new Event("dashboard_open_alerts"));
+
+    let tries = 0;
+    const waitForAlerts = setInterval(() => {
+      if (anchors?.alerts?.current) {
+        clearInterval(waitForAlerts);
+        measure();
+      }
+      tries++;
+      if (tries > 20) clearInterval(waitForAlerts);
+    }, 50);
+
+    return () => clearInterval(waitForAlerts);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [step.id]);
 
   /* ============================================================
@@ -62,6 +76,7 @@ export default function DashboardTutorial({ anchors, onFinish }) {
   ============================================================ */
   useEffect(() => {
     if (!anchorRef?.current) return;
+
     anchorRef.current.scrollIntoView({
       behavior: "smooth",
       block: "center",
@@ -69,7 +84,7 @@ export default function DashboardTutorial({ anchors, onFinish }) {
   }, [stepIndex, anchorRef]);
 
   /* ============================================================
-     MEASURE SPOTLIGHT RECT
+     MEASURE HIGHLIGHT RECT
   ============================================================ */
   const measure = () => {
     if (!anchorRef?.current) {
@@ -101,11 +116,9 @@ export default function DashboardTutorial({ anchors, onFinish }) {
   if (!rect) return null;
 
   /* ============================================================
-     TOOLTIP POSITION (FIXED)
-     Steps 3–5 ALWAYS render ABOVE spotlight
+     TOOLTIP POSITIONING
   ============================================================ */
-  const forceAbove = stepIndex >= 2; // steps 3,4,5
-  const tooltipTop = forceAbove
+  const tooltipTop = isLast
     ? Math.max(24, rect.top - 220)
     : rect.top + rect.height + 20;
 
@@ -121,7 +134,7 @@ export default function DashboardTutorial({ anchors, onFinish }) {
         pointerEvents: "none",
       }}
     >
-      {/* DARK MASK (CUTOUT) */}
+      {/* DARK MASK */}
       <svg
         width="100%"
         height="100%"
@@ -150,7 +163,7 @@ export default function DashboardTutorial({ anchors, onFinish }) {
         />
       </svg>
 
-      {/* HIGHLIGHT BORDER */}
+      {/* HIGHLIGHT */}
       <div
         style={{
           position: "fixed",
@@ -162,7 +175,6 @@ export default function DashboardTutorial({ anchors, onFinish }) {
           border: "2px solid rgba(56,189,248,0.95)",
           boxShadow:
             "0 0 35px rgba(56,189,248,0.85), inset 0 0 18px rgba(56,189,248,0.25)",
-          pointerEvents: "none",
         }}
       />
 
@@ -172,7 +184,8 @@ export default function DashboardTutorial({ anchors, onFinish }) {
           position: "fixed",
           top: tooltipTop,
           left: Math.max(24, rect.left),
-          maxWidth: 520,
+          width: 420,               // ✅ FIXED WIDTH (consistent across steps)
+          maxWidth: "calc(100vw - 48px)",
           borderRadius: 20,
           padding: 18,
           background:
@@ -224,7 +237,6 @@ export default function DashboardTutorial({ anchors, onFinish }) {
           style={{
             display: "flex",
             justifyContent: "space-between",
-            alignItems: "center",
             marginTop: 16,
           }}
         >
@@ -235,7 +247,6 @@ export default function DashboardTutorial({ anchors, onFinish }) {
               background: "transparent",
               border: "none",
               color: stepIndex === 0 ? "#6b7280" : "#9ca3af",
-              cursor: stepIndex === 0 ? "default" : "pointer",
               fontSize: 13,
             }}
           >
@@ -256,10 +267,6 @@ export default function DashboardTutorial({ anchors, onFinish }) {
               color: "#e0f2fe",
               fontSize: 13,
               fontWeight: 600,
-              cursor: "pointer",
-              boxShadow: isLast
-                ? "0 0 20px rgba(34,197,94,0.6)"
-                : "0 0 20px rgba(59,130,246,0.6)",
             }}
           >
             {isLast ? "Finish →" : "Next →"}
