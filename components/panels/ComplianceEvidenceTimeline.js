@@ -25,19 +25,49 @@ export default function ComplianceEvidenceTimeline({ orgId }) {
         boxShadow: "0 10px 35px rgba(0,0,0,0.45)",
       }}
     >
-      <h2
+      {/* HEADER + EXPORT */}
+      <div
         style={{
-          marginTop: 0,
+          display: "flex",
+          justifyContent: "space-between",
+          alignItems: "center",
           marginBottom: 14,
-          fontSize: 18,
-          fontWeight: 600,
-          background: "linear-gradient(90deg,#38bdf8,#a855f7)",
-          WebkitBackgroundClip: "text",
-          color: "transparent",
         }}
       >
-        Compliance Evidence (Audit Log)
-      </h2>
+        <h2
+          style={{
+            margin: 0,
+            fontSize: 18,
+            fontWeight: 600,
+            background: "linear-gradient(90deg,#38bdf8,#a855f7)",
+            WebkitBackgroundClip: "text",
+            color: "transparent",
+          }}
+        >
+          Compliance Evidence (Audit Log)
+        </h2>
+
+        <button
+          onClick={() =>
+            window.open(
+              `/api/compliance/export.csv?orgId=${orgId}`,
+              "_blank"
+            )
+          }
+          style={{
+            padding: "6px 12px",
+            borderRadius: 10,
+            border: "1px solid #38bdf8",
+            background: "rgba(56,189,248,0.15)",
+            color: "#38bdf8",
+            fontSize: 12,
+            fontWeight: 700,
+            cursor: "pointer",
+          }}
+        >
+          Export CSV
+        </button>
+      </div>
 
       {loading ? (
         <div style={{ fontSize: 13, color: "#9ca3af" }}>
