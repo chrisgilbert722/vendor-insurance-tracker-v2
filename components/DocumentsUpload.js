@@ -1,7 +1,9 @@
 // components/DocumentsUpload.js
 // ============================================================
-// Documents Upload — V5 (Browser-safe)
-// Sends file + metadata to API route via FormData
+// Documents Upload — V6 (Mobile-First UX Enhanced)
+// ✔ Camera-first upload
+// ✔ Auto-crop guidance
+// ✔ Upload success confirmation
 // ============================================================
 
 import { useState } from "react";
@@ -16,6 +18,7 @@ export default function DocumentsUpload({
   const [expiresOn, setExpiresOn] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const [success, setSuccess] = useState(false);
 
   async function handleUpload() {
     if (!file || !orgId || !vendorId) return;
@@ -23,6 +26,7 @@ export default function DocumentsUpload({
     try {
       setLoading(true);
       setError("");
+      setSuccess(false);
 
       const formData = new FormData();
       formData.append("file", file);
@@ -45,6 +49,10 @@ export default function DocumentsUpload({
       setFile(null);
       setExpiresOn("");
       setDocumentType("COI");
+      setSuccess(true);
+
+      // Auto-clear success state
+      setTimeout(() => setSuccess(false), 2200);
     } catch (err) {
       console.error("[DocumentsUpload]", err);
       setError(err.message || "Upload failed");
@@ -54,7 +62,8 @@ export default function DocumentsUpload({
   }
 
   return (
-    <div className="rounded-2xl border border-slate-800 bg-slate-900/60 p-3 space-y-2">
+    <div className="rounded-2xl border border-slate-800 bg-slate-900/60 p-4 space-y-3">
+      {/* TYPE + EXPIRATION */}
       <div className="flex gap-2">
         <select
           value={documentType}
@@ -75,14 +84,32 @@ export default function DocumentsUpload({
         />
       </div>
 
-      <input
-        type="file"
-        onChange={(e) => setFile(e.target.files?.[0] || null)}
-        className="text-xs text-slate-300"
-      />
+      {/* PRIMARY CAMERA CTA */}
+      <label className="block">
+        <div className="w-full px-4 py-3 rounded-xl bg-gradient-to-r from-sky-500 to-blue-600 text-slate-950 text-sm font-semibold text-center cursor-pointer hover:opacity-90">
+          {loading ? "Uploading…" : "📸 Take Photo or Upload Document"}
+        </div>
 
+        <input
+          type="file"
+          accept="image/*,application/pdf"
+          capture="environment"
+          disabled={loading}
+          onChange={(e) => setFile(e.target.files?.[0] || null)}
+          className="hidden"
+        />
+      </label>
+
+      {/* AUTO-CROP GUIDANCE */}
+      <div className="text-[11px] text-slate-400 leading-snug">
+        💡 Tip: Lay the document flat, fill the frame, and avoid shadows.  
+        Our system automatically crops and reads your document.
+      </div>
+
+      {/* ERROR */}
       {error && <div className="text-xs text-rose-400">{error}</div>}
 
+      {/* CONFIRM UPLOAD BUTTON (DESKTOP FALLBACK) */}
       <button
         onClick={handleUpload}
         disabled={loading || !file}
@@ -90,6 +117,30 @@ export default function DocumentsUpload({
       >
         {loading ? "Uploading…" : "Upload Document"}
       </button>
+
+      {/* SUCCESS CONFIRMATION */}
+      {success && (
+        <div className="text-sm font-semibold text-emerald-300 bg-emerald-900/20 border border-emerald-700/40 rounded-lg px-3 py-2 animate-fade-pop">
+          ✅ Upload successful — processing now
+        </div>
+      )}
+
+      {/* ANIMATION */}
+      <style jsx>{`
+        @keyframes fadePop {
+          from {
+            opacity: 0;
+            transform: translateY(6px) scale(0.98);
+          }
+          to {
+            opacity: 1;
+            transform: translateY(0) scale(1);
+          }
+        }
+        .animate-fade-pop {
+          animation: fadePop 0.35s ease-out;
+        }
+      `}</style>
     </div>
   );
 }
