@@ -63,8 +63,7 @@ function getFixRecommendation(alert) {
     default:
       return {
         title: "Review Alert",
-        description:
-          "This alert requires review to determine next steps.",
+        description: "This alert requires review to determine next steps.",
         required_document: null,
         action: "review",
         actor: "admin",
@@ -78,7 +77,7 @@ export default async function handler(req, res) {
   }
 
   try {
-    const { orgId, vendorId, limit } = req.query;
+    const { orgId, vendorId, limit, includeResolved } = req.query;
 
     if (!orgId) {
       return res.status(400).json({
@@ -88,6 +87,9 @@ export default async function handler(req, res) {
     }
 
     const limitNum = limit ? Number(limit) : 100;
+    const allowResolved =
+      String(includeResolved || "").toLowerCase() === "true" ||
+      String(includeResolved || "") === "1";
 
     const alerts = await listAlertsV2({
       orgId: Number(orgId),
@@ -95,8 +97,14 @@ export default async function handler(req, res) {
       limit: limitNum,
     });
 
+    // 🔒 DEFAULT BEHAVIOR:
+    // Hide resolved alerts unless explicitly requested
+    const visibleAlerts = allowResolved
+      ? alerts
+      : alerts.filter((a) => !a.resolved_at);
+
     // 🔑 Attach fix recommendations (A1)
-    const enrichedAlerts = alerts.map((alert) => ({
+    const enrichedAlerts = visibleAlerts.map((alert) => ({
       ...alert,
       fix: getFixRecommendation(alert),
     }));
