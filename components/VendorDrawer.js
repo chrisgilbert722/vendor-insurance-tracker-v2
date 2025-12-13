@@ -1,21 +1,18 @@
 // components/VendorDrawer.js
 // ============================================================
 // Vendor Drawer V8 — Engine V5 • Policies • Compliance Documents • Contract Intelligence V3
-// Step 4: Vendor Compliance Snapshot
+// Step 5: Demo-Grade Empty States (Phase 1 COMPLETE)
 // ============================================================
 
 import { useEffect, useState, useMemo } from "react";
 import {
   X as XIcon,
   ShieldCheck,
-  WarningCircle,
-  ListBullets,
-  EnvelopeSimple,
   FileText,
-  Scales,
   CheckCircle,
   MinusCircle,
   XCircle,
+  UploadSimple,
 } from "@phosphor-icons/react";
 import { useOrg } from "../context/OrgContext";
 import DocumentsUpload from "./DocumentsUpload";
@@ -29,7 +26,7 @@ function formatDate(value) {
 }
 
 // ============================================================
-// DOCUMENT GROUPING
+// DOCUMENT GROUPING + COPY
 // ============================================================
 
 const GROUPS = [
@@ -37,16 +34,25 @@ const GROUPS = [
     key: "insurance",
     title: "Insurance",
     types: ["coi", "endorsement"],
+    emptyTitle: "Insurance coverage not on file",
+    emptyBody:
+      "Upload a Certificate of Insurance or endorsement. Once added, we automatically track expiration and compliance.",
   },
   {
     key: "legal",
     title: "Legal & Financial",
     types: ["contract", "w9"],
+    emptyTitle: "Legal documents missing",
+    emptyBody:
+      "Contracts and W-9s establish vendor authorization and payment eligibility.",
   },
   {
     key: "operational",
     title: "Operational",
     types: ["license", "safety"],
+    emptyTitle: "Operational documentation required",
+    emptyBody:
+      "Licenses and safety documents confirm a vendor is legally permitted to operate.",
   },
 ];
 
@@ -54,7 +60,6 @@ function getCoverageStatus(docs, types) {
   const found = docs.filter((d) =>
     types.includes(String(d.document_type || "").toLowerCase())
   );
-
   if (found.length === 0) return "missing";
   if (found.length < types.length) return "partial";
   return "covered";
@@ -82,7 +87,7 @@ function StatusPill({ status }) {
   );
 }
 
-export default function VendorDrawer({ vendor, policies = [], onClose }) {
+export default function VendorDrawer({ vendor, onClose }) {
   const { activeOrgId } = useOrg();
 
   const [documents, setDocuments] = useState([]);
@@ -169,8 +174,7 @@ export default function VendorDrawer({ vendor, policies = [], onClose }) {
             </div>
 
             <div className="text-xs text-slate-400">
-              All vendor compliance documents are managed here — insurance,
-              licenses, contracts, and more.
+              Upload once — we monitor vendor compliance continuously.
             </div>
 
             <DocumentsUpload
@@ -198,15 +202,27 @@ export default function VendorDrawer({ vendor, policies = [], onClose }) {
 
                   return (
                     <div key={group.key}>
-                      <div className="mb-2">
+                      <div className="mb-2 flex items-center justify-between">
                         <div className="text-xs font-semibold text-slate-200">
                           {group.title}
                         </div>
+                        <StatusPill status={coverage[group.key]} />
                       </div>
 
                       {groupDocs.length === 0 ? (
-                        <div className="rounded-xl border border-slate-800 bg-slate-900/50 p-3 text-xs text-slate-400">
-                          No documents uploaded in this category yet.
+                        <div className="rounded-xl border border-dashed border-slate-700 bg-slate-900/40 p-4 text-xs text-slate-300 flex gap-3 items-start">
+                          <UploadSimple
+                            size={18}
+                            className="text-slate-400 mt-0.5"
+                          />
+                          <div>
+                            <div className="font-semibold mb-1">
+                              {group.emptyTitle}
+                            </div>
+                            <div className="text-slate-400">
+                              {group.emptyBody}
+                            </div>
+                          </div>
                         </div>
                       ) : (
                         <div className="space-y-3">
