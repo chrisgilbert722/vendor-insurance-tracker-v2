@@ -1,3 +1,5 @@
+// pages/dashboard.js — Dashboard V5 (Cinematic Intelligence Cockpit)
+
 import { useEffect, useState, useRef } from "react";
 import VendorDrawer from "../components/VendorDrawer";
 import { useRole } from "../lib/useRole";
@@ -8,7 +10,7 @@ import EliteStatusPill from "../components/elite/EliteStatusPill";
 import OnboardingHeroCard from "../components/onboarding/OnboardingHeroCard";
 import OnboardingBanner from "../components/onboarding/OnboardingBanner";
 
-// DASHBOARD TUTORIAL OVERLAY
+// DASHBOARD TUTORIAL OVERLAY (spotlight engine lives inside this)
 import DashboardTutorial from "../components/tutorial/DashboardTutorial";
 
 // CHARTS (Risk + Compliance Intelligence)
@@ -66,6 +68,7 @@ function computeDaysLeft(dateStr) {
   const d = parseExpiration(dateStr);
   return d ? Math.floor((d.getTime() - Date.now()) / 86400000) : null;
 }
+
 function computeRisk(policy) {
   const daysLeft = computeDaysLeft(policy.expiration_date);
   const flags = [];
@@ -174,6 +177,7 @@ function computeAiRisk({ risk, elite, compliance }) {
 
   return { score, tier };
 }
+
 /* ============================================================
    COMPLIANCE BADGE (VENDOR-LEVEL)
 ============================================================ */
@@ -194,7 +198,7 @@ function renderComplianceBadge(vendorId, complianceMap) {
         style={{
           ...base,
           background: "rgba(15,23,42,0.98)",
-          color: "#9ca3af",
+          color: GP.textSoft,
         }}
       >
         Checking…
@@ -308,18 +312,14 @@ function Dashboard() {
   const { isAdmin, isManager } = useRole();
   const { activeOrgId } = useOrg();
 
-  /* ============================================================
-     SPOTLIGHT ANCHORS (Tutorial)
-  ============================================================ */
+  // Spotlight anchors for tutorial (Option B)
   const riskRef = useRef(null);
   const kpiRef = useRef(null);
   const alertsRef = useRef(null);
   const renewalsRef = useRef(null);
   const policiesRef = useRef(null);
 
-  /* ============================================================
-     CORE STATE
-  ============================================================ */
+  // STATE
   const [onboardingComplete, setOnboardingComplete] = useState(true);
   const [showHero, setShowHero] = useState(false);
   const [bannerDismissed, setBannerDismissed] = useState(false);
@@ -342,59 +342,34 @@ function Dashboard() {
   const [engineMap, setEngineMap] = useState({});
   const [alertSummary, setAlertSummary] = useState(null);
   const [showAlerts, setShowAlerts] = useState(false);
-
-  /* ============================================================
-     POST-TOUR CTA (Monetization Layer)
-  ============================================================ */
-  const [showPostTourCta, setShowPostTourCta] = useState(false);
-
-  /* ============================================================
-     SAFE TELEMETRY (NO-FAIL)
-  ============================================================ */
-  const track = async (event, meta = {}) => {
-    try {
-      fetch("/api/telemetry/event", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          event,
-          page: "dashboard",
-          meta,
-        }),
-      }).catch(() => {});
-    } catch {}
+// ============================================================
+// DASHBOARD TUTORIAL — FORCE ALERTS PANEL OPEN (STEP 3 FIX)
+// ============================================================
+useEffect(() => {
+  const forceOpenAlerts = () => {
+    setShowAlerts(true);
   };
 
-  /* ============================================================
-     DASHBOARD TUTORIAL — FORCE ALERTS PANEL OPEN
-  ============================================================ */
-  useEffect(() => {
-    const forceOpenAlerts = () => setShowAlerts(true);
-    window.addEventListener("dashboard_open_alerts", forceOpenAlerts);
-    return () =>
-      window.removeEventListener("dashboard_open_alerts", forceOpenAlerts);
-  }, []);
+  window.addEventListener("dashboard_open_alerts", forceOpenAlerts);
 
-  /* ============================================================
-     DRAWER STATE
-  ============================================================ */
+  return () => {
+    window.removeEventListener("dashboard_open_alerts", forceOpenAlerts);
+  };
+}, []);
+
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [drawerVendor, setDrawerVendor] = useState(null);
   const [drawerPolicies, setDrawerPolicies] = useState([]);
 
-  /* ============================================================
-     SYSTEM TIMELINE
-  ============================================================ */
   const [systemTimeline, setSystemTimeline] = useState([]);
   const [systemTimelineLoading, setSystemTimelineLoading] = useState(true);
 
-  /* ============================================================
-     DASHBOARD TUTORIAL VISIBILITY
-  ============================================================ */
+  // DASHBOARD TUTORIAL VISIBILITY
   const [showTutorial, setShowTutorial] = useState(false);
+
   /* ============================================================
      ONBOARDING + TUTORIAL STATUS (COMBINED)
-  ============================================================ */
+============================================================ */
   useEffect(() => {
     if (!activeOrgId) return;
 
@@ -402,7 +377,7 @@ function Dashboard() {
       try {
         const res = await fetch(`/api/onboarding/status?orgId=${activeOrgId}`);
         const json = await res.json();
-        if (!json?.ok) return;
+        if (!json.ok) return;
 
         const done = !!json.onboardingComplete;
         const tutorialEnabled = json.dashboardTutorialEnabled === true;
@@ -425,8 +400,8 @@ function Dashboard() {
   }, [activeOrgId]);
 
   /* ============================================================
-     FORCE TUTORIAL WHEN ?tutorial=1 (REPLAY)
-  ============================================================ */
+     FORCE TUTORIAL WHEN ?tutorial=1 (Replay from sidebar)
+============================================================ */
   useEffect(() => {
     if (typeof window === "undefined") return;
 
@@ -441,23 +416,16 @@ function Dashboard() {
     }
   }, []);
 
-  /* ============================================================
-     FINISH TUTORIAL
-  ============================================================ */
+  /* FINISH TUTORIAL */
   const handleFinishTutorial = () => {
     setShowTutorial(false);
-    setShowPostTourCta(true);
-
     try {
       localStorage.setItem("dashboard_tutorial_seen", "true");
     } catch {}
-
-    track("tutorial_finish");
   };
-
   /* ============================================================
      ONBOARDING BANNER DISMISS
-  ============================================================ */
+============================================================ */
   useEffect(() => {
     try {
       const stored = localStorage.getItem("onboardingBannerDismissed");
@@ -478,7 +446,7 @@ function Dashboard() {
 
   /* ============================================================
      AUTO-OPEN CHECKLIST ON IDLE
-  ============================================================ */
+============================================================ */
   useEffect(() => {
     if (onboardingComplete) return;
 
@@ -506,9 +474,10 @@ function Dashboard() {
       );
     };
   }, [onboardingComplete]);
+
   /* ============================================================
      DASHBOARD METRICS
-  ============================================================ */
+============================================================ */
   useEffect(() => {
     if (!activeOrgId) return;
 
@@ -517,7 +486,7 @@ function Dashboard() {
         setDashboardLoading(true);
         const res = await fetch(`/api/dashboard/metrics?orgId=${activeOrgId}`);
         const json = await res.json();
-        if (json?.ok) setDashboard(json.overview);
+        if (json.ok) setDashboard(json.overview);
       } catch (err) {
         console.error("[dashboard] metrics error:", err);
       } finally {
@@ -528,13 +497,13 @@ function Dashboard() {
 
   /* ============================================================
      LOAD POLICIES
-  ============================================================ */
+============================================================ */
   useEffect(() => {
     (async () => {
       try {
         const res = await fetch("/api/get-policies");
         const json = await res.json();
-        if (json?.ok) setPolicies(json.policies || []);
+        if (json.ok) setPolicies(json.policies);
       } catch (err) {
         console.error("[dashboard] policies error:", err);
       } finally {
@@ -542,52 +511,9 @@ function Dashboard() {
       }
     })();
   }, []);
-
   /* ============================================================
-     ALERTS V2 SUMMARY (LIVE)
-  ============================================================ */
-  useEffect(() => {
-    if (!activeOrgId) return;
-
-    const loadAlerts = async () => {
-      try {
-        const res = await fetch(`/api/alerts-v2/stats?orgId=${activeOrgId}`);
-        const json = await res.json();
-        if (json?.ok) setAlertSummary(json);
-      } catch (err) {
-        console.error("[alerts v2 summary] fail:", err);
-      }
-    };
-
-    loadAlerts();
-    const interval = setInterval(loadAlerts, 15000);
-    return () => clearInterval(interval);
-  }, [activeOrgId]);
-
-  /* ============================================================
-     SYSTEM TIMELINE
-  ============================================================ */
-  useEffect(() => {
-    const loadTimeline = async () => {
-      try {
-        setSystemTimelineLoading(true);
-        const res = await fetch("/api/admin/timeline");
-        const json = await res.json();
-        if (json?.ok) setSystemTimeline(json.timeline || []);
-      } catch (err) {
-        console.error("[system timeline] fail:", err);
-      } finally {
-        setSystemTimelineLoading(false);
-      }
-    };
-
-    loadTimeline();
-    const int = setInterval(loadTimeline, 10000);
-    return () => clearInterval(int);
-  }, []);
-  /* ============================================================
-     ELITE ENGINE — COI EVALUATION
-  ============================================================ */
+     ELITE ENGINE — COI Evaluation
+============================================================ */
   useEffect(() => {
     if (!policies.length) return;
 
@@ -622,23 +548,23 @@ function Dashboard() {
         .then((json) => {
           setEliteMap((prev) => ({
             ...prev,
-            [vendorId]: json?.ok
+            [vendorId]: json.ok
               ? { loading: false, overall: json.overall, rules: json.rules }
-              : { loading: false, error: json.error || "Elite error" },
+              : { loading: false, error: json.error },
           }));
         })
         .catch(() =>
           setEliteMap((prev) => ({
             ...prev,
-            [vendorId]: { loading: false, error: "Failed to load Elite" },
+            [vendorId]: { loading: false, error: "Failed to load" },
           }))
         );
     });
-  }, [policies]);
+  }, [policies, eliteMap]);
 
   /* ============================================================
-     RULE ENGINE V5 — AUTO RUN
-  ============================================================ */
+     RULE ENGINE V5 — run-v3
+============================================================ */
   useEffect(() => {
     if (!policies.length || !activeOrgId) return;
 
@@ -672,13 +598,13 @@ function Dashboard() {
       })
         .then((res) => res.json())
         .then((json) => {
-          if (!json?.ok) {
+          if (!json.ok) {
             setEngineMap((prev) => ({
               ...prev,
               [vendorId]: {
                 loading: false,
                 loaded: true,
-                error: json?.error || "Rule Engine error",
+                error: json.error || "Rule Engine V5 error",
               },
             }));
             return;
@@ -719,10 +645,11 @@ function Dashboard() {
           }));
         });
     });
-  }, [policies, activeOrgId]);
+  }, [policies, activeOrgId, engineMap]);
+
   /* ============================================================
      ELITE SUMMARY COUNTS
-  ============================================================ */
+============================================================ */
   useEffect(() => {
     let pass = 0,
       warn = 0,
@@ -739,8 +666,48 @@ function Dashboard() {
   }, [eliteMap]);
 
   /* ============================================================
-     DRAWER HANDLERS
-  ============================================================ */
+     ALERTS V2 SUMMARY
+============================================================ */
+  useEffect(() => {
+    if (!activeOrgId) return;
+
+    const loadAlerts = async () => {
+      try {
+        const res = await fetch(`/api/alerts-v2/stats?orgId=${activeOrgId}`);
+        const json = await res.json();
+        if (json.ok) setAlertSummary(json);
+      } catch (err) {
+        console.error("[alerts v2 summary] fail:", err);
+      }
+    };
+
+    loadAlerts();
+    const interval = setInterval(loadAlerts, 15000);
+    return () => clearInterval(interval);
+  }, [activeOrgId]);
+  /* ============================================================
+     SYSTEM TIMELINE
+============================================================ */
+  useEffect(() => {
+    const loadTimeline = async () => {
+      try {
+        setSystemTimelineLoading(true);
+        const res = await fetch("/api/admin/timeline");
+        const json = await res.json();
+        if (json.ok) setSystemTimeline(json.timeline);
+      } catch (err) {
+        console.error("[system timeline] fail:", err);
+      } finally {
+        setSystemTimelineLoading(false);
+      }
+    };
+
+    loadTimeline();
+    const int = setInterval(loadTimeline, 10000);
+    return () => clearInterval(int);
+  }, []);
+
+  /* DRAWER HANDLERS */
   const openDrawer = (vendorId) => {
     const vendorPolicies = policies.filter((p) => p.vendor_id === vendorId);
     setDrawerVendor({
@@ -758,9 +725,7 @@ function Dashboard() {
     setDrawerPolicies([]);
   };
 
-  /* ============================================================
-     FILTERED POLICIES
-  ============================================================ */
+  /* FILTERED POLICIES */
   const filtered = policies.filter((p) => {
     const t = filterText.toLowerCase();
     return (
@@ -772,9 +737,7 @@ function Dashboard() {
     );
   });
 
-  /* ============================================================
-     DERIVED METRICS
-  ============================================================ */
+  /* DERIVED METRICS */
   const engineHealth = summarizeEngineHealth(engineMap);
   const avgScore = engineHealth.avg;
   const totalVendors = engineHealth.total;
@@ -788,375 +751,657 @@ function Dashboard() {
       })
     : [];
   /* ============================================================
-     HERO + KPI STRIP
-  ============================================================ */
-  const HeroPanel = () => (
+     MAIN RENDER
+============================================================ */
+  return (
     <div
-      className="cockpit-hero cockpit-pulse"
       style={{
-        borderRadius: 28,
-        padding: 22,
-        marginBottom: 20,
-        border: "1px solid rgba(148,163,184,0.45)",
+        minHeight: "100vh",
         background:
-          "radial-gradient(circle at top left,rgba(15,23,42,0.98),rgba(15,23,42,0.92))",
-        boxShadow:
-          "0 0 55px rgba(0,0,0,0.85),0 0 70px rgba(56,189,248,0.35),inset 0 0 25px rgba(0,0,0,0.7)",
-        display: "grid",
-        gridTemplateColumns: "minmax(0,1.8fr) minmax(0,1.3fr)",
-        gap: 24,
-        position: "relative",
+          "radial-gradient(circle at top left,#020617 0,#020617 45%,#000000 100%)",
+        padding: "32px 40px 40px",
+        color: GP.text,
       }}
     >
-      {/* LEFT */}
-      <div style={{ paddingTop: 22 }}>
-        <div
-          style={{
-            position: "absolute",
-            top: 12,
-            left: 18,
-            fontSize: 10,
-            letterSpacing: "0.18em",
-            textTransform: "uppercase",
-            color: "rgba(148,163,184,0.7)",
-          }}
-        >
-          DASHBOARD V5 • GLOBAL COMPLIANCE ENGINE
-        </div>
+      {/* ONBOARDING COCKPIT LAYER */}
+      {!onboardingComplete && (
+        <>
+          {showHero && (
+            <div style={{ marginBottom: 32 }}>
+              <OnboardingHeroCard onStart={handleStartOnboarding} />
+            </div>
+          )}
 
-        <h1
-          style={{
-            fontSize: 30,
-            fontWeight: 600,
-            margin: 0,
-            letterSpacing: 0.18,
-            background:
-              "linear-gradient(90deg,#38bdf8,#a855f7,#22c55e,#facc15)",
-            WebkitBackgroundClip: "text",
-            color: "transparent",
-          }}
-        >
-          Vendor Insurance Intelligence
-        </h1>
+          {!showHero && !bannerDismissed && (
+            <div style={{ marginBottom: 22 }}>
+              <OnboardingBanner
+                onStart={handleStartOnboarding}
+                onDismiss={handleDismissBanner}
+              />
+            </div>
+          )}
+        </>
+      )}
 
-        <p
-          style={{
-            marginTop: 8,
-            fontSize: 13,
-            color: GP.textSoft,
-            maxWidth: 640,
-            lineHeight: 1.5,
-          }}
-        >
-          Live AI-powered oversight across all vendors, policies, expirations,
-          alerts, and rule engines. This is your command center.
-        </p>
-
-        {/* KPI STRIP */}
-        <div ref={kpiRef}>
-          <div
-            style={{
-              marginTop: 20,
-              display: "grid",
-              gridTemplateColumns: "repeat(auto-fit,minmax(160px,1fr))",
-              gap: 12,
-            }}
-          >
-            <MiniKpi
-              label="Org Health"
-              value={Number.isFinite(avgScore) ? avgScore : "—"}
-              color={
-                !Number.isFinite(avgScore)
-                  ? GP.textSoft
-                  : avgScore >= 80
-                  ? GP.neonGreen
-                  : avgScore >= 60
-                  ? GP.neonGold
-                  : GP.neonRed
-              }
-              icon="🏢"
-            />
-            <MiniKpi
-              label="Expired"
-              value={dashboard?.alerts?.expired ?? 0}
-              color={GP.neonRed}
-              icon="🔥"
-            />
-            <MiniKpi
-              label="Critical ≤30d"
-              value={dashboard?.alerts?.critical30d ?? 0}
-              color={GP.neonGold}
-              icon="⚠️"
-            />
-            <MiniKpi
-              label="Warning ≤90d"
-              value={dashboard?.alerts?.warning90d ?? 0}
-              color={GP.neonBlue}
-              icon="🟡"
-            />
-            <MiniKpi
-              label="Elite Fails"
-              value={dashboard?.alerts?.eliteFails ?? 0}
-              color={GP.neonRed}
-              icon="🧠"
-            />
-          </div>
-        </div>
-      </div>
-
-      {/* RIGHT — SCORE DONUT */}
+      {/* HERO COMMAND PANEL */}
       <div
+        className="cockpit-hero cockpit-pulse"
         style={{
-          display: "flex",
-          flexDirection: "column",
-          alignItems: "flex-end",
-          gap: 16,
-          paddingTop: 28,
+          borderRadius: 28,
+          padding: 22,
+          marginBottom: 20,
+          border: "1px solid rgba(148,163,184,0.45)",
+          background:
+            "radial-gradient(circle at top left,rgba(15,23,42,0.98),rgba(15,23,42,0.92))",
+          boxShadow:
+            "0 0 55px rgba(0,0,0,0.85),0 0 70px rgba(56,189,248,0.35),inset 0 0 25px rgba(0,0,0,0.7)",
+          display: "grid",
+          gridTemplateColumns: "minmax(0,1.8fr) minmax(0,1.3fr)",
+          gap: 24,
+          position: "relative",
         }}
       >
-        <div ref={riskRef}>
+        {/* LEFT SIDE */}
+        <div style={{ paddingTop: 22 }}>
           <div
             style={{
-              position: "relative",
-              width: 160,
-              height: 160,
-              borderRadius: "50%",
-              background:
-                "conic-gradient(from 220deg,#22c55e,#a3e635,#facc15,#fb7185,#0f172a)",
-              padding: 5,
-              boxShadow:
-                "0 0 50px rgba(34,197,94,0.45),0 0 80px rgba(148,163,184,0.3)",
+              position: "absolute",
+              top: 12,
+              left: 18,
+              fontSize: 10,
+              letterSpacing: "0.18em",
+              textTransform: "uppercase",
+              color: "rgba(148,163,184,0.7)",
             }}
           >
-            <div
-              style={{
-                position: "absolute",
-                inset: 12,
-                borderRadius: "50%",
-                background:
-                  "radial-gradient(circle at 30% 0,#020617,#020617 60%,#000)",
-              }}
-            />
-            <div
-              style={{
-                position: "relative",
-                zIndex: 1,
-                height: "100%",
-                display: "flex",
-                flexDirection: "column",
-                alignItems: "center",
-                justifyContent: "center",
-              }}
-            >
-              <div
+            DASHBOARD V5 • GLOBAL COMPLIANCE ENGINE
+          </div>
+
+          <h1
+            style={{
+              fontSize: 30,
+              fontWeight: 600,
+              margin: 0,
+              letterSpacing: 0.18,
+              background:
+                "linear-gradient(90deg,#38bdf8,#a855f7,#22c55e,#facc15)",
+              WebkitBackgroundClip: "text",
+              color: "transparent",
+            }}
+          >
+            Vendor Insurance Intelligence
+          </h1>
+
+          <p
+            style={{
+              marginTop: 8,
+              fontSize: 13,
+              color: GP.textSoft,
+              maxWidth: 640,
+              lineHeight: 1.5,
+            }}
+          >
+            Live AI-powered oversight across all vendors, policies, expirations,
+            alerts, and rule engines. This is your command center.
+          </p>
+
+          {/* AI System Health */}
+          <div
+            style={{
+              marginTop: 12,
+              fontSize: 12,
+              color: GP.textSoft,
+              borderRadius: 999,
+              padding: "6px 12px",
+              border: "1px solid rgba(55,65,81,0.9)",
+              background:
+                "linear-gradient(90deg,rgba(15,23,42,0.98),rgba(15,23,42,0.9))",
+              display: "inline-flex",
+              alignItems: "center",
+              gap: 10,
+            }}
+          >
+            <span>🤖</span>
+            <span>
+              System Health:{" "}
+              <strong
                 style={{
-                  fontSize: 11,
-                  letterSpacing: "0.1em",
-                  textTransform: "uppercase",
-                  color: GP.textSoft,
-                  marginBottom: 2,
-                }}
-              >
-                Global Score
-              </div>
-              <div
-                style={{
-                  fontSize: 32,
-                  fontWeight: 700,
-                  background:
-                    "linear-gradient(120deg,#22c55e,#bef264,#facc15)",
-                  WebkitBackgroundClip: "text",
-                  color: "transparent",
+                  color:
+                    dashboardLoading
+                      ? GP.textSoft
+                      : avgScore >= 80
+                      ? GP.neonGreen
+                      : avgScore >= 60
+                      ? GP.neonGold
+                      : GP.neonRed,
                 }}
               >
                 {dashboardLoading ? "—" : Number(avgScore).toFixed(0)}
-              </div>
-              <div style={{ fontSize: 10, color: GP.textMuted }}>/100</div>
+              </strong>
+              /100 · Vendors:{" "}
+              <strong style={{ color: GP.neonBlue }}>
+                {dashboardLoading ? "—" : totalVendors}
+              </strong>{" "}
+              · Alerts:{" "}
+              <strong style={{ color: GP.neonRed }}>{alertsCount}</strong>
+            </span>
+          </div>
+
+          {/* ORG COMPLIANCE CTA */}
+          {(isAdmin || isManager) && (
+            <a
+              href="/admin/org-compliance"
+              style={{
+                marginTop: 12,
+                display: "inline-flex",
+                alignItems: "center",
+                padding: "8px 14px",
+                borderRadius: 12,
+                background:
+                  "radial-gradient(circle at top left,#16a34a,#22c55e,#020617)",
+                border: "1px solid rgba(34,197,94,0.6)",
+                color: "#bbf7d0",
+                fontSize: 13,
+                fontWeight: 600,
+                cursor: "pointer",
+                textDecoration: "none",
+                boxShadow:
+                  "0 0 18px rgba(34,197,94,0.35),0 0 32px rgba(21,128,61,0.25)",
+              }}
+            >
+              🏢 View Org Compliance Dashboard
+            </a>
+          )}
+
+          {/* KPI STRIP (tutorial anchor) */}
+          <div ref={kpiRef}>
+            <div
+              style={{
+                marginTop: 20,
+                display: "grid",
+                gridTemplateColumns: "repeat(auto-fit,minmax(160px,1fr))",
+                gap: 12,
+              }}
+            >
+              <MiniKpi
+                label="Org Health"
+                value={Number.isFinite(avgScore) ? avgScore : "—"}
+                color={
+                  !Number.isFinite(avgScore)
+                    ? GP.textSoft
+                    : avgScore >= 80
+                    ? GP.neonGreen
+                    : avgScore >= 60
+                    ? GP.neonGold
+                    : GP.neonRed
+                }
+                icon="🏢"
+              />
+              <MiniKpi
+                label="Expired"
+                value={dashboard?.alerts?.expired ?? 0}
+                color={GP.neonRed}
+                icon="🔥"
+              />
+              <MiniKpi
+                label="Critical ≤30d"
+                value={dashboard?.alerts?.critical30d ?? 0}
+                color={GP.neonGold}
+                icon="⚠️"
+              />
+              <MiniKpi
+                label="Warning ≤90d"
+                value={dashboard?.alerts?.warning90d ?? 0}
+                color={GP.neonBlue}
+                icon="🟡"
+              />
+              <MiniKpi
+                label="Elite Fails"
+                value={dashboard?.alerts?.eliteFails ?? 0}
+                color={GP.neonRed}
+                icon="🧠"
+              />
             </div>
           </div>
         </div>
-      </div>
-    </div>
-  );
-  /* ============================================================
-     ALERTS V2 PANEL (Dashboard Embedded)
-  ============================================================ */
-  const AlertsPanel = () => (
-    showAlerts && (
-      <div ref={alertsRef}>
+        {/* RIGHT SIDE — Donut + Elite Snapshot */}
         <div
           style={{
-            marginBottom: 26,
-            borderRadius: 20,
-            padding: 16,
-            border: "1px solid rgba(148,163,184,0.5)",
-            background: "rgba(15,23,42,0.97)",
-            boxShadow: "0 16px 40px rgba(15,23,42,0.9)",
+            display: "flex",
+            flexDirection: "column",
+            alignItems: "flex-end",
+            gap: 16,
+            paddingTop: 28,
           }}
         >
-          <div
-            style={{
-              display: "flex",
-              justifyContent: "space-between",
-              gap: 16,
-              flexWrap: "wrap",
-              marginBottom: 10,
-            }}
-          >
-            <div>
+          {/* GLOBAL SCORE DONUT (tutorial anchor: riskRef) */}
+          <div ref={riskRef}>
+            <div
+              style={{
+                position: "relative",
+                width: 160,
+                height: 160,
+                borderRadius: "50%",
+                background:
+                  "conic-gradient(from 220deg,#22c55e,#a3e635,#facc15,#fb7185,#0f172a)",
+                padding: 5,
+                boxShadow:
+                  "0 0 50px rgba(34,197,94,0.45),0 0 80px rgba(148,163,184,0.3)",
+              }}
+            >
               <div
                 style={{
-                  fontSize: 12,
-                  textTransform: "uppercase",
-                  letterSpacing: "0.16em",
-                  color: GP.textSoft,
-                  marginBottom: 4,
+                  position: "absolute",
+                  inset: 12,
+                  borderRadius: "50%",
+                  background:
+                    "radial-gradient(circle at 30% 0,#020617,#020617 60%,#000)",
+                }}
+              />
+              <div
+                style={{
+                  position: "relative",
+                  zIndex: 1,
+                  height: "100%",
+                  display: "flex",
+                  flexDirection: "column",
+                  alignItems: "center",
+                  justifyContent: "center",
                 }}
               >
-                Alerts V2 Overview
-              </div>
-              <div style={{ fontSize: 14, color: GP.text }}>
-                {alertSummary
-                  ? `${alertSummary.total} open alerts across ${
-                      Object.keys(alertSummary.vendors || {}).length
-                    } vendors.`
-                  : "Loading alert summary…"}
+                <div
+                  style={{
+                    fontSize: 11,
+                    letterSpacing: "0.1em",
+                    textTransform: "uppercase",
+                    color: GP.textSoft,
+                    marginBottom: 2,
+                  }}
+                >
+                  Global Score
+                </div>
+                <div
+                  style={{
+                    fontSize: 32,
+                    fontWeight: 700,
+                    background:
+                      "linear-gradient(120deg,#22c55e,#bef264,#facc15)",
+                    WebkitBackgroundClip: "text",
+                    color: "transparent",
+                  }}
+                >
+                  {dashboardLoading ? "—" : Number(avgScore).toFixed(0)}
+                </div>
+                <div style={{ fontSize: 10, color: GP.textMuted }}>/100</div>
               </div>
             </div>
           </div>
 
-          {alertSummary && (
+          {/* Elite Snapshot */}
+          <div
+            style={{
+              borderRadius: 18,
+              padding: 12,
+              border: "1px solid rgba(51,65,85,0.9)",
+              background: "rgba(15,23,42,0.98)",
+              minWidth: 220,
+            }}
+          >
+            <div style={{ fontSize: 12, color: GP.textSoft, marginBottom: 6 }}>
+              Elite Engine Snapshot
+            </div>
             <div
               style={{
-                display: "grid",
-                gridTemplateColumns: "repeat(auto-fit,minmax(140px,1fr))",
-                gap: 10,
-                marginBottom: 12,
+                display: "flex",
+                justifyContent: "space-between",
+                fontSize: 11,
+                color: "#4ade80",
               }}
             >
-              <SeverityBox
-                label="Critical"
-                count={alertSummary.countsBySeverity?.critical ?? 0}
-                color={GP.neonRed}
-              />
-              <SeverityBox
-                label="High"
-                count={alertSummary.countsBySeverity?.high ?? 0}
-                color={GP.neonGold}
-              />
-              <SeverityBox
-                label="Medium"
-                count={alertSummary.countsBySeverity?.medium ?? 0}
-                color={GP.neonBlue}
-              />
-              <SeverityBox
-                label="Low"
-                count={alertSummary.countsBySeverity?.low ?? 0}
-                color={GP.neonGreen}
-              />
+              <span>PASS</span>
+              <span>{eliteSummary.pass}</span>
             </div>
-          )}
-
-          {alertSummary && alertVendorsList.length > 0 && (
             <div
               style={{
-                marginTop: 8,
-                maxHeight: 220,
-                overflowY: "auto",
-                paddingRight: 4,
+                display: "flex",
+                justifyContent: "space-between",
+                fontSize: 11,
+                color: "#facc15",
               }}
             >
-              <div
+              <span>WARN</span>
+              <span>{eliteSummary.warn}</span>
+            </div>
+            <div
+              style={{
+                display: "flex",
+                justifyContent: "space-between",
+                fontSize: 11,
+                color: "#fb7185",
+              }}
+            >
+              <span>FAIL</span>
+              <span>{eliteSummary.fail}</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* RULE ENGINE V5 HEALTH WIDGET */}
+      <div
+        style={{
+          marginBottom: 24,
+          borderRadius: 20,
+          padding: 14,
+          border: "1px solid rgba(55,65,81,0.9)",
+          background:
+            "linear-gradient(135deg,rgba(15,23,42,0.98),rgba(15,23,42,0.96))",
+          boxShadow: "0 10px 30px rgba(15,23,42,0.85)",
+          display: "flex",
+          alignItems: "center",
+          gap: 18,
+          justifyContent: "space-between",
+        }}
+      >
+        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+          <div
+            style={{
+              width: 32,
+              height: 32,
+              borderRadius: "999px",
+              background:
+                "radial-gradient(circle at 30% 0,#22c55e,#38bdf8,#0f172a)",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              boxShadow:
+                "0 0 18px rgba(56,189,248,0.6),0 0 28px rgba(34,197,94,0.45)",
+            }}
+          >
+            🧠
+          </div>
+          <div>
+            <div
+              style={{
+                fontSize: 12,
+                textTransform: "uppercase",
+                letterSpacing: "0.16em",
+                color: GP.textSoft,
+              }}
+            >
+              Rule Engine V5
+            </div>
+            <div style={{ fontSize: 14, color: GP.text }}>
+              Avg Score:{" "}
+              <strong
                 style={{
-                  fontSize: 11,
-                  textTransform: "uppercase",
-                  letterSpacing: "0.14em",
-                  color: GP.textSoft,
-                  marginBottom: 6,
+                  color:
+                    engineHealth.total === 0
+                      ? GP.textSoft
+                      : engineHealth.avg >= 85
+                      ? GP.neonGreen
+                      : engineHealth.avg >= 70
+                      ? GP.neonGold
+                      : GP.neonRed,
                 }}
               >
-                Vendors with Active Alerts
-              </div>
-
-              <table
-                style={{
-                  width: "100%",
-                  borderCollapse: "separate",
-                  borderSpacing: 0,
-                  fontSize: 12,
-                }}
-              >
-                <thead>
-                  <tr>
-                    <th style={{ ...th, fontSize: 11 }}>Vendor ID</th>
-                    <th style={{ ...th, fontSize: 11 }}>Total</th>
-                    <th style={{ ...th, fontSize: 11 }}>Critical</th>
-                    <th style={{ ...th, fontSize: 11 }}>High</th>
-                    <th style={{ ...th, fontSize: 11 }}>Medium</th>
-                    <th style={{ ...th, fontSize: 11 }}>Low</th>
-                    <th style={{ ...th, fontSize: 11 }}>Latest</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {alertVendorsList.slice(0, 12).map((v) => (
-                    <tr
-                      key={v.vendorId}
-                      onClick={() => openDrawer(v.vendorId)}
-                      style={{
-                        cursor: "pointer",
-                        background:
-                          "linear-gradient(90deg,rgba(15,23,42,0.98),rgba(15,23,42,0.94))",
-                      }}
-                    >
-                      <td style={td}>{v.vendorId}</td>
-                      <td style={td}>{v.total}</td>
-                      <td style={td}>{v.critical}</td>
-                      <td style={td}>{v.high}</td>
-                      <td style={td}>{v.medium}</td>
-                      <td style={td}>{v.low}</td>
-                      <td style={td}>
-                        {v.latest ? (
-                          <span
-                            style={{
-                              fontSize: 11,
-                              color:
-                                v.latest.severity === "critical"
-                                  ? GP.neonRed
-                                  : v.latest.severity === "high"
-                                  ? GP.neonGold
-                                  : GP.textSoft,
-                            }}
-                          >
-                            {v.latest.code} · {v.latest.message}
-                          </span>
-                        ) : (
-                          <span style={{ fontSize: 11, color: GP.textMuted }}>
-                            —
-                          </span>
-                        )}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+                {engineHealth.total ? engineHealth.avg : "—"}
+              </strong>{" "}
+              · Vendors Evaluated:{" "}
+              <strong>{engineHealth.total || 0}</strong> · Failing Vendors:{" "}
+              <strong style={{ color: GP.neonRed }}>
+                {engineHealth.fails || 0}
+              </strong>
             </div>
-          )}
+          </div>
+        </div>
 
-          {!alertSummary && (
-            <div style={{ fontSize: 12, color: GP.textSoft, marginTop: 8 }}>
-              Loading alert summary…
-            </div>
+        <div
+          style={{
+            display: "flex",
+            gap: 14,
+            alignItems: "center",
+            fontSize: 11,
+            color: GP.textSoft,
+          }}
+        >
+          <div>
+            Critical Findings:{" "}
+            <strong style={{ color: GP.neonRed }}>
+              {engineHealth.critical || 0}
+            </strong>
+          </div>
+          <div
+            style={{
+              padding: "4px 10px",
+              borderRadius: 999,
+              border:
+                engineHealth.total === 0
+                  ? "1px solid rgba(148,163,184,0.6)"
+                  : engineHealth.critical > 0 || engineHealth.fails > 0
+                  ? "1px solid rgba(250,204,21,0.8)"
+                  : "1px solid rgba(34,197,94,0.8)",
+              color:
+                engineHealth.total === 0
+                  ? GP.textSoft
+                  : engineHealth.critical > 0 || engineHealth.fails > 0
+                  ? GP.neonGold
+                  : GP.neonGreen,
+              background:
+                engineHealth.total === 0
+                  ? "rgba(15,23,42,0.9)"
+                  : engineHealth.critical > 0 || engineHealth.fails > 0
+                  ? "rgba(250,204,21,0.12)"
+                  : "rgba(34,197,94,0.12)",
+            }}
+          >
+            {engineHealth.total === 0
+              ? "Not evaluated"
+              : engineHealth.critical > 0
+              ? "Needs attention"
+              : engineHealth.fails > 0
+              ? "Some vendors failing"
+              : "Healthy"}
+          </div>
+
+          {(isAdmin || isManager) && (
+            <a
+              href="/admin/org-compliance"
+              style={{
+                marginLeft: 8,
+                padding: "6px 12px",
+                borderRadius: 999,
+                border: `1px solid ${GP.neonBlue}`,
+                background:
+                  "linear-gradient(90deg,rgba(15,23,42,0.95),rgba(15,23,42,0.85))",
+                color: GP.neonBlue,
+                fontSize: 12,
+                fontWeight: 600,
+                textDecoration: "none",
+                cursor: "pointer",
+                boxShadow: "0 0 12px rgba(56,189,248,0.3)",
+              }}
+            >
+              View Org Dashboard →
+            </a>
           )}
         </div>
       </div>
-    )
-  );
-  /* ============================================================
-     TELEMETRY & ANALYTICS PANELS
-  ============================================================ */
+      {/* ALERTS V2 PANEL (tutorial anchor: alertsRef) */}
+      {showAlerts && (
+        <div ref={alertsRef}>
+          <div
+            style={{
+              marginBottom: 26,
+              borderRadius: 20,
+              padding: 16,
+              border: "1px solid rgba(148,163,184,0.5)",
+              background: "rgba(15,23,42,0.97)",
+              boxShadow: "0 16px 40px rgba(15,23,42,0.9)",
+            }}
+          >
+            <div
+              style={{
+                display: "flex",
+                justifyContent: "space-between",
+                gap: 16,
+                flexWrap: "wrap",
+                marginBottom: 10,
+              }}
+            >
+              <div>
+                <div
+                  style={{
+                    fontSize: 12,
+                    textTransform: "uppercase",
+                    letterSpacing: "0.16em",
+                    color: GP.textSoft,
+                    marginBottom: 4,
+                  }}
+                >
+                  Alerts V2 Overview
+                </div>
+                <div style={{ fontSize: 14, color: GP.text }}>
+                  {alertSummary
+                    ? `${alertSummary.total} open alerts across ${
+                        Object.keys(alertSummary.vendors || {}).length
+                      } vendors.`
+                    : "Loading alert summary…"}
+                </div>
+              </div>
+            </div>
 
-  const TelemetryPanels = () => (
-    <>
+            {alertSummary && (
+              <div
+                style={{
+                  display: "grid",
+                  gridTemplateColumns: "repeat(auto-fit,minmax(140px,1fr))",
+                  gap: 10,
+                  marginBottom: 12,
+                }}
+              >
+                <SeverityBox
+                  label="Critical"
+                  count={alertSummary.countsBySeverity?.critical ?? 0}
+                  color={GP.neonRed}
+                />
+                <SeverityBox
+                  label="High"
+                  count={alertSummary.countsBySeverity?.high ?? 0}
+                  color={GP.neonGold}
+                />
+                <SeverityBox
+                  label="Medium"
+                  count={alertSummary.countsBySeverity?.medium ?? 0}
+                  color={GP.neonBlue}
+                />
+                <SeverityBox
+                  label="Low"
+                  count={alertSummary.countsBySeverity?.low ?? 0}
+                  color={GP.neonGreen}
+                />
+              </div>
+            )}
+
+            {alertSummary && alertVendorsList.length > 0 && (
+              <div
+                style={{
+                  marginTop: 8,
+                  maxHeight: 220,
+                  overflowY: "auto",
+                  paddingRight: 4,
+                }}
+              >
+                <div
+                  style={{
+                    fontSize: 11,
+                    textTransform: "uppercase",
+                    letterSpacing: "0.14em",
+                    color: GP.textSoft,
+                    marginBottom: 6,
+                  }}
+                >
+                  Vendors with Active Alerts
+                </div>
+
+                <table
+                  style={{
+                    width: "100%",
+                    borderCollapse: "separate",
+                    borderSpacing: 0,
+                    fontSize: 12,
+                  }}
+                >
+                  <thead>
+                    <tr>
+                      <th style={{ ...th, fontSize: 11 }}>Vendor ID</th>
+                      <th style={{ ...th, fontSize: 11 }}>Total</th>
+                      <th style={{ ...th, fontSize: 11 }}>Critical</th>
+                      <th style={{ ...th, fontSize: 11 }}>High</th>
+                      <th style={{ ...th, fontSize: 11 }}>Medium</th>
+                      <th style={{ ...th, fontSize: 11 }}>Low</th>
+                      <th style={{ ...th, fontSize: 11 }}>Latest</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {alertVendorsList.slice(0, 12).map((v) => (
+                      <tr
+                        key={v.vendorId}
+                        onClick={() => openDrawer(v.vendorId)}
+                        style={{
+                          cursor: "pointer",
+                          background:
+                            "linear-gradient(90deg,rgba(15,23,42,0.98),rgba(15,23,42,0.94))",
+                        }}
+                      >
+                        <td style={td}>{v.vendorId}</td>
+                        <td style={td}>{v.total}</td>
+                        <td style={td}>{v.critical}</td>
+                        <td style={td}>{v.high}</td>
+                        <td style={td}>{v.medium}</td>
+                        <td style={td}>{v.low}</td>
+                        <td style={td}>
+                          {v.latest ? (
+                            <span
+                              style={{
+                                fontSize: 11,
+                                color:
+                                  v.latest.severity === "critical"
+                                    ? GP.neonRed
+                                    : v.latest.severity === "high"
+                                    ? GP.neonGold
+                                    : GP.textSoft,
+                              }}
+                            >
+                              {v.latest.code} · {v.latest.message}
+                            </span>
+                          ) : (
+                            <span
+                              style={{ fontSize: 11, color: GP.textMuted }}
+                            >
+                              —
+                            </span>
+                          )}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+
+            {!alertSummary && (
+              <div
+                style={{ fontSize: 12, color: GP.textSoft, marginTop: 8 }}
+              >
+                Loading alert summary…
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* TELEMETRY CHARTS */}
       <div
         className="cockpit-telemetry"
         style={{
@@ -1167,9 +1412,7 @@ function Dashboard() {
           gap: 24,
         }}
       >
-        <ComplianceTrajectoryChart
-          data={dashboard?.complianceTrajectory}
-        />
+        <ComplianceTrajectoryChart data={dashboard?.complianceTrajectory} />
         <PassFailDonutChart overview={dashboard} />
       </div>
 
@@ -1183,13 +1426,356 @@ function Dashboard() {
       <SlaBreachWidget orgId={activeOrgId} />
       <CriticalVendorWatchlist orgId={activeOrgId} />
       <AlertHeatSignature orgId={activeOrgId} />
-    </>
-  );
+
+      {/* RENEWAL INTELLIGENCE (tutorial anchor: renewalsRef) */}
+      <div ref={renewalsRef}>
+        <RenewalHeatmap range={90} />
+        <RenewalBacklog />
+      </div>
+
+      <div
+        style={{
+          marginTop: 24,
+          marginBottom: 32,
+          display: "grid",
+          gridTemplateColumns:
+            "minmax(0,1.2fr) minmax(0,1.2fr) minmax(0,1.6fr)",
+          gap: 16,
+        }}
+      >
+        <RenewalSlaWidget orgId={activeOrgId} />
+        <RenewalCalendar range={60} />
+        <RenewalAiSummary orgId={activeOrgId} />
+      </div>
+      {/* SYSTEM TIMELINE */}
+      <div
+        style={{
+          marginTop: 16,
+          marginBottom: 32,
+          borderRadius: 20,
+          padding: 18,
+          border: "1px solid rgba(148,163,184,0.4)",
+          background: "rgba(15,23,42,0.96)",
+          boxShadow: "0 10px 35px rgba(0,0,0,0.45)",
+        }}
+      >
+        <h2
+          style={{
+            marginTop: 0,
+            marginBottom: 14,
+            fontSize: 18,
+            fontWeight: 600,
+            background: "linear-gradient(90deg,#38bdf8,#a855f7)",
+            WebkitBackgroundClip: "text",
+            color: "transparent",
+          }}
+        >
+          System Timeline (Automated Compliance Events)
+        </h2>
+
+        {systemTimelineLoading ? (
+          <div style={{ fontSize: 13, color: GP.textSoft }}>
+            Loading system events…
+          </div>
+        ) : systemTimeline.length === 0 ? (
+          <div style={{ fontSize: 13, color: GP.textSoft }}>
+            No system events recorded yet.
+          </div>
+        ) : (
+          <div
+            style={{
+              display: "flex",
+              flexDirection: "column",
+              gap: 10,
+              maxHeight: 340,
+              overflowY: "auto",
+              paddingRight: 6,
+            }}
+          >
+            {systemTimeline.map((item, idx) => (
+              <div
+                key={idx}
+                style={{
+                  padding: "10px 12px",
+                  borderRadius: 14,
+                  background: "rgba(2,6,23,0.65)",
+                  border: "1px solid rgba(148,163,184,0.28)",
+                  boxShadow: "0 2px 6px rgba(0,0,0,0.25)",
+                }}
+              >
+                <div
+                  style={{
+                    fontSize: 11,
+                    fontWeight: 600,
+                    textTransform: "uppercase",
+                    color:
+                      item.severity === "critical"
+                        ? GP.neonRed
+                        : item.severity === "high"
+                        ? GP.neonGold
+                        : GP.neonBlue,
+                    marginBottom: 4,
+                  }}
+                >
+                  {item.action.replace(/_/g, " ")}
+                </div>
+                <div style={{ fontSize: 13, color: GP.text }}>
+                  {item.message}
+                </div>
+                <div
+                  style={{
+                    fontSize: 11,
+                    color: GP.textSoft,
+                    marginTop: 4,
+                  }}
+                >
+                  Vendor:{" "}
+                  <span style={{ color: GP.neonBlue }}>
+                    {item.vendor_name || "Unknown"}
+                  </span>
+                </div>
+                <div
+                  style={{
+                    fontSize: 11,
+                    color: GP.textMuted,
+                    marginTop: 2,
+                  }}
+                >
+                  {new Date(item.created_at).toLocaleString()}
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* POLICIES TABLE — tutorial anchor: policiesRef */}
+      <div ref={policiesRef}>
+        <h2
+          style={{
+            marginTop: 32,
+            marginBottom: 10,
+            fontSize: 20,
+            fontWeight: 600,
+            color: "#e5e7eb",
+          }}
+        >
+          Policies
+        </h2>
+
+        <input
+          type="text"
+          placeholder="Search vendors, carriers, policy #, coverage…"
+          value={filterText}
+          onChange={(e) => setFilterText(e.target.value)}
+          style={{
+            padding: "8px 12px",
+            width: 320,
+            borderRadius: 999,
+            border: "1px solid rgba(51,65,85,0.95)",
+            background: "rgba(15,23,42,0.96)",
+            color: "#e5e7eb",
+            fontSize: 12,
+            marginBottom: 14,
+            outline: "none",
+          }}
+        />
+
+        {loadingPolicies && (
+          <div style={{ fontSize: 13, color: GP.textSoft }}>
+            Loading policies…
+          </div>
+        )}
+
+        {!loadingPolicies && filtered.length === 0 && (
+          <div style={{ fontSize: 13, color: GP.textSoft }}>
+            No matching policies.
+          </div>
+        )}
+
+        {!loadingPolicies && filtered.length > 0 && (
+          <>
+            <div
+              className="cockpit-table-shell"
+              style={{
+                borderRadius: 24,
+                border: "1px solid rgba(30,41,59,0.98)",
+                background: "rgba(15,23,42,0.98)",
+                boxShadow: "0 18px 45px rgba(15,23,42,0.95)",
+                overflow: "hidden",
+              }}
+            >
+              <table
+                style={{
+                  width: "100%",
+                  borderCollapse: "separate",
+                  borderSpacing: 0,
+                  fontSize: 12,
+                }}
+              >
+                <thead>
+                  <tr>
+                    <th style={th}>Vendor</th>
+                    <th style={th}>Policy #</th>
+                    <th style={th}>Carrier</th>
+                    <th style={th}>Coverage</th>
+                    <th style={th}>Expires</th>
+                    <th style={th}>Days Left</th>
+                    <th style={th}>Status</th>
+                    <th style={th}>Risk Tier</th>
+                    <th style={th}>AI Risk</th>
+                    <th style={th}>V5 Engine</th>
+                    <th style={th}>Compliance</th>
+                    <th style={th}>Elite</th>
+                    <th style={th}>Flags</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {filtered.map((p) => {
+                    const risk = computeRisk(p);
+                    const flags = risk.flags || [];
+                    const elite = eliteMap[p.vendor_id];
+                    const compliance = complianceMap[p.vendor_id];
+                    const ai = computeAiRisk({ risk, elite, compliance });
+                    const engine = engineMap[p.vendor_id];
+                    const v3Tier =
+                      engine && typeof engine.globalScore === "number"
+                        ? computeV3Tier(engine.globalScore)
+                        : "Unknown";
+
+                    return (
+                      <tr
+                        key={p.id}
+                        onClick={() => openDrawer(p.vendor_id)}
+                        style={{
+                          cursor: "pointer",
+                          background:
+                            "linear-gradient(90deg,rgba(15,23,42,0.98),rgba(15,23,42,0.92))",
+                        }}
+                      >
+                        <td style={td}>{p.vendor_name || "—"}</td>
+                        <td style={td}>{p.policy_number}</td>
+                        <td style={td}>{p.carrier}</td>
+                        <td style={td}>{p.coverage_type}</td>
+                        <td style={td}>{p.expiration_date || "—"}</td>
+                        <td style={td}>{risk.daysLeft ?? "—"}</td>
+                        <td
+                          style={{
+                            ...td,
+                            textAlign: "center",
+                            ...badgeStyle(risk.severity),
+                          }}
+                        >
+                          {risk.severity === "ok"
+                            ? "Active"
+                            : risk.severity.charAt(0).toUpperCase() +
+                              risk.severity.slice(1)}
+                        </td>
+                        <td style={{ ...td, textAlign: "center" }}>
+                          <span
+                            style={{
+                              display: "inline-flex",
+                              padding: "3px 10px",
+                              borderRadius: 999,
+                              border: "1px solid rgba(51,65,85,0.98)",
+                              background: "rgba(15,23,42,1)",
+                              color: GP.textSoft,
+                              fontSize: 11,
+                            }}
+                          >
+                            {risk.tier}
+                          </span>
+                        </td>
+                        <td
+                          style={{
+                            ...td,
+                            textAlign: "center",
+                            fontWeight: 600,
+                            color:
+                              ai.score >= 80
+                                ? GP.neonGreen
+                                : ai.score >= 60
+                                ? GP.neonGold
+                                : GP.neonRed,
+                          }}
+                        >
+                          <div>{ai.score}</div>
+                          <div
+                            style={{
+                              marginTop: 4,
+                              height: 4,
+                              width: 70,
+                              borderRadius: 999,
+                              background: "rgba(15,23,42,1)",
+                              overflow: "hidden",
+                              marginLeft: "auto",
+                              marginRight: "auto",
+                            }}
+                          >
+                            <div
+                              style={{
+                                width: `${ai.score}%`,
+                                height: "100%",
+                                background:
+                                  ai.score >= 80
+                                    ? GP.neonGreen
+                                    : ai.score >= 60
+                                    ? GP.neonGold
+                                    : GP.neonRed,
+                              }}
+                            />
+                          </div>
+                        </td>
+                        <td style={{ ...td, textAlign: "center" }}>
+                          {renderComplianceBadge(p.vendor_id, complianceMap)}
+                        </td>
+                        <td style={{ ...td, textAlign: "center" }}>
+                          {elite && !elite.loading && !elite.error ? (
+                            <EliteStatusPill status={elite.overall} />
+                          ) : elite && elite.loading ? (
+                            <span style={{ fontSize: 11, color: GP.textMuted }}>
+                              Evaluating…
+                            </span>
+                          ) : (
+                            <span style={{ fontSize: 11, color: GP.textMuted }}>
+                              —
+                            </span>
+                          )}
+                        </td>
+                        <td style={{ ...td, textAlign: "center" }}>
+                          {flags.length > 0 ? (
+                            <span
+                              title={flags.join("\n")}
+                              style={{ cursor: "help" }}
+                            >
+                              🚩 {flags.length}
+                            </span>
+                          ) : (
+                            <span style={{ opacity: 0.4 }}>—</span>
+                          )}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+
+            {drawerOpen && drawerVendor && (
+              <VendorDrawer
+                vendor={drawerVendor}
+                policies={drawerPolicies}
+                onClose={closeDrawer}
+              />
+            )}
+          </>
+        )}
+      </div>
+
       {/* DASHBOARD TUTORIAL OVERLAY (Spotlight Engine Host) */}
       {showTutorial && (
         <DashboardTutorial
           onFinish={handleFinishTutorial}
-          onEvent={(name, data) => track(name, data)}
           anchors={{
             risk: riskRef,
             fixPlans: kpiRef,
@@ -1199,131 +1785,9 @@ function Dashboard() {
           }}
         />
       )}
-
-      {/* POST-TOUR CTA PANEL */}
-      {showPostTourCta && (
-        <div
-          style={{
-            position: "fixed",
-            right: 24,
-            bottom: 24,
-            zIndex: 99998,
-            width: 420,
-            borderRadius: 18,
-            padding: 14,
-            border: "1px solid rgba(148,163,184,0.45)",
-            background: "rgba(15,23,42,0.96)",
-            boxShadow:
-              "0 18px 55px rgba(0,0,0,0.65), 0 0 28px rgba(56,189,248,0.22)",
-            color: "#e5e7eb",
-          }}
-        >
-          <div
-            style={{
-              fontSize: 11,
-              letterSpacing: "0.14em",
-              textTransform: "uppercase",
-              color: "rgba(148,163,184,0.8)",
-            }}
-          >
-            Tour completed
-          </div>
-
-          <div style={{ marginTop: 6, fontSize: 15, fontWeight: 700 }}>
-            Want us to fix everything automatically?
-          </div>
-
-          <div
-            style={{
-              marginTop: 6,
-              fontSize: 13,
-              color: "rgba(203,213,245,0.9)",
-              lineHeight: 1.4,
-            }}
-          >
-            Run a full compliance scan, review alerts, or upload a new COI now.
-          </div>
-
-          <div style={{ display: "flex", gap: 10, marginTop: 12, flexWrap: "wrap" }}>
-            <a
-              href="/admin/org-compliance"
-              onClick={() => track("cta_click", { cta: "org_compliance" })}
-              style={{
-                padding: "8px 14px",
-                borderRadius: 999,
-                border: "1px solid rgba(56,189,248,0.85)",
-                background:
-                  "radial-gradient(circle at top left,#3b82f6,#1d4ed8,#0f172a)",
-                color: "#e0f2fe",
-                fontSize: 13,
-                fontWeight: 700,
-                textDecoration: "none",
-                boxShadow: "0 0 18px rgba(59,130,246,0.55)",
-              }}
-            >
-              Run Compliance Scan →
-            </a>
-
-            <button
-              type="button"
-              onClick={() => {
-                setShowAlerts(true);
-                setShowPostTourCta(false);
-                track("cta_click", { cta: "view_alerts" });
-              }}
-              style={{
-                padding: "8px 14px",
-                borderRadius: 999,
-                border: "1px solid rgba(250,204,21,0.55)",
-                background: "rgba(15,23,42,0.9)",
-                color: "#fef3c7",
-                fontSize: 13,
-                fontWeight: 700,
-                cursor: "pointer",
-              }}
-            >
-              View Alerts
-            </button>
-
-            <a
-              href="/upload-coi"
-              onClick={() => track("cta_click", { cta: "upload_coi" })}
-              style={{
-                padding: "8px 14px",
-                borderRadius: 999,
-                border: "1px solid rgba(34,197,94,0.55)",
-                background: "rgba(15,23,42,0.9)",
-                color: "#bbf7d0",
-                fontSize: 13,
-                fontWeight: 700,
-                textDecoration: "none",
-              }}
-            >
-              Upload COI
-            </a>
-
-            <button
-              type="button"
-              onClick={() => {
-                setShowPostTourCta(false);
-                track("cta_dismiss");
-              }}
-              style={{
-                marginLeft: "auto",
-                padding: "8px 12px",
-                borderRadius: 999,
-                border: "1px solid rgba(148,163,184,0.35)",
-                background: "transparent",
-                color: "rgba(148,163,184,0.9)",
-                fontSize: 13,
-                cursor: "pointer",
-              }}
-            >
-              Dismiss
-            </button>
-          </div>
-        </div>
-      )}
+    </div>
+  );
+}
 /* =======================================
    SEVERITY BOX COMPONENT
 ======================================= */
@@ -1360,7 +1824,6 @@ function SeverityBox({ label, count, color }) {
     </div>
   );
 }
-
 /* =======================================
    MINI KPI COMPONENT
 ======================================= */
@@ -1396,7 +1859,6 @@ function MiniKpi({ label, value, color, icon }) {
     </div>
   );
 }
-
 /* =======================================
    TABLE HEAD + CELL STYLES
 ======================================= */
@@ -1417,9 +1879,8 @@ const td = {
   color: "#e5e7eb",
 };
 
-/* =======================================
-   🚨 IMPORTANT BUILD FIX
-   ---------------------------------------
-   This MUST be the ONLY export default
-======================================= */
+// =======================================
+// END OF DASHBOARD V5 CINEMATIC INTELLIGENCE FILE
+// =======================================
+
 export default Dashboard;
