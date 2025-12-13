@@ -6,7 +6,7 @@ import ToastV2 from "../../components/ToastV2";
 
 /* ==========================================================
    ALERTS — DASHBOARD FOCUS MODE
-   + SLA COUNTDOWN + ESCALATION INDICATORS
+   + SLA COUNTDOWN + ESCALATION + EXCEPTIONS
 ========================================================== */
 
 const GP = {
@@ -17,6 +17,7 @@ const GP = {
   neonGold: "#facc15",
   neonBlue: "#38bdf8",
   neonGreen: "#22c55e",
+  neonPurple: "#a855f7",
   text: "#e5e7eb",
   textSoft: "#9ca3af",
 };
@@ -55,8 +56,7 @@ function getSlaState(alert) {
     new Date(alert.sla_due_at).getTime() -
     new Date(alert.created_at).getTime();
 
-  const elapsedRatio =
-    1 - diffMs / Math.max(totalMs, 1);
+  const elapsedRatio = 1 - diffMs / Math.max(totalMs, 1);
 
   let escalation = "on_track";
   if (elapsedRatio >= 0.5) escalation = "at_risk";
@@ -196,7 +196,8 @@ export default function AlertsCockpit() {
             {filteredAlerts.map((alert) => {
               const sev = SEVERITY_META[alert.severity] || {};
               const sla = getSlaState(alert);
-              const esc = escalationBadge(sla?.escalation);
+              const esc =
+                !alert.exception ? escalationBadge(sla?.escalation) : null;
 
               return (
                 <div
@@ -206,7 +207,9 @@ export default function AlertsCockpit() {
                     borderRadius: 18,
                     padding: 16,
                     border: `1px solid ${
-                      sla?.escalation === "escalated"
+                      alert.exception
+                        ? GP.neonPurple
+                        : sla?.escalation === "escalated"
                         ? GP.neonRed
                         : sev.color
                     }55`,
@@ -214,6 +217,7 @@ export default function AlertsCockpit() {
                     cursor: "pointer",
                   }}
                 >
+                  {/* HEADER */}
                   <div
                     style={{
                       display: "flex",
@@ -264,10 +268,28 @@ export default function AlertsCockpit() {
                     {alert.rule_name || alert.message}
                   </div>
 
-                  {esc && (
+                  {/* EXCEPTION INDICATOR */}
+                  {alert.exception && (
                     <div
                       style={{
                         marginTop: 10,
+                        fontSize: 11,
+                        fontWeight: 700,
+                        color: GP.neonPurple,
+                      }}
+                    >
+                      Exception until{" "}
+                      {new Date(
+                        alert.exception.expires_at
+                      ).toLocaleDateString()}
+                    </div>
+                  )}
+
+                  {/* ESCALATION INDICATOR */}
+                  {esc && (
+                    <div
+                      style={{
+                        marginTop: 8,
                         fontSize: 11,
                         color: esc.color,
                         fontWeight: 700,
