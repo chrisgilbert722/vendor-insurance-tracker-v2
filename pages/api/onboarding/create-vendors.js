@@ -1,11 +1,13 @@
 // pages/api/onboarding/create-vendors.js
 // ===========================================================
 // STEP 6 — Vendor Auto-Creation Engine
-// Creates vendor records, portal tokens, and timeline entries.
+// Creates vendor records, portal tokens, timeline entries
+// Emits webhook: vendor.created
 // ===========================================================
 
 import { sql } from "../../../lib/db";
 import crypto from "crypto";
+import { emitWebhook } from "../../../lib/webhooks";
 
 export default async function handler(req, res) {
   try {
@@ -52,10 +54,27 @@ export default async function handler(req, res) {
           NOW(),
           NOW()
         )
-        RETURNING id, vendor_name, email, work_type;
+        RETURNING id, vendor_name, email, work_type, created_at;
       `;
 
-      const vendorId = rows[0].id;
+      const vendor = rows[0];
+      const vendorId = vendor.id;
+
+      // -------------------------------------------------------
+      // WEBHOOK: vendor.created
+      // -------------------------------------------------------
+      try {
+        await emitWebhook(orgId, "vendor.created", {
+          vendorId: vendorId,
+          vendorName: vendor.vendor_name,
+          email: vendor.email,
+          workType: vendor.work_type,
+          createdAt: vendor.created_at,
+        });
+      } catch (err) {
+        // Never block vendor creation if webhook fails
+        console.error("[webhook vendor.created]", err);
+      }
 
       // 2️⃣ Create vendor portal upload token
       const token = crypto.randomBytes(24).toString("hex");
