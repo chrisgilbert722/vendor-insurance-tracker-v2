@@ -1,7 +1,7 @@
 // components/VendorDrawer.js
 // ============================================================
-// Vendor Drawer V8 — Engine V5 • Policies • Docs • Contract Intelligence V3 (Severity Edition)
-// Integrated with DocumentsUpload for live uploads
+// Vendor Drawer V8 — Engine V5 • Policies • Compliance Documents • Contract Intelligence V3
+// Step 2: Unified "Compliance Documents" language
 // ============================================================
 
 import { useEffect, useState } from "react";
@@ -191,17 +191,18 @@ export default function VendorDrawer({ vendor, policies = [], onClose }) {
       <div className="fixed inset-x-0 bottom-0 md:bottom-6 md:right-6 md:left-auto z-50 flex justify-center md:justify-end pointer-events-none">
         <div className="pointer-events-auto w-full max-w-6xl max-h-[90vh] rounded-3xl border border-slate-800 bg-gradient-to-b from-slate-950/95 via-slate-950 to-slate-950/98 shadow-[0_24px_80px_rgba(0,0,0,0.95)] p-6 md:p-8 grid md:grid-cols-[1.2fr,1.4fr,1.4fr] gap-6 overflow-hidden">
 
-          {/* LEFT COLUMN */}
-          {/* (unchanged) */}
-
-          {/* MIDDLE COLUMN — POLICIES */}
-          {/* (unchanged) */}
-
-          {/* RIGHT COLUMN — DOCS + CONTRACT */}
+          {/* RIGHT COLUMN — COMPLIANCE DOCUMENTS */}
           <div className="flex flex-col gap-4">
             <div className="flex items-center gap-2 mb-1">
               <FileText size={18} className="text-slate-200" />
-              <h3 className="text-sm font-semibold">Documents</h3>
+              <h3 className="text-sm font-semibold">
+                Compliance Documents
+              </h3>
+            </div>
+
+            <div className="text-xs text-slate-400 -mt-1">
+              All vendor compliance documents are managed here — insurance,
+              licenses, contracts, and more.
             </div>
 
             <DocumentsUpload
@@ -214,9 +215,17 @@ export default function VendorDrawer({ vendor, policies = [], onClose }) {
             />
 
             {docsLoading ? (
-              <div className="text-sm text-slate-500">Loading documents…</div>
+              <div className="text-sm text-slate-500">
+                Loading compliance documents…
+              </div>
             ) : docsError ? (
               <div className="text-sm text-rose-400">{docsError}</div>
+            ) : documents.length === 0 ? (
+              <div className="rounded-xl border border-slate-800 bg-slate-900/50 p-4 text-xs text-slate-400">
+                No compliance documents uploaded yet.
+                <br />
+                Upload once — we track compliance automatically.
+              </div>
             ) : (
               <div className="space-y-4 max-h-[70vh] overflow-y-auto pr-1">
                 {documents
@@ -257,10 +266,6 @@ export default function VendorDrawer({ vendor, policies = [], onClose }) {
           </div>
         </div>
       </div>
-
-      {/* RENEWAL EMAIL MODAL */}
-      {/* (unchanged) */}
     </>
   );
 }
-
