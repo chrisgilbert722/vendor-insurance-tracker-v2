@@ -5,38 +5,30 @@ import { useOrg } from "../../context/OrgContext";
 import ToastV2 from "../../components/ToastV2";
 
 /* ==========================================================
-   ALERTS COCKPIT V3 — ELITE HUD MODE (PRODUCTION)
-   Deep-linked to Fix Cockpit
-   ========================================================== */
+   ALERTS — DASHBOARD FOCUS MODE
+   (Visually aligned with Dashboard V5)
+========================================================== */
 
-const SEVERITY_META = {
-  critical: {
-    label: "Critical",
-    color: "#ff4d6d",
-    bg: "rgba(127,29,29,0.45)",
-    border: "rgba(239,68,68,0.9)",
-  },
-  high: {
-    label: "High",
-    color: "#ffa600",
-    bg: "rgba(120,53,15,0.5)",
-    border: "rgba(245,158,11,0.9)",
-  },
-  medium: {
-    label: "Medium",
-    color: "#facc15",
-    bg: "rgba(133,77,14,0.45)",
-    border: "rgba(250,204,21,0.9)",
-  },
-  low: {
-    label: "Low",
-    color: "#22c55e",
-    bg: "rgba(22,101,52,0.45)",
-    border: "rgba(34,197,94,0.9)",
-  },
+const GP = {
+  bg: "#020617",
+  panel: "rgba(15,23,42,0.98)",
+  borderSoft: "rgba(51,65,85,0.9)",
+  neonRed: "#fb7185",
+  neonGold: "#facc15",
+  neonBlue: "#38bdf8",
+  neonGreen: "#22c55e",
+  text: "#e5e7eb",
+  textSoft: "#9ca3af",
 };
 
-export default function AlertsCockpitV3() {
+const SEVERITY_META = {
+  critical: { label: "Critical", color: GP.neonRed },
+  high: { label: "High", color: GP.neonGold },
+  medium: { label: "Medium", color: GP.neonBlue },
+  low: { label: "Low", color: GP.neonGreen },
+};
+
+export default function AlertsCockpit() {
   const { isAdmin, isManager } = useRole();
   const { activeOrgId: orgId, loadingOrgs } = useOrg();
   const canEdit = isAdmin || isManager;
@@ -46,7 +38,6 @@ export default function AlertsCockpitV3() {
   const [saving, setSaving] = useState(false);
 
   const [severityFilter, setSeverityFilter] = useState("all");
-  const [statusFilter, setStatusFilter] = useState("open");
 
   const [toast, setToast] = useState({
     open: false,
@@ -56,7 +47,7 @@ export default function AlertsCockpitV3() {
 
   /* =======================
      Load Alerts
-     ======================= */
+  ======================= */
   useEffect(() => {
     if (!orgId || loadingOrgs) return;
     loadAlerts();
@@ -76,22 +67,10 @@ export default function AlertsCockpitV3() {
     }
   }
 
-  /* =======================
-     Derived Data
-     ======================= */
   const filteredAlerts = useMemo(() => {
-    return alerts.filter((a) => {
-      if (severityFilter !== "all" && a.severity !== severityFilter)
-        return false;
-      if (statusFilter !== "all" && a.status !== statusFilter)
-        return false;
-      return true;
-    });
-  }, [alerts, severityFilter, statusFilter]);
-
-  /* =======================
-     Actions
-     ======================= */
+    if (severityFilter === "all") return alerts;
+    return alerts.filter((a) => a.severity === severityFilter);
+  }, [alerts, severityFilter]);
 
   async function handleResolve(alert) {
     if (!canEdit) return;
@@ -104,7 +83,7 @@ export default function AlertsCockpitV3() {
         body: JSON.stringify({
           alertId: alert.id,
           resolvedBy: "admin",
-          resolutionNote: "Resolved from Alerts Cockpit",
+          resolutionNote: "Resolved from Alerts Focus",
         }),
       });
 
@@ -112,8 +91,6 @@ export default function AlertsCockpitV3() {
       if (!json.ok) throw new Error(json.error);
 
       setAlerts((prev) => prev.filter((a) => a.id !== alert.id));
-
-      // 🔥 notify dashboard + other views
       window.dispatchEvent(new CustomEvent("alerts:changed"));
       localStorage.setItem("alerts:changed", Date.now());
 
@@ -129,9 +106,6 @@ export default function AlertsCockpitV3() {
     }
   }
 
-  /* =======================
-     NAVIGATION (NEW)
-     ======================= */
   function openFixCockpit(alert) {
     if (!alert?.vendor_id || !alert?.id) return;
     window.location.href = `/admin/vendor/${alert.vendor_id}/fix?alertId=${alert.id}`;
@@ -139,62 +113,169 @@ export default function AlertsCockpitV3() {
 
   /* =======================
      RENDER
-     ======================= */
+  ======================= */
   return (
     <div
       style={{
         minHeight: "100vh",
         background:
-          "radial-gradient(circle at 20% 10%, #020617 0%, #020617 40%, #000 100%)",
-        padding: "40px 40px 60px",
-        color: "#e5e7eb",
+          "radial-gradient(circle at top left,#020617 0,#020617 45%,#000 100%)",
+        padding: "32px 40px 60px",
+        color: GP.text,
       }}
     >
-      <h1 style={{ fontSize: 28, fontWeight: 600, marginBottom: 20 }}>
-        Alerts Cockpit — Autonomous Compliance
-      </h1>
+      {/* HEADER */}
+      <div style={{ marginBottom: 24 }}>
+        <h1 style={{ fontSize: 30, fontWeight: 600 }}>
+          Alerts — Compliance Focus
+        </h1>
+        <p style={{ color: GP.textSoft, fontSize: 13, maxWidth: 640 }}>
+          These alerts are generated autonomously and enforced through SLA,
+          escalation, and audit evidence.
+        </p>
+      </div>
 
+      {/* FILTER STRIP */}
+      <div
+        style={{
+          display: "flex",
+          gap: 10,
+          marginBottom: 20,
+          flexWrap: "wrap",
+        }}
+      >
+        {["all", "critical", "high", "medium", "low"].map((sev) => (
+          <button
+            key={sev}
+            onClick={() => setSeverityFilter(sev)}
+            style={{
+              padding: "6px 14px",
+              borderRadius: 999,
+              border:
+                severityFilter === sev
+                  ? `1px solid ${GP.neonBlue}`
+                  : `1px solid ${GP.borderSoft}`,
+              background:
+                severityFilter === sev
+                  ? "rgba(56,189,248,0.15)"
+                  : GP.panel,
+              color:
+                sev === "all"
+                  ? GP.text
+                  : SEVERITY_META[sev]?.color,
+              fontSize: 12,
+              fontWeight: 600,
+              cursor: "pointer",
+            }}
+          >
+            {sev === "all" ? "All" : SEVERITY_META[sev].label}
+          </button>
+        ))}
+      </div>
+
+      {/* ALERTS GRID */}
       {loading ? (
-        <div>Loading alerts…</div>
+        <div style={{ color: GP.textSoft }}>Loading alerts…</div>
       ) : filteredAlerts.length === 0 ? (
-        <div>No alerts found.</div>
+        <div style={{ color: GP.textSoft }}>No active alerts.</div>
       ) : (
-        <div style={{ display: "grid", gap: 12 }}>
-          {filteredAlerts.map((alert) => (
-            <div
-              key={alert.id}
-              onClick={() => openFixCockpit(alert)}
-              style={{
-                padding: 14,
-                border: `1px solid ${SEVERITY_META[alert.severity]?.border}`,
-                borderRadius: 14,
-                cursor: "pointer",
-                background: "rgba(15,23,42,0.95)",
-                transition: "transform .15s ease, box-shadow .15s ease",
-              }}
-              onMouseEnter={(e) => {
-                e.currentTarget.style.transform = "translateY(-1px)";
-                e.currentTarget.style.boxShadow =
-                  "0 0 18px rgba(56,189,248,0.35)";
-              }}
-              onMouseLeave={(e) => {
-                e.currentTarget.style.transform = "none";
-                e.currentTarget.style.boxShadow = "none";
-              }}
-            >
-              <div style={{ fontSize: 13, fontWeight: 600 }}>
-                {alert.vendor_name}
+        <div
+          style={{
+            display: "grid",
+            gridTemplateColumns: "repeat(auto-fill,minmax(320px,1fr))",
+            gap: 16,
+          }}
+        >
+          {filteredAlerts.map((alert) => {
+            const sev = SEVERITY_META[alert.severity] || {};
+            return (
+              <div
+                key={alert.id}
+                onClick={() => openFixCockpit(alert)}
+                style={{
+                  borderRadius: 18,
+                  padding: 16,
+                  border: `1px solid ${sev.color}55`,
+                  background: GP.panel,
+                  cursor: "pointer",
+                  transition: "transform .15s ease, box-shadow .15s ease",
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.transform = "translateY(-2px)";
+                  e.currentTarget.style.boxShadow =
+                    "0 0 22px rgba(56,189,248,0.35)";
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.transform = "none";
+                  e.currentTarget.style.boxShadow = "none";
+                }}
+              >
+                <div
+                  style={{
+                    fontSize: 11,
+                    color: sev.color,
+                    textTransform: "uppercase",
+                    letterSpacing: "0.14em",
+                    marginBottom: 6,
+                  }}
+                >
+                  {sev.label}
+                </div>
+
+                <div style={{ fontSize: 14, fontWeight: 600 }}>
+                  {alert.vendor_name}
+                </div>
+
+                <div
+                  style={{
+                    fontSize: 12,
+                    color: GP.textSoft,
+                    marginTop: 4,
+                  }}
+                >
+                  {alert.rule_name || alert.message}
+                </div>
+
+                {canEdit && (
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      handleResolve(alert);
+                    }}
+                    style={{
+                      marginTop: 12,
+                      padding: "6px 12px",
+                      borderRadius: 10,
+                      border: `1px solid ${GP.neonGreen}`,
+                      background: "rgba(34,197,94,0.15)",
+                      color: GP.neonGreen,
+                      fontSize: 12,
+                      fontWeight: 600,
+                      cursor: "pointer",
+                    }}
+                  >
+                    Resolve
+                  </button>
+                )}
               </div>
-              <div style={{ fontSize: 12, color: "#9ca3af" }}>
-                {alert.rule_name}
-              </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
       )}
 
       {saving && (
-        <div style={{ position: "fixed", right: 20, bottom: 20 }}>
+        <div
+          style={{
+            position: "fixed",
+            right: 24,
+            bottom: 24,
+            padding: "8px 14px",
+            borderRadius: 999,
+            background: GP.panel,
+            border: `1px solid ${GP.borderSoft}`,
+            fontSize: 12,
+          }}
+        >
           Updating…
         </div>
       )}
