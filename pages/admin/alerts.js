@@ -6,7 +6,7 @@ import ToastV2 from "../../components/ToastV2";
 
 /* ==========================================================
    ALERTS — DASHBOARD FOCUS MODE
-   (Visually aligned with Dashboard V5)
+   + SLA COUNTDOWN BADGES
 ========================================================== */
 
 const GP = {
@@ -27,6 +27,52 @@ const SEVERITY_META = {
   medium: { label: "Medium", color: GP.neonBlue },
   low: { label: "Low", color: GP.neonGreen },
 };
+
+/* ==========================================================
+   SLA HELPERS
+========================================================== */
+
+function getSlaState(alert) {
+  if (!alert.sla_due_at) return null;
+
+  const due = new Date(alert.sla_due_at);
+  const now = new Date();
+  const diffMs = due - now;
+
+  if (diffMs <= 0) {
+    return {
+      label: "BREACHED",
+      color: GP.neonRed,
+      bg: "rgba(251,113,133,0.15)",
+    };
+  }
+
+  const hours = Math.floor(diffMs / 3600000);
+  const days = Math.floor(hours / 24);
+
+  if (days > 0) {
+    return {
+      label: `${days}d left`,
+      color: GP.neonGreen,
+      bg: "rgba(34,197,94,0.15)",
+    };
+  }
+
+  if (hours > 0) {
+    return {
+      label: `${hours}h left`,
+      color: GP.neonGold,
+      bg: "rgba(250,204,21,0.15)",
+    };
+  }
+
+  const minutes = Math.floor(diffMs / 60000);
+  return {
+    label: `${minutes}m left`,
+    color: GP.neonRed,
+    bg: "rgba(251,113,133,0.15)",
+  };
+}
 
 export default function AlertsCockpit() {
   const { isAdmin, isManager } = useRole();
@@ -130,8 +176,7 @@ export default function AlertsCockpit() {
           Alerts — Compliance Focus
         </h1>
         <p style={{ color: GP.textSoft, fontSize: 13, maxWidth: 640 }}>
-          These alerts are generated autonomously and enforced through SLA,
-          escalation, and audit evidence.
+          These alerts are enforced with SLA timers and escalation rules.
         </p>
       </div>
 
@@ -188,6 +233,8 @@ export default function AlertsCockpit() {
         >
           {filteredAlerts.map((alert) => {
             const sev = SEVERITY_META[alert.severity] || {};
+            const sla = getSlaState(alert);
+
             return (
               <div
                 key={alert.id}
@@ -210,16 +257,41 @@ export default function AlertsCockpit() {
                   e.currentTarget.style.boxShadow = "none";
                 }}
               >
+                {/* HEADER ROW */}
                 <div
                   style={{
-                    fontSize: 11,
-                    color: sev.color,
-                    textTransform: "uppercase",
-                    letterSpacing: "0.14em",
+                    display: "flex",
+                    justifyContent: "space-between",
+                    alignItems: "center",
                     marginBottom: 6,
                   }}
                 >
-                  {sev.label}
+                  <div
+                    style={{
+                      fontSize: 11,
+                      color: sev.color,
+                      textTransform: "uppercase",
+                      letterSpacing: "0.14em",
+                    }}
+                  >
+                    {sev.label}
+                  </div>
+
+                  {sla && (
+                    <div
+                      style={{
+                        fontSize: 11,
+                        padding: "4px 10px",
+                        borderRadius: 999,
+                        color: sla.color,
+                        background: sla.bg,
+                        border: `1px solid ${sla.color}55`,
+                        fontWeight: 700,
+                      }}
+                    >
+                      {sla.label}
+                    </div>
+                  )}
                 </div>
 
                 <div style={{ fontSize: 14, fontWeight: 600 }}>
