@@ -676,25 +676,49 @@ useEffect(() => {
     setEliteSummary({ pass, warn, fail });
   }, [eliteMap]);
 
-  /* ============================================================
+/* ============================================================
      ALERTS V2 SUMMARY
 ============================================================ */
+  const fetchAlertSummary = async () => {
+    if (!activeOrgId) return;
+    try {
+      const res = await fetch(`/api/alerts-v2/stats?orgId=${activeOrgId}`);
+      const json = await res.json();
+      if (json.ok) setAlertSummary(json.stats || json);
+    } catch (err) {
+      console.error("[alerts v2 summary] fail:", err);
+    }
+  };
+
   useEffect(() => {
     if (!activeOrgId) return;
 
-    const loadAlerts = async () => {
-      try {
-        const res = await fetch(`/api/alerts-v2/stats?orgId=${activeOrgId}`);
-        const json = await res.json();
-        if (json.ok) setAlertSummary(json);
-      } catch (err) {
-        console.error("[alerts v2 summary] fail:", err);
-      }
+    fetchAlertSummary();
+    const interval = setInterval(fetchAlertSummary, 15000);
+    return () => clearInterval(interval);
+  }, [activeOrgId]);
+
+  /* ============================================================
+     ALERTS LIVE REFRESH (Resolve → Dashboard updates instantly)
+============================================================ */
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+
+    const onAlertsChanged = () => {
+      fetchAlertSummary();
     };
 
-    loadAlerts();
-    const interval = setInterval(loadAlerts, 15000);
-    return () => clearInterval(interval);
+    window.addEventListener("alerts:changed", onAlertsChanged);
+
+    const onStorage = (e) => {
+      if (e.key === "alerts:changed") onAlertsChanged();
+    };
+    window.addEventListener("storage", onStorage);
+
+    return () => {
+      window.removeEventListener("alerts:changed", onAlertsChanged);
+      window.removeEventListener("storage", onStorage);
+    };
   }, [activeOrgId]);
   /* ============================================================
      SYSTEM TIMELINE
@@ -897,7 +921,6 @@ useEffect(() => {
               <strong style={{ color: GP.neonRed }}>{alertsCount}</strong>
             </span>
           </div>
-
           {/* ORG COMPLIANCE CTA */}
           {(isAdmin || isManager) && (
             <a
@@ -1097,7 +1120,6 @@ useEffect(() => {
           </div>
         </div>
       </div>
-
       {/* POST-TUTORIAL STEP 5 ACTION BOX */}
       {showPostTutorialActions && (
         <div
@@ -1503,7 +1525,6 @@ useEffect(() => {
       <SlaBreachWidget orgId={activeOrgId} />
       <CriticalVendorWatchlist orgId={activeOrgId} />
       <AlertHeatSignature orgId={activeOrgId} />
-
       {/* RENEWAL INTELLIGENCE (tutorial anchor: renewalsRef) */}
       <div ref={renewalsRef}>
         <RenewalHeatmap range={90} />
