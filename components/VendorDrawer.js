@@ -16,6 +16,7 @@ import {
 } from "@phosphor-icons/react";
 import { useOrg } from "../context/OrgContext";
 import DocumentsUpload from "./DocumentsUpload";
+import DocumentTypeBadge from "./DocumentTypeBadge";
 
 function computeTier(score) {
   if (score >= 85) return "Elite Safe";
@@ -191,10 +192,10 @@ export default function VendorDrawer({ vendor, policies = [], onClose }) {
         <div className="pointer-events-auto w-full max-w-6xl max-h-[90vh] rounded-3xl border border-slate-800 bg-gradient-to-b from-slate-950/95 via-slate-950 to-slate-950/98 shadow-[0_24px_80px_rgba(0,0,0,0.95)] p-6 md:p-8 grid md:grid-cols-[1.2fr,1.4fr,1.4fr] gap-6 overflow-hidden">
 
           {/* LEFT COLUMN */}
-          {/* ...existing left column code unchanged... */}
+          {/* (unchanged) */}
 
           {/* MIDDLE COLUMN — POLICIES */}
-          {/* ...existing middle column code unchanged... */}
+          {/* (unchanged) */}
 
           {/* RIGHT COLUMN — DOCS + CONTRACT */}
           <div className="flex flex-col gap-4">
@@ -203,7 +204,6 @@ export default function VendorDrawer({ vendor, policies = [], onClose }) {
               <h3 className="text-sm font-semibold">Documents</h3>
             </div>
 
-            {/* UPLOAD UI */}
             <DocumentsUpload
               orgId={activeOrgId}
               vendorId={vendor?.id}
@@ -219,32 +219,39 @@ export default function VendorDrawer({ vendor, policies = [], onClose }) {
               <div className="text-sm text-rose-400">{docsError}</div>
             ) : (
               <div className="space-y-4 max-h-[70vh] overflow-y-auto pr-1">
-                {/* CONTRACT PANEL */}
-                {/* ...existing contractJson rendering code... */}
+                {documents
+                  .filter((d) => d.document_type !== "contract")
+                  .map((doc) => (
+                    <div
+                      key={doc.id}
+                      className="p-3 rounded-2xl border border-slate-800 bg-slate-900/60"
+                    >
+                      <div className="flex justify-between items-start">
+                        <div className="space-y-1">
+                          <DocumentTypeBadge type={doc.document_type} />
+                          <div className="text-[11px] text-slate-500">
+                            Uploaded: {formatDate(doc.uploaded_at)}
+                          </div>
+                        </div>
 
-                {/* OTHER DOCUMENTS */}
-                {documents.filter((d) => d.document_type !== "contract").map((doc) => (
-                  <div key={doc.id} className="p-3 rounded-2xl border border-slate-800 bg-slate-900/60">
-                    <div className="flex justify-between items-start">
-                      <div>
-                        <div className="text-[11px] uppercase tracking-[0.12em] text-slate-400">
-                          {doc.document_type.toUpperCase()}
-                        </div>
-                        <div className="text-[11px] text-slate-500 mt-1">
-                          Uploaded: {formatDate(doc.uploaded_at)}
-                        </div>
+                        {doc.file_url && (
+                          <a
+                            href={doc.file_url}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="text-[11px] px-2 py-1 rounded-lg border border-slate-700 bg-slate-800/60 hover:bg-slate-700 text-slate-300"
+                          >
+                            View File
+                          </a>
+                        )}
                       </div>
-                      {doc.file_url && (
-                        <a href={doc.file_url} target="_blank" rel="noopener noreferrer" className="text-[11px] px-2 py-1 rounded-lg border border-slate-700 bg-slate-800/60 hover:bg-slate-700 text-slate-300">
-                          View File
-                        </a>
-                      )}
+
+                      <div className="mt-2 text-[11px] text-slate-300 leading-snug whitespace-pre-wrap">
+                        {doc.ai_json?.summary ||
+                          "AI summary not available for this document."}
+                      </div>
                     </div>
-                    <div className="mt-2 text-[11px] text-slate-300 leading-snug whitespace-pre-wrap">
-                      {doc.ai_json?.summary || "AI summary not available for this document."}
-                    </div>
-                  </div>
-                ))}
+                  ))}
               </div>
             )}
           </div>
@@ -252,7 +259,8 @@ export default function VendorDrawer({ vendor, policies = [], onClose }) {
       </div>
 
       {/* RENEWAL EMAIL MODAL */}
-      {/* ...existing modal code unchanged... */}
+      {/* (unchanged) */}
     </>
   );
 }
+
