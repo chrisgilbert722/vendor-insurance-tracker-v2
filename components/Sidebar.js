@@ -1,4 +1,4 @@
-// components/Sidebar.js — Tactical Neon Rail V13 (Tutorial Replay Added)
+// components/Sidebar.js — Tactical Neon Rail V13 (Documents Hub Added)
 import React, { useEffect, useState } from "react";
 import { useOrg } from "../context/OrgContext";
 
@@ -128,21 +128,20 @@ export default function Sidebar({ pathname, isAdmin, isManager, isViewer }) {
         active={pathname === "/vendors"}
       />
 
+      {/* ⭐ DOCUMENTS HUB (NEW) */}
+      <RailLink
+        href="/documents"
+        label="Documents"
+        icon="🗂️"
+        active={pathname.startsWith("/documents")}
+      />
+
       {(isAdmin || isManager) && (
         <RailLink
           href="/upload-coi"
           label="Upload"
           icon="📄"
           active={pathname === "/upload-coi"}
-        />
-      )}
-
-      {isAdmin && (
-        <RailLink
-          href="/admin/organization"
-          label="Org"
-          icon="🏢"
-          active={pathname === "/admin/organization"}
         />
       )}
 
@@ -166,17 +165,7 @@ export default function Sidebar({ pathname, isAdmin, isManager, isViewer }) {
         />
       )}
 
-      {/* ⭐ AI COVERAGE INTEL */}
-      {isAdmin && (
-        <RailLink
-          href="/admin/coverage-intel"
-          label="AI Intel"
-          icon="🧬"
-          active={pathname === "/admin/coverage-intel"}
-        />
-      )}
-
-      {/* ⭐ RULE ENGINE V5 */}
+      {/* ⭐ RULE ENGINE */}
       {isAdmin && (
         <RailLink
           href="/admin/requirements-v5"
@@ -186,17 +175,7 @@ export default function Sidebar({ pathname, isAdmin, isManager, isViewer }) {
         />
       )}
 
-      {/* ⭐ AI RULE LAB */}
-      {isAdmin && (
-        <RailLink
-          href="/admin/rules/ai-builder"
-          label="AI Rules"
-          icon="⚙️"
-          active={pathname === "/admin/rules/ai-builder"}
-        />
-      )}
-
-      {/* ⭐ AI SETUP CENTER */}
+      {/* ⭐ AI SETUP */}
       {onboardingComplete && isAdmin && (
         <RailLink
           href="/admin/ai-setup-center"
@@ -205,50 +184,6 @@ export default function Sidebar({ pathname, isAdmin, isManager, isViewer }) {
           extraBadge="✓"
           active={pathname === "/admin/ai-setup-center"}
         />
-      )}
-
-      {/* ⭐ REPLAY TUTORIAL (NEW) */}
-      {isAdmin && (
-        <button
-          onClick={() => {
-            try {
-              localStorage.removeItem("dashboard_tutorial_seen");
-            } catch {}
-            window.location.href = "/dashboard?tutorial=1";
-          }}
-          style={{
-            width: "100%",
-            padding: "14px 0",
-            marginBottom: 8,
-            border: "none",
-            background: "transparent",
-            display: "flex",
-            flexDirection: "column",
-            alignItems: "center",
-            cursor: "pointer",
-          }}
-        >
-          <span
-            style={{
-              fontSize: 20,
-              marginBottom: 6,
-              color: "#38bdf8",
-              textShadow: "0 0 12px rgba(56,189,248,0.9)",
-            }}
-          >
-            ↻
-          </span>
-          <span
-            style={{
-              fontSize: 11,
-              textTransform: "uppercase",
-              color: "#e5e7eb",
-              letterSpacing: "0.08em",
-            }}
-          >
-            Tutorial
-          </span>
-        </button>
       )}
 
       {/* EXEC AI */}
