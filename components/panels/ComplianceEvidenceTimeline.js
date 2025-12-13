@@ -5,15 +5,25 @@ export default function ComplianceEvidenceTimeline({ orgId }) {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    if (!orgId) return;
+    if (!orgId) {
+      setEvents([]);
+      setLoading(false);
+      return;
+    }
+
+    setLoading(true);
 
     fetch(`/api/compliance/events?orgId=${orgId}&limit=40`)
       .then((r) => r.json())
       .then((j) => {
         if (j.ok) setEvents(j.events || []);
+        else setEvents([]);
       })
+      .catch(() => setEvents([]))
       .finally(() => setLoading(false));
   }, [orgId]);
+
+  const canExport = !!orgId;
 
   return (
     <div
@@ -49,7 +59,9 @@ export default function ComplianceEvidenceTimeline({ orgId }) {
 
         <div style={{ display: "flex", gap: 8 }}>
           <button
+            disabled={!canExport}
             onClick={() =>
+              canExport &&
               window.open(
                 `/api/compliance/export.csv?orgId=${orgId}`,
                 "_blank"
@@ -59,18 +71,23 @@ export default function ComplianceEvidenceTimeline({ orgId }) {
               padding: "6px 12px",
               borderRadius: 10,
               border: "1px solid #38bdf8",
-              background: "rgba(56,189,248,0.15)",
+              background: canExport
+                ? "rgba(56,189,248,0.15)"
+                : "rgba(56,189,248,0.05)",
               color: "#38bdf8",
               fontSize: 12,
               fontWeight: 700,
-              cursor: "pointer",
+              cursor: canExport ? "pointer" : "not-allowed",
+              opacity: canExport ? 1 : 0.5,
             }}
           >
             Export CSV
           </button>
 
           <button
+            disabled={!canExport}
             onClick={() =>
+              canExport &&
               window.open(
                 `/api/compliance/export.pdf?orgId=${orgId}`,
                 "_blank"
@@ -80,11 +97,14 @@ export default function ComplianceEvidenceTimeline({ orgId }) {
               padding: "6px 12px",
               borderRadius: 10,
               border: "1px solid #a855f7",
-              background: "rgba(168,85,247,0.15)",
+              background: canExport
+                ? "rgba(168,85,247,0.15)"
+                : "rgba(168,85,247,0.05)",
               color: "#a855f7",
               fontSize: 12,
               fontWeight: 700,
-              cursor: "pointer",
+              cursor: canExport ? "pointer" : "not-allowed",
+              opacity: canExport ? 1 : 0.5,
             }}
           >
             Export PDF
@@ -92,7 +112,12 @@ export default function ComplianceEvidenceTimeline({ orgId }) {
         </div>
       </div>
 
-      {loading ? (
+      {/* BODY */}
+      {!orgId ? (
+        <div style={{ fontSize: 13, color: "#9ca3af" }}>
+          Select an organization to view and export compliance evidence.
+        </div>
+      ) : loading ? (
         <div style={{ fontSize: 13, color: "#9ca3af" }}>
           Loading evidence…
         </div>
@@ -130,7 +155,7 @@ export default function ComplianceEvidenceTimeline({ orgId }) {
                   marginBottom: 4,
                 }}
               >
-                {e.event_type.replace(/_/g, " ")}
+                {String(e.event_type || "").replace(/_/g, " ")}
               </div>
 
               <div style={{ fontSize: 13, color: "#e5e7eb" }}>
@@ -144,7 +169,9 @@ export default function ComplianceEvidenceTimeline({ orgId }) {
                   marginTop: 4,
                 }}
               >
-                {new Date(e.occurred_at).toLocaleString()}
+                {e.occurred_at
+                  ? new Date(e.occurred_at).toLocaleString()
+                  : "—"}
               </div>
             </div>
           ))}
