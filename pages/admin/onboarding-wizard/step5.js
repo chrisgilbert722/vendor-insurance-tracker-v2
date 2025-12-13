@@ -1,7 +1,7 @@
 // pages/admin/onboarding-wizard/step5.js
 // ==========================================================
 // AI ONBOARDING WIZARD — STEP 5
-// Bulk Nudge System + Renewal Reminder Engine (UI)
+// Bulk Nudge System + Renewal Reminder Engine (Operations)
 // FULL COCKPIT V9 WEAPONIZED THEME
 // ==========================================================
 
@@ -132,7 +132,7 @@ export default function OnboardingWizardStep5() {
   }
 
   // -----------------------------------------------------------
-  // RENDER VENDOR GRID — COCKPIT WEAPONIZED
+  // RENDER VENDOR GRID
   // -----------------------------------------------------------
   function renderVendorGrid() {
     if (loading) return <div>Loading…</div>;
@@ -173,6 +173,7 @@ export default function OnboardingWizardStep5() {
           return (
             <div
               key={v.id}
+              onClick={() => toggleVendorSelection(v.id)}
               style={{
                 padding: 16,
                 borderRadius: 18,
@@ -186,27 +187,18 @@ export default function OnboardingWizardStep5() {
                 cursor: "pointer",
                 backdropFilter: "blur(8px)",
               }}
-              onClick={() => toggleVendorSelection(v.id)}
             >
-              <div
-                style={{
-                  display: "flex",
-                  alignItems: "center",
-                  gap: 8,
-                  marginBottom: 8,
-                }}
-              >
+              <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
                 <input
                   type="checkbox"
                   checked={selected}
                   onChange={() => toggleVendorSelection(v.id)}
+                  onClick={(e) => e.stopPropagation()}
                   style={{
                     width: 18,
                     height: 18,
                     accentColor: "#38bdf8",
-                    cursor: "pointer",
                   }}
-                  onClick={(e) => e.stopPropagation()}
                 />
                 <span style={{ fontSize: 15, fontWeight: 600 }}>
                   {v.vendor_name}
@@ -214,22 +206,10 @@ export default function OnboardingWizardStep5() {
               </div>
 
               <div style={{ fontSize: 12, color: "#9ca3af" }}>
-                <div>
-                  {v.last_uploaded_coi ? "📄 COI Uploaded" : "⚠ Missing COI"}
-                </div>
-                <div>
-                  {v.coverage_ok ? "✔ Coverage OK" : "⚠ Coverage Issues"}
-                </div>
-                <div>
-                  {v.endorsements_ok
-                    ? "✔ Endorsements OK"
-                    : "⚠ Missing Endorsements"}
-                </div>
-                <div>
-                  {v.hasCriticalAlerts
-                    ? "❌ Critical Alerts"
-                    : "✔ No Critical Alerts"}
-                </div>
+                <div>{v.last_uploaded_coi ? "📄 COI Uploaded" : "⚠ Missing COI"}</div>
+                <div>{v.coverage_ok ? "✔ Coverage OK" : "⚠ Coverage Issues"}</div>
+                <div>{v.endorsements_ok ? "✔ Endorsements OK" : "⚠ Missing Endorsements"}</div>
+                <div>{v.hasCriticalAlerts ? "❌ Critical Alerts" : "✔ No Critical Alerts"}</div>
               </div>
             </div>
           );
@@ -239,7 +219,7 @@ export default function OnboardingWizardStep5() {
   }
 
   // -----------------------------------------------------------
-  // RESULTS SUMMARY PANEL
+  // RESULTS SUMMARY
   // -----------------------------------------------------------
   function renderResultsSummary() {
     if (!lastResults) return null;
@@ -256,17 +236,15 @@ export default function OnboardingWizardStep5() {
           color: "#e5e7eb",
         }}
       >
-        <div>
-          <strong>Last run:</strong> Sent {lastResults.sentCount}, Failed{" "}
-          {lastResults.failedCount}
-        </div>
+        <strong>Last run:</strong> Sent {lastResults.sentCount}, Failed{" "}
+        {lastResults.failedCount}
       </div>
     );
   }
 
   // -----------------------------------------------------------
-  // PAGE RENDER (COCKPIT WRAPPED)
-// -----------------------------------------------------------
+  // PAGE RENDER
+  // -----------------------------------------------------------
   return (
     <CockpitWizardLayout>
       <div style={{ position: "relative", zIndex: 3 }}>
@@ -283,11 +261,9 @@ export default function OnboardingWizardStep5() {
         </h1>
 
         <p style={{ color: "#9ca3af", marginBottom: 16, fontSize: 13 }}>
-          Nudge vendors who are stuck or late, and trigger renewal reminders
-          using AI-powered bulk outreach.
+          Monitor onboarding progress and nudge vendors who are delayed or non-compliant.
         </p>
 
-        {/* NAV BAR */}
         <button
           onClick={goBack}
           style={{
@@ -303,140 +279,8 @@ export default function OnboardingWizardStep5() {
           ← Back to Step 4
         </button>
 
-        {/* FILTER CONTROLS */}
-        <div
-          style={{
-            display: "flex",
-            alignItems: "center",
-            gap: 8,
-            fontSize: 12,
-            marginBottom: 10,
-            color: "#9ca3af",
-          }}
-        >
-          <span>Filter:</span>
-          <button
-            onClick={() => setFilter("all")}
-            style={{
-              padding: "4px 10px",
-              borderRadius: 999,
-              border:
-                filter === "all"
-                  ? "1px solid #38bdf8"
-                  : "1px solid rgba(148,163,184,0.6)",
-              background:
-                filter === "all"
-                  ? "rgba(56,189,248,0.22)"
-                  : "rgba(15,23,42,0.9)",
-              color: "white",
-              cursor: "pointer",
-            }}
-          >
-            All
-          </button>
-          <button
-            onClick={() => setFilter("missing_coi")}
-            style={{
-              padding: "4px 10px",
-              borderRadius: 999,
-              border:
-                filter === "missing_coi"
-                  ? "1px solid #f97316"
-                  : "1px solid rgba(148,163,184,0.6)",
-              background:
-                filter === "missing_coi"
-                  ? "rgba(249,115,22,0.22)"
-                  : "rgba(15,23,42,0.9)",
-              color: "white",
-              cursor: "pointer",
-            }}
-          >
-            Missing COI
-          </button>
-          <button
-            onClick={() => setFilter("coverage")}
-            style={{
-              padding: "4px 10px",
-              borderRadius: 999,
-              border:
-                filter === "coverage"
-                  ? "1px solid #facc15"
-                  : "1px solid rgba(148,163,184,0.6)",
-              background:
-                filter === "coverage"
-                  ? "rgba(250,204,21,0.22)"
-                  : "rgba(15,23,42,0.9)",
-              color: "white",
-              cursor: "pointer",
-            }}
-          >
-            Coverage Issues
-          </button>
-          <button
-            onClick={() => setFilter("critical")}
-            style={{
-              padding: "4px 10px",
-              borderRadius: 999,
-              border:
-                filter === "critical"
-                  ? "1px solid #ef4444"
-                  : "1px solid rgba(148,163,184,0.6)",
-              background:
-                filter === "critical"
-                  ? "rgba(239,68,68,0.22)"
-                  : "rgba(15,23,42,0.9)",
-              color: "white",
-              cursor: "pointer",
-            }}
-          >
-            Critical Alerts
-          </button>
-        </div>
-
-        {/* SELECTION CONTROLS */}
-        <div
-          style={{
-            display: "flex",
-            alignItems: "center",
-            gap: 8,
-            fontSize: 12,
-            marginBottom: 10,
-            color: "#9ca3af",
-          }}
-        >
-          <span>Selected: {selectedVendorIds.length}</span>
-          <button
-            onClick={selectAllFiltered}
-            style={{
-              padding: "4px 10px",
-              borderRadius: 999,
-              border: "1px solid rgba(148,163,184,0.7)",
-              background: "rgba(15,23,42,0.95)",
-              color: "white",
-              cursor: "pointer",
-            }}
-          >
-            Select All (Filtered)
-          </button>
-          <button
-            onClick={clearSelection}
-            style={{
-              padding: "4px 10px",
-              borderRadius: 999,
-              border: "1px solid rgba(148,163,184,0.7)",
-              background: "rgba(15,23,42,0.95)",
-              color: "white",
-              cursor: "pointer",
-            }}
-          >
-            Clear
-          </button>
-        </div>
-
-        {/* VENDOR GRID */}
         {renderVendorGrid()}
 
-        {/* ACTION BUTTONS */}
         {vendors.length > 0 && (
           <div style={{ marginTop: 24, display: "flex", gap: 10, flexWrap: "wrap" }}>
             <button
@@ -456,7 +300,7 @@ export default function OnboardingWizardStep5() {
                 fontWeight: 600,
               }}
             >
-              {sending ? "Sending…" : "⚠ Nudge: Missing COI"}
+              ⚠ Nudge: Missing COI
             </button>
 
             <button
@@ -476,7 +320,7 @@ export default function OnboardingWizardStep5() {
                 fontWeight: 600,
               }}
             >
-              {sending ? "Sending…" : "🛡 Nudge: Coverage Issues"}
+              🛡 Nudge: Coverage Issues
             </button>
 
             <button
@@ -496,7 +340,7 @@ export default function OnboardingWizardStep5() {
                 fontWeight: 600,
               }}
             >
-              {sending ? "Sending…" : "📆 Nudge: Renewal Reminder"}
+              📆 Nudge: Renewal Reminder
             </button>
           </div>
         )}
@@ -518,4 +362,4 @@ export default function OnboardingWizardStep5() {
     </CockpitWizardLayout>
   );
 }
- 
+
