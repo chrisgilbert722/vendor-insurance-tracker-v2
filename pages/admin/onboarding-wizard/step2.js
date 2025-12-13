@@ -38,7 +38,13 @@ export default function OnboardingWizardStep2() {
   useEffect(() => {
     try {
       const raw = localStorage.getItem("onboardingVendors");
-      if (raw) setVendors(JSON.parse(raw));
+      if (raw) {
+        const parsed = JSON.parse(raw).map((v, idx) => ({
+          ...v,
+          _onboard_id: `${idx}-${v.email || v.vendor_name}`,
+        }));
+        setVendors(parsed);
+      }
     } catch (err) {
       console.error("Vendor load error:", err);
     }
@@ -61,13 +67,11 @@ export default function OnboardingWizardStep2() {
     try {
       const newProfiles = [];
 
-      for (const vendor of vendors) {
-        const prompt = `
+      const prompt = `
 You are an insurance compliance assistant.
-Analyze this vendor and return ONLY valid JSON:
+Analyze the following vendors and return ONLY valid JSON:
 
-Vendor:
-${JSON.stringify(vendor, null, 2)}
+${JSON.stringify(vendors, null, 2)}
 
 Format:
 {
@@ -84,22 +88,26 @@ Format:
   "risk_category": "low"|"medium"|"high",
   "notes": string
 }
-        `.trim();
+      `.trim();
 
-        const completion = await openai.chat.completions.create({
-          model: "gpt-4.1",
-          temperature: 0,
-          messages: [
-            { role: "system", content: "Return ONLY strict JSON." },
-            { role: "user", content: prompt },
-          ],
+      const completion = await openai.chat.completions.create({
+        model: "gpt-4.1",
+        temperature: 0,
+        messages: [
+          { role: "system", content: "Return ONLY strict JSON." },
+          { role: "user", content: prompt },
+        ],
+      });
+
+      let raw = completion.choices[0].message?.content.trim() || "";
+      const json = JSON.parse(raw.slice(raw.indexOf("{"), raw.lastIndexOf("}") + 1));
+
+      json.forEach((vendorProfile, idx) => {
+        newProfiles.push({
+          vendor: vendors[idx],
+          profile: vendorProfile,
         });
-
-        const raw = completion.choices[0].message?.content.trim() || "{}";
-        const json = JSON.parse(raw.slice(raw.indexOf("{"), raw.lastIndexOf("}") + 1));
-
-        newProfiles.push({ vendor, profile: json });
-      }
+      });
 
       setProfiles(newProfiles);
 
@@ -132,7 +140,7 @@ Format:
   }
 
   // -----------------------------------------------------------
-  // SEND AI ONBOARDING INVITES
+  // SEND AI ONBOARDING INVITES (DEFER TO STEP 3)
   // -----------------------------------------------------------
   async function handleSendInvites() {
     if (!selectedVendorIds.length) {
@@ -246,8 +254,8 @@ Format:
             >
               <input
                 type="checkbox"
-                checked={selectedVendorIds.includes(item.vendor.id)}
-                onChange={() => toggleVendorSelection(item.vendor.id)}
+                checked={selectedVendorIds.includes(item.vendor._onboard_id)}
+                onChange={() => toggleVendorSelection(item.vendor._onboard_id)}
                 style={{
                   width: 18,
                   height: 18,
