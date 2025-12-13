@@ -3,7 +3,6 @@ import { useState, useEffect } from "react";
 import { useRouter } from "next/router";
 import { supabase } from "../../lib/supabaseClient";
 import { useUser } from "../../context/UserContext";
-import { signIn } from "next-auth/react";
 
 export default function LoginPage() {
   const router = useRouter();
@@ -70,10 +69,30 @@ export default function LoginPage() {
   }
 
   // ==============================
-  // GOOGLE SSO LOGIN (NEW)
+  // GOOGLE LOGIN (SUPABASE — FIXED)
   // ==============================
-  function handleGoogleLogin() {
-    signIn("google", { callbackUrl: redirect });
+  async function signInWithGoogle() {
+    try {
+      setLoading(true);
+      setError("");
+
+      const { error } = await supabase.auth.signInWithOAuth({
+        provider: "google",
+        options: {
+          redirectTo: `${window.location.origin}/auth/callback`,
+        },
+      });
+
+      if (error) {
+        console.error("[login] google error:", error);
+        setError(error.message || "Google sign-in failed.");
+      }
+    } catch (err) {
+      console.error("[login] google unexpected:", err);
+      setError("Google sign-in failed.");
+    } finally {
+      setLoading(false);
+    }
   }
 
   return (
@@ -102,24 +121,24 @@ export default function LoginPage() {
             "0 24px 60px rgba(15,23,42,0.98), 0 0 40px rgba(56,189,248,0.25)",
         }}
       >
-        {/* HEADER */}
         <h1 style={{ fontSize: 22, fontWeight: 600, marginBottom: 10 }}>
           Sign in
         </h1>
 
-        {/* GOOGLE SSO */}
+        {/* GOOGLE LOGIN */}
         <button
-          onClick={handleGoogleLogin}
+          onClick={signInWithGoogle}
+          disabled={loading}
           style={{
             width: "100%",
             borderRadius: 999,
             padding: "10px 14px",
-            border: "1px solid rgba(148,163,184,0.4)",
+            border: "1px solid rgba(148,163,184,0.6)",
             background: "rgba(15,23,42,0.9)",
             color: "#e5e7eb",
             fontSize: 13,
-            fontWeight: 500,
-            cursor: "pointer",
+            fontWeight: 600,
+            cursor: loading ? "not-allowed" : "pointer",
             marginBottom: 14,
           }}
         >
