@@ -6,7 +6,7 @@ import ToastV2 from "../../components/ToastV2";
 
 /* ==========================================================
    ALERTS — DASHBOARD FOCUS MODE
-   + SLA COUNTDOWN BADGES
+   + SLA COUNTDOWN + ESCALATION INDICATORS
 ========================================================== */
 
 const GP = {
@@ -29,7 +29,7 @@ const SEVERITY_META = {
 };
 
 /* ==========================================================
-   SLA HELPERS
+   SLA + ESCALATION HELPERS
 ========================================================== */
 
 function getSlaState(alert) {
@@ -44,34 +44,53 @@ function getSlaState(alert) {
       label: "BREACHED",
       color: GP.neonRed,
       bg: "rgba(251,113,133,0.15)",
+      escalation: "escalated",
     };
   }
 
   const hours = Math.floor(diffMs / 3600000);
   const days = Math.floor(hours / 24);
 
-  if (days > 0) {
-    return {
-      label: `${days}d left`,
-      color: GP.neonGreen,
-      bg: "rgba(34,197,94,0.15)",
-    };
-  }
+  const totalMs =
+    new Date(alert.sla_due_at).getTime() -
+    new Date(alert.created_at).getTime();
 
-  if (hours > 0) {
-    return {
-      label: `${hours}h left`,
-      color: GP.neonGold,
-      bg: "rgba(250,204,21,0.15)",
-    };
-  }
+  const elapsedRatio =
+    1 - diffMs / Math.max(totalMs, 1);
 
-  const minutes = Math.floor(diffMs / 60000);
+  let escalation = "on_track";
+  if (elapsedRatio >= 0.5) escalation = "at_risk";
+
   return {
-    label: `${minutes}m left`,
-    color: GP.neonRed,
-    bg: "rgba(251,113,133,0.15)",
+    label:
+      days > 0
+        ? `${days}d left`
+        : hours > 0
+        ? `${hours}h left`
+        : `${Math.floor(diffMs / 60000)}m left`,
+    color:
+      escalation === "on_track"
+        ? GP.neonGreen
+        : GP.neonGold,
+    bg:
+      escalation === "on_track"
+        ? "rgba(34,197,94,0.15)"
+        : "rgba(250,204,21,0.15)",
+    escalation,
   };
+}
+
+function escalationBadge(escalation) {
+  switch (escalation) {
+    case "on_track":
+      return { label: "On Track", color: GP.neonGreen };
+    case "at_risk":
+      return { label: "At Risk", color: GP.neonGold };
+    case "escalated":
+      return { label: "Escalated", color: GP.neonRed };
+    default:
+      return null;
+  }
 }
 
 export default function AlertsCockpit() {
@@ -82,7 +101,6 @@ export default function AlertsCockpit() {
   const [alerts, setAlerts] = useState([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
-
   const [severityFilter, setSeverityFilter] = useState("all");
 
   const [toast, setToast] = useState({
@@ -91,9 +109,6 @@ export default function AlertsCockpit() {
     type: "success",
   });
 
-  /* =======================
-     Load Alerts
-  ======================= */
   useEffect(() => {
     if (!orgId || loadingOrgs) return;
     loadAlerts();
@@ -120,7 +135,6 @@ export default function AlertsCockpit() {
 
   async function handleResolve(alert) {
     if (!canEdit) return;
-
     try {
       setSaving(true);
       const res = await fetch("/api/alerts-v2/resolve", {
@@ -132,7 +146,6 @@ export default function AlertsCockpit() {
           resolutionNote: "Resolved from Alerts Focus",
         }),
       });
-
       const json = await res.json();
       if (!json.ok) throw new Error(json.error);
 
@@ -140,11 +153,7 @@ export default function AlertsCockpit() {
       window.dispatchEvent(new CustomEvent("alerts:changed"));
       localStorage.setItem("alerts:changed", Date.now());
 
-      setToast({
-        open: true,
-        type: "success",
-        message: "Alert resolved.",
-      });
+      setToast({ open: true, type: "success", message: "Alert resolved." });
     } catch (err) {
       setToast({ open: true, type: "error", message: err.message });
     } finally {
@@ -157,9 +166,6 @@ export default function AlertsCockpit() {
     window.location.href = `/admin/vendor/${alert.vendor_id}/fix?alertId=${alert.id}`;
   }
 
-  /* =======================
-     RENDER
-  ======================= */
   return (
     <div
       style={{
@@ -170,187 +176,134 @@ export default function AlertsCockpit() {
         color: GP.text,
       }}
     >
-      {/* HEADER */}
-      <div style={{ marginBottom: 24 }}>
-        <h1 style={{ fontSize: 30, fontWeight: 600 }}>
-          Alerts — Compliance Focus
-        </h1>
-        <p style={{ color: GP.textSoft, fontSize: 13, maxWidth: 640 }}>
-          These alerts are enforced with SLA timers and escalation rules.
-        </p>
-      </div>
+      <h1 style={{ fontSize: 30, fontWeight: 600 }}>
+        Alerts — Compliance Focus
+      </h1>
 
-      {/* FILTER STRIP */}
-      <div
-        style={{
-          display: "flex",
-          gap: 10,
-          marginBottom: 20,
-          flexWrap: "wrap",
-        }}
-      >
-        {["all", "critical", "high", "medium", "low"].map((sev) => (
-          <button
-            key={sev}
-            onClick={() => setSeverityFilter(sev)}
+      <div style={{ marginTop: 24 }}>
+        {loading ? (
+          <div style={{ color: GP.textSoft }}>Loading alerts…</div>
+        ) : filteredAlerts.length === 0 ? (
+          <div style={{ color: GP.textSoft }}>No active alerts.</div>
+        ) : (
+          <div
             style={{
-              padding: "6px 14px",
-              borderRadius: 999,
-              border:
-                severityFilter === sev
-                  ? `1px solid ${GP.neonBlue}`
-                  : `1px solid ${GP.borderSoft}`,
-              background:
-                severityFilter === sev
-                  ? "rgba(56,189,248,0.15)"
-                  : GP.panel,
-              color:
-                sev === "all"
-                  ? GP.text
-                  : SEVERITY_META[sev]?.color,
-              fontSize: 12,
-              fontWeight: 600,
-              cursor: "pointer",
+              display: "grid",
+              gridTemplateColumns: "repeat(auto-fill,minmax(320px,1fr))",
+              gap: 16,
             }}
           >
-            {sev === "all" ? "All" : SEVERITY_META[sev].label}
-          </button>
-        ))}
-      </div>
+            {filteredAlerts.map((alert) => {
+              const sev = SEVERITY_META[alert.severity] || {};
+              const sla = getSlaState(alert);
+              const esc = escalationBadge(sla?.escalation);
 
-      {/* ALERTS GRID */}
-      {loading ? (
-        <div style={{ color: GP.textSoft }}>Loading alerts…</div>
-      ) : filteredAlerts.length === 0 ? (
-        <div style={{ color: GP.textSoft }}>No active alerts.</div>
-      ) : (
-        <div
-          style={{
-            display: "grid",
-            gridTemplateColumns: "repeat(auto-fill,minmax(320px,1fr))",
-            gap: 16,
-          }}
-        >
-          {filteredAlerts.map((alert) => {
-            const sev = SEVERITY_META[alert.severity] || {};
-            const sla = getSlaState(alert);
-
-            return (
-              <div
-                key={alert.id}
-                onClick={() => openFixCockpit(alert)}
-                style={{
-                  borderRadius: 18,
-                  padding: 16,
-                  border: `1px solid ${sev.color}55`,
-                  background: GP.panel,
-                  cursor: "pointer",
-                  transition: "transform .15s ease, box-shadow .15s ease",
-                }}
-                onMouseEnter={(e) => {
-                  e.currentTarget.style.transform = "translateY(-2px)";
-                  e.currentTarget.style.boxShadow =
-                    "0 0 22px rgba(56,189,248,0.35)";
-                }}
-                onMouseLeave={(e) => {
-                  e.currentTarget.style.transform = "none";
-                  e.currentTarget.style.boxShadow = "none";
-                }}
-              >
-                {/* HEADER ROW */}
+              return (
                 <div
+                  key={alert.id}
+                  onClick={() => openFixCockpit(alert)}
                   style={{
-                    display: "flex",
-                    justifyContent: "space-between",
-                    alignItems: "center",
-                    marginBottom: 6,
+                    borderRadius: 18,
+                    padding: 16,
+                    border: `1px solid ${
+                      sla?.escalation === "escalated"
+                        ? GP.neonRed
+                        : sev.color
+                    }55`,
+                    background: GP.panel,
+                    cursor: "pointer",
                   }}
                 >
                   <div
                     style={{
-                      fontSize: 11,
-                      color: sev.color,
-                      textTransform: "uppercase",
-                      letterSpacing: "0.14em",
+                      display: "flex",
+                      justifyContent: "space-between",
+                      alignItems: "center",
+                      marginBottom: 6,
                     }}
                   >
-                    {sev.label}
-                  </div>
-
-                  {sla && (
                     <div
                       style={{
                         fontSize: 11,
-                        padding: "4px 10px",
-                        borderRadius: 999,
-                        color: sla.color,
-                        background: sla.bg,
-                        border: `1px solid ${sla.color}55`,
+                        color: sev.color,
+                        textTransform: "uppercase",
+                        letterSpacing: "0.14em",
+                      }}
+                    >
+                      {sev.label}
+                    </div>
+
+                    {sla && (
+                      <div
+                        style={{
+                          fontSize: 11,
+                          padding: "4px 10px",
+                          borderRadius: 999,
+                          color: sla.color,
+                          background: sla.bg,
+                          border: `1px solid ${sla.color}55`,
+                          fontWeight: 700,
+                        }}
+                      >
+                        {sla.label}
+                      </div>
+                    )}
+                  </div>
+
+                  <div style={{ fontSize: 14, fontWeight: 600 }}>
+                    {alert.vendor_name}
+                  </div>
+
+                  <div
+                    style={{
+                      fontSize: 12,
+                      color: GP.textSoft,
+                      marginTop: 4,
+                    }}
+                  >
+                    {alert.rule_name || alert.message}
+                  </div>
+
+                  {esc && (
+                    <div
+                      style={{
+                        marginTop: 10,
+                        fontSize: 11,
+                        color: esc.color,
                         fontWeight: 700,
                       }}
                     >
-                      {sla.label}
+                      {esc.label}
                     </div>
                   )}
+
+                  {canEdit && (
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleResolve(alert);
+                      }}
+                      style={{
+                        marginTop: 12,
+                        padding: "6px 12px",
+                        borderRadius: 10,
+                        border: `1px solid ${GP.neonGreen}`,
+                        background: "rgba(34,197,94,0.15)",
+                        color: GP.neonGreen,
+                        fontSize: 12,
+                        fontWeight: 600,
+                        cursor: "pointer",
+                      }}
+                    >
+                      Resolve
+                    </button>
+                  )}
                 </div>
-
-                <div style={{ fontSize: 14, fontWeight: 600 }}>
-                  {alert.vendor_name}
-                </div>
-
-                <div
-                  style={{
-                    fontSize: 12,
-                    color: GP.textSoft,
-                    marginTop: 4,
-                  }}
-                >
-                  {alert.rule_name || alert.message}
-                </div>
-
-                {canEdit && (
-                  <button
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      handleResolve(alert);
-                    }}
-                    style={{
-                      marginTop: 12,
-                      padding: "6px 12px",
-                      borderRadius: 10,
-                      border: `1px solid ${GP.neonGreen}`,
-                      background: "rgba(34,197,94,0.15)",
-                      color: GP.neonGreen,
-                      fontSize: 12,
-                      fontWeight: 600,
-                      cursor: "pointer",
-                    }}
-                  >
-                    Resolve
-                  </button>
-                )}
-              </div>
-            );
-          })}
-        </div>
-      )}
-
-      {saving && (
-        <div
-          style={{
-            position: "fixed",
-            right: 24,
-            bottom: 24,
-            padding: "8px 14px",
-            borderRadius: 999,
-            background: GP.panel,
-            border: `1px solid ${GP.borderSoft}`,
-            fontSize: 12,
-          }}
-        >
-          Updating…
-        </div>
-      )}
+              );
+            })}
+          </div>
+        )}
+      </div>
 
       <ToastV2
         open={toast.open}
