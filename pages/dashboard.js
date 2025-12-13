@@ -424,6 +424,9 @@ useEffect(() => {
     setShowTutorial(false);
     setShowPostTutorialActions(true);
 
+    // Remove ?tutorial=1 so dashboard does not re-force tutorial
+    window.history.replaceState({}, "", "/dashboard");
+
     // Scroll user to Step 5 CTA (top of dashboard)
     window.scrollTo({ top: 0, behavior: "smooth" });
 
