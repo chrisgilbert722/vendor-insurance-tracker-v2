@@ -2,12 +2,14 @@
 // ============================================================
 // Vendor Document Upload — V5 (Server-side)
 // Handles file save + DB insert + returns document
+// Emits webhook: document.uploaded
 // ============================================================
 
 import fs from "fs";
 import path from "path";
 import formidable from "formidable";
 import { sql } from "../../../../lib/db";
+import { emitWebhook } from "../../../../lib/webhooks";
 
 export const config = {
   api: {
@@ -30,7 +32,10 @@ export default async function handler(req, res) {
 
   const { orgId, vendorId } = req.query;
   if (!orgId || !vendorId) {
-    return res.status(400).json({ ok: false, error: "Missing orgId or vendorId" });
+    return res.status(400).json({
+      ok: false,
+      error: "Missing orgId or vendorId",
+    });
   }
 
   try {
@@ -82,6 +87,23 @@ export default async function handler(req, res) {
       )
       RETURNING *
     `;
+
+    // -----------------------------------------------------------
+    // WEBHOOK: document.uploaded
+    // -----------------------------------------------------------
+    try {
+      await emitWebhook(orgId, "document.uploaded", {
+        documentId: doc.id,
+        vendorId: vendorId,
+        documentType: doc.document_type,
+        status: doc.status,
+        expiresOn: doc.expires_on,
+        uploadedAt: doc.uploaded_at,
+      });
+    } catch (err) {
+      // Never block uploads if webhook fails
+      console.error("[webhook document.uploaded]", err);
+    }
 
     return res.status(200).json({ ok: true, document: doc });
   } catch (err) {
