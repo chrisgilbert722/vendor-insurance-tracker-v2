@@ -1687,7 +1687,38 @@ useEffect(() => {
 
 
       {/* COMPLIANCE EVIDENCE (Audit-grade, immutable) */}
-      <ComplianceEvidenceTimeline orgId={activeOrgId} />
+      {activeOrgId ? (
+        <ComplianceEvidenceTimeline orgId={activeOrgId} />
+      ) : (
+        <div
+          style={{
+            marginTop: 16,
+            marginBottom: 32,
+            borderRadius: 20,
+            padding: 18,
+            border: "1px solid rgba(148,163,184,0.4)",
+            background: "rgba(15,23,42,0.96)",
+            boxShadow: "0 10px 35px rgba(0,0,0,0.45)",
+          }}
+        >
+          <h2
+            style={{
+              marginTop: 0,
+              marginBottom: 10,
+              fontSize: 18,
+              fontWeight: 600,
+              background: "linear-gradient(90deg,#38bdf8,#a855f7)",
+              WebkitBackgroundClip: "text",
+              color: "transparent",
+            }}
+          >
+            Compliance Evidence (Audit Log)
+          </h2>
+          <div style={{ fontSize: 13, color: GP.textSoft }}>
+            Select an organization to view and export compliance evidence.
+          </div>
+        </div>
+      )}
 
       {/* POLICIES TABLE — tutorial anchor: policiesRef */}
       <div ref={policiesRef}>
