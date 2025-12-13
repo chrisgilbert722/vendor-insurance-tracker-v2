@@ -1,8 +1,14 @@
+// pages/dashboard.js — Dashboard V5 (Cinematic Intelligence Cockpit)
+// UPDATED: Phase 1A — Compliance Intelligence Panel added
+
 import { useEffect, useState, useRef } from "react";
 import VendorDrawer from "../components/VendorDrawer";
 import { useRole } from "../lib/useRole";
 import { useOrg } from "../context/OrgContext";
 import EliteStatusPill from "../components/elite/EliteStatusPill";
+
+// ✅ Phase 1A — Compliance Intelligence (Multi-Document UI Exposure)
+import ComplianceIntelligencePanel from "../components/dashboard/ComplianceIntelligencePanel";
 
 // ONBOARDING COCKPIT
 import OnboardingHeroCard from "../components/onboarding/OnboardingHeroCard";
@@ -160,7 +166,8 @@ function computeAiRisk({ risk, elite, compliance }) {
 
   let complianceFactor = 1.0;
   if (compliance && compliance.failing?.length > 0) complianceFactor = 0.5;
-  else if (compliance && compliance.missing?.length > 0) complianceFactor = 0.7;
+  else if (compliance && compliance.missing?.length > 0)
+    complianceFactor = 0.7;
 
   let score = Math.round(base * eliteFactor * complianceFactor);
   score = Math.max(0, Math.min(score, 100));
@@ -302,7 +309,6 @@ function summarizeEngineHealth(engineMap) {
     total: vendors.length,
   };
 }
-
 /* ============================================================
    MAIN DASHBOARD COMPONENT
 ============================================================ */
@@ -310,14 +316,18 @@ function Dashboard() {
   const { isAdmin, isManager } = useRole();
   const { activeOrgId } = useOrg();
 
-  // Spotlight anchors for tutorial (Option B)
+  /* ============================================================
+     Tutorial Anchors (Spotlight Engine)
+  ============================================================ */
   const riskRef = useRef(null);
   const kpiRef = useRef(null);
   const alertsRef = useRef(null);
   const renewalsRef = useRef(null);
   const policiesRef = useRef(null);
 
-  // STATE
+  /* ============================================================
+     Core State
+  ============================================================ */
   const [onboardingComplete, setOnboardingComplete] = useState(true);
   const [showHero, setShowHero] = useState(false);
   const [bannerDismissed, setBannerDismissed] = useState(false);
@@ -341,14 +351,14 @@ function Dashboard() {
   const [alertSummary, setAlertSummary] = useState(null);
   const [showAlerts, setShowAlerts] = useState(false);
 
-  // ============================================================
-  // ✅ POST-TOUR CTA (Monetization Layer)
-  // ============================================================
+  /* ============================================================
+     Phase 1A — Post-Tour CTA
+  ============================================================ */
   const [showPostTourCta, setShowPostTourCta] = useState(false);
 
-  // ============================================================
-  // ✅ SAFE TELEMETRY (Never breaks)
-  // ============================================================
+  /* ============================================================
+     Telemetry (Safe, Non-Blocking)
+  ============================================================ */
   const track = async (event, meta = {}) => {
     try {
       fetch("/api/telemetry/event", {
@@ -363,33 +373,37 @@ function Dashboard() {
     } catch {}
   };
 
-  // ============================================================
-  // DASHBOARD TUTORIAL — FORCE ALERTS PANEL OPEN (STEP 3 FIX)
-  // ============================================================
+  /* ============================================================
+     Tutorial → Force Alerts Panel Open (Step 3)
+  ============================================================ */
   useEffect(() => {
-    const forceOpenAlerts = () => {
-      setShowAlerts(true);
-    };
-
+    const forceOpenAlerts = () => setShowAlerts(true);
     window.addEventListener("dashboard_open_alerts", forceOpenAlerts);
-
-    return () => {
+    return () =>
       window.removeEventListener("dashboard_open_alerts", forceOpenAlerts);
-    };
   }, []);
 
+  /* ============================================================
+     Drawer State
+  ============================================================ */
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [drawerVendor, setDrawerVendor] = useState(null);
   const [drawerPolicies, setDrawerPolicies] = useState([]);
 
+  /* ============================================================
+     System Timeline
+  ============================================================ */
   const [systemTimeline, setSystemTimeline] = useState([]);
   const [systemTimelineLoading, setSystemTimelineLoading] = useState(true);
 
-  // DASHBOARD TUTORIAL VISIBILITY
+  /* ============================================================
+     Tutorial Visibility
+  ============================================================ */
   const [showTutorial, setShowTutorial] = useState(false);
-/* ============================================================
-     ONBOARDING + TUTORIAL STATUS (COMBINED)
-============================================================ */
+
+  /* ============================================================
+     Onboarding + Tutorial Status
+  ============================================================ */
   useEffect(() => {
     if (!activeOrgId) return;
 
@@ -420,15 +434,12 @@ function Dashboard() {
   }, [activeOrgId]);
 
   /* ============================================================
-     FORCE TUTORIAL WHEN ?tutorial=1 (Replay from sidebar)
-============================================================ */
+     Force Tutorial Replay (?tutorial=1)
+  ============================================================ */
   useEffect(() => {
     if (typeof window === "undefined") return;
-
     const params = new URLSearchParams(window.location.search);
-    const force = params.get("tutorial") === "1";
-
-    if (force) {
+    if (params.get("tutorial") === "1") {
       try {
         localStorage.setItem("dashboard_tutorial_seen", "false");
       } catch {}
@@ -437,45 +448,19 @@ function Dashboard() {
   }, []);
 
   /* ============================================================
-     ✅ FINISH TUTORIAL (PATCHED)
-     - Sets CTA visible
-     - Telemetry: tutorial_finish
-============================================================ */
+     Finish Tutorial
+  ============================================================ */
   const handleFinishTutorial = () => {
     setShowTutorial(false);
     setShowPostTourCta(true);
-
     try {
       localStorage.setItem("dashboard_tutorial_seen", "true");
     } catch {}
-
     track("tutorial_finish");
   };
-
   /* ============================================================
-     ONBOARDING BANNER DISMISS
-============================================================ */
-  useEffect(() => {
-    try {
-      const stored = localStorage.getItem("onboardingBannerDismissed");
-      if (stored === "true") setBannerDismissed(true);
-    } catch {}
-  }, []);
-
-  const handleDismissBanner = () => {
-    setBannerDismissed(true);
-    try {
-      localStorage.setItem("onboardingBannerDismissed", "true");
-    } catch {}
-  };
-
-  const handleStartOnboarding = () => {
-    window.location.href = "/onboarding/start";
-  };
-
-   /* ============================================================
-     AUTO-OPEN CHECKLIST ON IDLE
-============================================================ */
+     Auto-Open Checklist on Idle (Onboarding Assist)
+  ============================================================ */
   useEffect(() => {
     if (onboardingComplete) return;
 
@@ -505,8 +490,8 @@ function Dashboard() {
   }, [onboardingComplete]);
 
   /* ============================================================
-     DASHBOARD METRICS
-============================================================ */
+     Load Dashboard Metrics
+  ============================================================ */
   useEffect(() => {
     if (!activeOrgId) return;
 
@@ -525,8 +510,8 @@ function Dashboard() {
   }, [activeOrgId]);
 
   /* ============================================================
-     LOAD POLICIES
-============================================================ */
+     Load Policies
+  ============================================================ */
   useEffect(() => {
     (async () => {
       try {
@@ -541,9 +526,9 @@ function Dashboard() {
     })();
   }, []);
 
-   /* ============================================================
-     ELITE ENGINE — COI Evaluation
-============================================================ */
+  /* ============================================================
+     Elite Engine — COI Evaluation
+  ============================================================ */
   useEffect(() => {
     if (!policies.length) return;
 
@@ -593,8 +578,8 @@ function Dashboard() {
   }, [policies, eliteMap]);
 
   /* ============================================================
-     RULE ENGINE V5 — run-v3
-============================================================ */
+     Rule Engine V5 — Auto Run
+  ============================================================ */
   useEffect(() => {
     if (!policies.length || !activeOrgId) return;
 
@@ -663,8 +648,7 @@ function Dashboard() {
             },
           }));
         })
-        .catch((err) => {
-          console.error("[engineV5] fail:", err);
+        .catch(() =>
           setEngineMap((prev) => ({
             ...prev,
             [vendorId]: {
@@ -672,14 +656,13 @@ function Dashboard() {
               loaded: true,
               error: "Failed to evaluate vendor",
             },
-          }));
-        });
+          }))
+        );
     });
   }, [policies, activeOrgId, engineMap]);
-
-   /* ============================================================
-     ELITE SUMMARY COUNTS
-============================================================ */
+  /* ============================================================
+     Elite Summary Counts
+  ============================================================ */
   useEffect(() => {
     let pass = 0,
       warn = 0,
@@ -696,8 +679,8 @@ function Dashboard() {
   }, [eliteMap]);
 
   /* ============================================================
-     ALERTS V2 SUMMARY
-============================================================ */
+     Alerts V2 Summary
+  ============================================================ */
   useEffect(() => {
     if (!activeOrgId) return;
 
@@ -717,8 +700,8 @@ function Dashboard() {
   }, [activeOrgId]);
 
   /* ============================================================
-     SYSTEM TIMELINE
-============================================================ */
+     System Timeline
+  ============================================================ */
   useEffect(() => {
     const loadTimeline = async () => {
       try {
@@ -734,18 +717,22 @@ function Dashboard() {
     };
 
     loadTimeline();
-    const int = setInterval(loadTimeline, 10000);
-    return () => clearInterval(int);
+    const interval = setInterval(loadTimeline, 10000);
+    return () => clearInterval(interval);
   }, []);
 
-  /* DRAWER HANDLERS */
+  /* ============================================================
+     Drawer Handlers
+  ============================================================ */
   const openDrawer = (vendorId) => {
     const vendorPolicies = policies.filter((p) => p.vendor_id === vendorId);
+
     setDrawerVendor({
       id: vendorId,
       name: vendorPolicies[0]?.vendor_name || "Vendor",
       engine: engineMap[vendorId],
     });
+
     setDrawerPolicies(vendorPolicies);
     setDrawerOpen(true);
   };
@@ -756,7 +743,9 @@ function Dashboard() {
     setDrawerPolicies([]);
   };
 
-  /* FILTERED POLICIES */
+  /* ============================================================
+     Filtered Policies
+  ============================================================ */
   const filtered = policies.filter((p) => {
     const t = filterText.toLowerCase();
     return (
@@ -768,7 +757,9 @@ function Dashboard() {
     );
   });
 
-  /* DERIVED METRICS */
+  /* ============================================================
+     Derived Metrics
+  ============================================================ */
   const engineHealth = summarizeEngineHealth(engineMap);
   const avgScore = engineHealth.avg;
   const totalVendors = engineHealth.total;
@@ -781,10 +772,9 @@ function Dashboard() {
         return b.total - a.total;
       })
     : [];
-
-   /* ============================================================
+  /* ============================================================
      MAIN RENDER
-============================================================ */
+  ============================================================ */
   return (
     <div
       style={{
@@ -795,7 +785,9 @@ function Dashboard() {
         color: GP.text,
       }}
     >
-      {/* ONBOARDING COCKPIT LAYER */}
+      {/* ========================================================
+         ONBOARDING COCKPIT LAYER
+      ======================================================== */}
       {!onboardingComplete && (
         <>
           {showHero && (
@@ -815,7 +807,9 @@ function Dashboard() {
         </>
       )}
 
-      {/* HERO COMMAND PANEL */}
+      {/* ========================================================
+         HERO COMMAND PANEL
+      ======================================================== */}
       <div
         className="cockpit-hero cockpit-pulse"
         style={{
@@ -877,7 +871,7 @@ function Dashboard() {
             alerts, and rule engines. This is your command center.
           </p>
 
-          {/* AI System Health */}
+          {/* AI SYSTEM HEALTH */}
           <div
             style={{
               marginTop: 12,
@@ -935,7 +929,6 @@ function Dashboard() {
                 color: "#bbf7d0",
                 fontSize: 13,
                 fontWeight: 600,
-                cursor: "pointer",
                 textDecoration: "none",
                 boxShadow:
                   "0 0 18px rgba(34,197,94,0.35),0 0 32px rgba(21,128,61,0.25)",
@@ -945,7 +938,7 @@ function Dashboard() {
             </a>
           )}
 
-          {/* KPI STRIP (tutorial anchor) */}
+          {/* KPI STRIP (Tutorial Anchor) */}
           <div ref={kpiRef}>
             <div
               style={{
@@ -996,8 +989,9 @@ function Dashboard() {
             </div>
           </div>
         </div>
-
-        {/* RIGHT SIDE — Donut + Elite Snapshot */}
+        {/* ======================================================
+           RIGHT SIDE — GLOBAL SCORE + ELITE SNAPSHOT
+        ====================================================== */}
         <div
           style={{
             display: "flex",
@@ -1007,7 +1001,7 @@ function Dashboard() {
             paddingTop: 28,
           }}
         >
-          {/* GLOBAL SCORE DONUT (tutorial anchor: riskRef) */}
+          {/* GLOBAL SCORE DONUT (Tutorial Anchor) */}
           <div ref={riskRef}>
             <div
               style={{
@@ -1070,7 +1064,7 @@ function Dashboard() {
             </div>
           </div>
 
-          {/* Elite Snapshot */}
+          {/* ELITE ENGINE SNAPSHOT */}
           <div
             style={{
               borderRadius: 18,
@@ -1080,9 +1074,16 @@ function Dashboard() {
               minWidth: 220,
             }}
           >
-            <div style={{ fontSize: 12, color: GP.textSoft, marginBottom: 6 }}>
+            <div
+              style={{
+                fontSize: 12,
+                color: GP.textSoft,
+                marginBottom: 6,
+              }}
+            >
               Elite Engine Snapshot
             </div>
+
             <div
               style={{
                 display: "flex",
@@ -1094,6 +1095,7 @@ function Dashboard() {
               <span>PASS</span>
               <span>{eliteSummary.pass}</span>
             </div>
+
             <div
               style={{
                 display: "flex",
@@ -1105,6 +1107,7 @@ function Dashboard() {
               <span>WARN</span>
               <span>{eliteSummary.warn}</span>
             </div>
+
             <div
               style={{
                 display: "flex",
@@ -1119,8 +1122,9 @@ function Dashboard() {
           </div>
         </div>
       </div>
-
-      {/* RULE ENGINE V5 HEALTH WIDGET */}
+      {/* ========================================================
+         RULE ENGINE V5 HEALTH WIDGET
+      ======================================================== */}
       <div
         style={{
           marginBottom: 24,
@@ -1153,6 +1157,7 @@ function Dashboard() {
           >
             🧠
           </div>
+
           <div>
             <div
               style={{
@@ -1164,6 +1169,7 @@ function Dashboard() {
             >
               Rule Engine V5
             </div>
+
             <div style={{ fontSize: 14, color: GP.text }}>
               Avg Score:{" "}
               <strong
@@ -1204,6 +1210,7 @@ function Dashboard() {
               {engineHealth.critical || 0}
             </strong>
           </div>
+
           <div
             style={{
               padding: "4px 10px",
@@ -1251,7 +1258,6 @@ function Dashboard() {
                 fontSize: 12,
                 fontWeight: 600,
                 textDecoration: "none",
-                cursor: "pointer",
                 boxShadow: "0 0 12px rgba(56,189,248,0.3)",
               }}
             >
@@ -1261,7 +1267,9 @@ function Dashboard() {
         </div>
       </div>
 
-      {/* ALERTS V2 PANEL (tutorial anchor: alertsRef) */}
+      {/* ========================================================
+         ALERTS V2 PANEL (Tutorial Anchor)
+      ======================================================== */}
       {showAlerts && (
         <div ref={alertsRef}>
           <div
@@ -1336,8 +1344,6 @@ function Dashboard() {
                 />
               </div>
             )}
-
-
             {alertSummary && alertVendorsList.length > 0 && (
               <div
                 style={{
@@ -1378,6 +1384,7 @@ function Dashboard() {
                       <th style={{ ...th, fontSize: 11 }}>Latest</th>
                     </tr>
                   </thead>
+
                   <tbody>
                     {alertVendorsList.slice(0, 12).map((v) => (
                       <tr
@@ -1411,7 +1418,9 @@ function Dashboard() {
                               {v.latest.code} · {v.latest.message}
                             </span>
                           ) : (
-                            <span style={{ fontSize: 11, color: GP.textMuted }}>
+                            <span
+                              style={{ fontSize: 11, color: GP.textMuted }}
+                            >
                               —
                             </span>
                           )}
@@ -1424,15 +1433,22 @@ function Dashboard() {
             )}
 
             {!alertSummary && (
-              <div style={{ fontSize: 12, color: GP.textSoft, marginTop: 8 }}>
+              <div
+                style={{
+                  fontSize: 12,
+                  color: GP.textSoft,
+                  marginTop: 8,
+                }}
+              >
                 Loading alert summary…
               </div>
             )}
           </div>
         </div>
       )}
-
-      {/* TELEMETRY CHARTS */}
+      {/* ========================================================
+         TELEMETRY + COMPLIANCE INTELLIGENCE
+      ======================================================== */}
       <div
         className="cockpit-telemetry"
         style={{
@@ -1443,22 +1459,31 @@ function Dashboard() {
           gap: 24,
         }}
       >
-        <ComplianceTrajectoryChart data={dashboard?.complianceTrajectory} />
+        <ComplianceTrajectoryChart
+          data={dashboard?.complianceTrajectory}
+        />
         <PassFailDonutChart overview={dashboard} />
       </div>
 
+      {/* ========================================================
+         POLICY + ALERT INTELLIGENCE VISUALS
+      ======================================================== */}
       <ExpiringCertsHeatmap policies={policies} />
       <SeverityDistributionChart overview={dashboard} />
       <RiskTimelineChart policies={policies} />
 
+      {/* ========================================================
+         ALERTS V2 ANALYTICS
+      ======================================================== */}
       <AlertTimelineChart orgId={activeOrgId} />
       <TopAlertTypes orgId={activeOrgId} />
       <AlertAgingKpis orgId={activeOrgId} />
       <SlaBreachWidget orgId={activeOrgId} />
       <CriticalVendorWatchlist orgId={activeOrgId} />
       <AlertHeatSignature orgId={activeOrgId} />
-
-      {/* RENEWAL INTELLIGENCE (tutorial anchor: renewalsRef) */}
+      {/* ========================================================
+         RENEWAL INTELLIGENCE V3 (Tutorial Anchor)
+      ======================================================== */}
       <div ref={renewalsRef}>
         <RenewalHeatmap range={90} />
         <RenewalBacklog />
@@ -1478,9 +1503,9 @@ function Dashboard() {
         <RenewalCalendar range={60} />
         <RenewalAiSummary orgId={activeOrgId} />
       </div>
-
-
-      {/* SYSTEM TIMELINE */}
+      {/* ========================================================
+         SYSTEM TIMELINE — AUTOMATED COMPLIANCE EVENTS
+      ======================================================== */}
       <div
         style={{
           marginTop: 16,
@@ -1552,9 +1577,11 @@ function Dashboard() {
                 >
                   {item.action.replace(/_/g, " ")}
                 </div>
+
                 <div style={{ fontSize: 13, color: GP.text }}>
                   {item.message}
                 </div>
+
                 <div
                   style={{
                     fontSize: 11,
@@ -1567,6 +1594,7 @@ function Dashboard() {
                     {item.vendor_name || "Unknown"}
                   </span>
                 </div>
+
                 <div
                   style={{
                     fontSize: 11,
@@ -1581,8 +1609,9 @@ function Dashboard() {
           </div>
         )}
       </div>
-
-      {/* POLICIES TABLE — tutorial anchor: policiesRef */}
+      {/* ========================================================
+         POLICIES TABLE — VENDOR POLICIES (Tutorial Anchor)
+      ======================================================== */}
       <div ref={policiesRef}>
         <h2
           style={{
@@ -1626,11 +1655,9 @@ function Dashboard() {
           </div>
         )}
 
-
         {!loadingPolicies && filtered.length > 0 && (
           <>
             <div
-              className="cockpit-table-shell"
               style={{
                 borderRadius: 24,
                 border: "1px solid rgba(30,41,59,0.98)",
@@ -1658,12 +1685,12 @@ function Dashboard() {
                     <th style={th}>Status</th>
                     <th style={th}>Risk Tier</th>
                     <th style={th}>AI Risk</th>
-                    <th style={th}>V5 Engine</th>
                     <th style={th}>Compliance</th>
                     <th style={th}>Elite</th>
                     <th style={th}>Flags</th>
                   </tr>
                 </thead>
+
                 <tbody>
                   {filtered.map((p) => {
                     const risk = computeRisk(p);
@@ -1671,11 +1698,6 @@ function Dashboard() {
                     const elite = eliteMap[p.vendor_id];
                     const compliance = complianceMap[p.vendor_id];
                     const ai = computeAiRisk({ risk, elite, compliance });
-                    const engine = engineMap[p.vendor_id];
-                    const v3Tier =
-                      engine && typeof engine.globalScore === "number"
-                        ? computeV3Tier(engine.globalScore)
-                        : "Unknown";
 
                     return (
                       <tr
@@ -1693,6 +1715,7 @@ function Dashboard() {
                         <td style={td}>{p.coverage_type}</td>
                         <td style={td}>{p.expiration_date || "—"}</td>
                         <td style={td}>{risk.daysLeft ?? "—"}</td>
+
                         <td
                           style={{
                             ...td,
@@ -1705,21 +1728,11 @@ function Dashboard() {
                             : risk.severity.charAt(0).toUpperCase() +
                               risk.severity.slice(1)}
                         </td>
+
                         <td style={{ ...td, textAlign: "center" }}>
-                          <span
-                            style={{
-                              display: "inline-flex",
-                              padding: "3px 10px",
-                              borderRadius: 999,
-                              border: "1px solid rgba(51,65,85,0.98)",
-                              background: "rgba(15,23,42,1)",
-                              color: GP.textSoft,
-                              fontSize: 11,
-                            }}
-                          >
-                            {risk.tier}
-                          </span>
+                          {risk.tier}
                         </td>
+
                         <td
                           style={{
                             ...td,
@@ -1733,63 +1746,35 @@ function Dashboard() {
                                 : GP.neonRed,
                           }}
                         >
-                          <div>{ai.score}</div>
-                          <div
-                            style={{
-                              marginTop: 4,
-                              height: 4,
-                              width: 70,
-                              borderRadius: 999,
-                              background: "rgba(15,23,42,1)",
-                              overflow: "hidden",
-                              marginLeft: "auto",
-                              marginRight: "auto",
-                            }}
-                          >
-                            <div
-                              style={{
-                                width: `${ai.score}%`,
-                                height: "100%",
-                                background:
-                                  ai.score >= 80
-                                    ? GP.neonGreen
-                                    : ai.score >= 60
-                                    ? GP.neonGold
-                                    : GP.neonRed,
-                              }}
-                            />
-                          </div>
+                          {ai.score}
                         </td>
 
-                        {/* NOTE: Your original file had header columns for V5 Engine + Compliance.
-                           Keeping your existing row structure unchanged (only your existing badge render). */}
                         <td style={{ ...td, textAlign: "center" }}>
-                          {renderComplianceBadge(p.vendor_id, complianceMap)}
+                          {renderComplianceBadge(
+                            p.vendor_id,
+                            complianceMap
+                          )}
                         </td>
+
                         <td style={{ ...td, textAlign: "center" }}>
                           {elite && !elite.loading && !elite.error ? (
                             <EliteStatusPill status={elite.overall} />
-                          ) : elite && elite.loading ? (
-                            <span style={{ fontSize: 11, color: GP.textMuted }}>
+                          ) : elite?.loading ? (
+                            <span
+                              style={{
+                                fontSize: 11,
+                                color: GP.textMuted,
+                              }}
+                            >
                               Evaluating…
                             </span>
                           ) : (
-                            <span style={{ fontSize: 11, color: GP.textMuted }}>
-                              —
-                            </span>
+                            "—"
                           )}
                         </td>
+
                         <td style={{ ...td, textAlign: "center" }}>
-                          {flags.length > 0 ? (
-                            <span
-                              title={flags.join("\n")}
-                              style={{ cursor: "help" }}
-                            >
-                              🚩 {flags.length}
-                            </span>
-                          ) : (
-                            <span style={{ opacity: 0.4 }}>—</span>
-                          )}
+                          {flags.length > 0 ? `🚩 ${flags.length}` : "—"}
                         </td>
                       </tr>
                     );
@@ -1809,7 +1794,9 @@ function Dashboard() {
         )}
       </div>
 
-      {/* DASHBOARD TUTORIAL OVERLAY (Spotlight Engine Host) */}
+      {/* ========================================================
+         DASHBOARD TUTORIAL OVERLAY
+      ======================================================== */}
       {showTutorial && (
         <DashboardTutorial
           onFinish={handleFinishTutorial}
@@ -1824,7 +1811,9 @@ function Dashboard() {
         />
       )}
 
-      {/* ✅ POST-TOUR CTA PANEL (Monetization Layer) */}
+      {/* ========================================================
+         POST-TOUR CTA PANEL
+      ======================================================== */}
       {showPostTourCta && (
         <div
           style={{
@@ -1865,13 +1854,19 @@ function Dashboard() {
               lineHeight: 1.4,
             }}
           >
-            Run a full compliance scan, review alerts, or upload a new COI now.
+            Run a compliance scan, review alerts, or upload a new COI now.
           </div>
 
-          <div style={{ display: "flex", gap: 10, marginTop: 12, flexWrap: "wrap" }}>
+          <div
+            style={{
+              display: "flex",
+              gap: 10,
+              marginTop: 12,
+              flexWrap: "wrap",
+            }}
+          >
             <a
               href="/admin/org-compliance"
-              onClick={() => track("cta_click", { cta: "org_compliance" })}
               style={{
                 padding: "8px 14px",
                 borderRadius: 999,
@@ -1882,7 +1877,6 @@ function Dashboard() {
                 fontSize: 13,
                 fontWeight: 700,
                 textDecoration: "none",
-                boxShadow: "0 0 18px rgba(59,130,246,0.55)",
               }}
             >
               Run Compliance Scan →
@@ -1893,7 +1887,6 @@ function Dashboard() {
               onClick={() => {
                 setShowAlerts(true);
                 setShowPostTourCta(false);
-                track("cta_click", { cta: "view_alerts" });
               }}
               style={{
                 padding: "8px 14px",
@@ -1903,7 +1896,6 @@ function Dashboard() {
                 color: "#fef3c7",
                 fontSize: 13,
                 fontWeight: 700,
-                cursor: "pointer",
               }}
             >
               View Alerts
@@ -1911,7 +1903,6 @@ function Dashboard() {
 
             <a
               href="/upload-coi"
-              onClick={() => track("cta_click", { cta: "upload_coi" })}
               style={{
                 padding: "8px 14px",
                 borderRadius: 999,
@@ -1925,26 +1916,6 @@ function Dashboard() {
             >
               Upload COI
             </a>
-
-            <button
-              type="button"
-              onClick={() => {
-                setShowPostTourCta(false);
-                track("cta_dismiss");
-              }}
-              style={{
-                marginLeft: "auto",
-                padding: "8px 12px",
-                borderRadius: 999,
-                border: "1px solid rgba(148,163,184,0.35)",
-                background: "transparent",
-                color: "rgba(148,163,184,0.9)",
-                fontSize: 13,
-                cursor: "pointer",
-              }}
-            >
-              Dismiss
-            </button>
           </div>
         </div>
       )}
@@ -1952,88 +1923,14 @@ function Dashboard() {
   );
 }
 
-/* =======================================
-   SEVERITY BOX COMPONENT
-======================================= */
-function SeverityBox({ label, count, color }) {
-  return (
-    <div
-      style={{
-        border: `1px solid ${color}55`,
-        borderRadius: 12,
-        padding: "10px 8px",
-        background: "rgba(15,23,42,0.9)",
-        textAlign: "center",
-      }}
-    >
-      <div
-        style={{
-          fontSize: 11,
-          color,
-          marginBottom: 2,
-          fontWeight: 600,
-        }}
-      >
-        {label}
-      </div>
-      <div
-        style={{
-          fontSize: 18,
-          fontWeight: 700,
-          color,
-        }}
-      >
-        {count}
-      </div>
-    </div>
-  );
-}
-
-/* =======================================
-   MINI KPI COMPONENT
-======================================= */
-function MiniKpi({ label, value, color, icon }) {
-  return (
-    <div
-      style={{
-        borderRadius: 16,
-        padding: 10,
-        border: "1px solid rgba(51,65,85,0.9)",
-        background:
-          "radial-gradient(circle at top left,rgba(15,23,42,0.98),rgba(15,23,42,0.94))",
-        display: "flex",
-        alignItems: "center",
-        gap: 10,
-      }}
-    >
-      <div style={{ fontSize: 18 }}>{icon}</div>
-      <div>
-        <div style={{ fontSize: 12, color: GP.textSoft, marginBottom: 2 }}>
-          {label}
-        </div>
-        <div
-          style={{
-            fontSize: 16,
-            fontWeight: 600,
-            color,
-          }}
-        >
-          {value}
-        </div>
-      </div>
-    </div>
-  );
-}
-
-/* =======================================
-   TABLE HEAD + CELL STYLES
-======================================= */
+/* ============================================================
+   TABLE STYLES
+============================================================ */
 const th = {
   padding: "10px 12px",
   background: "rgba(15,23,42,0.98)",
   color: "#9ca3af",
   fontWeight: 600,
-  textAlign: "left",
   fontSize: 12,
   borderBottom: "1px solid rgba(51,65,85,0.8)",
 };
@@ -2045,9 +1942,4 @@ const td = {
   color: "#e5e7eb",
 };
 
-// =======================================
-// END OF DASHBOARD V5 CINEMATIC INTELLIGENCE FILE
-// =======================================
-
 export default Dashboard;
-
