@@ -403,6 +403,42 @@ useEffect(() => {
   }, [activeOrgId]);
 
   /* ============================================================
+     AUTONOMOUS ALERT GENERATION (V2)
+     Ensures alerts exist without manual trigger.
+     - Runs once per org per page load
+     - Safe: engine dedupes active alerts
+============================================================ */
+  const _alertsGenOnceRef = useRef({ orgId: null, ran: false });
+
+  useEffect(() => {
+    if (!activeOrgId) return;
+
+    // Prevent repeated generation loops during hot reloads / rerenders
+    if (
+      _alertsGenOnceRef.current.ran &&
+      _alertsGenOnceRef.current.orgId === activeOrgId
+    ) {
+      return;
+    }
+
+    _alertsGenOnceRef.current = { orgId: activeOrgId, ran: true };
+
+    fetch("/api/alerts-v2/generate", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ orgId: activeOrgId }),
+    })
+      .then(() => {
+        // Immediately refresh alert summary after generation
+        try {
+          window.dispatchEvent(new CustomEvent("alerts:changed"));
+          localStorage.setItem("alerts:changed", Date.now());
+        } catch {}
+      })
+      .catch(() => {});
+  }, [activeOrgId]);
+
+  /* ============================================================
      FORCE TUTORIAL WHEN ?tutorial=1 (Replay from sidebar)
 ============================================================ */
   useEffect(() => {
