@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 export default function AlertTimelineChart({ orgId }) {
   const [data, setData] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [hoverIndex, setHoverIndex] = useState(null);
 
   useEffect(() => {
     if (!orgId) return;
@@ -18,6 +19,11 @@ export default function AlertTimelineChart({ orgId }) {
 
     load();
   }, [orgId]);
+
+  function handleDayClick(day) {
+    if (!day) return;
+    window.location.href = `/admin/alerts?date=${day}`;
+  }
 
   return (
     <div
@@ -42,15 +48,16 @@ export default function AlertTimelineChart({ orgId }) {
       </div>
 
       {loading ? (
-        <div style={{ color: "#9ca3af", fontSize: 12 }}>Loading timeline…</div>
+        <div style={{ color: "#9ca3af", fontSize: 12 }}>
+          Loading timeline…
+        </div>
       ) : data.length === 0 ? (
         <div style={{ color: "#9ca3af", fontSize: 12 }}>
           No alerts in last 30 days.
         </div>
       ) : (
         <div style={{ width: "100%", height: 140 }}>
-          {/* PURE SVG LINE CHART (no external libs needed) */}
-          <svg width="100%" height="140">
+          <svg width="100%" height="140" style={{ cursor: "pointer" }}>
             {/* Background grid */}
             {[20, 40, 60, 80, 100, 120].map((y) => (
               <line
@@ -81,18 +88,39 @@ export default function AlertTimelineChart({ orgId }) {
             {data.map((d, i) => {
               const x = (i / (data.length - 1)) * 100;
               const y = 120 - Math.min(d.total * 5, 120);
+
               return (
                 <circle
                   key={i}
                   cx={`${x}%`}
                   cy={y}
-                  r="3"
-                  fill="#38bdf8"
+                  r={hoverIndex === i ? 5 : 3}
+                  fill={hoverIndex === i ? "#0ea5e9" : "#38bdf8"}
                   stroke="#0ea5e9"
+                  onMouseEnter={() => setHoverIndex(i)}
+                  onMouseLeave={() => setHoverIndex(null)}
+                  onClick={() => handleDayClick(d.date)}
                 />
               );
             })}
           </svg>
+
+          {hoverIndex !== null && (
+            <div
+              style={{
+                marginTop: 6,
+                fontSize: 11,
+                color: "#9ca3af",
+                textAlign: "center",
+              }}
+            >
+              {data[hoverIndex].date} ·{" "}
+              <span style={{ color: "#38bdf8", fontWeight: 600 }}>
+                {data[hoverIndex].total} alerts
+              </span>{" "}
+              — click to view
+            </div>
+          )}
         </div>
       )}
     </div>
