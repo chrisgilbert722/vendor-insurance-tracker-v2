@@ -1,4 +1,4 @@
-// components/Sidebar.js — Tactical Neon Rail V13 (Documents Hub Added)
+// components/Sidebar.js — Tactical Neon Rail V13 (Documents Hub + Audit Log)
 import React, { useEffect, useState } from "react";
 import { useOrg } from "../context/OrgContext";
 
@@ -128,7 +128,7 @@ export default function Sidebar({ pathname, isAdmin, isManager, isViewer }) {
         active={pathname === "/vendors"}
       />
 
-      {/* ⭐ DOCUMENTS HUB (NEW) */}
+      {/* DOCUMENTS HUB */}
       <RailLink
         href="/documents"
         label="Documents"
@@ -145,6 +145,7 @@ export default function Sidebar({ pathname, isAdmin, isManager, isViewer }) {
         />
       )}
 
+      {/* ALERTS */}
       {isAdmin && (
         <RailLink
           href="/admin/alerts"
@@ -154,7 +155,17 @@ export default function Sidebar({ pathname, isAdmin, isManager, isViewer }) {
         />
       )}
 
-      {/* ⭐ AI ONBOARDING WIZARD */}
+      {/* ⭐ AUDIT LOG — ADMIN ONLY */}
+      {isAdmin && (
+        <RailLink
+          href="/admin/audit-log"
+          label="Audit"
+          icon="🧾"
+          active={pathname === "/admin/audit-log"}
+        />
+      )}
+
+      {/* AI ONBOARDING WIZARD */}
       {!onboardingComplete && isAdmin && (
         <RailLink
           href="/onboarding/ai-wizard"
@@ -165,7 +176,7 @@ export default function Sidebar({ pathname, isAdmin, isManager, isViewer }) {
         />
       )}
 
-      {/* ⭐ RULE ENGINE */}
+      {/* RULE ENGINE */}
       {isAdmin && (
         <RailLink
           href="/admin/requirements-v5"
@@ -175,7 +186,7 @@ export default function Sidebar({ pathname, isAdmin, isManager, isViewer }) {
         />
       )}
 
-      {/* ⭐ AI SETUP */}
+      {/* AI SETUP */}
       {onboardingComplete && isAdmin && (
         <RailLink
           href="/admin/ai-setup-center"
