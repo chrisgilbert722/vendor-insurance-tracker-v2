@@ -35,6 +35,8 @@ import RenewalSlaWidget from "../components/renewals/RenewalSlaWidget";
 import RenewalCalendar from "../components/renewals/RenewalCalendar";
 import RenewalAiSummary from "../components/renewals/RenewalAiSummary";
 
+import ComplianceEvidenceTimeline from "../components/panels/ComplianceEvidenceTimeline";
+
 /* ============================================================
    ELECTRIC NEON THEME
 ============================================================ */
@@ -1682,6 +1684,10 @@ useEffect(() => {
           </div>
         )}
       </div>
+
+
+      {/* COMPLIANCE EVIDENCE (Audit-grade, immutable) */}
+      <ComplianceEvidenceTimeline orgId={activeOrgId} />
 
       {/* POLICIES TABLE — tutorial anchor: policiesRef */}
       <div ref={policiesRef}>
