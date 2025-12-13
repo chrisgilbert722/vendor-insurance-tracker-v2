@@ -25,7 +25,7 @@ export default function ComplianceEvidenceTimeline({ orgId }) {
         boxShadow: "0 10px 35px rgba(0,0,0,0.45)",
       }}
     >
-      {/* HEADER + EXPORT */}
+      {/* HEADER + EXPORT BUTTONS */}
       <div
         style={{
           display: "flex",
@@ -47,26 +47,49 @@ export default function ComplianceEvidenceTimeline({ orgId }) {
           Compliance Evidence (Audit Log)
         </h2>
 
-        <button
-          onClick={() =>
-            window.open(
-              `/api/compliance/export.csv?orgId=${orgId}`,
-              "_blank"
-            )
-          }
-          style={{
-            padding: "6px 12px",
-            borderRadius: 10,
-            border: "1px solid #38bdf8",
-            background: "rgba(56,189,248,0.15)",
-            color: "#38bdf8",
-            fontSize: 12,
-            fontWeight: 700,
-            cursor: "pointer",
-          }}
-        >
-          Export CSV
-        </button>
+        <div style={{ display: "flex", gap: 8 }}>
+          <button
+            onClick={() =>
+              window.open(
+                `/api/compliance/export.csv?orgId=${orgId}`,
+                "_blank"
+              )
+            }
+            style={{
+              padding: "6px 12px",
+              borderRadius: 10,
+              border: "1px solid #38bdf8",
+              background: "rgba(56,189,248,0.15)",
+              color: "#38bdf8",
+              fontSize: 12,
+              fontWeight: 700,
+              cursor: "pointer",
+            }}
+          >
+            Export CSV
+          </button>
+
+          <button
+            onClick={() =>
+              window.open(
+                `/api/compliance/export.pdf?orgId=${orgId}`,
+                "_blank"
+              )
+            }
+            style={{
+              padding: "6px 12px",
+              borderRadius: 10,
+              border: "1px solid #a855f7",
+              background: "rgba(168,85,247,0.15)",
+              color: "#a855f7",
+              fontSize: 12,
+              fontWeight: 700,
+              cursor: "pointer",
+            }}
+          >
+            Export PDF
+          </button>
+        </div>
       </div>
 
       {loading ? (
