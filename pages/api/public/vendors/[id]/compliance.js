@@ -3,8 +3,8 @@
 // Public API — Vendor Compliance Status (Read-only)
 // ============================================================
 
-import { sql } from "../../../../lib/db";
-import { requireApiKey } from "../../../../lib/apiAuth";
+import { sql } from "lib/db";
+import { requireApiKey } from "lib/apiAuth";
 
 export default async function handler(req, res) {
   try {
