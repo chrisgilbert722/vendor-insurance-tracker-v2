@@ -1,87 +1,67 @@
 // pages/api/vendor/documents/upload.js
 // ============================================================
-// Vendor Document Upload — V5 (Production Ready)
-// Purpose:
-//  - Register an uploaded document
-//  - Compute document status (valid / expiring / expired)
-//  - Insert vendor_documents row
-//  - Auto-generate compliance alerts when needed
+// Vendor Document Upload — V5 (Server-side)
+// Handles file save + DB insert + returns document
 // ============================================================
 
+import fs from "fs";
+import path from "path";
+import formidable from "formidable";
 import { sql } from "../../../../lib/db";
 
-// -----------------------------
-// Helpers
-// -----------------------------
-function getDocumentStatus(expiresOn) {
+export const config = {
+  api: {
+    bodyParser: false,
+  },
+};
+
+function getStatus(expiresOn) {
   if (!expiresOn) return "valid";
-
-  const now = new Date();
-  const exp = new Date(expiresOn);
-  const days = (exp - now) / 86400000;
-
+  const days = (new Date(expiresOn) - new Date()) / 86400000;
   if (days < 0) return "expired";
   if (days <= 30) return "expiring";
   return "valid";
 }
 
-async function createAlert({
-  orgId,
-  vendorId,
-  documentId,
-  type,
-  severity,
-  message
-}) {
-  await sql`
-    INSERT INTO compliance_alerts (
-      org_id,
-      vendor_id,
-      alert_type,
-      document_id,
-      severity,
-      message
-    )
-    VALUES (
-      ${orgId},
-      ${vendorId},
-      ${type},
-      ${documentId},
-      ${severity},
-      ${message}
-    )
-  `;
-}
-
-// -----------------------------
-// API Handler
-// -----------------------------
 export default async function handler(req, res) {
   if (req.method !== "POST") {
-    return res.status(405).json({ error: "Method not allowed" });
+    return res.status(405).json({ ok: false, error: "Method not allowed" });
+  }
+
+  const { orgId, vendorId } = req.query;
+  if (!orgId || !vendorId) {
+    return res.status(400).json({ ok: false, error: "Missing orgId or vendorId" });
   }
 
   try {
-    const {
-      orgId,
-      vendorId,
-      documentType,
-      fileName,
-      fileUrl,
-      expiresOn
-    } = req.body || {};
-
-    // Hard guards
-    if (!orgId || !vendorId || !documentType || !fileName || !fileUrl) {
-      return res.status(400).json({
-        error: "Missing required fields"
-      });
+    const uploadsDir = path.join(process.cwd(), "public", "uploads");
+    if (!fs.existsSync(uploadsDir)) {
+      fs.mkdirSync(uploadsDir, { recursive: true });
     }
 
-    const status = getDocumentStatus(expiresOn);
+    const form = formidable({
+      uploadDir: uploadsDir,
+      keepExtensions: true,
+    });
 
-    // Insert document
-    const [document] = await sql`
+    const { fields, files } = await new Promise((resolve, reject) => {
+      form.parse(req, (err, fields, files) => {
+        if (err) reject(err);
+        else resolve({ fields, files });
+      });
+    });
+
+    const file = files.file?.[0];
+    if (!file) throw new Error("No file uploaded");
+
+    const documentType = fields.documentType?.[0] || "other";
+    const expiresOn = fields.expiresOn?.[0] || null;
+
+    const fileName = file.originalFilename;
+    const fileUrl = `/uploads/${path.basename(file.filepath)}`;
+    const status = getStatus(expiresOn);
+
+    const [doc] = await sql`
       INSERT INTO vendor_documents (
         org_id,
         vendor_id,
@@ -97,43 +77,18 @@ export default async function handler(req, res) {
         ${documentType},
         ${fileName},
         ${fileUrl},
-        ${expiresOn || null},
+        ${expiresOn},
         ${status}
       )
       RETURNING *
     `;
 
-    // Generate alerts based on status
-    if (status === "expiring") {
-      await createAlert({
-        orgId,
-        vendorId,
-        documentId: document.id,
-        type: "DOCUMENT_EXPIRING",
-        severity: "warning",
-        message: `${documentType} expires within 30 days`
-      });
-    }
-
-    if (status === "expired") {
-      await createAlert({
-        orgId,
-        vendorId,
-        documentId: document.id,
-        type: "DOCUMENT_EXPIRED",
-        severity: "critical",
-        message: `${documentType} is expired`
-      });
-    }
-
-    return res.status(200).json({
-      success: true,
-      document
-    });
+    return res.status(200).json({ ok: true, document: doc });
   } catch (err) {
-    console.error("Document upload error:", err);
+    console.error("[upload.js]", err);
     return res.status(500).json({
-      error: "Internal server error"
+      ok: false,
+      error: "Upload failed",
     });
   }
 }
