@@ -10,7 +10,9 @@ export default function CriticalVendorWatchlist({ orgId }) {
 
     async function load() {
       setLoading(true);
-      const res = await fetch(`/api/alerts-v2/critical-vendors?orgId=${orgId}`);
+      const res = await fetch(
+        `/api/alerts-v2/critical-vendors?orgId=${orgId}`
+      );
       const json = await res.json();
       if (json.ok) setVendors(json.vendors || []);
       setLoading(false);
@@ -69,8 +71,14 @@ function VendorRow({ vendor }) {
       ? "#38bdf8"
       : "#a1a1aa";
 
+  function handleClick() {
+    if (!vendor.vendorId) return;
+    window.location.href = `/admin/vendor/${vendor.vendorId}/fix`;
+  }
+
   return (
     <div
+      onClick={handleClick}
       style={{
         padding: 10,
         borderRadius: 14,
@@ -80,6 +88,17 @@ function VendorRow({ vendor }) {
         alignItems: "center",
         gap: 10,
         justifyContent: "space-between",
+        cursor: "pointer",
+        transition: "box-shadow 0.15s ease, transform 0.15s ease",
+      }}
+      onMouseEnter={(e) => {
+        e.currentTarget.style.boxShadow =
+          "0 0 18px rgba(248,113,113,0.35)";
+        e.currentTarget.style.transform = "translateY(-1px)";
+      }}
+      onMouseLeave={(e) => {
+        e.currentTarget.style.boxShadow = "none";
+        e.currentTarget.style.transform = "none";
       }}
     >
       <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
@@ -87,7 +106,8 @@ function VendorRow({ vendor }) {
           {vendor.name}
         </div>
         <div style={{ fontSize: 11, color: "#9ca3af" }}>
-          {vendor.alertCount} active alerts · Last {vendor.lastAlertAgeDays} days ago
+          {vendor.alertCount} active alerts · Last{" "}
+          {vendor.lastAlertAgeDays} days ago
         </div>
       </div>
 
