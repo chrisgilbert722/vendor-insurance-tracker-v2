@@ -1,8 +1,9 @@
 // components/DocumentsUpload.js
 // ============================================================
-// Documents Upload — V6 (Mobile-First UX Enhanced)
+// Documents Upload — V7 (Mobile-First UX + Blur Detection)
 // ✔ Camera-first upload
 // ✔ Auto-crop guidance
+// ✔ Blur detection warning
 // ✔ Upload success confirmation
 // ============================================================
 
@@ -19,6 +20,65 @@ export default function DocumentsUpload({
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState(false);
+  const [blurWarning, setBlurWarning] = useState(false);
+
+  // ----------------------------------------------------------
+  // SIMPLE BLUR DETECTION (client-side)
+  // ----------------------------------------------------------
+  async function isImageBlurry(file) {
+    return new Promise((resolve) => {
+      const img = new Image();
+      const url = URL.createObjectURL(file);
+
+      img.onload = () => {
+        const canvas = document.createElement("canvas");
+        const ctx = canvas.getContext("2d");
+
+        canvas.width = img.width;
+        canvas.height = img.height;
+        ctx.drawImage(img, 0, 0);
+
+        const imageData = ctx.getImageData(
+          0,
+          0,
+          canvas.width,
+          canvas.height
+        );
+        const data = imageData.data;
+
+        let edgeSum = 0;
+        for (let i = 0; i < data.length; i += 4) {
+          const gray =
+            data[i] * 0.299 + data[i + 1] * 0.587 + data[i + 2] * 0.114;
+          edgeSum += gray;
+        }
+
+        const avg = edgeSum / (data.length / 4);
+
+        URL.revokeObjectURL(url);
+
+        // Threshold tuned for phone photos
+        resolve(avg < 90);
+      };
+
+      img.onerror = () => {
+        URL.revokeObjectURL(url);
+        resolve(false);
+      };
+
+      img.src = url;
+    });
+  }
+
+  async function handleFileSelect(f) {
+    setFile(f);
+    setBlurWarning(false);
+
+    if (f && f.type.startsWith("image/")) {
+      const blurry = await isImageBlurry(f);
+      if (blurry) setBlurWarning(true);
+    }
+  }
 
   async function handleUpload() {
     if (!file || !orgId || !vendorId) return;
@@ -49,9 +109,9 @@ export default function DocumentsUpload({
       setFile(null);
       setExpiresOn("");
       setDocumentType("COI");
+      setBlurWarning(false);
       setSuccess(true);
 
-      // Auto-clear success state
       setTimeout(() => setSuccess(false), 2200);
     } catch (err) {
       console.error("[DocumentsUpload]", err);
@@ -95,21 +155,28 @@ export default function DocumentsUpload({
           accept="image/*,application/pdf"
           capture="environment"
           disabled={loading}
-          onChange={(e) => setFile(e.target.files?.[0] || null)}
+          onChange={(e) => handleFileSelect(e.target.files?.[0] || null)}
           className="hidden"
         />
       </label>
 
       {/* AUTO-CROP GUIDANCE */}
       <div className="text-[11px] text-slate-400 leading-snug">
-        💡 Tip: Lay the document flat, fill the frame, and avoid shadows.  
-        Our system automatically crops and reads your document.
+        💡 Tip: Lay the document flat, fill the frame, and avoid shadows.
       </div>
+
+      {/* BLUR WARNING */}
+      {blurWarning && (
+        <div className="text-xs font-semibold text-amber-300 bg-amber-900/20 border border-amber-700/40 rounded-lg px-3 py-2">
+          ⚠️ This photo looks a bit blurry. You can retake it for better results,
+          or upload anyway.
+        </div>
+      )}
 
       {/* ERROR */}
       {error && <div className="text-xs text-rose-400">{error}</div>}
 
-      {/* CONFIRM UPLOAD BUTTON (DESKTOP FALLBACK) */}
+      {/* CONFIRM UPLOAD */}
       <button
         onClick={handleUpload}
         disabled={loading || !file}
@@ -118,14 +185,13 @@ export default function DocumentsUpload({
         {loading ? "Uploading…" : "Upload Document"}
       </button>
 
-      {/* SUCCESS CONFIRMATION */}
+      {/* SUCCESS */}
       {success && (
         <div className="text-sm font-semibold text-emerald-300 bg-emerald-900/20 border border-emerald-700/40 rounded-lg px-3 py-2 animate-fade-pop">
           ✅ Upload successful — processing now
         </div>
       )}
 
-      {/* ANIMATION */}
       <style jsx>{`
         @keyframes fadePop {
           from {
@@ -144,3 +210,4 @@ export default function DocumentsUpload({
     </div>
   );
 }
+
