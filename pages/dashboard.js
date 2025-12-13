@@ -341,7 +341,7 @@ function Dashboard() {
 
   const [engineMap, setEngineMap] = useState({});
   const [alertSummary, setAlertSummary] = useState(null);
-  const [showAlerts, setShowAlerts] = useState(false);
+  const [showAlerts, setShowAlerts] = useState(true);
 // ============================================================
 // DASHBOARD TUTORIAL — FORCE ALERTS PANEL OPEN (STEP 3 FIX)
 // ============================================================
@@ -366,6 +366,9 @@ useEffect(() => {
 
   // DASHBOARD TUTORIAL VISIBILITY
   const [showTutorial, setShowTutorial] = useState(false);
+
+  // Post-tutorial Step 5 action box
+  const [showPostTutorialActions, setShowPostTutorialActions] = useState(false);
 
   /* ============================================================
      ONBOARDING + TUTORIAL STATUS (COMBINED)
@@ -419,6 +422,7 @@ useEffect(() => {
   /* FINISH TUTORIAL */
   const handleFinishTutorial = () => {
     setShowTutorial(false);
+    setShowPostTutorialActions(true);
     try {
       localStorage.setItem("dashboard_tutorial_seen", "true");
     } catch {}
@@ -1086,6 +1090,72 @@ useEffect(() => {
           </div>
         </div>
       </div>
+
+      {/* POST-TUTORIAL STEP 5 ACTION BOX */}
+      {showPostTutorialActions && (
+        <div
+          style={{
+            marginBottom: 28,
+            borderRadius: 20,
+            padding: 18,
+            border: "1px solid rgba(34,197,94,0.6)",
+            background:
+              "radial-gradient(circle at top left,rgba(22,163,74,0.25),rgba(15,23,42,0.95))",
+            boxShadow:
+              "0 0 35px rgba(34,197,94,0.35), inset 0 0 18px rgba(0,0,0,0.6)",
+          }}
+        >
+          <div
+            style={{
+              fontSize: 12,
+              letterSpacing: "0.16em",
+              textTransform: "uppercase",
+              color: GP.neonGreen,
+              marginBottom: 6,
+            }}
+          >
+            Next Steps
+          </div>
+
+          <div style={{ fontSize: 15, marginBottom: 14 }}>
+            Your dashboard is live. Choose what to do next.
+          </div>
+
+          <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
+            <a
+              href="/admin/vendors"
+              style={{
+                padding: "10px 16px",
+                borderRadius: 14,
+                background: "linear-gradient(90deg,#22c55e,#16a34a)",
+                color: "#052e16",
+                fontSize: 13,
+                fontWeight: 700,
+                textDecoration: "none",
+              }}
+            >
+              Fix Vendor Issues →
+            </a>
+
+            <a
+              href="/admin/org-compliance"
+              style={{
+                padding: "10px 16px",
+                borderRadius: 14,
+                border: "1px solid rgba(56,189,248,0.7)",
+                background:
+                  "linear-gradient(90deg,rgba(15,23,42,0.95),rgba(15,23,42,0.85))",
+                color: GP.neonBlue,
+                fontSize: 13,
+                fontWeight: 700,
+                textDecoration: "none",
+              }}
+            >
+              Run Full Compliance Scan →
+            </a>
+          </div>
+        </div>
+      )}
 
       {/* RULE ENGINE V5 HEALTH WIDGET */}
       <div
