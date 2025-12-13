@@ -1,19 +1,21 @@
 // pages/admin/onboarding-wizard/step6.js
 // ==========================================================
-// AI ONBOARDING WIZARD — STEP 6
-// Vendor Auto-Creation + Requirements Injection
+// AI ONBOARDING WIZARD — STEP 6 (FINAL HANDOFF)
+// Vendor Creation + Requirements Injection (APPROVED ONLY)
 // FULL COCKPIT V9 WEAPONIZED THEME
 // ==========================================================
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/router";
+import { useOrg } from "../../../context/OrgContext";
 import ToastV2 from "../../../components/ToastV2";
 import CockpitWizardLayout from "../../../components/CockpitWizardLayout";
 
 export default function OnboardingWizardStep6() {
   const router = useRouter();
+  const { activeOrgId } = useOrg();
 
-  const [profiles, setProfiles] = useState([]); // [{ vendor, requirements }]
+  const [profiles, setProfiles] = useState([]); // APPROVED ONLY
   const [creating, setCreating] = useState(false);
   const [createdVendors, setCreatedVendors] = useState([]);
   const [done, setDone] = useState(false);
@@ -25,29 +27,28 @@ export default function OnboardingWizardStep6() {
   });
 
   // -----------------------------------------------------------
-  // LOAD AI PROFILES FROM STEP 2 (localStorage)
+  // LOAD APPROVED PROFILES FROM STEP 3
   // -----------------------------------------------------------
   useEffect(() => {
     try {
-      const raw = localStorage.getItem("onboardingProfiles");
-      if (!raw) {
-        console.warn("Step 6: no onboardingProfiles found.");
-        return;
-      }
+      const raw = localStorage.getItem("approvedOnboardingProfiles");
+      if (!raw) return;
+
       const parsed = JSON.parse(raw);
       setProfiles(parsed || []);
     } catch (err) {
-      console.error("Error loading onboardingProfiles:", err);
+      console.error("Error loading approved profiles:", err);
     }
   }, []);
 
   // -----------------------------------------------------------
-  // NORMALIZE VENDOR PAYLOAD FOR CREATE API
+  // BUILD PAYLOAD (PRESERVE _onboard_id)
   // -----------------------------------------------------------
   function buildVendorPayload() {
     return profiles.map((p) => {
       const v = p.vendor || {};
       return {
+        onboard_id: v._onboard_id,
         vendor_name: v.vendor_name || v.name || "New Vendor",
         email: v.email || null,
         phone: v.phone || null,
@@ -60,15 +61,21 @@ export default function OnboardingWizardStep6() {
 
   // -----------------------------------------------------------
   // RUN STEP 6 ENGINE
-  // 1) Create vendor rows
-  // 2) Assign AI requirement JSON
   // -----------------------------------------------------------
   async function handleRunStep6() {
     if (!profiles.length) {
       return setToast({
         open: true,
         type: "error",
-        message: "No profiles found — complete Steps 1–5 first.",
+        message: "No approved profiles found. Complete Steps 1–5 first.",
+      });
+    }
+
+    if (!activeOrgId) {
+      return setToast({
+        open: true,
+        type: "error",
+        message: "No active organization selected.",
       });
     }
 
@@ -82,7 +89,7 @@ export default function OnboardingWizardStep6() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          orgId: 1, // TODO: replace with activeOrgId when wiring to OrgContext
+          orgId: activeOrgId,
           vendors: vendorPayload,
         }),
       });
@@ -95,11 +102,17 @@ export default function OnboardingWizardStep6() {
       const created = jsonCreate.created || [];
       setCreatedVendors(created);
 
-      // 2️⃣ ASSIGN REQUIREMENTS — we assume same order as profiles
-      const assignments = created.map((c, idx) => ({
-        vendorId: c.id,
-        requirements: profiles[idx]?.requirements || {},
-      }));
+      // 2️⃣ ASSIGN REQUIREMENTS (MATCH BY onboard_id)
+      const assignments = created.map((createdVendor) => {
+        const match = profiles.find(
+          (p) => p.vendor._onboard_id === createdVendor.onboard_id
+        );
+
+        return {
+          vendorId: createdVendor.id,
+          requirements: match?.requirements || {},
+        };
+      });
 
       const resAssign = await fetch("/api/onboarding/assign-requirements", {
         method: "POST",
@@ -117,7 +130,7 @@ export default function OnboardingWizardStep6() {
       setToast({
         open: true,
         type: "success",
-        message: `Created ${created.length} vendors and applied AI requirements.`,
+        message: `Created ${created.length} vendors and activated compliance.`,
       });
     } catch (err) {
       console.error("[STEP 6 ERROR]", err);
@@ -143,115 +156,7 @@ export default function OnboardingWizardStep6() {
   }
 
   // -----------------------------------------------------------
-  // SUMMARY PANEL (Profiles Preview)
-// -----------------------------------------------------------
-  function renderProfilesPreview() {
-    if (!profiles.length) {
-      return (
-        <div
-          style={{
-            marginTop: 18,
-            padding: 16,
-            borderRadius: 16,
-            background: "rgba(15,23,42,0.9)",
-            border: "1px solid rgba(148,163,184,0.5)",
-            fontSize: 13,
-            color: "#9ca3af",
-          }}
-        >
-          No AI profiles loaded. Complete Steps 2–3 to generate and save
-          vendor requirement profiles.
-        </div>
-      );
-    }
-
-    return (
-      <div
-        style={{
-          marginTop: 22,
-          display: "grid",
-          gridTemplateColumns: "repeat(auto-fill, minmax(340px, 1fr))",
-          gap: 18,
-        }}
-      >
-        {profiles.map((p, idx) => (
-          <div
-            key={idx}
-            style={{
-              padding: 18,
-              borderRadius: 18,
-              background: "rgba(15,23,42,0.85)",
-              border: "1px solid rgba(80,120,255,0.4)",
-              boxShadow:
-                "0 0 24px rgba(64,106,255,0.35), inset 0 0 18px rgba(15,23,42,0.95)",
-              backdropFilter: "blur(8px)",
-            }}
-          >
-            <div style={{ fontSize: 15, fontWeight: 600, marginBottom: 6 }}>
-              {p.vendor.vendor_name || "New Vendor"}
-            </div>
-            <div style={{ fontSize: 12, color: "#9ca3af", marginBottom: 8 }}>
-              {p.vendor.email && <div>📧 {p.vendor.email}</div>}
-              {p.vendor.work_type && <div>🛠 {p.vendor.work_type}</div>}
-            </div>
-            <div
-              style={{
-                fontSize: 11,
-                color: "#cbd5f5",
-                background: "rgba(0,0,0,0.35)",
-                padding: 10,
-                borderRadius: 12,
-                maxHeight: 180,
-                overflowY: "auto",
-              }}
-            >
-              <div style={{ marginBottom: 4, fontWeight: 500 }}>
-                Requirements (JSON):
-              </div>
-              <pre style={{ whiteSpace: "pre-wrap", fontSize: 11 }}>
-{JSON.stringify(p.requirements, null, 2)}
-              </pre>
-            </div>
-          </div>
-        ))}
-      </div>
-    );
-  }
-
-  // -----------------------------------------------------------
-  // CREATED VENDORS SUMMARY
-  // -----------------------------------------------------------
-  function renderCreatedSummary() {
-    if (!createdVendors.length) return null;
-
-    return (
-      <div
-        style={{
-          marginTop: 26,
-          padding: 16,
-          borderRadius: 16,
-          background: "rgba(15,23,42,0.92)",
-          border: "1px solid rgba(34,197,94,0.6)",
-          boxShadow: "0 0 24px rgba(34,197,94,0.45)",
-          fontSize: 13,
-        }}
-      >
-        <div style={{ marginBottom: 8, fontWeight: 600, color: "#bbf7d0" }}>
-          Vendors Created:
-        </div>
-        <ul style={{ margin: 0, paddingLeft: 18 }}>
-          {createdVendors.map((v) => (
-            <li key={v.id} style={{ marginBottom: 4 }}>
-              #{v.id} — {v.vendor_name}
-            </li>
-          ))}
-        </ul>
-      </div>
-    );
-  }
-
-  // -----------------------------------------------------------
-  // PAGE RENDER (COCKPIT WRAPPED)
+  // PAGE RENDER
   // -----------------------------------------------------------
   return (
     <CockpitWizardLayout>
@@ -269,11 +174,11 @@ export default function OnboardingWizardStep6() {
         </h1>
 
         <p style={{ color: "#9ca3af", fontSize: 13, marginBottom: 18 }}>
-          This final step will create real vendor records in your database and
-          attach the AI-generated requirements profiles to each vendor.
+          Finalize onboarding. This will create vendors and activate live
+          compliance monitoring.
         </p>
 
-        {/* NAV BAR */}
+        {/* NAV */}
         <div style={{ marginBottom: 16 }}>
           <button
             onClick={goBack}
@@ -309,11 +214,8 @@ export default function OnboardingWizardStep6() {
           )}
         </div>
 
-        {/* AI PROFILE PREVIEW GRID */}
-        {renderProfilesPreview()}
-
-        {/* RUN ENGINE BUTTON */}
-        {profiles.length > 0 && (
+        {/* ACTION */}
+        {profiles.length > 0 && !done && (
           <button
             onClick={handleRunStep6}
             disabled={creating}
@@ -330,15 +232,29 @@ export default function OnboardingWizardStep6() {
             }}
           >
             {creating
-              ? "Creating vendors & applying requirements…"
-              : "🚀 Create Vendors & Apply Requirements"}
+              ? "Creating vendors & activating compliance…"
+              : "🚀 Launch Compliance System"}
           </button>
         )}
 
-        {/* CREATED SUMMARY */}
-        {renderCreatedSummary()}
+        {/* RESULT */}
+        {done && createdVendors.length > 0 && (
+          <div
+            style={{
+              marginTop: 26,
+              padding: 16,
+              borderRadius: 16,
+              background: "rgba(15,23,42,0.92)",
+              border: "1px solid rgba(34,197,94,0.6)",
+              boxShadow: "0 0 24px rgba(34,197,94,0.45)",
+              fontSize: 13,
+              color: "#bbf7d0",
+            }}
+          >
+            🎉 Onboarding complete. {createdVendors.length} vendors activated.
+          </div>
+        )}
 
-        {/* TOAST */}
         <ToastV2
           open={toast.open}
           type={toast.type}
