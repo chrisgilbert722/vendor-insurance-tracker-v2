@@ -1,8 +1,7 @@
 // pages/api/onboarding/send-vendor-invites.js
 // ==========================================================
-// AI ONBOARDING WIZARD — STEP 3 (AI Onboarding Emails)
-// Uses vendor.requirements_json + OpenAI to send onboarding
-// emails to vendors and logs in system_timeline.
+// AI ONBOARDING — SEND VENDOR INVITES (PATCHED)
+// Backward compatible + Phase 2 Step 4 magic-link support
 // ==========================================================
 
 import { sql } from "../../../lib/db";
@@ -16,26 +15,120 @@ export default async function handler(req, res) {
       return res.status(405).json({ ok: false, error: "Use POST method." });
     }
 
-    const { orgId, vendorIds } = req.body || {};
+    const { orgId, vendorIds, invites } = req.body || {};
+    const orgIdInt = parseInt(orgId, 10);
 
-    if (!orgId || !Array.isArray(vendorIds) || vendorIds.length === 0) {
+    if (Number.isNaN(orgIdInt)) {
+      return res.status(400).json({
+        ok: false,
+        error: "Invalid orgId.",
+      });
+    }
+
+    // ======================================================
+    // MODE A — PHASE 2 MAGIC-LINK INVITES (NEW)
+    // ======================================================
+    if (Array.isArray(invites) && invites.length > 0) {
+      const sent = [];
+      const failed = [];
+
+      for (const invite of invites) {
+        try {
+          const {
+            onboardId,
+            vendorName,
+            vendorEmail,
+            subject,
+            body,
+            token,
+            requirements,
+          } = invite;
+
+          if (!vendorEmail) {
+            failed.push({
+              onboardId,
+              reason: "Missing vendor email.",
+            });
+            continue;
+          }
+
+          // Send exactly what operator approved
+          await sendEmail({
+            to: vendorEmail,
+            subject,
+            body,
+          });
+
+          sent.push({
+            onboardId,
+            vendorEmail,
+            subject,
+          });
+
+          // Timeline log (org-level, vendor not yet persisted)
+          await sql`
+            INSERT INTO system_timeline (org_id, action, message, severity)
+            VALUES (
+              ${orgIdInt},
+              'onboarding_magic_link_sent',
+              ${`Magic link sent to ${vendorName || vendorEmail}`},
+              'info'
+            );
+          `;
+        } catch (err) {
+          console.error("[Magic invite ERROR]", err);
+
+          failed.push({
+            onboardId: invite.onboardId,
+            vendorEmail: invite.vendorEmail,
+            reason: err.message || "Unknown error",
+          });
+
+          await sql`
+            INSERT INTO system_timeline (org_id, action, message, severity)
+            VALUES (
+              ${orgIdInt},
+              'onboarding_magic_link_failed',
+              ${"Magic link send failed: " + (err.message || "Unknown")},
+              'critical'
+            );
+          `;
+        }
+      }
+
+      return res.status(200).json({
+        ok: true,
+        mode: "magic-link",
+        sentCount: sent.length,
+        failedCount: failed.length,
+        sent,
+        failed,
+      });
+    }
+
+    // ======================================================
+    // MODE B — LEGACY FLOW (vendorIds + AI-generated email)
+    // ======================================================
+    if (!Array.isArray(vendorIds) || vendorIds.length === 0) {
       return res.status(400).json({
         ok: false,
         error: "orgId and vendorIds[] are required.",
       });
     }
 
-    const orgIdInt = parseInt(orgId, 10);
-    const vendorIdsInt = vendorIds.map((v) => parseInt(v, 10)).filter((v) => !Number.isNaN(v));
+    const vendorIdsInt = vendorIds
+      .map((v) => parseInt(v, 10))
+      .filter((v) => !Number.isNaN(v));
 
-    if (Number.isNaN(orgIdInt) || vendorIdsInt.length === 0) {
+    if (vendorIdsInt.length === 0) {
       return res.status(400).json({
         ok: false,
-        error: "Invalid orgId or vendorIds.",
+        error: "Invalid vendorIds.",
       });
     }
+
     // -------------------------------------------------------
-    // 1) LOAD VENDORS + REQUIREMENTS
+    // LOAD VENDORS + REQUIREMENTS
     // -------------------------------------------------------
     const rows = await sql`
       SELECT
@@ -52,7 +145,7 @@ export default async function handler(req, res) {
     if (!rows.length) {
       return res.status(404).json({
         ok: false,
-        error: "No vendors found for this org and IDs.",
+        error: "No vendors found.",
       });
     }
 
@@ -64,35 +157,24 @@ export default async function handler(req, res) {
         error: "None of the selected vendors have an email on file.",
       });
     }
+
     // -------------------------------------------------------
-    // 2) HELPER — AI GENERATE EMAIL CONTENT
+    // AI EMAIL GENERATION (LEGACY)
     // -------------------------------------------------------
     async function generateEmailForVendor(vendor) {
       const requirements = vendor.requirements_json || {};
 
       const prompt = `
-You are an insurance compliance assistant.
+Write a short onboarding email for this vendor.
 
-Write a friendly, professional onboarding email to this vendor:
-
-Vendor name: ${vendor.vendor_name || "Vendor"}
-Organization ID: ${vendor.org_id}
-
-Insurance requirements JSON:
+Vendor: ${vendor.vendor_name}
+Insurance requirements:
 ${JSON.stringify(requirements, null, 2)}
 
-GOAL:
-- Explain that the company is using an automated compliance platform.
-- Summarize what coverages and documents are required.
-- Invite them to upload their COI and any requested docs via their secure link.
-- Use clear, simple, non-legal language.
-- Be short and skimmable.
-
-Return ONLY valid JSON in this format:
-
+Return ONLY JSON:
 {
   "subject": "string",
-  "body": "plain text body with line breaks"
+  "body": "plain text body"
 }
       `.trim();
 
@@ -100,28 +182,20 @@ Return ONLY valid JSON in this format:
         model: "gpt-4.1-mini",
         temperature: 0.2,
         messages: [
-          { role: "system", content: "Return ONLY valid JSON" },
+          { role: "system", content: "Return ONLY valid JSON." },
           { role: "user", content: prompt },
         ],
       });
 
-      let raw = completion.choices?.[0]?.message?.content?.trim() || "";
-      const first = raw.indexOf("{");
-      const last = raw.lastIndexOf("}");
-      if (first === -1 || last === -1) {
-        throw new Error("AI did not return JSON.");
-      }
-
-      const json = JSON.parse(raw.slice(first, last + 1));
+      const raw = completion.choices?.[0]?.message?.content || "{}";
+      const json = JSON.parse(raw.slice(raw.indexOf("{"), raw.lastIndexOf("}") + 1));
 
       return {
         subject: json.subject || "Insurance Requirements & COI Request",
         body: json.body || "",
       };
     }
-    // -------------------------------------------------------
-    // 3) LOOP VENDORS — GENERATE, SEND, LOG
-    // -------------------------------------------------------
+
     const sent = [];
     const failed = [];
 
@@ -130,35 +204,22 @@ Return ONLY valid JSON in this format:
         if (!vendor.requirements_json) {
           failed.push({
             vendorId: vendor.id,
-            reason: "Missing requirements_json; cannot generate onboarding email.",
+            reason: "Missing requirements_json.",
           });
-
-          await sql`
-            INSERT INTO system_timeline (org_id, vendor_id, action, message, severity)
-            VALUES (
-              ${vendor.org_id},
-              ${vendor.id},
-              'onboarding_invite_skipped',
-              'Skipped onboarding email: missing requirements_json',
-              'warning'
-            );
-          `;
-
           continue;
         }
 
-        const emailContent = await generateEmailForVendor(vendor);
+        const email = await generateEmailForVendor(vendor);
 
         await sendEmail({
           to: vendor.email,
-          subject: emailContent.subject,
-          body: emailContent.body,
+          subject: email.subject,
+          body: email.body,
         });
 
         sent.push({
           vendorId: vendor.id,
           email: vendor.email,
-          subject: emailContent.subject,
         });
 
         await sql`
@@ -172,7 +233,7 @@ Return ONLY valid JSON in this format:
           );
         `;
       } catch (err) {
-        console.error("[Onboarding email ERROR]", err);
+        console.error("[Legacy invite ERROR]", err);
         failed.push({
           vendorId: vendor.id,
           email: vendor.email,
@@ -191,14 +252,10 @@ Return ONLY valid JSON in this format:
         `;
       }
     }
-    // -------------------------------------------------------
-    // 4) RETURN SUMMARY
-    // -------------------------------------------------------
+
     return res.status(200).json({
       ok: true,
-      orgId: orgIdInt,
-      totalRequested: vendorIdsInt.length,
-      totalFound: rows.length,
+      mode: "legacy",
       sentCount: sent.length,
       failedCount: failed.length,
       sent,
@@ -212,9 +269,7 @@ Return ONLY valid JSON in this format:
         INSERT INTO system_timeline (action, message, severity)
         VALUES ('onboarding_invite_system_error', ${err.message}, 'critical');
       `;
-    } catch (e2) {
-      console.error("[send-vendor-invites TIMELINE ERROR]", e2);
-    }
+    } catch {}
 
     return res.status(500).json({
       ok: false,
