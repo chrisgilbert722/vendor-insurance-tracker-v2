@@ -423,6 +423,10 @@ useEffect(() => {
   const handleFinishTutorial = () => {
     setShowTutorial(false);
     setShowPostTutorialActions(true);
+
+    // Scroll user to Step 5 CTA (top of dashboard)
+    window.scrollTo({ top: 0, behavior: "smooth" });
+
     try {
       localStorage.setItem("dashboard_tutorial_seen", "true");
     } catch {}
