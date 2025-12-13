@@ -1,10 +1,10 @@
 // components/VendorDrawer.js
 // ============================================================
 // Vendor Drawer V8 — Engine V5 • Policies • Compliance Documents • Contract Intelligence V3
-// Step 3: Multi-Document Grouping
+// Step 4: Vendor Compliance Snapshot
 // ============================================================
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useMemo } from "react";
 import {
   X as XIcon,
   ShieldCheck,
@@ -13,18 +13,13 @@ import {
   EnvelopeSimple,
   FileText,
   Scales,
+  CheckCircle,
+  MinusCircle,
+  XCircle,
 } from "@phosphor-icons/react";
 import { useOrg } from "../context/OrgContext";
 import DocumentsUpload from "./DocumentsUpload";
 import DocumentTypeBadge from "./DocumentTypeBadge";
-
-function computeTier(score) {
-  if (score >= 85) return "Elite Safe";
-  if (score >= 70) return "Preferred";
-  if (score >= 55) return "Watch";
-  if (score >= 35) return "High Risk";
-  return "Severe";
-}
 
 function formatDate(value) {
   if (!value) return "—";
@@ -39,31 +34,56 @@ function formatDate(value) {
 
 const GROUPS = [
   {
-    title: "Insurance Documents",
-    description: "Certificates of Insurance and policy endorsements.",
+    key: "insurance",
+    title: "Insurance",
     types: ["coi", "endorsement"],
   },
   {
+    key: "legal",
     title: "Legal & Financial",
-    description: "Contracts, W-9s, and financial compliance documents.",
     types: ["contract", "w9"],
   },
   {
-    title: "Operational Documents",
-    description: "Licenses, safety documentation, and operational proof.",
+    key: "operational",
+    title: "Operational",
     types: ["license", "safety"],
   },
 ];
 
+function getCoverageStatus(docs, types) {
+  const found = docs.filter((d) =>
+    types.includes(String(d.document_type || "").toLowerCase())
+  );
+
+  if (found.length === 0) return "missing";
+  if (found.length < types.length) return "partial";
+  return "covered";
+}
+
+function StatusPill({ status }) {
+  if (status === "covered") {
+    return (
+      <span className="flex items-center gap-1 text-emerald-300 text-xs">
+        <CheckCircle size={14} /> Covered
+      </span>
+    );
+  }
+  if (status === "partial") {
+    return (
+      <span className="flex items-center gap-1 text-amber-300 text-xs">
+        <MinusCircle size={14} /> Partial
+      </span>
+    );
+  }
+  return (
+    <span className="flex items-center gap-1 text-rose-400 text-xs">
+      <XCircle size={14} /> Missing
+    </span>
+  );
+}
+
 export default function VendorDrawer({ vendor, policies = [], onClose }) {
   const { activeOrgId } = useOrg();
-
-  const [engine, setEngine] = useState(null);
-  const [engineLoading, setEngineLoading] = useState(true);
-  const [engineError, setEngineError] = useState("");
-
-  const [alerts, setAlerts] = useState([]);
-  const [alertsLoading, setAlertsLoading] = useState(true);
 
   const [documents, setDocuments] = useState([]);
   const [docsLoading, setDocsLoading] = useState(true);
@@ -95,6 +115,14 @@ export default function VendorDrawer({ vendor, policies = [], onClose }) {
     loadDocs();
   }, [vendor?.id]);
 
+  const coverage = useMemo(() => {
+    const map = {};
+    GROUPS.forEach((g) => {
+      map[g.key] = getCoverageStatus(documents, g.types);
+    });
+    return map;
+  }, [documents]);
+
   return (
     <>
       {/* BACKDROP */}
@@ -105,7 +133,31 @@ export default function VendorDrawer({ vendor, policies = [], onClose }) {
 
       {/* MAIN PANEL */}
       <div className="fixed inset-x-0 bottom-0 md:bottom-6 md:right-6 md:left-auto z-50 flex justify-center md:justify-end pointer-events-none">
-        <div className="pointer-events-auto w-full max-w-6xl max-h-[90vh] rounded-3xl border border-slate-800 bg-slate-950 p-6 md:p-8 overflow-hidden">
+        <div className="pointer-events-auto w-full max-w-6xl max-h-[90vh] rounded-3xl border border-slate-800 bg-slate-950 p-6 md:p-8 overflow-hidden space-y-6">
+
+          {/* COMPLIANCE SNAPSHOT */}
+          <div className="rounded-2xl border border-slate-800 bg-slate-900/60 p-4">
+            <div className="flex items-center gap-2 mb-3">
+              <ShieldCheck size={18} className="text-sky-300" />
+              <h3 className="text-sm font-semibold text-slate-100">
+                Compliance Snapshot
+              </h3>
+            </div>
+
+            <div className="grid grid-cols-3 gap-4">
+              {GROUPS.map((g) => (
+                <div
+                  key={g.key}
+                  className="rounded-xl border border-slate-800 bg-slate-950/70 p-3"
+                >
+                  <div className="text-xs font-semibold text-slate-200 mb-1">
+                    {g.title}
+                  </div>
+                  <StatusPill status={coverage[g.key]} />
+                </div>
+              ))}
+            </div>
+          </div>
 
           {/* COMPLIANCE DOCUMENTS */}
           <div className="flex flex-col gap-4">
@@ -136,7 +188,7 @@ export default function VendorDrawer({ vendor, policies = [], onClose }) {
             ) : docsError ? (
               <div className="text-sm text-rose-400">{docsError}</div>
             ) : (
-              <div className="space-y-6 max-h-[70vh] overflow-y-auto pr-1">
+              <div className="space-y-6 max-h-[60vh] overflow-y-auto pr-1">
                 {GROUPS.map((group) => {
                   const groupDocs = documents.filter((d) =>
                     group.types.includes(
@@ -145,13 +197,10 @@ export default function VendorDrawer({ vendor, policies = [], onClose }) {
                   );
 
                   return (
-                    <div key={group.title}>
+                    <div key={group.key}>
                       <div className="mb-2">
                         <div className="text-xs font-semibold text-slate-200">
                           {group.title}
-                        </div>
-                        <div className="text-[11px] text-slate-400">
-                          {group.description}
                         </div>
                       </div>
 
