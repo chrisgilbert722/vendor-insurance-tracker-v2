@@ -1,7 +1,7 @@
 // components/VendorDrawer.js
 // ============================================================
 // Vendor Drawer V8 — Engine V5 • Policies • Compliance Documents • Contract Intelligence V3
-// Step 2: Unified "Compliance Documents" language
+// Step 3: Multi-Document Grouping
 // ============================================================
 
 import { useEffect, useState } from "react";
@@ -33,94 +33,44 @@ function formatDate(value) {
   return d.toLocaleDateString();
 }
 
+// ============================================================
+// DOCUMENT GROUPING
+// ============================================================
+
+const GROUPS = [
+  {
+    title: "Insurance Documents",
+    description: "Certificates of Insurance and policy endorsements.",
+    types: ["coi", "endorsement"],
+  },
+  {
+    title: "Legal & Financial",
+    description: "Contracts, W-9s, and financial compliance documents.",
+    types: ["contract", "w9"],
+  },
+  {
+    title: "Operational Documents",
+    description: "Licenses, safety documentation, and operational proof.",
+    types: ["license", "safety"],
+  },
+];
+
 export default function VendorDrawer({ vendor, policies = [], onClose }) {
   const { activeOrgId } = useOrg();
 
-  // Engine state
   const [engine, setEngine] = useState(null);
   const [engineLoading, setEngineLoading] = useState(true);
   const [engineError, setEngineError] = useState("");
 
-  // Alerts
   const [alerts, setAlerts] = useState([]);
   const [alertsLoading, setAlertsLoading] = useState(true);
 
-  // Documents + Contract Intel
   const [documents, setDocuments] = useState([]);
   const [docsLoading, setDocsLoading] = useState(true);
   const [docsError, setDocsError] = useState("");
 
-  const [contractJson, setContractJson] = useState(null);
-  const [contractScore, setContractScore] = useState(null);
-  const [contractRequirements, setContractRequirements] = useState([]);
-  const [contractMismatches, setContractMismatches] = useState([]);
-
-  // Renewal email modal
-  const [emailModal, setEmailModal] = useState(false);
-  const [emailLoading, setEmailLoading] = useState(false);
-  const [emailError, setEmailError] = useState("");
-  const [emailData, setEmailData] = useState(null);
-
   // ============================================================
-  // LOAD ENGINE (dryRun)
-  // ============================================================
-  useEffect(() => {
-    if (!vendor?.id || !activeOrgId) return;
-
-    async function loadEngine() {
-      try {
-        setEngineLoading(true);
-        setEngineError("");
-
-        const res = await fetch("/api/engine/run-v3", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            vendorId: vendor.id,
-            orgId: activeOrgId,
-            dryRun: true,
-          }),
-        });
-
-        const json = await res.json();
-        if (!json.ok) throw new Error(json.error || "Engine error");
-
-        setEngine(json);
-      } catch (err) {
-        setEngineError(err.message || "Failed to run rule engine.");
-      } finally {
-        setEngineLoading(false);
-      }
-    }
-
-    loadEngine();
-  }, [vendor?.id, activeOrgId]);
-
-  // ============================================================
-  // LOAD ALERTS
-  // ============================================================
-  async function refreshAlerts() {
-    setAlertsLoading(true);
-    try {
-      const res = await fetch(
-        `/api/alerts/vendor-v3?vendorId=${vendor.id}&orgId=${activeOrgId}`
-      );
-      const json = await res.json();
-      setAlerts(json.alerts || []);
-    } catch (err) {
-      console.error("Failed to refresh alerts:", err);
-    } finally {
-      setAlertsLoading(false);
-    }
-  }
-
-  useEffect(() => {
-    if (!vendor?.id || !activeOrgId) return;
-    refreshAlerts();
-  }, [vendor?.id, activeOrgId]);
-
-  // ============================================================
-  // LOAD DOCUMENTS + CONTRACT INTELLIGENCE
+  // LOAD DOCUMENTS
   // ============================================================
   useEffect(() => {
     if (!vendor?.id) return;
@@ -135,12 +85,7 @@ export default function VendorDrawer({ vendor, policies = [], onClose }) {
         if (!json.ok) throw new Error(json.error || "Failed to load documents.");
 
         setDocuments(json.documents || []);
-        setContractJson(json.vendor.contract_json || null);
-        setContractScore(json.vendor.contract_score || null);
-        setContractRequirements(json.vendor.contract_requirements || []);
-        setContractMismatches(json.vendor.contract_mismatches || []);
       } catch (err) {
-        console.error("[VendorDrawer] docs load error:", err);
         setDocsError(err.message || "Failed to load documents.");
       } finally {
         setDocsLoading(false);
@@ -149,35 +94,6 @@ export default function VendorDrawer({ vendor, policies = [], onClose }) {
 
     loadDocs();
   }, [vendor?.id]);
-
-  // ============================================================
-  // RENEWAL EMAIL (AI)
-  // ============================================================
-  async function generateRenewalEmail() {
-    try {
-      setEmailLoading(true);
-      setEmailError("");
-      setEmailData(null);
-
-      const res = await fetch("/api/vendor/email-renewal", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ vendorId: vendor.id }),
-      });
-
-      const json = await res.json();
-      if (!json.ok) throw new Error(json.error || "Failed to generate email.");
-
-      setEmailData(json);
-    } catch (err) {
-      setEmailError(err.message || "Failed to generate email.");
-    } finally {
-      setEmailLoading(false);
-    }
-  }
-
-  const score = engine?.globalScore ?? null;
-  const tier = score != null ? computeTier(score) : "Unknown";
 
   return (
     <>
@@ -189,18 +105,18 @@ export default function VendorDrawer({ vendor, policies = [], onClose }) {
 
       {/* MAIN PANEL */}
       <div className="fixed inset-x-0 bottom-0 md:bottom-6 md:right-6 md:left-auto z-50 flex justify-center md:justify-end pointer-events-none">
-        <div className="pointer-events-auto w-full max-w-6xl max-h-[90vh] rounded-3xl border border-slate-800 bg-gradient-to-b from-slate-950/95 via-slate-950 to-slate-950/98 shadow-[0_24px_80px_rgba(0,0,0,0.95)] p-6 md:p-8 grid md:grid-cols-[1.2fr,1.4fr,1.4fr] gap-6 overflow-hidden">
+        <div className="pointer-events-auto w-full max-w-6xl max-h-[90vh] rounded-3xl border border-slate-800 bg-slate-950 p-6 md:p-8 overflow-hidden">
 
-          {/* RIGHT COLUMN — COMPLIANCE DOCUMENTS */}
+          {/* COMPLIANCE DOCUMENTS */}
           <div className="flex flex-col gap-4">
-            <div className="flex items-center gap-2 mb-1">
+            <div className="flex items-center gap-2">
               <FileText size={18} className="text-slate-200" />
               <h3 className="text-sm font-semibold">
                 Compliance Documents
               </h3>
             </div>
 
-            <div className="text-xs text-slate-400 -mt-1">
+            <div className="text-xs text-slate-400">
               All vendor compliance documents are managed here — insurance,
               licenses, contracts, and more.
             </div>
@@ -208,10 +124,9 @@ export default function VendorDrawer({ vendor, policies = [], onClose }) {
             <DocumentsUpload
               orgId={activeOrgId}
               vendorId={vendor?.id}
-              onDocumentUploaded={(doc) => {
-                setDocuments((prev) => [doc, ...prev]);
-                refreshAlerts();
-              }}
+              onDocumentUploaded={(doc) =>
+                setDocuments((prev) => [doc, ...prev])
+              }
             />
 
             {docsLoading ? (
@@ -220,47 +135,71 @@ export default function VendorDrawer({ vendor, policies = [], onClose }) {
               </div>
             ) : docsError ? (
               <div className="text-sm text-rose-400">{docsError}</div>
-            ) : documents.length === 0 ? (
-              <div className="rounded-xl border border-slate-800 bg-slate-900/50 p-4 text-xs text-slate-400">
-                No compliance documents uploaded yet.
-                <br />
-                Upload once — we track compliance automatically.
-              </div>
             ) : (
-              <div className="space-y-4 max-h-[70vh] overflow-y-auto pr-1">
-                {documents
-                  .filter((d) => d.document_type !== "contract")
-                  .map((doc) => (
-                    <div
-                      key={doc.id}
-                      className="p-3 rounded-2xl border border-slate-800 bg-slate-900/60"
-                    >
-                      <div className="flex justify-between items-start">
-                        <div className="space-y-1">
-                          <DocumentTypeBadge type={doc.document_type} />
-                          <div className="text-[11px] text-slate-500">
-                            Uploaded: {formatDate(doc.uploaded_at)}
-                          </div>
+              <div className="space-y-6 max-h-[70vh] overflow-y-auto pr-1">
+                {GROUPS.map((group) => {
+                  const groupDocs = documents.filter((d) =>
+                    group.types.includes(
+                      String(d.document_type || "").toLowerCase()
+                    )
+                  );
+
+                  return (
+                    <div key={group.title}>
+                      <div className="mb-2">
+                        <div className="text-xs font-semibold text-slate-200">
+                          {group.title}
                         </div>
-
-                        {doc.file_url && (
-                          <a
-                            href={doc.file_url}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="text-[11px] px-2 py-1 rounded-lg border border-slate-700 bg-slate-800/60 hover:bg-slate-700 text-slate-300"
-                          >
-                            View File
-                          </a>
-                        )}
+                        <div className="text-[11px] text-slate-400">
+                          {group.description}
+                        </div>
                       </div>
 
-                      <div className="mt-2 text-[11px] text-slate-300 leading-snug whitespace-pre-wrap">
-                        {doc.ai_json?.summary ||
-                          "AI summary not available for this document."}
-                      </div>
+                      {groupDocs.length === 0 ? (
+                        <div className="rounded-xl border border-slate-800 bg-slate-900/50 p-3 text-xs text-slate-400">
+                          No documents uploaded in this category yet.
+                        </div>
+                      ) : (
+                        <div className="space-y-3">
+                          {groupDocs.map((doc) => (
+                            <div
+                              key={doc.id}
+                              className="p-3 rounded-2xl border border-slate-800 bg-slate-900/60"
+                            >
+                              <div className="flex justify-between items-start">
+                                <div className="space-y-1">
+                                  <DocumentTypeBadge
+                                    type={doc.document_type}
+                                  />
+                                  <div className="text-[11px] text-slate-500">
+                                    Uploaded:{" "}
+                                    {formatDate(doc.uploaded_at)}
+                                  </div>
+                                </div>
+
+                                {doc.file_url && (
+                                  <a
+                                    href={doc.file_url}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="text-[11px] px-2 py-1 rounded-lg border border-slate-700 bg-slate-800/60 hover:bg-slate-700 text-slate-300"
+                                  >
+                                    View File
+                                  </a>
+                                )}
+                              </div>
+
+                              <div className="mt-2 text-[11px] text-slate-300 leading-snug whitespace-pre-wrap">
+                                {doc.ai_json?.summary ||
+                                  "AI summary not available for this document."}
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      )}
                     </div>
-                  ))}
+                  );
+                })}
               </div>
             )}
           </div>
