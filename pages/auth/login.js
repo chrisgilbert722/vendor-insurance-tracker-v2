@@ -52,6 +52,15 @@ export default function LoginPage() {
   }
 
   /* ==========================================
+     AZURE AD LOGIN (ENTERPRISE) — DISABLED FOR NOW
+     (Enabled later when customer provides Azure app credentials)
+  ========================================== */
+  function signInWithAzureDisabled() {
+    // intentionally disabled
+    return;
+  }
+
+  /* ==========================================
      MAGIC LINK LOGIN
   ========================================== */
   async function sendMagicLink(e) {
@@ -207,11 +216,36 @@ export default function LoginPage() {
             fontSize: 13,
             fontWeight: 500,
             cursor: "pointer",
-            marginBottom: 12,
+            marginBottom: 10,
           }}
         >
           Continue with Google
         </button>
+
+        {/* AZURE AD (DISABLED) */}
+        <button
+          onClick={signInWithAzureDisabled}
+          disabled
+          style={{
+            width: "100%",
+            borderRadius: 999,
+            padding: "10px 14px",
+            border: "1px solid rgba(148,163,184,0.25)",
+            background: "rgba(15,23,42,0.55)",
+            color: "rgba(226,232,240,0.55)",
+            fontSize: 13,
+            fontWeight: 600,
+            cursor: "not-allowed",
+            marginBottom: 8,
+          }}
+          title="Azure AD SSO is available for enterprise customers. Ask your admin to enable."
+        >
+          Azure AD (Enterprise) — Coming Soon
+        </button>
+
+        <div style={{ fontSize: 11, color: "#64748b", marginBottom: 10 }}>
+          Azure AD SSO is enabled per-customer (enterprise). Ask your admin.
+        </div>
 
         <div
           style={{
