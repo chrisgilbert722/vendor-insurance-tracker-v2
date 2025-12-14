@@ -1,3 +1,4 @@
+// components/AdminGuard.js
 import { useEffect } from "react";
 import { useRouter } from "next/router";
 import { useUser } from "../context/UserContext";
@@ -6,24 +7,28 @@ import { useRole } from "../lib/useRole";
 export default function AdminGuard({ children }) {
   const router = useRouter();
   const { isLoggedIn, initializing } = useUser();
-  const { loading, isAdmin, isManager } = useRole();
+  const { ready, isAdmin, isManager } = useRole();
 
   useEffect(() => {
-    // Wait until EVERYTHING is loaded
-    if (initializing || loading) return;
+    // ⛔ Wait until BOTH auth + role are ready
+    if (initializing || !ready) return;
 
+    // Not logged in → login
     if (!isLoggedIn) {
-      router.replace(`/auth/login?redirect=${encodeURIComponent(router.asPath)}`);
+      router.replace(
+        `/auth/login?redirect=${encodeURIComponent(router.asPath)}`
+      );
       return;
     }
 
+    // Logged in but insufficient role → dashboard
     if (!isAdmin && !isManager) {
       router.replace("/dashboard");
     }
-  }, [initializing, loading, isLoggedIn, isAdmin, isManager, router]);
+  }, [initializing, ready, isLoggedIn, isAdmin, isManager, router]);
 
-  // BLOCK render ONLY while loading
-  if (initializing || loading) {
+  // ⛔ Block render until decision is FINAL
+  if (initializing || !ready) {
     return null;
   }
 
