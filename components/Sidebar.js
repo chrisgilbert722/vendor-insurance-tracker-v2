@@ -1,4 +1,4 @@
-// components/Sidebar.js — Tactical Neon Rail V14 (Stable)
+// components/Sidebar.js — Tactical Neon Rail V15 (Roles Fixed)
 import React, { useEffect, useState } from "react";
 import Link from "next/link";
 import { useOrg } from "../context/OrgContext";
@@ -98,12 +98,48 @@ export default function Sidebar({ pathname, isAdmin, isManager }) {
       {/* ADMIN */}
       {isAdmin && (
         <>
-          <RailLink href="/admin/alerts" label="Alerts" icon="🔔" active={pathname === "/admin/alerts"} />
-          <RailLink href="/admin/audit-log" label="Audit" icon="🧾" active={pathname === "/admin/audit-log"} />
-          <RailLink href="/admin/roles" label="Roles" icon="👤" active={pathname === "/admin/roles"} />
-          <RailLink href="/admin/requirements-v5" label="Rules" icon="🧠" active={pathname === "/admin/requirements-v5"} />
-          <RailLink href="/admin/renewals" label="Exec AI" icon="🏆" active={pathname === "/admin/renewals"} />
-          <RailLink href="/admin/ai-setup-center" label="AI Setup" icon="✨" active={pathname === "/admin/ai-setup-center"} />
+          <RailLink
+            href="/admin/alerts"
+            label="Alerts"
+            icon="🔔"
+            active={pathname.startsWith("/admin/alerts")}
+          />
+
+          <RailLink
+            href="/admin/audit-log"
+            label="Audit"
+            icon="🧾"
+            active={pathname.startsWith("/admin/audit-log")}
+          />
+
+          {/* ✅ ROLES → ORGANIZATION */}
+          <RailLink
+            href="/admin/organization"
+            label="Roles"
+            icon="👤"
+            active={pathname.startsWith("/admin/organization")}
+          />
+
+          <RailLink
+            href="/admin/requirements-v5"
+            label="Rules"
+            icon="🧠"
+            active={pathname.startsWith("/admin/requirements-v5")}
+          />
+
+          <RailLink
+            href="/admin/renewals"
+            label="Exec AI"
+            icon="🏆"
+            active={pathname.startsWith("/admin/renewals")}
+          />
+
+          <RailLink
+            href="/admin/ai-setup-center"
+            label="AI Setup"
+            icon="✨"
+            active={pathname.startsWith("/admin/ai-setup-center")}
+          />
         </>
       )}
 
@@ -117,7 +153,7 @@ export default function Sidebar({ pathname, isAdmin, isManager }) {
         />
       )}
 
-      {/* TUTORIAL (REPLAY) */}
+      {/* TUTORIAL */}
       <RailLink
         href="/dashboard?tutorial=1"
         label="Tutorial"
