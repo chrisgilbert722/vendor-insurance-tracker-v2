@@ -7,7 +7,6 @@ import Layout from "../components/Layout";
 import { UserProvider, useUser } from "../context/UserContext";
 import AdminGuard from "../components/AdminGuard";
 
-// Routes that never require auth
 const PUBLIC_ROUTES = [
   "/auth/login",
   "/auth/callback",
@@ -15,7 +14,6 @@ const PUBLIC_ROUTES = [
   "/auth/verify",
 ];
 
-// All onboarding routes (ORDER MATTERS)
 const ONBOARDING_STEPS = [
   "/onboarding/start",
   "/onboarding/company",
@@ -34,53 +32,96 @@ function AppShell({ Component, pageProps }) {
 
   const [onboardingStep, setOnboardingStep] = useState(null);
   const [loadingOnboarding, setLoadingOnboarding] = useState(true);
+  const [redirecting, setRedirecting] = useState(false);
 
-  /* ============================================================
-     HARD STOP — NEVER RENDER /api/*
-  ============================================================ */
+  const isAdminRoute = path.startsWith("/admin");
+
+  // 🚫 Never render API routes
   if (typeof window !== "undefined" && router.asPath.startsWith("/api")) {
     return null;
   }
 
-  /* ============================================================
-     ADMIN ROUTE CHECK (EARLY)
-  ============================================================ */
-  const isAdminRoute = path.startsWith("/admin");
-
-  /* ============================================================
-     LOAD ORG ONBOARDING STATUS
-  ============================================================ */
+  // Load onboarding state
   useEffect(() => {
     if (!isLoggedIn || !org?.id) {
       setLoadingOnboarding(false);
       return;
     }
 
+    let cancelled = false;
+
     async function load() {
       try {
         const res = await fetch(`/api/organization/status?orgId=${org.id}`);
         const data = await res.json();
-        if (data.ok) {
+        if (!cancelled && data.ok) {
           setOnboardingStep(data.onboarding_step);
         }
       } catch (err) {
         console.error("[_app] onboarding status error:", err);
       } finally {
-        setLoadingOnboarding(false);
+        if (!cancelled) setLoadingOnboarding(false);
       }
     }
 
     load();
+    return () => {
+      cancelled = true;
+    };
   }, [isLoggedIn, org]);
 
-  const isOnboardingPage = ONBOARDING_STEPS.some((r) =>
-    path.startsWith(r.replace("/complete", ""))
-  );
+  // 🔐 AUTH REDIRECT (EFFECT ONLY)
+  useEffect(() => {
+    if (initializing || redirecting) return;
 
-  /* ============================================================
-     GLOBAL LOADING
-  ============================================================ */
-  if (initializing || loadingOnboarding) {
+    if (!isLoggedIn && !PUBLIC_ROUTES.includes(path)) {
+      setRedirecting(true);
+      router.replace(
+        `/auth/login?redirect=${encodeURIComponent(router.asPath)}`
+      );
+    }
+  }, [initializing, isLoggedIn, path, router, redirecting]);
+
+  // 🧭 ONBOARDING REDIRECTS (EFFECT ONLY, ADMIN EXEMPT)
+  useEffect(() => {
+    if (
+      initializing ||
+      loadingOnboarding ||
+      redirecting ||
+      !isLoggedIn ||
+      onboardingStep === null ||
+      isAdminRoute
+    ) {
+      return;
+    }
+
+    const isOnboardingPage = ONBOARDING_STEPS.some((r) =>
+      path.startsWith(r.replace("/complete", ""))
+    );
+
+    if (onboardingStep < ONBOARDING_STEPS.length - 1) {
+      const required = ONBOARDING_STEPS[onboardingStep];
+      if (!path.startsWith(required)) {
+        setRedirecting(true);
+        router.replace(required);
+      }
+    } else if (isOnboardingPage) {
+      setRedirecting(true);
+      router.replace("/dashboard");
+    }
+  }, [
+    initializing,
+    loadingOnboarding,
+    redirecting,
+    isLoggedIn,
+    onboardingStep,
+    isAdminRoute,
+    path,
+    router,
+  ]);
+
+  // ⏳ Global loading
+  if (initializing || loadingOnboarding || redirecting) {
     return (
       <div
         style={{
@@ -98,35 +139,6 @@ function AppShell({ Component, pageProps }) {
     );
   }
 
-  /* ============================================================
-     LOGIN REDIRECT (NON-PUBLIC ROUTES ONLY)
-  ============================================================ */
-  if (!isLoggedIn && !PUBLIC_ROUTES.includes(path)) {
-    router.replace(`/auth/login?redirect=${encodeURIComponent(router.asPath)}`);
-    return null;
-  }
-
-  /* ============================================================
-     ONBOARDING REDIRECTS (⚠️ ADMIN ROUTES EXEMPT)
-  ============================================================ */
-  if (isLoggedIn && onboardingStep !== null && !isAdminRoute) {
-    if (onboardingStep < ONBOARDING_STEPS.length - 1) {
-      const required = ONBOARDING_STEPS[onboardingStep];
-      if (!path.startsWith(required)) {
-        router.replace(required);
-        return null;
-      }
-    }
-
-    if (onboardingStep >= ONBOARDING_STEPS.length - 1 && isOnboardingPage) {
-      router.replace("/dashboard");
-      return null;
-    }
-  }
-
-  /* ============================================================
-     APP CONTENT
-  ============================================================ */
   const content = (
     <OrgProvider>
       <Layout>
@@ -135,9 +147,7 @@ function AppShell({ Component, pageProps }) {
     </OrgProvider>
   );
 
-  /* ============================================================
-     ADMIN GUARD (ONLY FOR /admin/*)
-  ============================================================ */
+  // 🔐 Admin routes guarded here ONLY
   if (isAdminRoute) {
     return <AdminGuard>{content}</AdminGuard>;
   }
