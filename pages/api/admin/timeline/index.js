@@ -2,12 +2,21 @@
 import { sql } from "../../../../lib/db";
 
 export default async function handler(req, res) {
-  if (req.method !== "GET") {
-    return res.status(405).json({ ok: false, error: "GET only" });
-  }
-
   try {
-    // 🔐 HARD GUARD — if table doesn't exist, return empty timeline
+    if (req.method !== "GET") {
+      return res.status(405).json({ ok: false, error: "GET only" });
+    }
+
+    const { orgId } = req.query;
+
+    // 🔒 HARD GUARD — prevents 500s
+    if (!orgId) {
+      return res.status(400).json({
+        ok: false,
+        error: "Missing orgId",
+      });
+    }
+
     const rows = await sql`
       SELECT 
         vt.vendor_id,
@@ -18,21 +27,20 @@ export default async function handler(req, res) {
         vt.created_at
       FROM vendor_timeline vt
       LEFT JOIN vendors v ON v.id = vt.vendor_id
+      WHERE vt.org_id = ${orgId}
       ORDER BY vt.created_at DESC
       LIMIT 100;
     `;
 
     return res.status(200).json({
       ok: true,
-      timeline: rows ?? [],
+      timeline: rows,
     });
   } catch (err) {
-    console.warn("[ADMIN TIMELINE SAFE FAIL]", err.message);
-
-    // ✅ CRITICAL: NEVER 500 THE UI
-    return res.status(200).json({
-      ok: true,
-      timeline: [],
+    console.error("[ADMIN TIMELINE ERROR]", err);
+    return res.status(500).json({
+      ok: false,
+      error: err.message,
     });
   }
 }
