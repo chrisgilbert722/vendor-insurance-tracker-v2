@@ -5,7 +5,7 @@ import { useRouter } from "next/router";
 import { OrgProvider } from "../context/OrgContext";
 import Layout from "../components/Layout";
 import { UserProvider, useUser } from "../context/UserContext";
-import AdminGuard from "../components/AdminGuard"; // ✅ NEW
+import AdminGuard from "../components/AdminGuard";
 
 // Routes that never require auth
 const PUBLIC_ROUTES = [
@@ -30,7 +30,7 @@ function AppShell({ Component, pageProps }) {
   const router = useRouter();
   const path = router.pathname;
 
-  const { isLoggedIn, initializing, user, org } = useUser();
+  const { isLoggedIn, initializing, org } = useUser();
 
   const [onboardingStep, setOnboardingStep] = useState(null);
   const [loadingOnboarding, setLoadingOnboarding] = useState(true);
@@ -61,9 +61,9 @@ function AppShell({ Component, pageProps }) {
         }
       } catch (err) {
         console.error("Failed loading onboarding status", err);
+      } finally {
+        setLoadingOnboarding(false);
       }
-
-      setLoadingOnboarding(false);
     }
 
     load();
@@ -75,6 +75,7 @@ function AppShell({ Component, pageProps }) {
 
   /* ============================================================
      GLOBAL LOADING (APP ROUTES ONLY)
+     🚨 DO NOT ROUTE UNTIL USER CONTEXT IS READY
   ============================================================ */
   if (initializing || loadingOnboarding) {
     return (
@@ -95,10 +96,17 @@ function AppShell({ Component, pageProps }) {
   }
 
   /* ============================================================
-     LOGIN REDIRECT FOR APP ROUTES ONLY
+     LOGIN REDIRECT (FIXED)
+     ✅ ONLY AFTER initializing === false
   ============================================================ */
-  if (!isLoggedIn && !PUBLIC_ROUTES.includes(path)) {
-    router.replace(`/auth/login?redirect=${encodeURIComponent(router.asPath)}`);
+  if (
+    !initializing &&
+    !isLoggedIn &&
+    !PUBLIC_ROUTES.includes(path)
+  ) {
+    router.replace(
+      `/auth/login?redirect=${encodeURIComponent(router.asPath)}`
+    );
     return null;
   }
 
@@ -121,10 +129,8 @@ function AppShell({ Component, pageProps }) {
   }
 
   /* ============================================================
-     ADMIN ROUTE GUARD (NEW — SAFE)
+     NORMAL APP CONTENT
   ============================================================ */
-  const isAdminRoute = path.startsWith("/admin");
-
   const content = (
     <OrgProvider>
       <Layout>
@@ -133,13 +139,13 @@ function AppShell({ Component, pageProps }) {
     </OrgProvider>
   );
 
-  if (isAdminRoute) {
+  /* ============================================================
+     ADMIN ROUTE GUARD
+  ============================================================ */
+  if (path.startsWith("/admin")) {
     return <AdminGuard>{content}</AdminGuard>;
   }
 
-  /* ============================================================
-     NORMAL APP RENDER
-  ============================================================ */
   return content;
 }
 
