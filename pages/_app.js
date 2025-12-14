@@ -7,6 +7,9 @@ import Layout from "../components/Layout";
 import { UserProvider, useUser } from "../context/UserContext";
 import AdminGuard from "../components/AdminGuard";
 
+/* ============================================================
+   ROUTE CONSTANTS
+============================================================ */
 const PUBLIC_ROUTES = [
   "/auth/login",
   "/auth/callback",
@@ -24,6 +27,9 @@ const ONBOARDING_STEPS = [
   "/onboarding/complete",
 ];
 
+/* ============================================================
+   APP SHELL
+============================================================ */
 function AppShell({ Component, pageProps }) {
   const router = useRouter();
   const path = router.pathname;
@@ -36,12 +42,29 @@ function AppShell({ Component, pageProps }) {
 
   const isAdminRoute = path.startsWith("/admin");
 
-  // 🚫 Never render API routes
+  /* ============================================================
+     HARD STOP — NEVER RENDER API ROUTES
+  ============================================================ */
   if (typeof window !== "undefined" && router.asPath.startsWith("/api")) {
     return null;
   }
 
-  // ✅ IMPORTANT: Clear redirecting flag after route completes
+  /* ============================================================
+     AUTH ROUTES MUST NEVER BE BLOCKED (CRITICAL FIX)
+  ============================================================ */
+  if (path.startsWith("/auth")) {
+    return (
+      <OrgProvider>
+        <Layout>
+          <Component {...pageProps} />
+        </Layout>
+      </OrgProvider>
+    );
+  }
+
+  /* ============================================================
+     CLEAR REDIRECT STATE AFTER NAVIGATION
+  ============================================================ */
   useEffect(() => {
     const done = () => setRedirecting(false);
     router.events.on("routeChangeComplete", done);
@@ -52,13 +75,14 @@ function AppShell({ Component, pageProps }) {
     };
   }, [router.events]);
 
-  // Load onboarding state
+  /* ============================================================
+     LOAD ONBOARDING STATUS
+  ============================================================ */
   useEffect(() => {
     let cancelled = false;
 
     async function load() {
       try {
-        // If not logged in or no org, stop onboarding loading
         if (!isLoggedIn || !org?.id) {
           if (!cancelled) setLoadingOnboarding(false);
           return;
@@ -84,10 +108,11 @@ function AppShell({ Component, pageProps }) {
     };
   }, [isLoggedIn, org?.id]);
 
-  // 🔐 AUTH REDIRECT (effect only)
+  /* ============================================================
+     AUTH REDIRECT (NON-PUBLIC ROUTES ONLY)
+  ============================================================ */
   useEffect(() => {
-    if (initializing) return;
-    if (redirecting) return;
+    if (initializing || redirecting) return;
 
     if (!isLoggedIn && !PUBLIC_ROUTES.includes(path)) {
       setRedirecting(true);
@@ -95,19 +120,25 @@ function AppShell({ Component, pageProps }) {
     }
   }, [initializing, redirecting, isLoggedIn, path, router]);
 
-  // 🧭 ONBOARDING REDIRECTS (admin exempt)
+  /* ============================================================
+     ONBOARDING REDIRECTS (ADMIN ROUTES EXEMPT)
+  ============================================================ */
   useEffect(() => {
-    if (initializing || loadingOnboarding) return;
-    if (redirecting) return;
-    if (!isLoggedIn) return;
-    if (onboardingStep === null) return;
-    if (isAdminRoute) return;
+    if (
+      initializing ||
+      loadingOnboarding ||
+      redirecting ||
+      !isLoggedIn ||
+      onboardingStep === null ||
+      isAdminRoute
+    ) {
+      return;
+    }
 
     const isOnboardingPage = ONBOARDING_STEPS.some((r) =>
       path.startsWith(r.replace("/complete", ""))
     );
 
-    // If onboarding not complete → force correct step
     if (onboardingStep < ONBOARDING_STEPS.length - 1) {
       const required = ONBOARDING_STEPS[onboardingStep];
       if (!path.startsWith(required)) {
@@ -117,7 +148,6 @@ function AppShell({ Component, pageProps }) {
       return;
     }
 
-    // If onboarding complete but still on onboarding pages → go dashboard
     if (isOnboardingPage) {
       setRedirecting(true);
       router.replace("/dashboard");
@@ -133,7 +163,9 @@ function AppShell({ Component, pageProps }) {
     router,
   ]);
 
-  // ⏳ Global loading
+  /* ============================================================
+     GLOBAL LOADING (APP ROUTES ONLY)
+  ============================================================ */
   if (initializing || loadingOnboarding || redirecting) {
     return (
       <div
@@ -152,6 +184,9 @@ function AppShell({ Component, pageProps }) {
     );
   }
 
+  /* ============================================================
+     APP CONTENT
+  ============================================================ */
   const content = (
     <OrgProvider>
       <Layout>
@@ -160,7 +195,9 @@ function AppShell({ Component, pageProps }) {
     </OrgProvider>
   );
 
-  // 🔐 Admin routes guarded here only
+  /* ============================================================
+     ADMIN GUARD — ADMIN ROUTES ONLY
+  ============================================================ */
   if (isAdminRoute) {
     return <AdminGuard>{content}</AdminGuard>;
   }
@@ -168,6 +205,9 @@ function AppShell({ Component, pageProps }) {
   return content;
 }
 
+/* ============================================================
+   ROOT APP
+============================================================ */
 export default function App(props) {
   return (
     <UserProvider>
