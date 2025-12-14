@@ -19,16 +19,41 @@ export default function LoginPage() {
       ? router.query.redirect
       : "/dashboard";
 
-  // If user already logged in → redirect automatically
+  // If already logged in → redirect
   useEffect(() => {
     if (!initializing && isLoggedIn) {
       router.replace(redirect);
     }
   }, [initializing, isLoggedIn, redirect, router]);
 
-  // ==========================================
-  // SEND MAGIC LINK (FIXED VERSION WITH REDIRECT)
-  // ==========================================
+  /* ==========================================
+     GOOGLE OAUTH LOGIN (SUPABASE)
+  ========================================== */
+  async function signInWithGoogle() {
+    setError("");
+    try {
+      const { error } = await supabase.auth.signInWithOAuth({
+        provider: "google",
+        options: {
+          redirectTo: `${window.location.origin}/auth/callback?redirect=${encodeURIComponent(
+            redirect
+          )}`,
+        },
+      });
+
+      if (error) {
+        console.error("[google login error]", error);
+        setError("Google sign-in failed.");
+      }
+    } catch (err) {
+      console.error("[google login exception]", err);
+      setError("Google sign-in failed.");
+    }
+  }
+
+  /* ==========================================
+     MAGIC LINK LOGIN
+  ========================================== */
   async function sendMagicLink(e) {
     e.preventDefault();
     setError("");
@@ -49,7 +74,6 @@ export default function LoginPage() {
       const { error: linkError } = await supabase.auth.signInWithOtp({
         email: email.trim(),
         options: {
-          // 🔥 IMPORTANT: preserve redirect param into callback
           emailRedirectTo: `${window.location.origin}/auth/callback?redirect=${encodeURIComponent(
             finalRedirect
           )}`,
@@ -58,14 +82,14 @@ export default function LoginPage() {
       });
 
       if (linkError) {
-        console.error("[login] magic link error:", linkError);
+        console.error("[magic link error]", linkError);
         setError(linkError.message || "Could not send magic link.");
         return;
       }
 
       setSent(true);
     } catch (err) {
-      console.error("[login] unexpected:", err);
+      console.error("[magic link exception]", err);
       setError("Could not send magic link.");
     } finally {
       setLoading(false);
@@ -153,7 +177,7 @@ export default function LoginPage() {
             >
               <span style={{ fontSize: 10, color: "#9ca3af" }}>Login</span>
               <span style={{ fontSize: 10, color: "#38bdf8" }}>
-                Magic Link
+                Secure Access
               </span>
             </div>
 
@@ -165,23 +189,42 @@ export default function LoginPage() {
                 letterSpacing: 0.2,
               }}
             >
-              Enter your email to receive a{" "}
-              <span
-                style={{
-                  background:
-                    "linear-gradient(90deg,#38bdf8,#a5b4fc,#e5e7eb)",
-                  WebkitBackgroundClip: "text",
-                  color: "transparent",
-                }}
-              >
-                secure magic link
-              </span>
-              .
+              Sign in to continue
             </h1>
           </div>
         </div>
 
-        {/* IF SENT: SHOW CONFIRMATION */}
+        {/* GOOGLE LOGIN */}
+        <button
+          onClick={signInWithGoogle}
+          style={{
+            width: "100%",
+            borderRadius: 999,
+            padding: "10px 14px",
+            border: "1px solid rgba(148,163,184,0.4)",
+            background: "rgba(15,23,42,0.9)",
+            color: "#e5e7eb",
+            fontSize: 13,
+            fontWeight: 500,
+            cursor: "pointer",
+            marginBottom: 12,
+          }}
+        >
+          Continue with Google
+        </button>
+
+        <div
+          style={{
+            textAlign: "center",
+            fontSize: 11,
+            color: "#64748b",
+            marginBottom: 10,
+          }}
+        >
+          or
+        </div>
+
+        {/* MAGIC LINK */}
         {sent ? (
           <div style={{ marginTop: 20, fontSize: 14, textAlign: "center" }}>
             <p style={{ color: "#93c5fd" }}>
@@ -192,19 +235,7 @@ export default function LoginPage() {
             </p>
           </div>
         ) : (
-          // FORM
-          <form onSubmit={sendMagicLink} style={{ marginTop: 10 }}>
-            <label
-              style={{
-                fontSize: 11,
-                color: "#9ca3af",
-                marginBottom: 4,
-                display: "block",
-              }}
-            >
-              Email
-            </label>
-
+          <form onSubmit={sendMagicLink}>
             <input
               type="email"
               value={email}
@@ -218,7 +249,6 @@ export default function LoginPage() {
                 background: "rgba(15,23,42,0.96)",
                 color: "#e5e7eb",
                 fontSize: 13,
-                outline: "none",
                 marginBottom: 10,
               }}
               disabled={loading}
@@ -253,7 +283,6 @@ export default function LoginPage() {
                 color: "#e5f2ff",
                 fontSize: 13,
                 fontWeight: 500,
-                marginBottom: 10,
                 opacity: loading || !email.trim() ? 0.6 : 1,
                 cursor:
                   loading || !email.trim() ? "not-allowed" : "pointer",
