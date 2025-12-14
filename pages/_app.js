@@ -1,196 +1,25 @@
 // pages/_app.js
 import "../public/cockpit.css";
-import { useEffect, useState } from "react";
-import { useRouter } from "next/router";
+import { UserProvider } from "../context/UserContext";
 import { OrgProvider } from "../context/OrgContext";
 import Layout from "../components/Layout";
-import { UserProvider, useUser } from "../context/UserContext";
-import AdminGuard from "../components/AdminGuard";
 
-const PUBLIC_ROUTES = [
-  "/auth/login",
-  "/auth/callback",
-  "/auth/confirm",
-  "/auth/verify",
-];
-
-const ONBOARDING_STEPS = [
-  "/onboarding/start",
-  "/onboarding/company",
-  "/onboarding/insurance",
-  "/onboarding/rules",
-  "/onboarding/team",
-  "/onboarding/vendors",
-  "/onboarding/complete",
-];
-
-function AppShell({ Component, pageProps }) {
-  const router = useRouter();
-  const path = router.pathname;
-
-  const { isLoggedIn, initializing, org } = useUser();
-
-  const [onboardingStep, setOnboardingStep] = useState(null);
-  const [loadingOnboarding, setLoadingOnboarding] = useState(true);
-  const [redirecting, setRedirecting] = useState(false);
-
-  const isAdminRoute = path.startsWith("/admin");
-  const isPublicRoute = PUBLIC_ROUTES.includes(path);
-
-  /* ============================================================
-     CLEAR REDIRECT FLAG AFTER ROUTE CHANGE
-  ============================================================ */
-  useEffect(() => {
-    const done = () => setRedirecting(false);
-    router.events.on("routeChangeComplete", done);
-    router.events.on("routeChangeError", done);
-    return () => {
-      router.events.off("routeChangeComplete", done);
-      router.events.off("routeChangeError", done);
-    };
-  }, [router.events]);
-
-  /* ============================================================
-     LOAD ONBOARDING STATE (ONLY WHEN LOGGED IN)
-  ============================================================ */
-  useEffect(() => {
-    let cancelled = false;
-
-    async function load() {
-      if (!isLoggedIn || !org?.id) {
-        if (!cancelled) setLoadingOnboarding(false);
-        return;
-      }
-
-      try {
-        const res = await fetch(
-          `/api/organization/status?orgId=${org.id}`
-        );
-        const data = await res.json();
-        if (!cancelled && data.ok) {
-          setOnboardingStep(data.onboarding_step);
-        }
-      } catch (err) {
-        console.error("[_app] onboarding status error:", err);
-      } finally {
-        if (!cancelled) setLoadingOnboarding(false);
-      }
-    }
-
-    setLoadingOnboarding(true);
-    load();
-    return () => {
-      cancelled = true;
-    };
-  }, [isLoggedIn, org?.id]);
-
-  /* ============================================================
-     AUTH REDIRECT (EFFECT ONLY)
-  ============================================================ */
-  useEffect(() => {
-    if (initializing || redirecting) return;
-
-    if (!isLoggedIn && !isPublicRoute) {
-      setRedirecting(true);
-      router.replace(
-        `/auth/login?redirect=${encodeURIComponent(router.asPath)}`
-      );
-    }
-  }, [initializing, redirecting, isLoggedIn, isPublicRoute, router]);
-
-  /* ============================================================
-     ONBOARDING ENFORCEMENT (ADMIN ROUTES EXEMPT)
-  ============================================================ */
-  useEffect(() => {
-    if (
-      initializing ||
-      loadingOnboarding ||
-      redirecting ||
-      !isLoggedIn ||
-      onboardingStep === null ||
-      isAdminRoute
-    ) {
-      return;
-    }
-
-    const isOnboardingPage = ONBOARDING_STEPS.some((r) =>
-      path.startsWith(r.replace("/complete", ""))
-    );
-
-    if (onboardingStep < ONBOARDING_STEPS.length - 1) {
-      const required = ONBOARDING_STEPS[onboardingStep];
-      if (!path.startsWith(required)) {
-        setRedirecting(true);
-        router.replace(required);
-      }
-      return;
-    }
-
-    if (isOnboardingPage) {
-      setRedirecting(true);
-      router.replace("/dashboard");
-    }
-  }, [
-    initializing,
-    loadingOnboarding,
-    redirecting,
-    isLoggedIn,
-    onboardingStep,
-    isAdminRoute,
-    path,
-    router,
-  ]);
-
-  /* ============================================================
-     GLOBAL LOADING
-  ============================================================ */
-  if (initializing || loadingOnboarding || redirecting) {
-    return (
-      <div
-        style={{
-          minHeight: "100vh",
-          color: "#e5e7eb",
-          display: "flex",
-          justifyContent: "center",
-          alignItems: "center",
-          background:
-            "radial-gradient(circle at top left,#020617 0%, #020617 40%, #000)",
-        }}
-      >
-        <div style={{ fontSize: 22 }}>Loading…</div>
-      </div>
-    );
-  }
-
-  /* ============================================================
-     PUBLIC ROUTES RENDER (NO LAYOUT, NO ORG)
-  ============================================================ */
-  if (isPublicRoute) {
-    return <Component {...pageProps} />;
-  }
-
-  /* ============================================================
-     NORMAL APP RENDER
-  ============================================================ */
-  const content = (
-    <OrgProvider>
-      <Layout>
-        <Component {...pageProps} />
-      </Layout>
-    </OrgProvider>
-  );
-
-  if (isAdminRoute) {
-    return <AdminGuard>{content}</AdminGuard>;
-  }
-
-  return content;
-}
-
-export default function App(props) {
+/**
+ * SAFE BOOT MODE
+ * - No redirects
+ * - No onboarding enforcement
+ * - No AdminGuard
+ * - No conditional hooks
+ * Goal: app must load again, always.
+ */
+export default function App({ Component, pageProps }) {
   return (
     <UserProvider>
-      <AppShell {...props} />
+      <OrgProvider>
+        <Layout>
+          <Component {...pageProps} />
+        </Layout>
+      </OrgProvider>
     </UserProvider>
   );
 }
