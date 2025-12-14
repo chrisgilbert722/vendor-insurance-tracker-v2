@@ -10,27 +10,24 @@ export function UserProvider({ children }) {
   const [org, setOrg] = useState(null);
   const [initializing, setInitializing] = useState(true);
 
-  // -------------------------------------
-  // LOAD SUPABASE SESSION (ONCE)
-  // -------------------------------------
+  // ---------------------------------
+  // AUTH SESSION (ALWAYS FINISHES)
+  // ---------------------------------
   useEffect(() => {
     let mounted = true;
 
     async function loadSession() {
-      try {
-        const { data } = await supabase.auth.getSession();
-        if (!mounted) return;
+      const { data } = await supabase.auth.getSession();
+      if (!mounted) return;
 
-        setSession(data?.session ?? null);
-        setUser(data?.session?.user ?? null);
-      } catch (err) {
-        console.error("[UserProvider] session load error:", err);
-      }
+      setSession(data?.session ?? null);
+      setUser(data?.session?.user ?? null);
+      setInitializing(false); // ✅ AUTH IS DONE — ALWAYS
     }
 
     loadSession();
 
-    const { data: authListener } = supabase.auth.onAuthStateChange(
+    const { data: listener } = supabase.auth.onAuthStateChange(
       (_event, newSession) => {
         setSession(newSession);
         setUser(newSession?.user ?? null);
@@ -39,93 +36,53 @@ export function UserProvider({ children }) {
 
     return () => {
       mounted = false;
-      authListener?.subscription?.unsubscribe();
+      listener?.subscription?.unsubscribe();
     };
   }, []);
 
-  // -------------------------------------
-  // LOAD USER ORG (SAFE, NON-BLOCKING)
-  // -------------------------------------
+  // ---------------------------------
+  // ORG LOOKUP (NON-BLOCKING)
+  // ---------------------------------
   useEffect(() => {
-    let mounted = true;
+    if (!user) {
+      setOrg(null);
+      return;
+    }
 
     async function loadOrg() {
-      // No user → done initializing
-      if (!user) {
-        setOrg(null);
-        setInitializing(false);
-        return;
-      }
-
       try {
-        const { data, error } = await supabase
+        const { data } = await supabase
           .from("org_members")
           .select("org_id")
           .eq("user_id", user.id)
-          .limit(1)
-          .maybeSingle(); // ✅ CRITICAL FIX
+          .single();
 
-        if (!mounted) return;
-
-        if (error) {
-          console.warn("[UserProvider] org lookup warning:", error.message);
-          setOrg(null);
-        } else if (data?.org_id) {
+        if (data?.org_id) {
           setOrg({ id: data.org_id });
-        } else {
-          setOrg(null); // valid: user has no org yet
         }
       } catch (err) {
-        console.error("[UserProvider] org load error:", err);
-        setOrg(null);
-      } finally {
-        if (mounted) {
-          setInitializing(false); // ✅ ALWAYS RUNS
-        }
+        console.error("[UserContext] org lookup failed:", err);
       }
     }
 
     loadOrg();
-
-    return () => {
-      mounted = false;
-    };
   }, [user]);
 
-  // -------------------------------------
-  // ROLE SYSTEM (SOURCE OF TRUTH = DB)
-  // -------------------------------------
-  const role =
-    user?.app_metadata?.role ||
-    user?.user_metadata?.role ||
-    "admin"; // safe default for owner/dev
-
-  const isAdmin = role === "admin";
-  const isManager = role === "manager" || role === "admin";
-  const isViewer = !isAdmin && !isManager;
-
-  const value = {
-    session,
-    user,
-    org,
-    isLoggedIn: !!user,
-    isAdmin,
-    isManager,
-    isViewer,
-    initializing,
-  };
-
   return (
-    <UserContext.Provider value={value}>
+    <UserContext.Provider
+      value={{
+        session,
+        user,
+        org,
+        isLoggedIn: !!user,
+        initializing,
+      }}
+    >
       {children}
     </UserContext.Provider>
   );
 }
 
 export function useUser() {
-  const ctx = useContext(UserContext);
-  if (!ctx) {
-    throw new Error("useUser must be used within UserProvider");
-  }
-  return ctx;
+  return useContext(UserContext);
 }
