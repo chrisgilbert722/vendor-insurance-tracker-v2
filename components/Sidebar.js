@@ -1,4 +1,4 @@
-// components/Sidebar.js — Tactical Neon Rail V15 (Roles Fixed)
+// components/Sidebar.js — Tactical Neon Rail V15 (ROLES FINAL)
 import React, { useEffect, useState } from "react";
 import Link from "next/link";
 import { useOrg } from "../context/OrgContext";
@@ -87,12 +87,34 @@ export default function Sidebar({ pathname, isAdmin, isManager }) {
       <div style={{ marginBottom: 34, fontSize: 26, color: "#38bdf8" }}>⚡</div>
 
       {/* CORE */}
-      <RailLink href="/dashboard" label="Dashboard" icon="📊" active={pathname === "/dashboard"} />
-      <RailLink href="/vendors" label="Vendors" icon="👥" active={pathname === "/vendors"} />
-      <RailLink href="/documents" label="Docs" icon="🗂️" active={pathname.startsWith("/documents")} />
+      <RailLink
+        href="/dashboard"
+        label="Dashboard"
+        icon="📊"
+        active={pathname === "/dashboard"}
+      />
+
+      <RailLink
+        href="/vendors"
+        label="Vendors"
+        icon="👥"
+        active={pathname === "/vendors"}
+      />
+
+      <RailLink
+        href="/documents"
+        label="Docs"
+        icon="🗂️"
+        active={pathname.startsWith("/documents")}
+      />
 
       {(isAdmin || isManager) && (
-        <RailLink href="/upload-coi" label="Upload" icon="📄" active={pathname === "/upload-coi"} />
+        <RailLink
+          href="/upload-coi"
+          label="Upload"
+          icon="📄"
+          active={pathname === "/upload-coi"}
+        />
       )}
 
       {/* ADMIN */}
@@ -153,7 +175,7 @@ export default function Sidebar({ pathname, isAdmin, isManager }) {
         />
       )}
 
-      {/* TUTORIAL */}
+      {/* TUTORIAL REPLAY */}
       <RailLink
         href="/dashboard?tutorial=1"
         label="Tutorial"
@@ -163,7 +185,12 @@ export default function Sidebar({ pathname, isAdmin, isManager }) {
 
       {/* LOGOUT */}
       <div style={{ marginTop: "auto" }}>
-        <RailLink href="/auth/login" label="Logout" icon="🔐" active={false} />
+        <RailLink
+          href="/auth/login"
+          label="Logout"
+          icon="🔐"
+          active={false}
+        />
       </div>
     </div>
   );
@@ -191,7 +218,9 @@ function RailLink({ href, label, icon, active }) {
           textTransform: "uppercase",
         }}
       >
-        <div style={{ fontSize: typeof icon === "string" ? 20 : 0 }}>{icon}</div>
+        <div style={{ fontSize: typeof icon === "string" ? 20 : 0 }}>
+          {icon}
+        </div>
         <span>{label}</span>
       </a>
     </Link>
