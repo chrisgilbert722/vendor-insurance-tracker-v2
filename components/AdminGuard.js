@@ -13,7 +13,7 @@ export default function AdminGuard({ children }) {
     // ⛔ Wait until BOTH auth + role are ready
     if (initializing || !ready) return;
 
-    // Not logged in → login
+    // 🔐 Not logged in → login
     if (!isLoggedIn) {
       router.replace(
         `/auth/login?redirect=${encodeURIComponent(router.asPath)}`
@@ -21,11 +21,19 @@ export default function AdminGuard({ children }) {
       return;
     }
 
-    // Logged in but insufficient role → dashboard
+    // 🚫 Logged in but insufficient role → dashboard
     if (!isAdmin && !isManager) {
       router.replace("/dashboard");
     }
-  }, [initializing, ready, isLoggedIn, isAdmin, isManager, router]);
+  }, [
+    initializing,
+    ready,
+    isLoggedIn,
+    isAdmin,
+    isManager,
+    router,
+    router.asPath, // ✅ IMPORTANT
+  ]);
 
   // ⛔ Block render until decision is FINAL
   if (initializing || !ready) {
