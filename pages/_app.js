@@ -5,6 +5,7 @@ import { useRouter } from "next/router";
 import { OrgProvider } from "../context/OrgContext";
 import Layout from "../components/Layout";
 import { UserProvider, useUser } from "../context/UserContext";
+import AdminGuard from "../components/AdminGuard"; // ✅ NEW
 
 // Routes that never require auth
 const PUBLIC_ROUTES = [
@@ -36,7 +37,7 @@ function AppShell({ Component, pageProps }) {
 
   /* ============================================================
      ABSOLUTE HARD STOP:
-     NEVER render ANYTHING for /api/* — return null IMMEDIATELY
+     NEVER render ANYTHING for /api/*
   ============================================================ */
   if (typeof window !== "undefined" && router.asPath.startsWith("/api")) {
     return null;
@@ -120,15 +121,26 @@ function AppShell({ Component, pageProps }) {
   }
 
   /* ============================================================
-     NORMAL APP RENDER
+     ADMIN ROUTE GUARD (NEW — SAFE)
   ============================================================ */
-  return (
+  const isAdminRoute = path.startsWith("/admin");
+
+  const content = (
     <OrgProvider>
       <Layout>
         <Component {...pageProps} />
       </Layout>
     </OrgProvider>
   );
+
+  if (isAdminRoute) {
+    return <AdminGuard>{content}</AdminGuard>;
+  }
+
+  /* ============================================================
+     NORMAL APP RENDER
+  ============================================================ */
+  return content;
 }
 
 export default function App(props) {
