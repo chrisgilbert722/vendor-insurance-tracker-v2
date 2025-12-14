@@ -7,87 +7,103 @@ const UserContext = createContext(null);
 export function UserProvider({ children }) {
   const [session, setSession] = useState(null);
   const [user, setUser] = useState(null);
-
-  const [org, setOrg] = useState(null); // active org
+  const [org, setOrg] = useState(null);
   const [initializing, setInitializing] = useState(true);
 
-  // ---------------------------
-  // LOAD SUPABASE SESSION
-  // ---------------------------
+  // -------------------------------------
+  // LOAD SUPABASE SESSION (ONCE)
+  // -------------------------------------
   useEffect(() => {
-    let ignore = false;
+    let mounted = true;
 
     async function loadSession() {
-      const { data } = await supabase.auth.getSession();
-      if (ignore) return;
+      try {
+        const { data } = await supabase.auth.getSession();
+        if (!mounted) return;
 
-      setSession(data?.session ?? null);
-      setUser(data?.session?.user ?? null);
+        setSession(data?.session ?? null);
+        setUser(data?.session?.user ?? null);
+      } catch (err) {
+        console.error("[UserProvider] session load error:", err);
+      }
     }
 
     loadSession();
 
-    const {
-      data: { subscription },
-    } = supabase.auth.onAuthStateChange((_event, newSession) => {
-      setSession(newSession);
-      setUser(newSession?.user ?? null);
-    });
+    const { data: authListener } = supabase.auth.onAuthStateChange(
+      (_event, newSession) => {
+        setSession(newSession);
+        setUser(newSession?.user ?? null);
+      }
+    );
 
     return () => {
-      ignore = true;
-      subscription?.unsubscribe();
+      mounted = false;
+      authListener?.subscription?.unsubscribe();
     };
   }, []);
 
-  // ---------------------------
-  // LOAD USER'S ORGANIZATION
-  // ---------------------------
+  // -------------------------------------
+  // LOAD USER ORG (SAFE, NON-BLOCKING)
+  // -------------------------------------
   useEffect(() => {
-    if (!user) {
-      setOrg(null);
-      setInitializing(false);
-      return;
-    }
+    let mounted = true;
 
     async function loadOrg() {
+      // No user → done initializing
+      if (!user) {
+        setOrg(null);
+        setInitializing(false);
+        return;
+      }
+
       try {
         const { data, error } = await supabase
-          .from("org_members") // ✅ FIXED TABLE NAME
+          .from("org_members")
           .select("org_id")
           .eq("user_id", user.id)
-          .single();
+          .limit(1)
+          .maybeSingle(); // ✅ CRITICAL FIX
+
+        if (!mounted) return;
 
         if (error) {
-          console.error("[UserProvider] org lookup error:", error);
+          console.warn("[UserProvider] org lookup warning:", error.message);
+          setOrg(null);
         } else if (data?.org_id) {
           setOrg({ id: data.org_id });
+        } else {
+          setOrg(null); // valid: user has no org yet
         }
       } catch (err) {
-        console.error("[UserProvider] org load throw:", err);
+        console.error("[UserProvider] org load error:", err);
+        setOrg(null);
       } finally {
-        setInitializing(false);
+        if (mounted) {
+          setInitializing(false); // ✅ ALWAYS RUNS
+        }
       }
     }
 
     loadOrg();
+
+    return () => {
+      mounted = false;
+    };
   }, [user]);
 
-  // ---------------------------
-  // ROLE SYSTEM
-  // ---------------------------
+  // -------------------------------------
+  // ROLE SYSTEM (SOURCE OF TRUTH = DB)
+  // -------------------------------------
   const role =
     user?.app_metadata?.role ||
     user?.user_metadata?.role ||
-    "admin";
+    "admin"; // safe default for owner/dev
 
   const isAdmin = role === "admin";
   const isManager = role === "manager" || role === "admin";
   const isViewer = !isAdmin && !isManager;
 
-  // ---------------------------
-  // PROVIDER VALUE
-  // ---------------------------
   const value = {
     session,
     user,
@@ -99,9 +115,17 @@ export function UserProvider({ children }) {
     initializing,
   };
 
-  return <UserContext.Provider value={value}>{children}</UserContext.Provider>;
+  return (
+    <UserContext.Provider value={value}>
+      {children}
+    </UserContext.Provider>
+  );
 }
 
 export function useUser() {
-  return useContext(UserContext);
+  const ctx = useContext(UserContext);
+  if (!ctx) {
+    throw new Error("useUser must be used within UserProvider");
+  }
+  return ctx;
 }
