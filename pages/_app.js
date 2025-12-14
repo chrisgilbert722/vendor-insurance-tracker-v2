@@ -35,21 +35,7 @@ function AppShell({ Component, pageProps }) {
   const [redirecting, setRedirecting] = useState(false);
 
   const isAdminRoute = path.startsWith("/admin");
-
-  /* ============================================================
-     🚨 CRITICAL FIX — AUTH ROUTES BYPASS EVERYTHING
-     (NO Layout, NO Org, NO Guards, NO Onboarding)
-  ============================================================ */
-  if (PUBLIC_ROUTES.includes(path)) {
-    return <Component {...pageProps} />;
-  }
-
-  /* ============================================================
-     NEVER RENDER API ROUTES
-  ============================================================ */
-  if (typeof window !== "undefined" && router.asPath.startsWith("/api")) {
-    return null;
-  }
+  const isPublicRoute = PUBLIC_ROUTES.includes(path);
 
   /* ============================================================
      CLEAR REDIRECT FLAG AFTER ROUTE CHANGE
@@ -65,23 +51,22 @@ function AppShell({ Component, pageProps }) {
   }, [router.events]);
 
   /* ============================================================
-     LOAD ONBOARDING STATE
+     LOAD ONBOARDING STATE (ONLY WHEN LOGGED IN)
   ============================================================ */
   useEffect(() => {
     let cancelled = false;
 
     async function load() {
-      try {
-        if (!isLoggedIn || !org?.id) {
-          if (!cancelled) setLoadingOnboarding(false);
-          return;
-        }
+      if (!isLoggedIn || !org?.id) {
+        if (!cancelled) setLoadingOnboarding(false);
+        return;
+      }
 
+      try {
         const res = await fetch(
           `/api/organization/status?orgId=${org.id}`
         );
         const data = await res.json();
-
         if (!cancelled && data.ok) {
           setOnboardingStep(data.onboarding_step);
         }
@@ -94,25 +79,24 @@ function AppShell({ Component, pageProps }) {
 
     setLoadingOnboarding(true);
     load();
-
     return () => {
       cancelled = true;
     };
   }, [isLoggedIn, org?.id]);
 
   /* ============================================================
-     AUTH REDIRECT
+     AUTH REDIRECT (EFFECT ONLY)
   ============================================================ */
   useEffect(() => {
     if (initializing || redirecting) return;
 
-    if (!isLoggedIn) {
+    if (!isLoggedIn && !isPublicRoute) {
       setRedirecting(true);
       router.replace(
         `/auth/login?redirect=${encodeURIComponent(router.asPath)}`
       );
     }
-  }, [initializing, redirecting, isLoggedIn, router, path]);
+  }, [initializing, redirecting, isLoggedIn, isPublicRoute, router]);
 
   /* ============================================================
      ONBOARDING ENFORCEMENT (ADMIN ROUTES EXEMPT)
@@ -176,6 +160,13 @@ function AppShell({ Component, pageProps }) {
         <div style={{ fontSize: 22 }}>Loading…</div>
       </div>
     );
+  }
+
+  /* ============================================================
+     PUBLIC ROUTES RENDER (NO LAYOUT, NO ORG)
+  ============================================================ */
+  if (isPublicRoute) {
+    return <Component {...pageProps} />;
   }
 
   /* ============================================================
