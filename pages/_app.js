@@ -1,14 +1,13 @@
 // pages/_app.js
 import "../public/cockpit.css";
-import { useEffect, useState } from "react";
 import { useRouter } from "next/router";
+import { UserProvider, useUser } from "../context/UserContext";
 import { OrgProvider } from "../context/OrgContext";
 import Layout from "../components/Layout";
-import { UserProvider, useUser } from "../context/UserContext";
 import AdminGuard from "../components/AdminGuard";
 
 /* ============================================================
-   ROUTE CONSTANTS
+   ROUTES
 ============================================================ */
 const PUBLIC_ROUTES = [
   "/auth/login",
@@ -17,176 +16,47 @@ const PUBLIC_ROUTES = [
   "/auth/verify",
 ];
 
-const ONBOARDING_STEPS = [
-  "/onboarding/start",
-  "/onboarding/company",
-  "/onboarding/insurance",
-  "/onboarding/rules",
-  "/onboarding/team",
-  "/onboarding/vendors",
-  "/onboarding/complete",
-];
+/* ============================================================
+   AUTH-ONLY WRAPPER (NO LAYOUT)
+============================================================ */
+function AuthOnly({ Component, pageProps }) {
+  return <Component {...pageProps} />;
+}
 
 /* ============================================================
-   APP SHELL
+   APP WRAPPER (WITH LAYOUT)
 ============================================================ */
-function AppShell({ Component, pageProps }) {
+function AppWithLayout({ Component, pageProps }) {
   const router = useRouter();
   const path = router.pathname;
 
-  const { isLoggedIn, initializing, org } = useUser();
+  const { isLoggedIn, initializing } = useUser();
 
-  const [onboardingStep, setOnboardingStep] = useState(null);
-  const [loadingOnboarding, setLoadingOnboarding] = useState(true);
-  const [redirecting, setRedirecting] = useState(false);
-
-  const isAdminRoute = path.startsWith("/admin");
-
-  /* ============================================================
-     HARD STOP — NEVER RENDER API ROUTES
-  ============================================================ */
-  if (typeof window !== "undefined" && router.asPath.startsWith("/api")) {
-    return null;
-  }
-
-  /* ============================================================
-     AUTH ROUTES MUST NEVER BE BLOCKED (CRITICAL FIX)
-  ============================================================ */
-  if (path.startsWith("/auth")) {
-    return (
-      <OrgProvider>
-        <Layout>
-          <Component {...pageProps} />
-        </Layout>
-      </OrgProvider>
-    );
-  }
-
-  /* ============================================================
-     CLEAR REDIRECT STATE AFTER NAVIGATION
-  ============================================================ */
-  useEffect(() => {
-    const done = () => setRedirecting(false);
-    router.events.on("routeChangeComplete", done);
-    router.events.on("routeChangeError", done);
-    return () => {
-      router.events.off("routeChangeComplete", done);
-      router.events.off("routeChangeError", done);
-    };
-  }, [router.events]);
-
-  /* ============================================================
-     LOAD ONBOARDING STATUS
-  ============================================================ */
-  useEffect(() => {
-    let cancelled = false;
-
-    async function load() {
-      try {
-        if (!isLoggedIn || !org?.id) {
-          if (!cancelled) setLoadingOnboarding(false);
-          return;
-        }
-
-        const res = await fetch(`/api/organization/status?orgId=${org.id}`);
-        const data = await res.json();
-        if (!cancelled && data.ok) {
-          setOnboardingStep(data.onboarding_step);
-        }
-      } catch (err) {
-        console.error("[_app] onboarding status error:", err);
-      } finally {
-        if (!cancelled) setLoadingOnboarding(false);
-      }
-    }
-
-    setLoadingOnboarding(true);
-    load();
-
-    return () => {
-      cancelled = true;
-    };
-  }, [isLoggedIn, org?.id]);
-
-  /* ============================================================
-     AUTH REDIRECT (NON-PUBLIC ROUTES ONLY)
-  ============================================================ */
-  useEffect(() => {
-    if (initializing || redirecting) return;
-
-    if (!isLoggedIn && !PUBLIC_ROUTES.includes(path)) {
-      setRedirecting(true);
-      router.replace(`/auth/login?redirect=${encodeURIComponent(router.asPath)}`);
-    }
-  }, [initializing, redirecting, isLoggedIn, path, router]);
-
-  /* ============================================================
-     ONBOARDING REDIRECTS (ADMIN ROUTES EXEMPT)
-  ============================================================ */
-  useEffect(() => {
-    if (
-      initializing ||
-      loadingOnboarding ||
-      redirecting ||
-      !isLoggedIn ||
-      onboardingStep === null ||
-      isAdminRoute
-    ) {
-      return;
-    }
-
-    const isOnboardingPage = ONBOARDING_STEPS.some((r) =>
-      path.startsWith(r.replace("/complete", ""))
-    );
-
-    if (onboardingStep < ONBOARDING_STEPS.length - 1) {
-      const required = ONBOARDING_STEPS[onboardingStep];
-      if (!path.startsWith(required)) {
-        setRedirecting(true);
-        router.replace(required);
-      }
-      return;
-    }
-
-    if (isOnboardingPage) {
-      setRedirecting(true);
-      router.replace("/dashboard");
-    }
-  }, [
-    initializing,
-    loadingOnboarding,
-    redirecting,
-    isLoggedIn,
-    onboardingStep,
-    isAdminRoute,
-    path,
-    router,
-  ]);
-
-  /* ============================================================
-     GLOBAL LOADING (APP ROUTES ONLY)
-  ============================================================ */
-  if (initializing || loadingOnboarding || redirecting) {
+  // ⛔ Block while auth resolves
+  if (initializing) {
     return (
       <div
         style={{
           minHeight: "100vh",
-          color: "#e5e7eb",
           display: "flex",
-          justifyContent: "center",
           alignItems: "center",
+          justifyContent: "center",
+          color: "#e5e7eb",
           background:
             "radial-gradient(circle at top left,#020617 0%, #020617 40%, #000)",
         }}
       >
-        <div style={{ fontSize: 22 }}>Loading…</div>
+        Loading…
       </div>
     );
   }
 
-  /* ============================================================
-     APP CONTENT
-  ============================================================ */
+  // 🔐 Redirect unauthenticated users
+  if (!isLoggedIn) {
+    router.replace(`/auth/login?redirect=${encodeURIComponent(router.asPath)}`);
+    return null;
+  }
+
   const content = (
     <OrgProvider>
       <Layout>
@@ -195,10 +65,8 @@ function AppShell({ Component, pageProps }) {
     </OrgProvider>
   );
 
-  /* ============================================================
-     ADMIN GUARD — ADMIN ROUTES ONLY
-  ============================================================ */
-  if (isAdminRoute) {
+  // 🔐 Admin routes ONLY
+  if (path.startsWith("/admin")) {
     return <AdminGuard>{content}</AdminGuard>;
   }
 
@@ -208,10 +76,19 @@ function AppShell({ Component, pageProps }) {
 /* ============================================================
    ROOT APP
 ============================================================ */
-export default function App(props) {
+export default function App({ Component, pageProps }) {
+  const router = useRouter();
+  const isAuthRoute = PUBLIC_ROUTES.some((r) =>
+    router.pathname.startsWith(r)
+  );
+
   return (
     <UserProvider>
-      <AppShell {...props} />
+      {isAuthRoute ? (
+        <AuthOnly Component={Component} pageProps={pageProps} />
+      ) : (
+        <AppWithLayout Component={Component} pageProps={pageProps} />
+      )}
     </UserProvider>
   );
 }
