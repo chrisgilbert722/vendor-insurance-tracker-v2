@@ -1,4 +1,6 @@
 // components/Layout.js — STABLE (Tutorial + Roles + Admin fixed)
+// ✅ Never hard-block render on role loading (prevents infinite Loading deadlock)
+
 import { useRouter } from "next/router";
 import Sidebar from "./Sidebar";
 import Header from "./Header";
@@ -15,32 +17,24 @@ function extractVendorId(path) {
 export default function Layout({ children }) {
   const router = useRouter();
 
-  // ✅ IMPORTANT: use asPath, not pathname
-  const pathname = router.asPath;
+  // ✅ use asPath for active highlighting + vendor id parsing
+  const pathname = router.asPath || router.pathname || "";
 
-  const { activeOrgId, onboardingComplete } = useOrg();
-  const { isAdmin, isManager, isViewer, loading } = useRole();
+  const { activeOrgId, onboardingComplete } = useOrg() || {};
+
+  // Roles (DO NOT block render on loading)
+  const roleState = useRole() || {};
+  const isAdmin = !!roleState.isAdmin;
+  const isManager = !!roleState.isManager;
+  const isViewer = !!roleState.isViewer;
+  const loadingRole = !!roleState.loading;
+
+  // Safe fallback while role loads (keeps UI alive)
+  const safeIsAdmin = loadingRole ? false : isAdmin;
+  const safeIsManager = loadingRole ? false : isManager;
+  const safeIsViewer = loadingRole ? true : isViewer;
 
   const vendorId = extractVendorId(pathname);
-
-  // ⏳ Prevent rendering until roles are known
-  if (loading) {
-    return (
-      <div
-        style={{
-          minHeight: "100vh",
-          color: "#e5e7eb",
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "center",
-          background:
-            "radial-gradient(circle at top left,#020617 0%, #020617 40%, #000)",
-        }}
-      >
-        <div style={{ fontSize: 22 }}>Loading…</div>
-      </div>
-    );
-  }
 
   return (
     <div
@@ -76,12 +70,13 @@ export default function Layout({ children }) {
 
       <div className="cockpit-particles" />
 
-      {/* ✅ Sidebar now receives correct props */}
+      {/* Sidebar */}
       <Sidebar
         pathname={pathname}
-        isAdmin={isAdmin}
-        isManager={isManager}
-        isViewer={isViewer}
+        isAdmin={safeIsAdmin}
+        isManager={safeIsManager}
+        isViewer={safeIsViewer}
+        // If your Sidebar ignores this prop, that's fine (no break)
         onboardingComplete={onboardingComplete}
       />
 
@@ -96,6 +91,25 @@ export default function Layout({ children }) {
         }}
       >
         <Header />
+
+        {/* Optional tiny role-loading hint (non-blocking) */}
+        {loadingRole && (
+          <div
+            style={{
+              position: "sticky",
+              top: 0,
+              zIndex: 5,
+              padding: "6px 12px",
+              fontSize: 11,
+              color: "rgba(148,163,184,0.85)",
+              background: "rgba(2,6,23,0.55)",
+              borderBottom: "1px solid rgba(148,163,184,0.15)",
+              backdropFilter: "blur(10px)",
+            }}
+          >
+            Loading permissions…
+          </div>
+        )}
 
         <main
           style={{
@@ -135,12 +149,12 @@ export default function Layout({ children }) {
         ❓
       </button>
 
-      {/* Global Chat */}
+      {/* Global Chat (safe if orgId null) */}
       <SupportChatPanel
-        orgId={activeOrgId}
+        orgId={activeOrgId || null}
         vendorId={vendorId}
         pathname={pathname}
-        onboardingComplete={onboardingComplete}
+        onboardingComplete={!!onboardingComplete}
       />
     </div>
   );
