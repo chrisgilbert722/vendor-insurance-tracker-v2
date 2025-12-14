@@ -1,4 +1,4 @@
-// components/Layout.js — Updated for GOD MODE Wizard (passes onboardingComplete to Chat Panel)
+// components/Layout.js — STABLE (Tutorial + Roles + Admin fixed)
 import { useRouter } from "next/router";
 import Sidebar from "./Sidebar";
 import Header from "./Header";
@@ -7,20 +7,40 @@ import { useOrg } from "../context/OrgContext";
 import SupportChatPanel from "./chat/SupportChatPanel";
 
 /* Extract vendorId from URL */
-function extractVendorId(pathname) {
-  const match = pathname.match(/\/vendor\/(\d+)/);
+function extractVendorId(path) {
+  const match = path.match(/\/vendor\/(\d+)/);
   return match ? match[1] : null;
 }
 
 export default function Layout({ children }) {
   const router = useRouter();
-  const pathname = router.pathname;
 
-  const { activeOrgId, onboardingComplete } = useOrg(); // ⭐ NEW: pull onboardingComplete
+  // ✅ IMPORTANT: use asPath, not pathname
+  const pathname = router.asPath;
 
-  const { isAdmin, isManager, isViewer } = useRole();
+  const { activeOrgId, onboardingComplete } = useOrg();
+  const { isAdmin, isManager, isViewer, loading } = useRole();
 
   const vendorId = extractVendorId(pathname);
+
+  // ⏳ Prevent rendering until roles are known
+  if (loading) {
+    return (
+      <div
+        style={{
+          minHeight: "100vh",
+          color: "#e5e7eb",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          background:
+            "radial-gradient(circle at top left,#020617 0%, #020617 40%, #000)",
+        }}
+      >
+        <div style={{ fontSize: 22 }}>Loading…</div>
+      </div>
+    );
+  }
 
   return (
     <div
@@ -56,12 +76,13 @@ export default function Layout({ children }) {
 
       <div className="cockpit-particles" />
 
-      {/* Sidebar */}
+      {/* ✅ Sidebar now receives correct props */}
       <Sidebar
         pathname={pathname}
         isAdmin={isAdmin}
         isManager={isManager}
         isViewer={isViewer}
+        onboardingComplete={onboardingComplete}
       />
 
       {/* Main panel */}
@@ -88,7 +109,7 @@ export default function Layout({ children }) {
         </main>
       </div>
 
-      {/* ⭐ Explain This Page Button */}
+      {/* Explain Page */}
       <button
         onClick={() => window.dispatchEvent(new CustomEvent("explain_page"))}
         style={{
@@ -114,12 +135,12 @@ export default function Layout({ children }) {
         ❓
       </button>
 
-      {/* ⭐ GLOBAL CHAT PANEL — NOW WIZARD-AWARE ⭐ */}
+      {/* Global Chat */}
       <SupportChatPanel
         orgId={activeOrgId}
         vendorId={vendorId}
         pathname={pathname}
-        onboardingComplete={onboardingComplete}  // ⭐ NEW: critical for GOD MODE
+        onboardingComplete={onboardingComplete}
       />
     </div>
   );
