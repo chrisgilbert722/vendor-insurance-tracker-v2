@@ -7,27 +7,46 @@ import { useRole } from "../lib/useRole";
 export default function AdminGuard({ children }) {
   const router = useRouter();
   const { isLoggedIn, initializing } = useUser();
-  const { isAdmin, isManager } = useRole();
+  const role = useRole(); // includes loading + flags
 
   useEffect(() => {
-    if (initializing) return;
+    // ⏳ Wait until BOTH auth + role are resolved
+    if (initializing || role.loading) return;
 
-    // Not logged in → login
+    // 🔐 Not logged in → login
     if (!isLoggedIn) {
-      router.replace(`/auth/login?redirect=${encodeURIComponent(router.asPath)}`);
+      router.replace(
+        `/auth/login?redirect=${encodeURIComponent(router.asPath)}`
+      );
       return;
     }
 
-    // Logged in but not admin/manager → dashboard
-    if (!isAdmin && !isManager) {
+    // 🚫 Logged in but not admin/manager → dashboard
+    if (!role.isAdmin && !role.isManager) {
       router.replace("/dashboard");
     }
-  }, [initializing, isLoggedIn, isAdmin, isManager, router]);
+  }, [
+    initializing,
+    role.loading,
+    isLoggedIn,
+    role.isAdmin,
+    role.isManager,
+    router,
+  ]);
 
-  // Block render while checking
-  if (initializing || !isLoggedIn || (!isAdmin && !isManager)) {
+  // ⛔ Block render until auth + role are fully known
+  if (initializing || role.loading) {
     return null;
   }
 
+  if (!isLoggedIn) {
+    return null;
+  }
+
+  if (!role.isAdmin && !role.isManager) {
+    return null;
+  }
+
+  // ✅ Authorized admin content
   return children;
 }
