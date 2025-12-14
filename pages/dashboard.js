@@ -1,7 +1,6 @@
 // pages/dashboard.js — Dashboard V5 (Cinematic Intelligence Cockpit)
 
 import { useEffect, useState, useRef } from "react";
-import { getSession } from "next-auth/react";
 import VendorDrawer from "../components/VendorDrawer";
 import { useRole } from "../lib/useRole";
 import { useOrg } from "../context/OrgContext";
@@ -2054,24 +2053,6 @@ const td = {
 // =======================================
 // END OF DASHBOARD V5 CINEMATIC INTELLIGENCE FILE
 // =======================================
-
-
-export async function getServerSideProps(context) {
-  const session = await getSession(context);
-
-  if (!session) {
-    return {
-      redirect: {
-        destination: "/admin/login",
-        permanent: false,
-      },
-    };
-  }
-
-  return {
-    props: {},
-  };
-}
 
 
 export default Dashboard;
