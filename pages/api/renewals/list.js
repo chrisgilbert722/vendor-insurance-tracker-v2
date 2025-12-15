@@ -1,40 +1,52 @@
+// pages/api/renewals/list.js
+// UUID-safe, skip-safe Renewals List (Enterprise Stable)
+
 import { sql } from "../../../lib/db";
-
-const UUID_RE =
-  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
-
-function cleanOrgId(v) {
-  if (!v) return null;
-  const s = String(v).trim();
-  if (!s || s === "null" || s === "undefined") return null;
-  return UUID_RE.test(s) ? s : null;
-}
+import { cleanUUID } from "../../../lib/uuid";
 
 export default async function handler(req, res) {
   if (req.method !== "GET") {
-    res.setHeader("Allow", ["GET"]);
     return res.status(405).json({ ok: false, error: "GET only" });
   }
 
   try {
-    const orgId = cleanOrgId(req.query.orgId);
+    const orgId = cleanUUID(req.query.orgId);
     if (!orgId) {
-      return res.status(200).json({ ok: false, skipped: true, items: [] });
+      return res.status(200).json({
+        ok: false,
+        skipped: true,
+        items: [],
+        reason: "missing_or_invalid_orgId",
+      });
     }
 
-    // Simple renewal list: policies expiring soon
     const days = Math.max(1, Math.min(365, Number(req.query.days || 90)));
+
     const rows = await sql`
-      SELECT *
-      FROM policies
-      WHERE org_id = ${orgId}
-      ORDER BY expiration_date ASC NULLS LAST
-      LIMIT 500;
+      SELECT
+        p.id,
+        p.vendor_id,
+        v.name AS vendor_name,
+        p.coverage_type,
+        p.expiration_date,
+        (p.expiration_date - CURRENT_DATE) AS days_left
+      FROM policies p
+      JOIN vendors v ON v.id = p.vendor_id
+      WHERE p.org_id = ${orgId}
+        AND p.expiration_date IS NOT NULL
+        AND p.expiration_date <= CURRENT_DATE + (${days}::int || ' days')::interval
+      ORDER BY p.expiration_date ASC;
     `;
 
-    return res.status(200).json({ ok: true, items: rows || [], days });
+    return res.status(200).json({
+      ok: true,
+      items: rows || [],
+    });
   } catch (err) {
     console.error("[renewals/list] ERROR:", err);
-    return res.status(500).json({ ok: false, error: err.message || "Failed" });
+    return res.status(500).json({
+      ok: false,
+      error: err.message || "Failed to load renewals",
+    });
   }
 }
