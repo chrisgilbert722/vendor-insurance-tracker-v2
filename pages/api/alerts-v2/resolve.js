@@ -1,27 +1,44 @@
-// pages/api/alerts-v2/resolve.js
-import { sql } from "../../../lib/db";
+import { resolveAlertV2 } from "../../../lib/alertsV2Engine";
+
+const UUID_RE =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
+function cleanOrgId(v) {
+  if (!v) return null;
+  const s = String(v).trim();
+  if (!s || s === "null" || s === "undefined") return null;
+  return UUID_RE.test(s) ? s : null;
+}
+
+function parseVendorId(v) {
+  if (v === null || v === undefined) return null;
+  const s = String(v).trim();
+  if (!s || s === "null" || s === "undefined") return null;
+  if (/^\d+$/.test(s)) return Number(s);
+  return s;
+}
+
 
 export default async function handler(req, res) {
   if (req.method !== "POST") {
-    return res.status(405).json({ ok: false, error: "Method not allowed" });
+    return res.status(405).json({ ok: false, error: "POST only" });
   }
 
   try {
-    const { alertId, orgId } = req.body;
+    const orgId = cleanOrgId(req.body?.orgId);
+    const id = req.body?.id;
 
-    if (!alertId || !orgId) {
-      return res.status(400).json({ ok: false, error: "Missing fields" });
+    if (!orgId) {
+      return res.status(200).json({ ok: false, skipped: true, error: "Missing or invalid orgId" });
+    }
+    if (!id) {
+      return res.status(400).json({ ok: false, error: "Missing alert id" });
     }
 
-    await sql`
-      UPDATE alerts_v2
-      SET resolved_at = now()
-      WHERE id = ${alertId} AND org_id = ${orgId};
-    `;
-
+    await resolveAlertV2(id, orgId);
     return res.status(200).json({ ok: true });
   } catch (err) {
-    console.error("[alerts-v2/resolve]", err);
-    return res.status(500).json({ ok: false, error: err.message });
+    console.error("[alerts-v2/resolve] error:", err);
+    return res.status(500).json({ ok: false, error: err.message || "Internal error" });
   }
 }
