@@ -1,14 +1,11 @@
+// pages/api/renewals/sla.js
+// ============================================================
+// RENEWALS SLA — UUID SAFE + SKIP SAFE
+// Never throws. Never casts UUIDs. Enterprise-grade.
+// ============================================================
+
 import { sql } from "../../../lib/db";
-
-const UUID_RE =
-  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
-
-function cleanOrgId(v) {
-  if (!v) return null;
-  const s = String(v).trim();
-  if (!s || s === "null" || s === "undefined") return null;
-  return UUID_RE.test(s) ? s : null;
-}
+import { cleanUUID } from "../../../lib/uuid";
 
 export default async function handler(req, res) {
   if (req.method !== "GET") {
@@ -17,26 +14,65 @@ export default async function handler(req, res) {
   }
 
   try {
-    const orgId = cleanOrgId(req.query.orgId);
+    const orgId = cleanUUID(req.query.orgId);
+
+    // HARD SKIP — dashboard safety
     if (!orgId) {
-      return res.status(200).json({ ok: false, skipped: true, sla: { ok: true } });
+      return res.status(200).json({
+        ok: true,
+        skipped: true,
+        total: 0,
+        breached: 0,
+        dueSoon: 0,
+        onTrack: 0,
+      });
     }
 
-    // Minimal SLA summary placeholder (replace with your real SLA table if you have one)
+    // SLA rules:
+    // - breached: expired
+    // - dueSoon: expires within 7 days
+    // - onTrack: everything else
+
     const rows = await sql`
-      SELECT COUNT(*)::int AS total
+      SELECT
+        expiration_date
       FROM policies
-      WHERE org_id = ${orgId};
+      WHERE org_id = ${orgId}
+        AND expiration_date IS NOT NULL;
     `;
+
+    let breached = 0;
+    let dueSoon = 0;
+    let onTrack = 0;
+
+    const now = Date.now();
+
+    for (const r of rows) {
+      const exp = new Date(r.expiration_date).getTime();
+      const daysLeft = Math.floor((exp - now) / 86400000);
+
+      if (daysLeft < 0) breached += 1;
+      else if (daysLeft <= 7) dueSoon += 1;
+      else onTrack += 1;
+    }
 
     return res.status(200).json({
       ok: true,
-      sla: {
-        totalPolicies: rows?.[0]?.total ?? 0,
-      },
+      total: rows.length,
+      breached,
+      dueSoon,
+      onTrack,
     });
   } catch (err) {
     console.error("[renewals/sla] ERROR:", err);
-    return res.status(500).json({ ok: false, error: err.message || "Failed" });
+
+    // NEVER BREAK DASHBOARD
+    return res.status(200).json({
+      ok: false,
+      total: 0,
+      breached: 0,
+      dueSoon: 0,
+      onTrack: 0,
+    });
   }
 }
