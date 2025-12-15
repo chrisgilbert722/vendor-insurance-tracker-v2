@@ -1,8 +1,8 @@
 // pages/api/admin/timeline/index.js
 // UUID-safe, skip-safe admin compliance timeline (direct SQL)
 
-import { sql } from "../../../lib/db";
-import { cleanUUID } from "../../../lib/uuid";
+import { sql } from "../../../../lib/db";
+import { cleanUUID } from "../../../../lib/uuid";
 
 export default async function handler(req, res) {
   if (req.method !== "GET") {
