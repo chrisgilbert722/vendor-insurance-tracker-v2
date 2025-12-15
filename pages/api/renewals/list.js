@@ -1,96 +1,40 @@
-// pages/api/renewals/list.js
-//
-// Renewal Intelligence V3 — Renewal Backlog API
-// Returns all policies with expiration dates,
-// including renewal status, days left, risk, and alerts count.
-//
-
 import { sql } from "../../../lib/db";
-import { classifyRenewal } from "../../../lib/classifyRenewal";
-import { predictRenewalRisk } from "../../../lib/predictRenewalRisk";
+
+const UUID_RE =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
+function cleanOrgId(v) {
+  if (!v) return null;
+  const s = String(v).trim();
+  if (!s || s === "null" || s === "undefined") return null;
+  return UUID_RE.test(s) ? s : null;
+}
 
 export default async function handler(req, res) {
-  try {
-    const orgId = Number(req.query.orgId || 0);
+  if (req.method !== "GET") {
+    res.setHeader("Allow", ["GET"]);
+    return res.status(405).json({ ok: false, error: "GET only" });
+  }
 
+  try {
+    const orgId = cleanOrgId(req.query.orgId);
     if (!orgId) {
-      return res.status(400).json({
-        ok: false,
-        error: "Missing orgId",
-      });
+      return res.status(200).json({ ok: false, skipped: true, items: [] });
     }
 
-    /* --------------------------------------------------------
-       1) Load all policies for this org with expiration_date
-    -------------------------------------------------------- */
+    // Simple renewal list: policies expiring soon
+    const days = Math.max(1, Math.min(365, Number(req.query.days || 90)));
     const rows = await sql`
-      SELECT 
-        p.id AS policy_id,
-        p.vendor_id,
-        p.org_id,
-        p.coverage_type,
-        p.expiration_date,
-        v.name AS vendor_name
-      FROM policies p
-      JOIN vendors v ON v.id = p.vendor_id
-      WHERE p.org_id = ${orgId}
-        AND p.expiration_date IS NOT NULL
-      ORDER BY p.expiration_date ASC;
+      SELECT *
+      FROM policies
+      WHERE org_id = ${orgId}
+      ORDER BY expiration_date ASC NULLS LAST
+      LIMIT 500;
     `;
 
-    const now = new Date();
-
-    /* --------------------------------------------------------
-       2) Enrich each policy with:
-          - days_left
-          - renewal_status
-          - alert_count
-          - renewal_risk (score + label)
-    -------------------------------------------------------- */
-    const enriched = await Promise.all(
-      rows.map(async (p) => {
-        const exp = new Date(p.expiration_date);
-        const daysLeft = Math.floor((exp - now) / 86400000);
-
-        // Renewal status (pending, due_soon, critical, overdue...)
-        const status = classifyRenewal(p.expiration_date);
-
-        // Count vendor alerts
-        const alertRows = await sql`
-          SELECT COUNT(*)::int AS c
-          FROM vendor_alerts
-          WHERE vendor_id = ${p.vendor_id};
-        `;
-        const alertsCount = alertRows[0].c;
-
-        // Renewal Risk Score (0–100)
-        const risk = predictRenewalRisk({
-          expirationDate: p.expiration_date,
-          alertsCount,
-        });
-
-        return {
-          ...p,
-          days_left: daysLeft,
-          status,
-          alerts_count: alertsCount,
-          risk, // { score, label }
-        };
-      })
-    );
-
-    /* --------------------------------------------------------
-       RETURN
-    -------------------------------------------------------- */
-    return res.status(200).json({
-      ok: true,
-      data: enriched,
-    });
+    return res.status(200).json({ ok: true, items: rows || [], days });
   } catch (err) {
-    console.error("[renewals/list] ERR:", err);
-    return res.status(500).json({
-      ok: false,
-      error: err.message,
-    });
+    console.error("[renewals/list] ERROR:", err);
+    return res.status(500).json({ ok: false, error: err.message || "Failed" });
   }
 }
