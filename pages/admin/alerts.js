@@ -1,251 +1,261 @@
+// pages/admin/alerts.js
 import { useEffect, useMemo, useState } from "react";
 import { useRole } from "../../lib/useRole";
 import { useOrg } from "../../context/OrgContext";
 import ToastV2 from "../../components/ToastV2";
 
 /* ==========================================================
-   ALERTS V5 — INCIDENT COMMAND (CINEMATIC)
+   ALERTS V5 — ENTERPRISE INCIDENT COMMAND
+   Canonical rebuild (UUID-safe, cinematic, stable)
 ========================================================== */
 
 const GP = {
   bg: "#020617",
   panel: "rgba(15,23,42,0.96)",
+  panelSoft: "rgba(15,23,42,0.75)",
   border: "rgba(51,65,85,0.6)",
   text: "#e5e7eb",
-  textSoft: "#94a3b8",
-  critical: "#fb7185",
-  high: "#facc15",
-  medium: "#38bdf8",
-  low: "#22c55e",
+  textSoft: "#9ca3af",
+
+  blue: "#38bdf8",
+  green: "#22c55e",
+  yellow: "#facc15",
+  red: "#fb7185",
+  purple: "#a855f7",
 };
 
 /* ==========================================================
    HELPERS
 ========================================================== */
 
-function countBySeverity(alerts) {
-  const out = {
-    all: alerts.length,
-    critical: 0,
-    high: 0,
-    medium: 0,
-    low: 0,
-    sla: 0,
-  };
+function safeFetch(url) {
+  return fetch(url)
+    .then((r) => r.json())
+    .catch(() => ({ ok: false }));
+}
 
-  for (const a of alerts) {
-    if (out[a.severity] !== undefined) out[a.severity]++;
-    if (a.sla_due_at && new Date(a.sla_due_at) < new Date()) out.sla++;
-  }
+function exportCSV(orgId) {
+  if (!orgId) return;
+  window.open(
+    `/api/admin/timeline/export.csv?orgId=${orgId}`,
+    "_blank"
+  );
+}
 
-  return out;
+function exportPDF(orgId) {
+  if (!orgId) return;
+  window.open(
+    `/api/admin/timeline/export.pdf?orgId=${orgId}`,
+    "_blank"
+  );
 }
 
 /* ==========================================================
-   PAGE
+   COMPONENT
 ========================================================== */
 
-export default function AlertsPage() {
+export default function AlertsEnterprise() {
   const { isAdmin, isManager } = useRole();
   const { activeOrgId: orgId, loadingOrgs } = useOrg();
   const canEdit = isAdmin || isManager;
 
-  const [alerts, setAlerts] = useState([]);
+  const [stats, setStats] = useState(null);
   const [loading, setLoading] = useState(true);
-  const [filter, setFilter] = useState("all");
+  const [toast, setToast] = useState(null);
 
-  const [toast, setToast] = useState({
-    open: false,
-    type: "success",
-    message: "",
-  });
-
-  /* ----------------------------------------------------------
-     LOAD ALERTS
-  ---------------------------------------------------------- */
   useEffect(() => {
     if (!orgId || loadingOrgs) return;
-    loadAlerts();
+
+    setLoading(true);
+
+    safeFetch(`/api/alerts-v2/stats?orgId=${orgId}`).then((res) => {
+      if (res?.ok) {
+        setStats(res.stats || res);
+      } else {
+        setStats(null); // silent fail
+      }
+      setLoading(false);
+    });
   }, [orgId, loadingOrgs]);
 
-  async function loadAlerts() {
-    try {
-      setLoading(true);
-      const res = await fetch(`/api/alerts-v2/list?orgId=${orgId}`);
-      const json = await res.json();
-
-      if (!json.ok) throw new Error(json.error || "Failed to load alerts");
-      setAlerts(json.items || []);
-    } catch (err) {
-      setToast({ open: true, type: "error", message: err.message });
-    } finally {
-      setLoading(false);
-    }
-  }
-
-  /* ----------------------------------------------------------
-     FILTERED VIEW
-  ---------------------------------------------------------- */
-  const filtered = useMemo(() => {
-    if (filter === "all") return alerts;
-    if (filter === "sla")
-      return alerts.filter(
-        (a) => a.sla_due_at && new Date(a.sla_due_at) < new Date()
-      );
-    return alerts.filter((a) => a.severity === filter);
-  }, [alerts, filter]);
-
-  const counts = useMemo(() => countBySeverity(alerts), [alerts]);
-
-  /* ----------------------------------------------------------
-     EXPORTS
-  ---------------------------------------------------------- */
-  function exportCSV() {
-    window.open(
-      `/api/admin/timeline/export.csv?orgId=${orgId}`,
-      "_blank"
-    );
-  }
-
-  function exportPDF() {
-    window.open(
-      `/api/admin/timeline/export.pdf?orgId=${orgId}`,
-      "_blank"
-    );
-  }
-
-  /* ==========================================================
-     RENDER
-  ========================================================== */
+  const counters = useMemo(() => {
+    return {
+      all: stats?.total || 0,
+      critical: stats?.critical || 0,
+      high: stats?.high || 0,
+      medium: stats?.medium || 0,
+      low: stats?.low || 0,
+      sla: stats?.slaBreached || 0,
+    };
+  }, [stats]);
 
   return (
     <div
       style={{
         minHeight: "100vh",
+        padding: "36px 44px 80px",
         background:
-          "radial-gradient(circle at top left,#020617 0%,#020617 45%,#000 100%)",
-        padding: "36px 40px 80px",
+          "radial-gradient(1200px 600px at top left, #020617 0%, #000 70%)",
         color: GP.text,
       }}
     >
-      {/* ======================================================
-          HEADER
-      ======================================================= */}
+      {/* ================= HEADER ================= */}
       <div
         style={{
-          borderRadius: 22,
+          maxWidth: 1200,
+          margin: "0 auto",
+          borderRadius: 20,
+          padding: "28px 32px",
           background: GP.panel,
           border: `1px solid ${GP.border}`,
-          padding: 28,
+          boxShadow: "0 30px 80px rgba(0,0,0,0.45)",
         }}
       >
-        <div style={{ opacity: 0.7, fontSize: 12, letterSpacing: "0.2em" }}>
-          INCIDENT COMMAND
+        <div
+          style={{
+            display: "flex",
+            justifyContent: "space-between",
+            gap: 20,
+            flexWrap: "wrap",
+          }}
+        >
+          <div>
+            <div
+              style={{
+                fontSize: 11,
+                letterSpacing: "0.18em",
+                color: GP.textSoft,
+                marginBottom: 6,
+              }}
+            >
+              INCIDENT COMMAND
+            </div>
+
+            <h1 style={{ fontSize: 28, fontWeight: 700 }}>
+              Alerts & Compliance
+            </h1>
+
+            <p
+              style={{
+                marginTop: 8,
+                fontSize: 14,
+                color: GP.textSoft,
+                maxWidth: 560,
+              }}
+            >
+              Real-time compliance incidents, SLA exposure, and automated
+              escalation across your organization.
+            </p>
+          </div>
+
+          {/* EXPORT CONTROLS */}
+          <div style={{ display: "flex", gap: 12 }}>
+            <button
+              onClick={() => exportCSV(orgId)}
+              style={{
+                padding: "10px 16px",
+                borderRadius: 12,
+                fontSize: 13,
+                fontWeight: 600,
+                color: GP.text,
+                background:
+                  "linear-gradient(135deg, rgba(56,189,248,0.18), rgba(56,189,248,0.05))",
+                border: `1px solid rgba(56,189,248,0.35)`,
+                cursor: "pointer",
+              }}
+            >
+              📊 Export CSV
+            </button>
+
+            <button
+              onClick={() => exportPDF(orgId)}
+              style={{
+                padding: "10px 16px",
+                borderRadius: 12,
+                fontSize: 13,
+                fontWeight: 600,
+                color: GP.text,
+                background:
+                  "linear-gradient(135deg, rgba(168,85,247,0.22), rgba(168,85,247,0.08))",
+                border: `1px solid rgba(168,85,247,0.45)`,
+                cursor: "pointer",
+              }}
+            >
+              📄 Export PDF
+            </button>
+          </div>
         </div>
 
-        <h1 style={{ fontSize: 32, marginTop: 6 }}>
-          Alerts & Compliance
-        </h1>
-
-        <p style={{ color: GP.textSoft, maxWidth: 720 }}>
-          Real-time compliance incidents, SLA exposure, and automated escalation
-          across your organization.
-        </p>
-
-        {/* ACTIONS */}
-        <div style={{ display: "flex", gap: 12, marginTop: 18 }}>
-          <button onClick={exportCSV}>Export CSV</button>
-          <button onClick={exportPDF}>Export PDF</button>
-        </div>
-
-        {/* COUNTERS */}
+        {/* ================= COUNTERS ================= */}
         <div
           style={{
             display: "grid",
-            gridTemplateColumns: "repeat(auto-fit,minmax(120px,1fr))",
-            gap: 12,
+            gridTemplateColumns: "repeat(auto-fit,minmax(160px,1fr))",
+            gap: 14,
             marginTop: 24,
           }}
         >
-          <Stat label="All" value={counts.all} active={filter === "all"} onClick={() => setFilter("all")} />
-          <Stat label="Critical" value={counts.critical} color={GP.critical} active={filter === "critical"} onClick={() => setFilter("critical")} />
-          <Stat label="High" value={counts.high} color={GP.high} active={filter === "high"} onClick={() => setFilter("high")} />
-          <Stat label="Medium" value={counts.medium} color={GP.medium} active={filter === "medium"} onClick={() => setFilter("medium")} />
-          <Stat label="Low" value={counts.low} color={GP.low} active={filter === "low"} onClick={() => setFilter("low")} />
-          <Stat label="SLA Breached" value={counts.sla} color={GP.critical} active={filter === "sla"} onClick={() => setFilter("sla")} />
-        </div>
-      </div>
-
-      {/* ======================================================
-          CONTENT
-      ======================================================= */}
-      <div style={{ marginTop: 28 }}>
-        {loading ? (
-          <div style={{ color: GP.textSoft }}>Loading alerts…</div>
-        ) : filtered.length === 0 ? (
-          <div style={{ color: GP.textSoft }}>
-            ✅ No active compliance incidents.
-          </div>
-        ) : (
-          <div
-            style={{
-              display: "grid",
-              gridTemplateColumns: "repeat(auto-fill,minmax(340px,1fr))",
-              gap: 16,
-            }}
-          >
-            {filtered.map((a) => (
+          {[
+            ["ALL", counters.all, GP.blue],
+            ["CRITICAL", counters.critical, GP.red],
+            ["HIGH", counters.high, GP.yellow],
+            ["MEDIUM", counters.medium, GP.blue],
+            ["LOW", counters.low, GP.green],
+            ["SLA BREACHED", counters.sla, GP.red],
+          ].map(([label, value, color]) => (
+            <div
+              key={label}
+              style={{
+                padding: "16px 18px",
+                borderRadius: 14,
+                background: GP.panelSoft,
+                border: `1px solid ${color}55`,
+              }}
+            >
               <div
-                key={a.id}
                 style={{
-                  background: GP.panel,
-                  borderRadius: 16,
-                  padding: 16,
-                  border: `1px solid ${GP.border}`,
+                  fontSize: 11,
+                  letterSpacing: "0.12em",
+                  color: color,
+                  marginBottom: 6,
                 }}
               >
-                <div style={{ fontSize: 12, opacity: 0.8 }}>
-                  {a.severity?.toUpperCase()}
-                </div>
-                <div style={{ fontSize: 15, fontWeight: 600 }}>
-                  {a.message}
-                </div>
-                <div style={{ fontSize: 12, color: GP.textSoft }}>
-                  Vendor: {a.vendor_id}
-                </div>
+                {label}
               </div>
-            ))}
+              <div style={{ fontSize: 26, fontWeight: 700 }}>
+                {loading ? "—" : value}
+              </div>
+            </div>
+          ))}
+        </div>
+
+        {/* ================= EMPTY STATE ================= */}
+        {!loading && counters.all === 0 && (
+          <div
+            style={{
+              marginTop: 22,
+              padding: "14px 18px",
+              borderRadius: 12,
+              background: "rgba(34,197,94,0.1)",
+              border: "1px solid rgba(34,197,94,0.35)",
+              color: GP.green,
+              fontSize: 13,
+              fontWeight: 600,
+            }}
+          >
+            ✅ No active compliance incidents.
           </div>
         )}
       </div>
 
-      <ToastV2
-        open={toast.open}
-        type={toast.type}
-        message={toast.message}
-        onClose={() => setToast((t) => ({ ...t, open: false }))}
-      />
-    </div>
-  );
-}
-
-/* ==========================================================
-   STAT TILE
-========================================================== */
-function Stat({ label, value, color, active, onClick }) {
-  return (
-    <div
-      onClick={onClick}
-      style={{
-        cursor: "pointer",
-        padding: 14,
-        borderRadius: 14,
-        border: `1px solid ${color || "rgba(51,65,85,0.5)"}`,
-        background: active ? "rgba(255,255,255,0.05)" : "transparent",
-      }}
-    >
-      <div style={{ fontSize: 11, opacity: 0.7 }}>{label}</div>
-      <div style={{ fontSize: 22, fontWeight: 700 }}>{value}</div>
+      {toast && (
+        <ToastV2
+          open
+          type={toast.type}
+          message={toast.message}
+          onClose={() => setToast(null)}
+        />
+      )}
     </div>
   );
 }
