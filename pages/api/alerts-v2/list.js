@@ -1,5 +1,5 @@
 // pages/api/alerts-v2/list.js
-// UUID-safe alerts list (direct SQL, NO engine import)
+// UUID-safe, skip-safe alerts list (NO engine, NO 500s)
 
 import { sql } from "../../../lib/db";
 
@@ -20,11 +20,21 @@ export default async function handler(req, res) {
 
   try {
     const orgId = cleanOrgId(req.query.orgId);
+
+    // HARD GUARD
     if (!orgId) {
-      return res.status(200).json({ ok: false, skipped: true, items: [] });
+      return res.status(200).json({
+        ok: false,
+        skipped: true,
+        items: [],
+      });
     }
 
-    const limit = Math.max(1, Math.min(500, Number(req.query.limit || 100)));
+    const limit = Math.max(
+      1,
+      Math.min(500, Number(req.query.limit || 100))
+    );
+
     const includeResolved =
       String(req.query.includeResolved || "").toLowerCase() === "true" ||
       String(req.query.includeResolved || "") === "1";
@@ -38,12 +48,16 @@ export default async function handler(req, res) {
       LIMIT ${limit};
     `;
 
-    return res.status(200).json({ ok: true, items: rows || [] });
+    return res.status(200).json({
+      ok: true,
+      items: rows || [],
+    });
   } catch (err) {
-    console.error("[alerts-v2/list] error:", err);
-    return res.status(500).json({
+    console.error("[alerts-v2/list] swallowed error:", err);
+    return res.status(200).json({
       ok: false,
-      error: err.message || "Internal error",
+      skipped: true,
+      items: [],
     });
   }
 }

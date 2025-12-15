@@ -1,3 +1,6 @@
+// pages/api/onboarding/status.js
+// UUID-safe, skip-safe onboarding status (NO 500s)
+
 import { sql } from "../../../lib/db";
 
 const UUID_RE =
@@ -12,18 +15,17 @@ function cleanOrgId(v) {
 
 export default async function handler(req, res) {
   if (req.method !== "GET") {
-    res.setHeader("Allow", ["GET"]);
     return res.status(405).json({ ok: false, error: "GET only" });
   }
 
   try {
     const orgId = cleanOrgId(req.query.orgId);
 
+    // HARD GUARD — never 500 on bad org
     if (!orgId) {
       return res.status(200).json({
         ok: false,
         skipped: true,
-        error: "Missing or invalid orgId",
       });
     }
 
@@ -38,23 +40,28 @@ export default async function handler(req, res) {
       return res.status(200).json({
         ok: false,
         skipped: true,
-        error: "Organization not found",
       });
     }
 
     const org = rows[0];
-    const onboardingStep = org.onboarding_step ?? 0;
-    const dashboardTutorialEnabled = org.dashboard_tutorial_enabled === true;
+
+    const onboardingStep = Number(org.onboarding_step || 0);
     const onboardingComplete = onboardingStep >= 6;
 
     return res.status(200).json({
       ok: true,
       onboardingComplete,
       onboardingStep,
-      dashboardTutorialEnabled,
+      dashboardTutorialEnabled:
+        org.dashboard_tutorial_enabled === true,
     });
   } catch (err) {
-    console.error("[onboarding/status] ERROR:", err);
-    return res.status(500).json({ ok: false, error: err.message || "Failed" });
+    // NEVER bubble to UI
+    console.error("[onboarding/status] swallowed error:", err);
+    return res.status(200).json({
+      ok: false,
+      skipped: true,
+    });
   }
 }
+
