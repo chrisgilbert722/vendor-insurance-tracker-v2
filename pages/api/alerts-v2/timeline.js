@@ -1,5 +1,7 @@
 // pages/api/alerts-v2/timeline.js
-import { getAlertTimelineV2 } from "../../../lib/alertsV2Engine";
+// UUID-safe timeline endpoint (direct SQL, no engine dependency)
+
+import { sql } from "../../../lib/db";
 
 const UUID_RE =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -23,9 +25,23 @@ export default async function handler(req, res) {
     }
 
     const days = Math.max(1, Math.min(365, Number(req.query.days || 30)));
-    const items = await getAlertTimelineV2(orgId, days);
 
-    return res.status(200).json({ ok: true, items });
+    const rows = await sql`
+      SELECT
+        created_at,
+        severity,
+        type,
+        message,
+        vendor_id
+      FROM alerts_v2
+      WHERE org_id = ${orgId}
+        AND resolved_at IS NULL
+        AND created_at >= NOW() - (${days}::int || ' days')::interval
+      ORDER BY created_at DESC
+      LIMIT 200;
+    `;
+
+    return res.status(200).json({ ok: true, items: rows || [] });
   } catch (err) {
     console.error("[alerts-v2/timeline] error:", err);
     return res.status(500).json({
