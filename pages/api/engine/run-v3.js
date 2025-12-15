@@ -1,9 +1,11 @@
 // pages/api/engine/run-v3.js
 // ============================================================
 // RULE ENGINE V5 — COVERAGE REQUIREMENTS + CONTRACT RULES
-// Patched to match REAL Neon schema:
-// requirements_rules_v2     → NO org_id column
-// requirements_groups_v2    → HAS org_id column
+// Supabase Postgres UUID-safe patch:
+// - orgId is UUID (string) everywhere
+// - vendorId may be UUID or integer (we support both safely)
+// - no Number(orgId)
+// - skip engine cleanly when orgId missing (stops 400 spam)
 // ============================================================
 
 import { sql } from "../../../lib/db";
@@ -14,6 +16,35 @@ export const config = {
     bodyParser: { sizeLimit: "1mb" },
   },
 };
+
+/* ------------------------------------------------------------
+   ID HELPERS (UUID-safe)
+------------------------------------------------------------ */
+const UUID_RE =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
+function cleanId(v) {
+  if (v === null || v === undefined) return null;
+  const s = String(v).trim();
+  if (!s || s === "null" || s === "undefined") return null;
+  return s;
+}
+
+function parseId(v) {
+  const s = cleanId(v);
+  if (!s) return null;
+  if (UUID_RE.test(s)) return s; // UUID string
+  if (/^\d+$/.test(s)) return Number(s); // integer id
+  return s; // fallback string (still parameterized)
+}
+
+function requireUuid(v) {
+  const s = cleanId(v);
+  if (!s) return { ok: false, value: null, error: "Missing orgId" };
+  if (!UUID_RE.test(s))
+    return { ok: false, value: null, error: "Invalid orgId (expected UUID)" };
+  return { ok: true, value: s, error: null };
+}
 
 /* ------------------------------------------------------------
    SCORE HELPER
@@ -133,23 +164,41 @@ export default async function handler(req, res) {
   }
 
   try {
-    const vendorId = Number(req.body.vendorId);
-    const orgId = Number(req.body.orgId);
-    const dryRun = !!req.body.dryRun;
+    // vendorId can be uuid OR integer (support both)
+    const vendorId = parseId(req.body?.vendorId);
 
-    if (!vendorId || !orgId)
-      return res.status(400).json({
+    // orgId MUST be UUID (confirmed by you)
+    const orgCheck = requireUuid(req.body?.orgId);
+    const orgId = orgCheck.value;
+
+    const dryRun = !!req.body?.dryRun;
+
+    // HARD GUARDS (prevents engine spam + uuid/int operator mismatch)
+    if (!orgCheck.ok) {
+      // Return 200 so missing-org auto-runs don't flood console with 400s
+      return res.status(200).json({
         ok: false,
-        error: "Missing vendorId or orgId",
+        skipped: true,
+        error: orgCheck.error,
       });
+    }
+
+    if (!vendorId) {
+      return res.status(200).json({
+        ok: false,
+        skipped: true,
+        error: "Missing vendorId",
+      });
+    }
 
     /* ------------------------------------------------------------
-       1) LOAD POLICIES
+       1) LOAD POLICIES (UUID-safe org_id)
     ------------------------------------------------------------ */
     const policies = await sql`
       SELECT *
       FROM policies
-      WHERE vendor_id = ${vendorId} AND org_id = ${orgId}
+      WHERE vendor_id = ${vendorId}
+        AND org_id = ${orgId}
       ORDER BY expiration_date ASC NULLS LAST;
     `;
 
@@ -168,9 +217,9 @@ export default async function handler(req, res) {
     }
 
     /* ------------------------------------------------------------
-       2) LOAD RULES (PATCHED QUERY)
+       2) LOAD RULES
        requirements_rules_v2 has NO org_id column
-       requirements_groups_v2 DOES have org_id
+       requirements_groups_v2 DOES have org_id (UUID)
     ------------------------------------------------------------ */
     const rules = await sql`
       SELECT r.*
@@ -239,17 +288,17 @@ export default async function handler(req, res) {
     }
 
     /* ------------------------------------------------------------
-       4) CONTRACT RULES
+       4) CONTRACT RULES (orgId UUID-safe)
     ------------------------------------------------------------ */
     let contractScore = null;
 
     try {
       const contract = await getContractRuleResultsForVendor(vendorId, orgId);
 
-      if (contract.ok) {
+      if (contract?.ok) {
         contractScore = contract.contractScore;
 
-        for (const f of contract.failingContractRules) {
+        for (const f of contract.failingContractRules || []) {
           failures.push({
             ruleId: f.rule_id,
             severity: f.severity || "high",
@@ -261,7 +310,7 @@ export default async function handler(req, res) {
           });
         }
 
-        for (const p of contract.passingContractRules) {
+        for (const p of contract.passingContractRules || []) {
           passes.push({
             ruleId: p.rule_id,
             severity: p.severity || "low",
@@ -299,6 +348,7 @@ export default async function handler(req, res) {
       failedCount: failures.length,
       failingRules: failures,
       passingRules: passes,
+      dryRun,
     });
   } catch (err) {
     console.error("[run-v3 ERROR]", err);
@@ -308,3 +358,4 @@ export default async function handler(req, res) {
     });
   }
 }
+
