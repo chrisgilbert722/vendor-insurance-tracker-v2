@@ -9,57 +9,56 @@ export function OrgProvider({ children }) {
   const [activeOrgId, setActiveOrgId] = useState(null);
   const [loading, setLoading] = useState(true);
 
+  // Load orgs for logged-in user
   useEffect(() => {
+    let cancelled = false;
+
     async function loadOrgs() {
-      const {
-        data: { session },
-      } = await supabase.auth.getSession();
+      try {
+        const { data: sessionData } = await supabase.auth.getSession();
+        const user = sessionData?.session?.user;
+        if (!user) return;
 
-      if (!session?.user) {
-        setLoading(false);
-        return;
+        const { data, error } = await supabase
+          .from("org_members")
+          .select("org_id, orgs:org_id (id, name)")
+          .eq("user_id", user.id);
+
+        if (error) throw error;
+
+        const uniqueOrgs = (data || [])
+          .map((r) => r.orgs)
+          .filter(Boolean);
+
+        if (!cancelled) {
+          setOrgs(uniqueOrgs);
+
+          // ✅ CRITICAL: auto-select first org if none selected
+          if (!activeOrgId && uniqueOrgs.length > 0) {
+            setActiveOrgId(uniqueOrgs[0].id);
+          }
+        }
+      } catch (err) {
+        console.error("[OrgContext] load error:", err);
+      } finally {
+        if (!cancelled) setLoading(false);
       }
-
-      // ✅ Fetch orgs user belongs to
-      const { data, error } = await supabase
-        .from("org_members")
-        .select("org_id, orgs(name)")
-        .eq("user_id", session.user.id);
-
-      if (error) {
-        console.error("[OrgContext] Failed to load orgs", error);
-        setLoading(false);
-        return;
-      }
-
-      const mapped = data.map((row) => ({
-        id: row.org_id,
-        name: row.orgs?.name || "Organization",
-      }));
-
-      setOrgs(mapped);
-
-      // ✅ AUTO-SELECT FIRST ORG (CRITICAL FIX)
-      if (mapped.length > 0) {
-        setActiveOrgId(mapped[0].id);
-      }
-
-      setLoading(false);
     }
 
     loadOrgs();
+    return () => (cancelled = true);
   }, []);
 
+  const value = {
+    orgs,
+    activeOrgId,
+    setActiveOrgId,
+    loading,
+    onboardingComplete: true, // you’re past onboarding now
+  };
+
   return (
-    <OrgContext.Provider
-      value={{
-        orgs,
-        activeOrgId,
-        setActiveOrgId,
-        loading,
-        onboardingComplete: true,
-      }}
-    >
+    <OrgContext.Provider value={value}>
       {children}
     </OrgContext.Provider>
   );
