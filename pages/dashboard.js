@@ -60,9 +60,6 @@ const GP = {
 ============================================================ */
 function parseExpiration(dateStr) {
   if (!dateStr) return null;
-  const eliteRanRef = useRef(new Set());
-  const engineRanRef = useRef(new Set());
-
   const [mm, dd, yyyy] = String(dateStr).split("/");
   if (!mm || !dd || !yyyy) return null;
   const d = new Date(`${yyyy}-${mm}-${dd}`);
@@ -325,8 +322,7 @@ function Dashboard() {
   const policiesRef = useRef(null);
 
   // STATE
-  const [onboardingComplete, setOnboardingComplete] = useRef,
-  useState(true);
+  const [onboardingComplete, setOnboardingComplete] = useState(true);
   const [showHero, setShowHero] = useState(false);
   const [bannerDismissed, setBannerDismissed] = useState(false);
 
@@ -613,7 +609,7 @@ useEffect(() => {
           }))
         );
     });
-  }, [policies]);
+  }, [policies, eliteMap]);
 
   /* ============================================================
      RULE ENGINE V5 — run-v3
@@ -698,7 +694,7 @@ useEffect(() => {
           }));
         });
     });
-  }, [policies, activeOrgId]);
+  }, [policies, activeOrgId, engineMap]);
 
   /* ============================================================
      ELITE SUMMARY COUNTS
@@ -2060,37 +2056,3 @@ const td = {
 
 
 export default Dashboard;
-
-
-
-function renderEngineBadge(vendorId, engineMap) {
-  const e = engineMap?.[vendorId];
-  const base = {
-    display: "inline-flex",
-    alignItems: "center",
-    padding: "3px 8px",
-    borderRadius: "999px",
-    fontSize: 11,
-    fontWeight: 700,
-    border: "1px solid rgba(51,65,85,0.9)",
-    background: "rgba(15,23,42,0.98)",
-    color: GP?.textSoft || "#cbd5f5",
-  };
-
-  if (!e || e.loading) return <span style={base}>Evaluating…</span>;
-  if (e.error) return <span style={{ ...base, border: "1px solid rgba(248,113,113,0.9)", color: "#fecaca" }}>Engine Error</span>;
-  if (typeof e.globalScore !== "number") return <span style={base}>—</span>;
-
-  const tier = computeV3Tier(e.globalScore);
-  const color =
-    e.globalScore >= 85 ? GP.neonGreen :
-    e.globalScore >= 70 ? GP.neonGold :
-    e.globalScore >= 55 ? GP.neonBlue :
-    GP.neonRed;
-
-  return (
-    <span style={{ ...base, border: `1px solid ${color}AA`, color }}>
-      {e.globalScore} · {tier}
-    </span>
-  );
-}
