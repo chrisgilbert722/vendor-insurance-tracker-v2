@@ -1,7 +1,10 @@
 // pages/api/renewals/sla.js
 // ============================================================
-// RENEWALS SLA — UUID SAFE + SKIP SAFE
-// Never throws. Never casts UUIDs. Enterprise-grade.
+// RENEWALS SLA — UUID SAFE + DASHBOARD SAFE (CANONICAL)
+// - Never casts UUIDs
+// - Never throws 500s
+// - Returns zeros when orgId missing
+// - Stabilizes dashboard + widgets
 // ============================================================
 
 import { sql } from "../../../lib/db";
@@ -16,7 +19,7 @@ export default async function handler(req, res) {
   try {
     const orgId = cleanUUID(req.query.orgId);
 
-    // HARD SKIP — dashboard safety
+    // HARD SKIP — keep dashboard calm
     if (!orgId) {
       return res.status(200).json({
         ok: true,
@@ -28,14 +31,8 @@ export default async function handler(req, res) {
       });
     }
 
-    // SLA rules:
-    // - breached: expired
-    // - dueSoon: expires within 7 days
-    // - onTrack: everything else
-
     const rows = await sql`
-      SELECT
-        expiration_date
+      SELECT expiration_date
       FROM policies
       WHERE org_id = ${orgId}
         AND expiration_date IS NOT NULL;
@@ -49,6 +46,8 @@ export default async function handler(req, res) {
 
     for (const r of rows) {
       const exp = new Date(r.expiration_date).getTime();
+      if (Number.isNaN(exp)) continue;
+
       const daysLeft = Math.floor((exp - now) / 86400000);
 
       if (daysLeft < 0) breached += 1;
