@@ -1,271 +1,61 @@
+// pages/admin/alerts.js
 import { useEffect, useMemo, useState } from "react";
-import { useOrg } from "../../context/OrgContext";
 import { useRole } from "../../lib/useRole";
+import { useOrg } from "../../context/OrgContext";
+import ToastV2 from "../../components/ToastV2";
 
 /* ==========================================================
    ALERTS V5 — ENTERPRISE INCIDENT COMMAND
-   Canonical rebuild — UI + wiring locked
+   Cinematic, consistent with Dashboard / Documents / Vendors
+   - Compact enterprise buttons (no bubbles)
+   - SLA breach counter
+   - Fix Cockpit wiring
+   - CSV / PDF / Timeline actions
 ========================================================== */
 
-const UI = {
+const THEME = {
   bg: "#020617",
-  panel: "rgba(15,23,42,0.97)",
-  panelSoft: "rgba(15,23,42,0.75)",
-  border: "rgba(51,65,85,0.8)",
+  panel: "rgba(15,23,42,0.95)",
+  border: "rgba(51,65,85,0.6)",
   text: "#e5e7eb",
   textSoft: "#9ca3af",
   blue: "#38bdf8",
   green: "#22c55e",
-  gold: "#facc15",
+  yellow: "#facc15",
   red: "#fb7185",
+  purple: "#a855f7",
 };
 
-const SEV = {
-  critical: { label: "Critical", color: UI.red },
-  high: { label: "High", color: UI.gold },
-  medium: { label: "Medium", color: UI.blue },
-  low: { label: "Low", color: UI.green },
+const SEVERITY = {
+  critical: { label: "Critical", color: THEME.red },
+  high: { label: "High", color: THEME.yellow },
+  medium: { label: "Medium", color: THEME.blue },
+  low: { label: "Low", color: THEME.green },
 };
 
-function isBreached(a) {
-  if (!a?.sla_due_at) return false;
-  return new Date(a.sla_due_at) < new Date();
-}
-
-export default function AlertsV5() {
-  const { activeOrgId: orgId, loadingOrgs } = useOrg();
-  const { isAdmin, isManager } = useRole();
-  const canResolve = isAdmin || isManager;
-
-  const [alerts, setAlerts] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [filter, setFilter] = useState("all");
-  const [view, setView] = useState("grid");
-
-  /* ---------------- LOAD ALERTS ---------------- */
-  useEffect(() => {
-    if (!orgId || loadingOrgs) return;
-
-    let alive = true;
-
-    (async () => {
-      try {
-        setLoading(true);
-        const r = await fetch(`/api/alerts-v2/list?orgId=${orgId}`);
-        const j = await r.json();
-        if (!alive) return;
-        setAlerts(j?.items || []);
-      } catch {
-        if (!alive) return;
-        setAlerts([]);
-      } finally {
-        if (!alive) return;
-        setLoading(false);
-      }
-    })();
-
-    return () => {
-      alive = false;
-    };
-  }, [orgId, loadingOrgs]);
-
-  /* ---------------- COUNTS ---------------- */
-  const counts = useMemo(() => {
-    const c = { all: alerts.length, critical: 0, high: 0, medium: 0, low: 0, sla: 0 };
-    alerts.forEach((a) => {
-      if (c[a.severity] !== undefined) c[a.severity]++;
-      if (isBreached(a)) c.sla++;
-    });
-    return c;
-  }, [alerts]);
-
-  const filtered = useMemo(() => {
-    if (filter === "all") return alerts;
-    if (filter === "sla") return alerts.filter(isBreached);
-    return alerts.filter((a) => a.severity === filter);
-  }, [alerts, filter]);
-
-  /* ---------------- ACTIONS ---------------- */
-  function openFix(a) {
-    if (!a?.vendor_id || !a?.id) return;
-    window.location.href = `/admin/vendor/${a.vendor_id}/fix?alertId=${a.id}`;
-  }
-
-  function exportCSV() {
-    if (!orgId) return;
-    window.open(`/api/admin/timeline/export.csv?orgId=${orgId}`, "_blank");
-  }
-
-  function exportPDF() {
-    if (!orgId) return;
-    window.open(`/api/admin/timeline/export.pdf?orgId=${orgId}`, "_blank");
-  }
-
-  /* ==========================================================
-     RENDER
-  ========================================================== */
-
-  return (
-    <div
-      style={{
-        minHeight: "100vh",
-        background:
-          "radial-gradient(circle at top left,#020617 0%,#020617 40%,#000 100%)",
-        padding: "36px 48px 80px",
-        color: UI.text,
-      }}
-    >
-      {/* ================= HEADER ================= */}
-      <div
-        style={{
-          maxWidth: 1240,
-          margin: "0 auto",
-          borderRadius: 24,
-          padding: "30px 34px",
-          background: UI.panel,
-          border: `1px solid ${UI.border}`,
-          boxShadow: "0 40px 90px rgba(0,0,0,0.6)",
-        }}
-      >
-        <div style={{ display: "flex", justifyContent: "space-between", gap: 24 }}>
-          <div>
-            <div style={{ fontSize: 11, letterSpacing: "0.2em", color: UI.textSoft }}>
-              INCIDENT COMMAND
-            </div>
-            <h1 style={{ fontSize: 34, marginTop: 6 }}>
-              Alerts & Compliance
-            </h1>
-            <p style={{ marginTop: 8, color: UI.textSoft, maxWidth: 640 }}>
-              Live compliance incidents, SLA exposure, and operational escalation.
-            </p>
-          </div>
-
-          <div style={{ display: "flex", gap: 12 }}>
-            <ActionBtn label="Export CSV" color={UI.blue} onClick={exportCSV} />
-            <ActionBtn label="Export PDF" color={UI.gold} onClick={exportPDF} />
-            <ActionBtn
-              label={view === "grid" ? "Timeline View" : "Grid View"}
-              color={UI.green}
-              onClick={() => setView(view === "grid" ? "timeline" : "grid")}
-            />
-          </div>
-        </div>
-
-        {/* ================= COUNTERS ================= */}
-        <div
-          style={{
-            display: "grid",
-            gridTemplateColumns: "repeat(auto-fit,minmax(150px,1fr))",
-            gap: 14,
-            marginTop: 24,
-          }}
-        >
-          <Stat label="All" value={counts.all} color={UI.blue} onClick={() => setFilter("all")} active={filter === "all"} />
-          <Stat label="Critical" value={counts.critical} color={UI.red} onClick={() => setFilter("critical")} active={filter === "critical"} />
-          <Stat label="High" value={counts.high} color={UI.gold} onClick={() => setFilter("high")} active={filter === "high"} />
-          <Stat label="Medium" value={counts.medium} color={UI.blue} onClick={() => setFilter("medium")} active={filter === "medium"} />
-          <Stat label="Low" value={counts.low} color={UI.green} onClick={() => setFilter("low")} active={filter === "low"} />
-          <Stat label="SLA Breached" value={counts.sla} color={UI.red} onClick={() => setFilter("sla")} active={filter === "sla"} />
-        </div>
-
-        {!loading && counts.all === 0 && (
-          <div
-            style={{
-              marginTop: 20,
-              padding: "14px 16px",
-              borderRadius: 14,
-              background: "rgba(34,197,94,0.12)",
-              border: "1px solid rgba(34,197,94,0.4)",
-              color: UI.green,
-              fontWeight: 700,
-            }}
-          >
-            ✓ No active compliance incidents.
-          </div>
-        )}
-      </div>
-
-      {/* ================= BODY ================= */}
-      <div style={{ maxWidth: 1240, margin: "28px auto 0" }}>
-        {loading ? (
-          <div style={{ color: UI.textSoft }}>Loading alerts…</div>
-        ) : filtered.length === 0 ? (
-          <div style={{ color: UI.textSoft }}>
-            No alerts in this filter.
-          </div>
-        ) : (
-          <div
-            style={{
-              display: "grid",
-              gridTemplateColumns: "repeat(auto-fill,minmax(360px,1fr))",
-              gap: 16,
-            }}
-          >
-            {filtered.map((a) => {
-              const meta = SEV[a.severity] || SEV.medium;
-              return (
-                <div
-                  key={a.id}
-                  onClick={() => openFix(a)}
-                  style={{
-                    background: UI.panelSoft,
-                    border: `1px solid ${meta.color}55`,
-                    borderRadius: 18,
-                    padding: 18,
-                    cursor: "pointer",
-                  }}
-                >
-                  <div style={{ fontSize: 11, color: meta.color }}>
-                    {meta.label}
-                    {isBreached(a) && (
-                      <span style={{ marginLeft: 8, color: UI.red }}>
-                        SLA BREACHED
-                      </span>
-                    )}
-                  </div>
-
-                  <div style={{ marginTop: 6, fontWeight: 800 }}>
-                    {a.vendor_name || "Vendor"}
-                  </div>
-
-                  <div style={{ marginTop: 6, color: UI.textSoft }}>
-                    {a.message || a.rule_name}
-                  </div>
-
-                  <div style={{ marginTop: 12 }}>
-                    <ActionBtn
-                      label="Open Fix →"
-                      color={UI.blue}
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        openFix(a);
-                      }}
-                    />
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        )}
-      </div>
-    </div>
-  );
-}
-
-/* ================= SUB COMPONENTS ================= */
-
-function ActionBtn({ label, color, onClick }) {
+/* ==========================================================
+   SMALL ENTERPRISE BUTTON (REUSABLE)
+========================================================== */
+function ActionButton({ label, onClick, color }) {
   return (
     <button
       onClick={onClick}
       style={{
-        padding: "10px 16px",
+        padding: "8px 14px",
+        fontSize: 13,
+        fontWeight: 600,
         borderRadius: 999,
         border: `1px solid ${color}`,
-        background: `${color}22`,
+        background: "transparent",
         color,
-        fontWeight: 800,
         cursor: "pointer",
+        transition: "all .15s ease",
+      }}
+      onMouseEnter={(e) => {
+        e.currentTarget.style.background = `${color}22`;
+      }}
+      onMouseLeave={(e) => {
+        e.currentTarget.style.background = "transparent";
       }}
     >
       {label}
@@ -273,20 +63,243 @@ function ActionBtn({ label, color, onClick }) {
   );
 }
 
-function Stat({ label, value, color, onClick, active }) {
+/* ==========================================================
+   SLA STATE
+========================================================== */
+function getSlaState(alert) {
+  if (!alert?.sla_due_at) return null;
+  const due = new Date(alert.sla_due_at);
+  const now = new Date();
+  const diff = due - now;
+
+  if (diff <= 0) {
+    return { label: "BREACHED", color: THEME.red };
+  }
+
+  const hours = Math.floor(diff / 3600000);
+  const days = Math.floor(hours / 24);
+
+  return {
+    label: days > 0 ? `${days}d left` : `${hours}h left`,
+    color: days <= 1 ? THEME.yellow : THEME.green,
+  };
+}
+
+/* ==========================================================
+   MAIN PAGE
+========================================================== */
+export default function AlertsV5() {
+  const { isAdmin, isManager } = useRole();
+  const { activeOrgId: orgId, loadingOrgs } = useOrg();
+  const canEdit = isAdmin || isManager;
+
+  const [alerts, setAlerts] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [filter, setFilter] = useState("all");
+  const [toast, setToast] = useState({ open: false, type: "success", message: "" });
+
+  /* ---------------- LOAD ALERTS ---------------- */
+  useEffect(() => {
+    if (!orgId || loadingOrgs) return;
+    loadAlerts();
+  }, [orgId, loadingOrgs]);
+
+  async function loadAlerts() {
+    try {
+      setLoading(true);
+      const res = await fetch(`/api/alerts-v2/list?orgId=${orgId}`);
+      const json = await res.json();
+      if (!json.ok) throw new Error(json.error || "Failed to load alerts");
+      setAlerts(json.items || []);
+    } catch (e) {
+      setToast({ open: true, type: "error", message: e.message });
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  /* ---------------- COUNTS ---------------- */
+  const counts = useMemo(() => {
+    const c = { all: 0, critical: 0, high: 0, medium: 0, low: 0, sla: 0 };
+    alerts.forEach((a) => {
+      c.all += 1;
+      if (c[a.severity] !== undefined) c[a.severity] += 1;
+      if (getSlaState(a)?.label === "BREACHED") c.sla += 1;
+    });
+    return c;
+  }, [alerts]);
+
+  const filtered = useMemo(() => {
+    if (filter === "all") return alerts;
+    if (filter === "sla") return alerts.filter((a) => getSlaState(a)?.label === "BREACHED");
+    return alerts.filter((a) => a.severity === filter);
+  }, [alerts, filter]);
+
+  /* ---------------- ACTIONS ---------------- */
+  function openFix(alert) {
+    window.location.href = `/admin/vendor/${alert.vendor_id}/fix?alertId=${alert.id}`;
+  }
+
+  async function resolveAlert(alert) {
+    try {
+      const res = await fetch("/api/alerts-v2/resolve", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ alertId: alert.id }),
+      });
+      const json = await res.json();
+      if (!json.ok) throw new Error(json.error);
+      setAlerts((prev) => prev.filter((a) => a.id !== alert.id));
+      setToast({ open: true, type: "success", message: "Alert resolved" });
+    } catch (e) {
+      setToast({ open: true, type: "error", message: e.message });
+    }
+  }
+
+  /* ==========================================================
+     RENDER
+  ========================================================== */
   return (
     <div
-      onClick={onClick}
       style={{
-        padding: 16,
-        borderRadius: 16,
-        border: `1px solid ${color}55`,
-        background: active ? `${color}22` : "transparent",
-        cursor: "pointer",
+        minHeight: "100vh",
+        background: "radial-gradient(circle at top,#020617 0,#020617 45%,#000 100%)",
+        padding: "32px 40px 60px",
+        color: THEME.text,
       }}
     >
-      <div style={{ fontSize: 11, color }}>{label}</div>
-      <div style={{ fontSize: 24, fontWeight: 800 }}>{value}</div>
+      {/* HEADER */}
+      <div
+        style={{
+          border: `1px solid ${THEME.border}`,
+          borderRadius: 22,
+          padding: 28,
+          background: THEME.panel,
+        }}
+      >
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+          <div>
+            <div style={{ fontSize: 11, letterSpacing: "0.14em", color: THEME.textSoft }}>
+              INCIDENT COMMAND
+            </div>
+            <h1 style={{ fontSize: 28, marginTop: 6 }}>Alerts & Compliance</h1>
+            <p style={{ color: THEME.textSoft, maxWidth: 720 }}>
+              Real-time compliance incidents, SLA exposure, and automated escalation across your organization.
+            </p>
+          </div>
+
+          <div style={{ display: "flex", gap: 10 }}>
+            <ActionButton
+              label="Export CSV"
+              color={THEME.blue}
+              onClick={() => window.open(`/api/admin/timeline/export.csv?orgId=${orgId}`)}
+            />
+            <ActionButton
+              label="Export PDF"
+              color={THEME.yellow}
+              onClick={() => window.open(`/api/admin/timeline/export.pdf?orgId=${orgId}`)}
+            />
+            <ActionButton
+              label="Timeline View"
+              color={THEME.green}
+              onClick={() => (window.location.href = "/admin/timeline")}
+            />
+          </div>
+        </div>
+
+        {/* COUNTERS */}
+        <div
+          style={{
+            display: "grid",
+            gridTemplateColumns: "repeat(auto-fit,minmax(160px,1fr))",
+            gap: 12,
+            marginTop: 22,
+          }}
+        >
+          {[
+            ["all", "All", THEME.blue],
+            ["critical", "Critical", THEME.red],
+            ["high", "High", THEME.yellow],
+            ["medium", "Medium", THEME.blue],
+            ["low", "Low", THEME.green],
+            ["sla", "SLA Breached", THEME.red],
+          ].map(([key, label, color]) => (
+            <div
+              key={key}
+              onClick={() => setFilter(key)}
+              style={{
+                padding: 14,
+                borderRadius: 14,
+                border: `1px solid ${color}55`,
+                cursor: "pointer",
+              }}
+            >
+              <div style={{ fontSize: 11, color }}>{label}</div>
+              <div style={{ fontSize: 22, fontWeight: 700 }}>{counts[key]}</div>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* LIST */}
+      <div style={{ marginTop: 28 }}>
+        {loading ? (
+          <div style={{ color: THEME.textSoft }}>Loading alerts…</div>
+        ) : filtered.length === 0 ? (
+          <div style={{ color: THEME.green }}>✓ No active compliance incidents.</div>
+        ) : (
+          <div style={{ display: "grid", gap: 12 }}>
+            {filtered.map((a) => {
+              const sev = SEVERITY[a.severity] || {};
+              const sla = getSlaState(a);
+              return (
+                <div
+                  key={a.id}
+                  style={{
+                    border: `1px solid ${sev.color || THEME.border}`,
+                    borderRadius: 16,
+                    padding: 16,
+                    background: THEME.panel,
+                  }}
+                >
+                  <div style={{ display: "flex", justifyContent: "space-between" }}>
+                    <div>
+                      <div style={{ fontSize: 12, color: sev.color }}>{sev.label}</div>
+                      <div style={{ fontSize: 15, fontWeight: 600 }}>{a.vendor_name}</div>
+                      <div style={{ fontSize: 13, color: THEME.textSoft }}>{a.message}</div>
+                    </div>
+                    {sla && (
+                      <div style={{ color: sla.color, fontWeight: 700 }}>{sla.label}</div>
+                    )}
+                  </div>
+
+                  {canEdit && (
+                    <div style={{ display: "flex", gap: 10, marginTop: 12 }}>
+                      <ActionButton
+                        label="Fix"
+                        color={THEME.blue}
+                        onClick={() => openFix(a)}
+                      />
+                      <ActionButton
+                        label="Resolve"
+                        color={THEME.green}
+                        onClick={() => resolveAlert(a)}
+                      />
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </div>
+
+      <ToastV2
+        open={toast.open}
+        message={toast.message}
+        type={toast.type}
+        onClose={() => setToast((t) => ({ ...t, open: false }))}
+      />
     </div>
   );
 }
