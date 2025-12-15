@@ -1,5 +1,5 @@
 // pages/api/alerts-v2/timeline.js
-// UUID-safe timeline endpoint (direct SQL, no engine dependency)
+// UUID-safe timeline endpoint (direct SQL, NO engine import)
 
 import { sql } from "../../../lib/db";
 
@@ -50,3 +50,4 @@ export default async function handler(req, res) {
     });
   }
 }
+
