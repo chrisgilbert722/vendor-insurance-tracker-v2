@@ -1,3 +1,4 @@
+// pages/api/alerts-v2/list.js
 import { listAlertsV2 } from "../../../lib/alertsV2Engine";
 
 const UUID_RE =
@@ -10,14 +11,16 @@ function cleanOrgId(v) {
   return UUID_RE.test(s) ? s : null;
 }
 
+/**
+ * vendor_id IS UUID IN YOUR SYSTEM
+ * NEVER cast to Number()
+ */
 function parseVendorId(v) {
   if (v === null || v === undefined) return null;
   const s = String(v).trim();
   if (!s || s === "null" || s === "undefined") return null;
-  if (/^\d+$/.test(s)) return Number(s);
-  return s;
+  return s; // always UUID/string
 }
-
 
 export default async function handler(req, res) {
   if (req.method !== "GET") {
@@ -36,10 +39,19 @@ export default async function handler(req, res) {
       String(req.query.includeResolved || "").toLowerCase() === "true" ||
       String(req.query.includeResolved || "") === "1";
 
-    const items = await listAlertsV2({ orgId, vendorId, limit, includeResolved });
+    const items = await listAlertsV2({
+      orgId,
+      vendorId,
+      limit,
+      includeResolved,
+    });
+
     return res.status(200).json({ ok: true, items });
   } catch (err) {
     console.error("[alerts-v2/list] error:", err);
-    return res.status(500).json({ ok: false, error: err.message || "Internal error" });
+    return res.status(500).json({
+      ok: false,
+      error: err.message || "Internal error",
+    });
   }
 }
