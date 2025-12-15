@@ -5,8 +5,7 @@ import { useOrg } from "../../context/OrgContext";
 import ToastV2 from "../../components/ToastV2";
 
 /* ==========================================================
-   ALERTS — DASHBOARD FOCUS MODE
-   + SLA COUNTDOWN + ESCALATION + EXCEPTIONS
+   ALERTS — CINEMATIC INCIDENT COMMAND (V5)
 ========================================================== */
 
 const GP = {
@@ -68,10 +67,7 @@ function getSlaState(alert) {
         : hours > 0
         ? `${hours}h left`
         : `${Math.floor(diffMs / 60000)}m left`,
-    color:
-      escalation === "on_track"
-        ? GP.neonGreen
-        : GP.neonGold,
+    color: escalation === "on_track" ? GP.neonGreen : GP.neonGold,
     bg:
       escalation === "on_track"
         ? "rgba(34,197,94,0.15)"
@@ -92,6 +88,10 @@ function escalationBadge(escalation) {
       return null;
   }
 }
+
+/* ==========================================================
+   MAIN COMPONENT
+========================================================== */
 
 export default function AlertsCockpit() {
   const { isAdmin, isManager } = useRole();
@@ -119,8 +119,8 @@ export default function AlertsCockpit() {
       setLoading(true);
       const res = await fetch(`/api/alerts-v2/list?orgId=${orgId}`);
       const json = await res.json();
-      if (!json.ok) throw new Error(json.error);
-      setAlerts(json.alerts || []);
+      if (!json.ok) throw new Error(json.error || "Failed to load alerts");
+      setAlerts(json.items || []);
     } catch (err) {
       setToast({ open: true, type: "error", message: err.message });
     } finally {
@@ -135,24 +135,18 @@ export default function AlertsCockpit() {
 
   async function handleResolve(alert) {
     if (!canEdit) return;
+
     try {
       setSaving(true);
       const res = await fetch("/api/alerts-v2/resolve", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          alertId: alert.id,
-          resolvedBy: "admin",
-          resolutionNote: "Resolved from Alerts Focus",
-        }),
+        body: JSON.stringify({ alertId: alert.id }),
       });
       const json = await res.json();
-      if (!json.ok) throw new Error(json.error);
+      if (!json.ok) throw new Error(json.error || "Failed to resolve alert");
 
       setAlerts((prev) => prev.filter((a) => a.id !== alert.id));
-      window.dispatchEvent(new CustomEvent("alerts:changed"));
-      localStorage.setItem("alerts:changed", Date.now());
-
       setToast({ open: true, type: "success", message: "Alert resolved." });
     } catch (err) {
       setToast({ open: true, type: "error", message: err.message });
@@ -176,15 +170,162 @@ export default function AlertsCockpit() {
         color: GP.text,
       }}
     >
-      <h1 style={{ fontSize: 30, fontWeight: 600 }}>
-        Alerts — Compliance Focus
-      </h1>
+      {/* ======================================================
+          CINEMATIC HEADER
+      ====================================================== */}
+      <div
+        style={{
+          borderRadius: 24,
+          padding: "28px 32px",
+          background:
+            "linear-gradient(135deg, rgba(15,23,42,0.98), rgba(2,6,23,0.98))",
+          border: `1px solid ${GP.borderSoft}`,
+          boxShadow:
+            "0 0 0 1px rgba(255,255,255,0.03), 0 30px 80px rgba(0,0,0,0.6)",
+        }}
+      >
+        <div
+          style={{
+            display: "flex",
+            justifyContent: "space-between",
+            gap: 24,
+            flexWrap: "wrap",
+          }}
+        >
+          <div>
+            <div
+              style={{
+                fontSize: 11,
+                letterSpacing: "0.24em",
+                textTransform: "uppercase",
+                color: GP.textSoft,
+                marginBottom: 6,
+              }}
+            >
+              Incident Command
+            </div>
 
-      <div style={{ marginTop: 24 }}>
+            <div style={{ fontSize: 34, fontWeight: 700 }}>
+              Alerts & Compliance
+            </div>
+
+            <div
+              style={{
+                marginTop: 6,
+                fontSize: 14,
+                color: GP.textSoft,
+                maxWidth: 520,
+              }}
+            >
+              Real-time compliance incidents, SLA exposure, and automated
+              escalation across your organization.
+            </div>
+          </div>
+
+          <div style={{ display: "flex", gap: 10 }}>
+            <button
+              onClick={() =>
+                orgId &&
+                window.open(
+                  `/api/admin/timeline/export.csv?orgId=${orgId}`,
+                  "_blank"
+                )
+              }
+              style={{
+                padding: "10px 16px",
+                borderRadius: 12,
+                border: `1px solid ${GP.borderSoft}`,
+                background: "rgba(15,23,42,0.9)",
+                color: GP.text,
+                fontSize: 13,
+                fontWeight: 600,
+              }}
+            >
+              Export CSV
+            </button>
+
+            <button
+              onClick={() =>
+                orgId &&
+                window.open(
+                  `/api/admin/timeline/export.pdf?orgId=${orgId}`,
+                  "_blank"
+                )
+              }
+              style={{
+                padding: "10px 16px",
+                borderRadius: 12,
+                border: `1px solid ${GP.borderSoft}`,
+                background: "rgba(2,6,23,0.9)",
+                color: GP.text,
+                fontSize: 13,
+                fontWeight: 600,
+              }}
+            >
+              Export PDF
+            </button>
+          </div>
+        </div>
+
+        {/* STATUS STRIP */}
+        <div
+          style={{
+            display: "grid",
+            gridTemplateColumns: "repeat(auto-fit,minmax(140px,1fr))",
+            gap: 16,
+            marginTop: 24,
+          }}
+        >
+          {Object.keys(SEVERITY_META).map((sev) => {
+            const meta = SEVERITY_META[sev];
+            const count = alerts.filter((a) => a.severity === sev).length;
+
+            return (
+              <div
+                key={sev}
+                style={{
+                  borderRadius: 16,
+                  padding: "14px 16px",
+                  background: GP.panel,
+                  border: `1px solid ${meta.color}55`,
+                }}
+              >
+                <div
+                  style={{
+                    fontSize: 11,
+                    letterSpacing: "0.14em",
+                    textTransform: "uppercase",
+                    color: meta.color,
+                  }}
+                >
+                  {meta.label}
+                </div>
+
+                <div
+                  style={{
+                    fontSize: 28,
+                    fontWeight: 700,
+                    marginTop: 4,
+                  }}
+                >
+                  {count}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+
+      {/* ======================================================
+          ALERT GRID
+      ====================================================== */}
+      <div style={{ marginTop: 28 }}>
         {loading ? (
           <div style={{ color: GP.textSoft }}>Loading alerts…</div>
         ) : filteredAlerts.length === 0 ? (
-          <div style={{ color: GP.textSoft }}>No active alerts.</div>
+          <div style={{ color: GP.textSoft }}>
+            ✅ No active compliance incidents.
+          </div>
         ) : (
           <div
             style={{
@@ -217,7 +358,6 @@ export default function AlertsCockpit() {
                     cursor: "pointer",
                   }}
                 >
-                  {/* HEADER */}
                   <div
                     style={{
                       display: "flex",
@@ -268,24 +408,6 @@ export default function AlertsCockpit() {
                     {alert.rule_name || alert.message}
                   </div>
 
-                  {/* EXCEPTION INDICATOR */}
-                  {alert.exception && (
-                    <div
-                      style={{
-                        marginTop: 10,
-                        fontSize: 11,
-                        fontWeight: 700,
-                        color: GP.neonPurple,
-                      }}
-                    >
-                      Exception until{" "}
-                      {new Date(
-                        alert.exception.expires_at
-                      ).toLocaleDateString()}
-                    </div>
-                  )}
-
-                  {/* ESCALATION INDICATOR */}
                   {esc && (
                     <div
                       style={{
