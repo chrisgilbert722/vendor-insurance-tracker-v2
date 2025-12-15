@@ -1,11 +1,5 @@
-// pages/api/onboarding/status.js
-// Returns onboarding + tutorial state for an org (UUID-safe)
-
 import { sql } from "../../../lib/db";
 
-/* ------------------------------------------------------------
-   UUID GUARD
------------------------------------------------------------- */
 const UUID_RE =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
@@ -23,10 +17,9 @@ export default async function handler(req, res) {
   }
 
   try {
-    const safeOrgId = cleanOrgId(req.query.orgId);
+    const orgId = cleanOrgId(req.query.orgId);
 
-    // 🚫 HARD GUARD — prevent dashboard auto-load spam
-    if (!safeOrgId) {
+    if (!orgId) {
       return res.status(200).json({
         ok: false,
         skipped: true,
@@ -34,13 +27,10 @@ export default async function handler(req, res) {
       });
     }
 
-    // UUID-safe lookup
     const rows = await sql`
-      SELECT
-        onboarding_step,
-        dashboard_tutorial_enabled
+      SELECT onboarding_step, dashboard_tutorial_enabled
       FROM organizations
-      WHERE id = ${safeOrgId}
+      WHERE id = ${orgId}
       LIMIT 1;
     `;
 
@@ -53,11 +43,8 @@ export default async function handler(req, res) {
     }
 
     const org = rows[0];
-
     const onboardingStep = org.onboarding_step ?? 0;
-    const dashboardTutorialEnabled =
-      org.dashboard_tutorial_enabled === true;
-
+    const dashboardTutorialEnabled = org.dashboard_tutorial_enabled === true;
     const onboardingComplete = onboardingStep >= 6;
 
     return res.status(200).json({
@@ -68,9 +55,6 @@ export default async function handler(req, res) {
     });
   } catch (err) {
     console.error("[onboarding/status] ERROR:", err);
-    return res.status(500).json({
-      ok: false,
-      error: err.message || "Status failed.",
-    });
+    return res.status(500).json({ ok: false, error: err.message || "Failed" });
   }
 }
