@@ -1,8 +1,10 @@
 // pages/api/renewals/heatmap.js
 // ============================================================
-// RENEWALS HEATMAP — UUID SAFE + DASHBOARD SAFE
-// Feeds Dashboard Renewal Heatmap (Next 90 Days)
-// Never throws. Never casts UUIDs.
+// RENEWALS HEATMAP — UUID SAFE + DASHBOARD SAFE (CANONICAL)
+// - Feeds existing Dashboard Renewal Heatmap
+// - Never casts UUIDs
+// - Never throws 500s
+// - Returns empty array when orgId missing
 // ============================================================
 
 import { sql } from "../../../lib/db";
@@ -17,7 +19,7 @@ export default async function handler(req, res) {
   try {
     const orgId = cleanUUID(req.query.orgId);
 
-    // HARD SKIP — dashboard safety
+    // HARD SKIP — keep dashboard calm
     if (!orgId) {
       return res.status(200).json({
         ok: true,
@@ -27,8 +29,8 @@ export default async function handler(req, res) {
     }
 
     /*
-      We bucket expirations by day for the next 90 days.
-      This matches the existing dashboard heatmap expectation.
+      Bucket policy expirations by date for the next 90 days.
+      Matches existing dashboard heatmap expectations.
     */
 
     const rows = await sql`
