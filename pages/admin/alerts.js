@@ -76,19 +76,6 @@ function getSlaState(alert) {
   };
 }
 
-function escalationBadge(escalation) {
-  switch (escalation) {
-    case "on_track":
-      return { label: "On Track", color: GP.neonGreen };
-    case "at_risk":
-      return { label: "At Risk", color: GP.neonGold };
-    case "escalated":
-      return { label: "Escalated", color: GP.neonRed };
-    default:
-      return null;
-  }
-}
-
 /* ==========================================================
    MAIN COMPONENT
 ========================================================== */
@@ -133,6 +120,12 @@ export default function AlertsCockpit() {
     return alerts.filter((a) => a.severity === severityFilter);
   }, [alerts, severityFilter]);
 
+  const slaBreachedCount = useMemo(() => {
+    return alerts.filter(
+      (a) => a.sla_due_at && new Date(a.sla_due_at) <= new Date()
+    ).length;
+  }, [alerts]);
+
   async function handleResolve(alert) {
     if (!canEdit) return;
 
@@ -170,9 +163,7 @@ export default function AlertsCockpit() {
         color: GP.text,
       }}
     >
-      {/* ======================================================
-          CINEMATIC HEADER
-      ====================================================== */}
+      {/* ===================== COMMAND HEADER ===================== */}
       <div
         style={{
           borderRadius: 24,
@@ -180,8 +171,6 @@ export default function AlertsCockpit() {
           background:
             "linear-gradient(135deg, rgba(15,23,42,0.98), rgba(2,6,23,0.98))",
           border: `1px solid ${GP.borderSoft}`,
-          boxShadow:
-            "0 0 0 1px rgba(255,255,255,0.03), 0 30px 80px rgba(0,0,0,0.6)",
         }}
       >
         <div
@@ -199,7 +188,6 @@ export default function AlertsCockpit() {
                 letterSpacing: "0.24em",
                 textTransform: "uppercase",
                 color: GP.textSoft,
-                marginBottom: 6,
               }}
             >
               Incident Command
@@ -231,15 +219,6 @@ export default function AlertsCockpit() {
                   "_blank"
                 )
               }
-              style={{
-                padding: "10px 16px",
-                borderRadius: 12,
-                border: `1px solid ${GP.borderSoft}`,
-                background: "rgba(15,23,42,0.9)",
-                color: GP.text,
-                fontSize: 13,
-                fontWeight: 600,
-              }}
             >
               Export CSV
             </button>
@@ -252,22 +231,13 @@ export default function AlertsCockpit() {
                   "_blank"
                 )
               }
-              style={{
-                padding: "10px 16px",
-                borderRadius: 12,
-                border: `1px solid ${GP.borderSoft}`,
-                background: "rgba(2,6,23,0.9)",
-                color: GP.text,
-                fontSize: 13,
-                fontWeight: 600,
-              }}
             >
               Export PDF
             </button>
           </div>
         </div>
 
-        {/* STATUS STRIP */}
+        {/* ===================== FILTER STRIP ===================== */}
         <div
           style={{
             display: "grid",
@@ -276,6 +246,25 @@ export default function AlertsCockpit() {
             marginTop: 24,
           }}
         >
+          <div
+            onClick={() => setSeverityFilter("all")}
+            style={{
+              borderRadius: 16,
+              padding: "14px 16px",
+              background: GP.panel,
+              border:
+                severityFilter === "all"
+                  ? `2px solid ${GP.neonBlue}`
+                  : `1px solid ${GP.borderSoft}`,
+              cursor: "pointer",
+            }}
+          >
+            <div style={{ fontSize: 11, color: GP.neonBlue }}>ALL</div>
+            <div style={{ fontSize: 28, fontWeight: 700 }}>
+              {alerts.length}
+            </div>
+          </div>
+
           {Object.keys(SEVERITY_META).map((sev) => {
             const meta = SEVERITY_META[sev];
             const count = alerts.filter((a) => a.severity === sev).length;
@@ -283,42 +272,47 @@ export default function AlertsCockpit() {
             return (
               <div
                 key={sev}
+                onClick={() => setSeverityFilter(sev)}
                 style={{
                   borderRadius: 16,
                   padding: "14px 16px",
                   background: GP.panel,
-                  border: `1px solid ${meta.color}55`,
+                  border:
+                    severityFilter === sev
+                      ? `2px solid ${meta.color}`
+                      : `1px solid ${meta.color}55`,
+                  cursor: "pointer",
                 }}
               >
-                <div
-                  style={{
-                    fontSize: 11,
-                    letterSpacing: "0.14em",
-                    textTransform: "uppercase",
-                    color: meta.color,
-                  }}
-                >
-                  {meta.label}
+                <div style={{ fontSize: 11, color: meta.color }}>
+                  {meta.label.toUpperCase()}
                 </div>
-
-                <div
-                  style={{
-                    fontSize: 28,
-                    fontWeight: 700,
-                    marginTop: 4,
-                  }}
-                >
+                <div style={{ fontSize: 28, fontWeight: 700 }}>
                   {count}
                 </div>
               </div>
             );
           })}
+
+          <div
+            style={{
+              borderRadius: 16,
+              padding: "14px 16px",
+              background: "rgba(251,113,133,0.15)",
+              border: `1px solid ${GP.neonRed}`,
+            }}
+          >
+            <div style={{ fontSize: 11, color: GP.neonRed }}>
+              SLA BREACHED
+            </div>
+            <div style={{ fontSize: 28, fontWeight: 700 }}>
+              {slaBreachedCount}
+            </div>
+          </div>
         </div>
       </div>
 
-      {/* ======================================================
-          ALERT GRID
-      ====================================================== */}
+      {/* ===================== ALERT GRID ===================== */}
       <div style={{ marginTop: 28 }}>
         {loading ? (
           <div style={{ color: GP.textSoft }}>Loading alerts…</div>
@@ -337,8 +331,6 @@ export default function AlertsCockpit() {
             {filteredAlerts.map((alert) => {
               const sev = SEVERITY_META[alert.severity] || {};
               const sla = getSlaState(alert);
-              const esc =
-                !alert.exception ? escalationBadge(sla?.escalation) : null;
 
               return (
                 <div
@@ -347,13 +339,7 @@ export default function AlertsCockpit() {
                   style={{
                     borderRadius: 18,
                     padding: 16,
-                    border: `1px solid ${
-                      alert.exception
-                        ? GP.neonPurple
-                        : sla?.escalation === "escalated"
-                        ? GP.neonRed
-                        : sev.color
-                    }55`,
+                    border: `1px solid ${sev.color}55`,
                     background: GP.panel,
                     cursor: "pointer",
                   }}
@@ -362,18 +348,10 @@ export default function AlertsCockpit() {
                     style={{
                       display: "flex",
                       justifyContent: "space-between",
-                      alignItems: "center",
                       marginBottom: 6,
                     }}
                   >
-                    <div
-                      style={{
-                        fontSize: 11,
-                        color: sev.color,
-                        textTransform: "uppercase",
-                        letterSpacing: "0.14em",
-                      }}
-                    >
+                    <div style={{ fontSize: 11, color: sev.color }}>
                       {sev.label}
                     </div>
 
@@ -385,7 +363,6 @@ export default function AlertsCockpit() {
                           borderRadius: 999,
                           color: sla.color,
                           background: sla.bg,
-                          border: `1px solid ${sla.color}55`,
                           fontWeight: 700,
                         }}
                       >
@@ -408,19 +385,6 @@ export default function AlertsCockpit() {
                     {alert.rule_name || alert.message}
                   </div>
 
-                  {esc && (
-                    <div
-                      style={{
-                        marginTop: 8,
-                        fontSize: 11,
-                        color: esc.color,
-                        fontWeight: 700,
-                      }}
-                    >
-                      {esc.label}
-                    </div>
-                  )}
-
                   {canEdit && (
                     <button
                       onClick={(e) => {
@@ -436,7 +400,6 @@ export default function AlertsCockpit() {
                         color: GP.neonGreen,
                         fontSize: 12,
                         fontWeight: 600,
-                        cursor: "pointer",
                       }}
                     >
                       Resolve
