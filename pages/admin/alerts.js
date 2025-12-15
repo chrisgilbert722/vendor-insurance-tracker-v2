@@ -1,318 +1,292 @@
 import { useEffect, useMemo, useState } from "react";
 import { useOrg } from "../../context/OrgContext";
 import { useRole } from "../../lib/useRole";
-import ToastV2 from "../../components/ToastV2";
 
-/* =========================================================
-   ALERTS V5 — INCIDENT COMMAND (ENTERPRISE)
-========================================================= */
+/* ==========================================================
+   ALERTS V5 — ENTERPRISE INCIDENT COMMAND
+   Canonical rebuild — UI + wiring locked
+========================================================== */
 
 const UI = {
   bg: "#020617",
-  panel: "rgba(15,23,42,0.98)",
-  border: "rgba(51,65,85,0.9)",
+  panel: "rgba(15,23,42,0.97)",
+  panelSoft: "rgba(15,23,42,0.75)",
+  border: "rgba(51,65,85,0.8)",
   text: "#e5e7eb",
   textSoft: "#9ca3af",
-
   blue: "#38bdf8",
-  red: "#fb7185",
-  gold: "#facc15",
   green: "#22c55e",
+  gold: "#facc15",
+  red: "#fb7185",
 };
 
-const SEVERITY = {
+const SEV = {
   critical: { label: "Critical", color: UI.red },
   high: { label: "High", color: UI.gold },
   medium: { label: "Medium", color: UI.blue },
   low: { label: "Low", color: UI.green },
 };
 
-export default function AlertsAdmin() {
+function isBreached(a) {
+  if (!a?.sla_due_at) return false;
+  return new Date(a.sla_due_at) < new Date();
+}
+
+export default function AlertsV5() {
   const { activeOrgId: orgId, loadingOrgs } = useOrg();
   const { isAdmin, isManager } = useRole();
   const canResolve = isAdmin || isManager;
 
   const [alerts, setAlerts] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [severityFilter, setSeverityFilter] = useState("all");
+  const [filter, setFilter] = useState("all");
+  const [view, setView] = useState("grid");
 
-  const [toast, setToast] = useState({
-    open: false,
-    type: "success",
-    message: "",
-  });
-
-  /* ============================
-     LOAD ALERTS
-  ============================ */
+  /* ---------------- LOAD ALERTS ---------------- */
   useEffect(() => {
     if (!orgId || loadingOrgs) return;
-    loadAlerts();
+
+    let alive = true;
+
+    (async () => {
+      try {
+        setLoading(true);
+        const r = await fetch(`/api/alerts-v2/list?orgId=${orgId}`);
+        const j = await r.json();
+        if (!alive) return;
+        setAlerts(j?.items || []);
+      } catch {
+        if (!alive) return;
+        setAlerts([]);
+      } finally {
+        if (!alive) return;
+        setLoading(false);
+      }
+    })();
+
+    return () => {
+      alive = false;
+    };
   }, [orgId, loadingOrgs]);
 
-  async function loadAlerts() {
-    try {
-      setLoading(true);
-      const res = await fetch(`/api/alerts-v2/list?orgId=${orgId}`);
-      const json = await res.json();
-      if (!json.ok) throw new Error(json.error || "Failed to load alerts");
-      setAlerts(json.items || []);
-    } catch (err) {
-      setToast({ open: true, type: "error", message: err.message });
-    } finally {
-      setLoading(false);
-    }
-  }
-
-  /* ============================
-     FILTERING
-  ============================ */
-  const filtered = useMemo(() => {
-    if (severityFilter === "all") return alerts;
-    return alerts.filter((a) => a.severity === severityFilter);
-  }, [alerts, severityFilter]);
-
+  /* ---------------- COUNTS ---------------- */
   const counts = useMemo(() => {
-    const c = { all: alerts.length, critical: 0, high: 0, medium: 0, low: 0 };
+    const c = { all: alerts.length, critical: 0, high: 0, medium: 0, low: 0, sla: 0 };
     alerts.forEach((a) => {
       if (c[a.severity] !== undefined) c[a.severity]++;
+      if (isBreached(a)) c.sla++;
     });
     return c;
   }, [alerts]);
 
-  /* ============================
-     ACTIONS
-  ============================ */
-  function openFixCockpit(alert) {
-    if (!alert?.vendor_id || !alert?.id) return;
-    window.location.href = `/admin/vendor/${alert.vendor_id}/fix?alertId=${alert.id}`;
+  const filtered = useMemo(() => {
+    if (filter === "all") return alerts;
+    if (filter === "sla") return alerts.filter(isBreached);
+    return alerts.filter((a) => a.severity === filter);
+  }, [alerts, filter]);
+
+  /* ---------------- ACTIONS ---------------- */
+  function openFix(a) {
+    if (!a?.vendor_id || !a?.id) return;
+    window.location.href = `/admin/vendor/${a.vendor_id}/fix?alertId=${a.id}`;
   }
 
-  async function resolveAlert(alert) {
-    if (!canResolve) return;
-    try {
-      const res = await fetch("/api/alerts-v2/resolve", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ alertId: alert.id }),
-      });
-      const json = await res.json();
-      if (!json.ok) throw new Error(json.error || "Failed to resolve alert");
-      setAlerts((prev) => prev.filter((a) => a.id !== alert.id));
-      setToast({ open: true, type: "success", message: "Alert resolved" });
-    } catch (err) {
-      setToast({ open: true, type: "error", message: err.message });
-    }
-  }
-
-  /* ============================
-     EXPORTS
-  ============================ */
   function exportCSV() {
+    if (!orgId) return;
     window.open(`/api/admin/timeline/export.csv?orgId=${orgId}`, "_blank");
   }
 
   function exportPDF() {
+    if (!orgId) return;
     window.open(`/api/admin/timeline/export.pdf?orgId=${orgId}`, "_blank");
   }
 
-  /* ============================
+  /* ==========================================================
      RENDER
-  ============================ */
+  ========================================================== */
+
   return (
     <div
       style={{
         minHeight: "100vh",
         background:
-          "radial-gradient(circle at top left,#020617 0,#020617 45%,#000 100%)",
-        padding: "36px 48px",
+          "radial-gradient(circle at top left,#020617 0%,#020617 40%,#000 100%)",
+        padding: "36px 48px 80px",
         color: UI.text,
       }}
     >
-      {/* HEADER */}
+      {/* ================= HEADER ================= */}
       <div
         style={{
+          maxWidth: 1240,
+          margin: "0 auto",
+          borderRadius: 24,
+          padding: "30px 34px",
           background: UI.panel,
           border: `1px solid ${UI.border}`,
-          borderRadius: 22,
-          padding: 28,
-          marginBottom: 28,
+          boxShadow: "0 40px 90px rgba(0,0,0,0.6)",
         }}
       >
-        <div
-          style={{
-            display: "flex",
-            justifyContent: "space-between",
-            alignItems: "flex-start",
-            gap: 24,
-          }}
-        >
+        <div style={{ display: "flex", justifyContent: "space-between", gap: 24 }}>
           <div>
-            <div
-              style={{
-                fontSize: 12,
-                letterSpacing: "0.16em",
-                color: UI.textSoft,
-              }}
-            >
+            <div style={{ fontSize: 11, letterSpacing: "0.2em", color: UI.textSoft }}>
               INCIDENT COMMAND
             </div>
-            <h1 style={{ fontSize: 28, fontWeight: 700, marginTop: 6 }}>
+            <h1 style={{ fontSize: 34, marginTop: 6 }}>
               Alerts & Compliance
             </h1>
-            <p style={{ color: UI.textSoft, marginTop: 6, maxWidth: 560 }}>
-              Real-time compliance incidents, SLA exposure, and automated
-              escalation across your organization.
+            <p style={{ marginTop: 8, color: UI.textSoft, maxWidth: 640 }}>
+              Live compliance incidents, SLA exposure, and operational escalation.
             </p>
           </div>
 
-          <div style={{ display: "flex", gap: 10 }}>
-            <EnterpriseButton label="Export CSV" onClick={exportCSV} />
-            <EnterpriseButton label="Export PDF" onClick={exportPDF} />
+          <div style={{ display: "flex", gap: 12 }}>
+            <ActionBtn label="Export CSV" color={UI.blue} onClick={exportCSV} />
+            <ActionBtn label="Export PDF" color={UI.gold} onClick={exportPDF} />
+            <ActionBtn
+              label={view === "grid" ? "Timeline View" : "Grid View"}
+              color={UI.green}
+              onClick={() => setView(view === "grid" ? "timeline" : "grid")}
+            />
           </div>
         </div>
 
-        {/* COUNTERS */}
+        {/* ================= COUNTERS ================= */}
         <div
           style={{
-            marginTop: 22,
             display: "grid",
-            gridTemplateColumns: "repeat(auto-fit,minmax(140px,1fr))",
-            gap: 12,
+            gridTemplateColumns: "repeat(auto-fit,minmax(150px,1fr))",
+            gap: 14,
+            marginTop: 24,
           }}
         >
-          <Counter label="All" value={counts.all} color={UI.blue} active={severityFilter === "all"} onClick={() => setSeverityFilter("all")} />
-          <Counter label="Critical" value={counts.critical} color={UI.red} active={severityFilter === "critical"} onClick={() => setSeverityFilter("critical")} />
-          <Counter label="High" value={counts.high} color={UI.gold} active={severityFilter === "high"} onClick={() => setSeverityFilter("high")} />
-          <Counter label="Medium" value={counts.medium} color={UI.blue} active={severityFilter === "medium"} onClick={() => setSeverityFilter("medium")} />
-          <Counter label="Low" value={counts.low} color={UI.green} active={severityFilter === "low"} onClick={() => setSeverityFilter("low")} />
+          <Stat label="All" value={counts.all} color={UI.blue} onClick={() => setFilter("all")} active={filter === "all"} />
+          <Stat label="Critical" value={counts.critical} color={UI.red} onClick={() => setFilter("critical")} active={filter === "critical"} />
+          <Stat label="High" value={counts.high} color={UI.gold} onClick={() => setFilter("high")} active={filter === "high"} />
+          <Stat label="Medium" value={counts.medium} color={UI.blue} onClick={() => setFilter("medium")} active={filter === "medium"} />
+          <Stat label="Low" value={counts.low} color={UI.green} onClick={() => setFilter("low")} active={filter === "low"} />
+          <Stat label="SLA Breached" value={counts.sla} color={UI.red} onClick={() => setFilter("sla")} active={filter === "sla"} />
         </div>
+
+        {!loading && counts.all === 0 && (
+          <div
+            style={{
+              marginTop: 20,
+              padding: "14px 16px",
+              borderRadius: 14,
+              background: "rgba(34,197,94,0.12)",
+              border: "1px solid rgba(34,197,94,0.4)",
+              color: UI.green,
+              fontWeight: 700,
+            }}
+          >
+            ✓ No active compliance incidents.
+          </div>
+        )}
       </div>
 
-      {/* ALERT GRID */}
-      {loading ? (
-        <div style={{ color: UI.textSoft }}>Loading alerts…</div>
-      ) : filtered.length === 0 ? (
-        <div style={{ color: UI.green, fontWeight: 600 }}>
-          ✓ No active compliance incidents.
-        </div>
-      ) : (
-        <div
-          style={{
-            display: "grid",
-            gridTemplateColumns: "repeat(auto-fill,minmax(360px,1fr))",
-            gap: 16,
-          }}
-        >
-          {filtered.map((a) => {
-            const sev = SEVERITY[a.severity] || {};
-            return (
-              <div
-                key={a.id}
-                onClick={() => openFixCockpit(a)}
-                style={{
-                  background: UI.panel,
-                  border: `1px solid ${sev.color || UI.border}55`,
-                  borderRadius: 18,
-                  padding: 18,
-                  cursor: a.vendor_id ? "pointer" : "default",
-                  transition: "transform 0.15s ease",
-                }}
-              >
-                <div style={{ fontSize: 11, color: sev.color }}>
-                  {sev.label}
-                </div>
-
-                <div style={{ fontWeight: 700, marginTop: 6 }}>
-                  {a.vendor_name || "Vendor"}
-                </div>
-
-                <div style={{ color: UI.textSoft, marginTop: 6 }}>
-                  {a.message}
-                </div>
-
+      {/* ================= BODY ================= */}
+      <div style={{ maxWidth: 1240, margin: "28px auto 0" }}>
+        {loading ? (
+          <div style={{ color: UI.textSoft }}>Loading alerts…</div>
+        ) : filtered.length === 0 ? (
+          <div style={{ color: UI.textSoft }}>
+            No alerts in this filter.
+          </div>
+        ) : (
+          <div
+            style={{
+              display: "grid",
+              gridTemplateColumns: "repeat(auto-fill,minmax(360px,1fr))",
+              gap: 16,
+            }}
+          >
+            {filtered.map((a) => {
+              const meta = SEV[a.severity] || SEV.medium;
+              return (
                 <div
+                  key={a.id}
+                  onClick={() => openFix(a)}
                   style={{
-                    display: "flex",
-                    gap: 10,
-                    marginTop: 14,
+                    background: UI.panelSoft,
+                    border: `1px solid ${meta.color}55`,
+                    borderRadius: 18,
+                    padding: 18,
+                    cursor: "pointer",
                   }}
                 >
-                  <EnterpriseButton
-                    label="Open Fix"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      openFixCockpit(a);
-                    }}
-                  />
+                  <div style={{ fontSize: 11, color: meta.color }}>
+                    {meta.label}
+                    {isBreached(a) && (
+                      <span style={{ marginLeft: 8, color: UI.red }}>
+                        SLA BREACHED
+                      </span>
+                    )}
+                  </div>
 
-                  {canResolve && (
-                    <EnterpriseButton
-                      label="Resolve"
-                      danger
+                  <div style={{ marginTop: 6, fontWeight: 800 }}>
+                    {a.vendor_name || "Vendor"}
+                  </div>
+
+                  <div style={{ marginTop: 6, color: UI.textSoft }}>
+                    {a.message || a.rule_name}
+                  </div>
+
+                  <div style={{ marginTop: 12 }}>
+                    <ActionBtn
+                      label="Open Fix →"
+                      color={UI.blue}
                       onClick={(e) => {
                         e.stopPropagation();
-                        resolveAlert(a);
+                        openFix(a);
                       }}
                     />
-                  )}
+                  </div>
                 </div>
-              </div>
-            );
-          })}
-        </div>
-      )}
-
-      <ToastV2
-        open={toast.open}
-        type={toast.type}
-        message={toast.message}
-        onClose={() => setToast((t) => ({ ...t, open: false }))}
-      />
+              );
+            })}
+          </div>
+        )}
+      </div>
     </div>
   );
 }
 
-/* =========================================================
-   COMPONENTS
-========================================================= */
+/* ================= SUB COMPONENTS ================= */
 
-function Counter({ label, value, color, active, onClick }) {
-  return (
-    <div
-      onClick={onClick}
-      style={{
-        padding: 14,
-        borderRadius: 14,
-        border: `1px solid ${color}55`,
-        background: active ? `${color}22` : "transparent",
-        cursor: "pointer",
-      }}
-    >
-      <div style={{ fontSize: 11, color }}>{label.toUpperCase()}</div>
-      <div style={{ fontSize: 22, fontWeight: 700 }}>{value}</div>
-    </div>
-  );
-}
-
-function EnterpriseButton({ label, onClick, danger }) {
+function ActionBtn({ label, color, onClick }) {
   return (
     <button
       onClick={onClick}
       style={{
-        padding: "8px 14px",
-        borderRadius: 12,
-        border: `1px solid ${danger ? UI.red : UI.blue}`,
-        background: danger
-          ? "rgba(251,113,133,0.15)"
-          : "rgba(56,189,248,0.15)",
-        color: danger ? UI.red : UI.blue,
-        fontWeight: 700,
-        fontSize: 12,
+        padding: "10px 16px",
+        borderRadius: 999,
+        border: `1px solid ${color}`,
+        background: `${color}22`,
+        color,
+        fontWeight: 800,
         cursor: "pointer",
       }}
     >
       {label}
     </button>
+  );
+}
+
+function Stat({ label, value, color, onClick, active }) {
+  return (
+    <div
+      onClick={onClick}
+      style={{
+        padding: 16,
+        borderRadius: 16,
+        border: `1px solid ${color}55`,
+        background: active ? `${color}22` : "transparent",
+        cursor: "pointer",
+      }}
+    >
+      <div style={{ fontSize: 11, color }}>{label}</div>
+      <div style={{ fontSize: 24, fontWeight: 800 }}>{value}</div>
+    </div>
   );
 }
