@@ -1,35 +1,95 @@
-import { getAlertAgingV2 } from "../../../lib/alertsV2Engine";
+// pages/api/alerts-v2/aging.js
+// ============================================================
+// ALERT AGING — ENTERPRISE SAFE
+// - ALWAYS returns numbers
+// - NEVER returns null
+// - NEVER throws
+// - Dashboard-safe
+// ============================================================
 
-const UUID_RE =
-  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
-
-function cleanOrgId(v) {
-  if (!v) return null;
-  const s = String(v).trim();
-  if (!s || s === "null" || s === "undefined") return null;
-  return UUID_RE.test(s) ? s : null;
-}
-
-function parseVendorId(v) {
-  if (v === null || v === undefined) return null;
-  const s = String(v).trim();
-  if (!s || s === "null" || s === "undefined") return null;
-  if (/^\d+$/.test(s)) return Number(s);
-  return s;
-}
-
+import { sql } from "../../../lib/db";
+import { cleanUUID } from "../../../lib/uuid";
 
 export default async function handler(req, res) {
+  if (req.method !== "GET") {
+    return res.status(200).json({
+      ok: false,
+      aging: {
+        oldest: 0,
+        avgAge: 0,
+        over7: 0,
+        over30: 0,
+      },
+    });
+  }
+
   try {
-    const orgId = cleanOrgId(req.query.orgId);
+    const orgId = cleanUUID(req.query.orgId);
+
+    // HARD SKIP — dashboard safety
     if (!orgId) {
-      return res.status(200).json({ ok: false, skipped: true, aging: null });
+      return res.status(200).json({
+        ok: true,
+        skipped: true,
+        aging: {
+          oldest: 0,
+          avgAge: 0,
+          over7: 0,
+          over30: 0,
+        },
+      });
     }
 
-    const aging = await getAlertAgingV2(orgId);
-    return res.status(200).json({ ok: true, aging });
+    const rows = await sql`
+      SELECT created_at
+      FROM alerts_v2
+      WHERE org_id = ${orgId}
+        AND resolved_at IS NULL;
+    `;
+
+    if (!rows || rows.length === 0) {
+      return res.status(200).json({
+        ok: true,
+        aging: {
+          oldest: 0,
+          avgAge: 0,
+          over7: 0,
+          over30: 0,
+        },
+      });
+    }
+
+    const now = Date.now();
+    const ages = rows.map(r =>
+      Math.floor((now - new Date(r.created_at).getTime()) / 86400000)
+    );
+
+    const oldest = Math.max(...ages);
+    const avgAge = Math.round(ages.reduce((a, b) => a + b, 0) / ages.length);
+    const over7 = ages.filter(d => d >= 7).length;
+    const over30 = ages.filter(d => d >= 30).length;
+
+    return res.status(200).json({
+      ok: true,
+      aging: {
+        oldest,
+        avgAge,
+        over7,
+        over30,
+      },
+    });
   } catch (err) {
     console.error("[alerts-v2/aging] ERROR:", err);
-    return res.status(500).json({ ok: false, error: err.message });
+
+    // NEVER BREAK DASHBOARD
+    return res.status(200).json({
+      ok: false,
+      aging: {
+        oldest: 0,
+        avgAge: 0,
+        over7: 0,
+        over30: 0,
+      },
+    });
   }
 }
