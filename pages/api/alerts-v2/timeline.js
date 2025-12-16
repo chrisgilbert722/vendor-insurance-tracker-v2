@@ -1,30 +1,37 @@
 // pages/api/alerts-v2/timeline.js
-// UUID-safe timeline endpoint (direct SQL, NO engine import)
+// ============================================================
+// ALERTS TIMELINE — ENTERPRISE SAFE
+// - UUID safe
+// - ALWAYS returns items:[]
+// - NEVER throws
+// - NEVER returns 500
+// - Dashboard-safe
+// ============================================================
 
 import { sql } from "../../../lib/db";
-
-const UUID_RE =
-  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
-
-function cleanOrgId(v) {
-  if (!v) return null;
-  const s = String(v).trim();
-  if (!s || s === "null" || s === "undefined") return null;
-  return UUID_RE.test(s) ? s : null;
-}
+import { cleanUUID } from "../../../lib/uuid";
 
 export default async function handler(req, res) {
+  // HARD CONTRACT — dashboard safety
   if (req.method !== "GET") {
-    return res.status(405).json({ ok: false, error: "Method not allowed" });
+    return res.status(200).json({
+      ok: false,
+      items: [],
+    });
   }
 
   try {
-    const orgId = cleanOrgId(req.query.orgId);
-    if (!orgId) {
-      return res.status(200).json({ ok: false, skipped: true, items: [] });
-    }
-
+    const orgId = cleanUUID(req.query.orgId);
     const days = Math.max(1, Math.min(365, Number(req.query.days || 30)));
+
+    // HARD SKIP — no org context
+    if (!orgId) {
+      return res.status(200).json({
+        ok: true,
+        skipped: true,
+        items: [],
+      });
+    }
 
     const rows = await sql`
       SELECT
@@ -41,12 +48,18 @@ export default async function handler(req, res) {
       LIMIT 200;
     `;
 
-    return res.status(200).json({ ok: true, items: rows || [] });
+    // ALWAYS return array
+    return res.status(200).json({
+      ok: true,
+      items: rows || [],
+    });
   } catch (err) {
-    console.error("[alerts-v2/timeline] error:", err);
-    return res.status(500).json({
+    console.error("[alerts-v2/timeline] ERROR:", err);
+
+    // NEVER BREAK DASHBOARD
+    return res.status(200).json({
       ok: false,
-      error: err.message || "Internal error",
+      items: [],
     });
   }
 }
