@@ -12,11 +12,10 @@ export default function RenewalBacklog() {
         const res = await fetch("/api/renewals/list");
         const json = await res.json();
 
-        // ✅ HARD GUARANTEE ARRAY
         if (alive && json && json.ok && Array.isArray(json.data)) {
           setRenewals(json.data);
         } else if (alive) {
-          setRenewals([]); // fallback, never undefined
+          setRenewals([]);
         }
       } catch (err) {
         console.error("[RenewalBacklog] load error:", err);
@@ -98,20 +97,20 @@ export default function RenewalBacklog() {
                     borderBottom: "1px solid rgba(148,163,184,0.2)",
                   }}
                 >
-                  <td style={td}>{r.vendor_name || "—"}</td>
-                  <td style={td}>{r.coverage_type || "—"}</td>
-                  <td style={td}>
+                  <td style={cell}>{r.vendor_name || "—"}</td>
+                  <td style={cell}>{r.coverage_type || "—"}</td>
+                  <td style={cell}>
                     {exp && !isNaN(exp)
                       ? exp.toLocaleDateString()
                       : "—"}
                   </td>
-                  <td style={td}>{r.status || "—"}</td>
-                  <td style={td}>
+                  <td style={cell}>{r.status || "—"}</td>
+                  <td style={cell}>
                     {risk.label
                       ? `${risk.label} (${risk.score ?? "—"})`
                       : "—"}
                   </td>
-                  <td style={td}>{r.alertsCount ?? 0}</td>
+                  <td style={cell}>{r.alertsCount ?? 0}</td>
                 </tr>
               );
             })}
@@ -122,6 +121,8 @@ export default function RenewalBacklog() {
   );
 }
 
+/* ================== STYLES ================== */
+
 const th = {
   textAlign: "left",
   paddingBottom: 6,
@@ -129,12 +130,7 @@ const th = {
   color: "#9ca3af",
 };
 
-const td = {
-  padding: "6px 0",
-  borderBottom: "1px solid rgba(148,163,184,0.15)",
-};
-
-const td = {
+const cell = {
   padding: "6px 0",
   borderBottom: "1px solid rgba(148,163,184,0.15)",
 };
