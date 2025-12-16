@@ -1,6 +1,6 @@
 // pages/dashboard.js — Dashboard V5 (Cinematic Intelligence Cockpit)
 
-import { useEffect, useState, useRef } from "react";
+import { useEffect, useState, useRef, Component } from "react";
 import VendorDrawer from "../components/VendorDrawer";
 import { useRole } from "../lib/useRole";
 import { useOrg } from "../context/OrgContext";
@@ -39,6 +39,31 @@ import ComplianceEvidenceTimeline from "../components/panels/ComplianceEvidenceT
 
 const safeArray = (v) => (Array.isArray(v) ? v : []);
 const safeObject = (v) => (v && typeof v === "object" ? v : {});
+
+// ============================================================
+// SILENT ERROR BOUNDARY — prevents one chart/panel crash from killing dashboard
+// (Catches runtime render errors like undefined.length inside child components)
+// ============================================================
+class SilentErrorBoundary extends Component {
+  constructor(props) {
+    super(props);
+    this.state = { hasError: false };
+  }
+  static getDerivedStateFromError() {
+    return { hasError: true };
+  }
+  componentDidCatch(err) {
+    // Keep console noise low; still log once for debugging
+    try {
+      console.error("[dashboard] panel crashed:", this.props?.name || "panel", err);
+    } catch {}
+  }
+  render() {
+    if (this.state.hasError) return this.props.fallback ?? null;
+    return this.props.children;
+  }
+}
+
 
 /* ============================================================
    ELECTRIC NEON THEME
@@ -1600,18 +1625,48 @@ function Dashboard() {
       <ExpiringCertsHeatmap policies={safeArray(policies)} />
       <SeverityDistributionChart overview={dashboard ?? {}} />
       <RiskTimelineChart policies={safeArray(policies)} />
-
-      <AlertTimelineChart orgId={activeOrgId} />
-      <TopAlertTypes orgId={activeOrgId} />
-      <AlertAgingKpis orgId={activeOrgId} />
-      <SlaBreachWidget orgId={activeOrgId} />
-      <CriticalVendorWatchlist orgId={activeOrgId} />
-      <AlertHeatSignature orgId={activeOrgId} />
-
-      {/* RENEWAL INTELLIGENCE (tutorial anchor: renewalsRef) */}
+{activeOrgId && (
+  <SilentErrorBoundary name="AlertTimelineChart">
+    <AlertTimelineChart orgId={activeOrgId} />
+  </SilentErrorBoundary>
+)}
+{activeOrgId && (
+  <SilentErrorBoundary name="TopAlertTypes">
+    <TopAlertTypes orgId={activeOrgId} />
+  </SilentErrorBoundary>
+)}
+{activeOrgId && (
+  <SilentErrorBoundary name="AlertAgingKpis">
+    <AlertAgingKpis orgId={activeOrgId} />
+  </SilentErrorBoundary>
+)}
+{activeOrgId && (
+  <SilentErrorBoundary name="SlaBreachWidget">
+    <SlaBreachWidget orgId={activeOrgId} />
+  </SilentErrorBoundary>
+)}
+{activeOrgId && (
+  <SilentErrorBoundary name="CriticalVendorWatchlist">
+    <CriticalVendorWatchlist orgId={activeOrgId} />
+  </SilentErrorBoundary>
+)}
+{activeOrgId && (
+  <SilentErrorBoundary name="AlertHeatSignature">
+    <AlertHeatSignature orgId={activeOrgId} />
+  </SilentErrorBoundary>
+)}
+{/* RENEWAL INTELLIGENCE (tutorial anchor: renewalsRef) */}
       <div ref={renewalsRef}>
-        <RenewalHeatmap range={90} />
-        <RenewalBacklog />
+        {activeOrgId && (
+        <SilentErrorBoundary name="RenewalHeatmap">
+          <RenewalHeatmap range={90} />
+        </SilentErrorBoundary>
+      )}
+        {activeOrgId && (
+        <SilentErrorBoundary name="RenewalBacklog">
+          <RenewalBacklog />
+        </SilentErrorBoundary>
+      )}
       </div>
 
       <div
@@ -1624,9 +1679,21 @@ function Dashboard() {
           gap: 16,
         }}
       >
-        <RenewalSlaWidget orgId={activeOrgId} />
-        <RenewalCalendar range={60} />
-        <RenewalAiSummary orgId={activeOrgId} />
+        {activeOrgId && (
+        <SilentErrorBoundary name="RenewalSlaWidget">
+          <RenewalSlaWidget orgId={activeOrgId} />
+        </SilentErrorBoundary>
+      )}
+        {activeOrgId && (
+        <SilentErrorBoundary name="RenewalCalendar">
+          <RenewalCalendar range={60} />
+        </SilentErrorBoundary>
+      )}
+        {activeOrgId && (
+        <SilentErrorBoundary name="RenewalAiSummary">
+          <RenewalAiSummary orgId={activeOrgId} />
+        </SilentErrorBoundary>
+      )}
       </div>
 
       {/* SYSTEM TIMELINE */}
@@ -2092,8 +2159,3 @@ const td = {
 // =======================================
 
 export default Dashboard;
-
-// =======================================
-// END OF DASHBOARD V5 CINEMATIC INTELLIGENCE FILE
-// =======================================
-
