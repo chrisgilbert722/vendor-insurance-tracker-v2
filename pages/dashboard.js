@@ -37,6 +37,9 @@ import RenewalAiSummary from "../components/renewals/RenewalAiSummary";
 
 import ComplianceEvidenceTimeline from "../components/panels/ComplianceEvidenceTimeline";
 
+const safeArray = (v) => (Array.isArray(v) ? v : []);
+
+
 /* ============================================================
    ELECTRIC NEON THEME
 ============================================================ */
@@ -286,7 +289,7 @@ function summarizeEngineHealth(engineMap) {
     (v) => v.loaded && !v.error && typeof v.globalScore === "number"
   );
 
-  if (!vendors.length) {
+  if (!safeArray(vendors).length) {
     return { avg: 0, fails: 0, critical: 0, total: 0 };
   }
 
@@ -301,10 +304,10 @@ function summarizeEngineHealth(engineMap) {
   });
 
   return {
-    avg: Math.round(totalScore / vendors.length),
+    avg: Math.round(totalScore / safeArray(vendors).length),
     fails,
     critical,
-    total: vendors.length,
+    total: safeArray(vendors).length,
   };
 }
 /* ============================================================
@@ -564,7 +567,7 @@ useEffect(() => {
      ELITE ENGINE — COI Evaluation
 ============================================================ */
   useEffect(() => {
-    if (!policies.length) return;
+    if (!safeArray(policies).length) return;
 
     const vendorIds = [...new Set(policies.map((p) => p.vendor_id))];
 
@@ -615,7 +618,7 @@ useEffect(() => {
      RULE ENGINE V5 — run-v3
 ============================================================ */
   useEffect(() => {
-    if (!policies.length || !activeOrgId) return;
+    if (!safeArray(policies).length || !activeOrgId) return;
 
     const vendorIds = [...new Set(policies.map((p) => p.vendor_id))];
 
@@ -1440,7 +1443,7 @@ useEffect(() => {
               </div>
             )}
 
-            {alertSummary && alertVendorsList.length > 0 && (
+            {alertSummary && safeArray(alertVendorsList).length > 0 && (
               <div
                 style={{
                   marginTop: 8,
@@ -1613,7 +1616,7 @@ useEffect(() => {
           <div style={{ fontSize: 13, color: GP.textSoft }}>
             Loading system events…
           </div>
-        ) : systemTimeline.length === 0 ? (
+        ) : safeArray(systemTimeline).length === 0 ? (
           <div style={{ fontSize: 13, color: GP.textSoft }}>
             No system events recorded yet.
           </div>
@@ -1758,13 +1761,13 @@ useEffect(() => {
           </div>
         )}
 
-        {!loadingPolicies && filtered.length === 0 && (
+        {!loadingPolicies && safeArray(filtered).length === 0 && (
           <div style={{ fontSize: 13, color: GP.textSoft }}>
             No matching policies.
           </div>
         )}
 
-        {!loadingPolicies && filtered.length > 0 && (
+        {!loadingPolicies && safeArray(filtered).length > 0 && (
           <>
             <div
               className="cockpit-table-shell"
@@ -1914,12 +1917,12 @@ useEffect(() => {
                           )}
                         </td>
                         <td style={{ ...td, textAlign: "center" }}>
-                          {flags.length > 0 ? (
+                          {safeArray(flags).length > 0 ? (
                             <span
                               title={flags.join("\n")}
                               style={{ cursor: "help" }}
                             >
-                              🚩 {flags.length}
+                              🚩 {safeArray(flags).length}
                             </span>
                           ) : (
                             <span style={{ opacity: 0.4 }}>—</span>
