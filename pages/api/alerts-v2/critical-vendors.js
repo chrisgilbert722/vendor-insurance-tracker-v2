@@ -1,36 +1,62 @@
 // pages/api/alerts-v2/critical-vendors.js
-import { getCriticalVendorsV2 } from "../../../lib/alertsV2Engine";
+// ============================================================
+// CRITICAL VENDORS — ENTERPRISE SAFE
+// - ALWAYS 200
+// - ALWAYS items:[]
+// - NO engine imports
+// - UUID-safe
+// - Dashboard-safe
+// ============================================================
 
-const UUID_RE =
-  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
-
-function cleanOrgId(v) {
-  if (!v) return null;
-  const s = String(v).trim();
-  if (!s || s === "null" || s === "undefined") return null;
-  return UUID_RE.test(s) ? s : null;
-}
+import { sql } from "../../../lib/db";
+import { cleanUUID } from "../../../lib/uuid";
 
 export default async function handler(req, res) {
+  // HARD CONTRACT
   if (req.method !== "GET") {
-    return res.status(405).json({ ok: false, error: "Method not allowed" });
+    return res.status(200).json({
+      ok: false,
+      items: [],
+    });
   }
 
   try {
-    const orgId = cleanOrgId(req.query.orgId);
+    const orgId = cleanUUID(req.query.orgId);
+    const limit = Math.max(1, Math.min(50, Number(req.query.limit || 10)));
+
+    // HARD SKIP — dashboard safety
     if (!orgId) {
-      return res.status(200).json({ ok: false, skipped: true, items: [] });
+      return res.status(200).json({
+        ok: true,
+        skipped: true,
+        items: [],
+      });
     }
 
-    const limit = Math.max(1, Math.min(50, Number(req.query.limit || 10)));
-    const items = await getCriticalVendorsV2(orgId, limit);
+    const rows = await sql`
+      SELECT
+        vendor_id,
+        COUNT(*)::int AS critical_count
+      FROM alerts_v2
+      WHERE org_id = ${orgId}
+        AND resolved_at IS NULL
+        AND LOWER(severity) = 'critical'
+      GROUP BY vendor_id
+      ORDER BY COUNT(*) DESC
+      LIMIT ${limit};
+    `;
 
-    return res.status(200).json({ ok: true, items });
+    return res.status(200).json({
+      ok: true,
+      items: rows || [],
+    });
   } catch (err) {
-    console.error("[alerts-v2/critical-vendors] error:", err);
-    return res.status(500).json({
+    console.error("[alerts-v2/critical-vendors] ERROR:", err);
+
+    // NEVER break dashboard
+    return res.status(200).json({
       ok: false,
-      error: err.message || "Internal error",
+      items: [],
     });
   }
 }
