@@ -1,38 +1,52 @@
+// pages/api/alerts-v2/top-types.js
+// ============================================================
+// ALERT TOP TYPES — ENTERPRISE SAFE
+// - ALWAYS 200
+// - ALWAYS items:[]
+// - NEVER throws
+// ============================================================
+
 import { getTopAlertTypesV2 } from "../../../lib/alertsV2Engine";
-
-const UUID_RE =
-  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
-
-function cleanOrgId(v) {
-  if (!v) return null;
-  const s = String(v).trim();
-  if (!s || s === "null" || s === "undefined") return null;
-  return UUID_RE.test(s) ? s : null;
-}
-
-function parseVendorId(v) {
-  if (v === null || v === undefined) return null;
-  const s = String(v).trim();
-  if (!s || s === "null" || s === "undefined") return null;
-  if (/^\d+$/.test(s)) return Number(s);
-  return s;
-}
-
+import { cleanUUID } from "../../../lib/uuid";
 
 export default async function handler(req, res) {
   if (req.method !== "GET") {
-    return res.status(405).json({ ok: false, error: "Method not allowed" });
+    return res.status(200).json({
+      ok: false,
+      items: [],
+      error: "GET only",
+    });
   }
+
   try {
-    const orgId = cleanOrgId(req.query.orgId);
-    if (!orgId) {
-      return res.status(200).json({ ok: false, skipped: true, items: [] });
-    }
+    const orgId = cleanUUID(req.query.orgId);
     const limit = Math.max(1, Math.min(50, Number(req.query.limit || 8)));
-    const items = await getTopAlertTypesV2(orgId, limit);
-    return res.status(200).json({ ok: true, items });
+
+    // HARD SKIP — dashboard safety
+    if (!orgId) {
+      return res.status(200).json({
+        ok: true,
+        items: [],
+        meta: { skipped: true },
+      });
+    }
+
+    const raw = await getTopAlertTypesV2(orgId, limit);
+
+    // HARD NORMALIZATION
+    const items = Array.isArray(raw) ? raw : [];
+
+    return res.status(200).json({
+      ok: true,
+      items,
+    });
   } catch (err) {
-    console.error("[alerts-v2/top-types] error:", err);
-    return res.status(500).json({ ok: false, error: err.message || "Internal error" });
+    console.error("[alerts-v2/top-types] ERROR:", err);
+
+    // NEVER break dashboard
+    return res.status(200).json({
+      ok: false,
+      items: [],
+    });
   }
 }
