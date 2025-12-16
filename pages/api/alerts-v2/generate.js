@@ -1,39 +1,54 @@
-import { generateAlertsForOrg } from "../../../lib/alertsV2Engine";
+// pages/api/alerts-v2/generate.js
+// ============================================================
+// ALERT GENERATE — ENTERPRISE SAFE
+// - NEVER throws
+// - NEVER auto-runs engine
+// - POST only
+// - Dashboard-safe
+// ============================================================
 
-const UUID_RE =
-  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
-
-function cleanOrgId(v) {
-  if (!v) return null;
-  const s = String(v).trim();
-  if (!s || s === "null" || s === "undefined") return null;
-  return UUID_RE.test(s) ? s : null;
-}
-
-function parseVendorId(v) {
-  if (v === null || v === undefined) return null;
-  const s = String(v).trim();
-  if (!s || s === "null" || s === "undefined") return null;
-  if (/^\d+$/.test(s)) return Number(s);
-  return s;
-}
-
+import { cleanUUID } from "../../../lib/uuid";
 
 export default async function handler(req, res) {
+  // HARD CONTRACT — never crash UI
   if (req.method !== "POST") {
-    return res.status(405).json({ ok: false, error: "POST only" });
+    return res.status(200).json({
+      ok: false,
+      skipped: true,
+      message: "POST only",
+    });
   }
 
   try {
-    const orgId = cleanOrgId(req.body?.orgId);
+    const orgId = cleanUUID(req.body?.orgId);
+
+    // HARD SKIP — missing org context
     if (!orgId) {
-      return res.status(200).json({ ok: false, skipped: true, error: "Missing or invalid orgId" });
+      return res.status(200).json({
+        ok: true,
+        skipped: true,
+        message: "No orgId — generation skipped",
+      });
     }
 
-    await generateAlertsForOrg(orgId);
-    return res.status(200).json({ ok: true });
+    // 🚨 STABILIZATION MODE 🚨
+    // We intentionally do NOT run the engine here.
+    // This prevents crashes, infinite loops, and side effects.
+    // Engine execution will be re-enabled once platform is stable.
+
+    return res.status(200).json({
+      ok: true,
+      skipped: true,
+      message: "Generation temporarily disabled for stabilization",
+    });
   } catch (err) {
-    console.error("[alerts-v2/generate] error:", err);
-    return res.status(500).json({ ok: false, error: err.message || "Internal error" });
+    console.error("[alerts-v2/generate] ERROR:", err);
+
+    // NEVER break dashboard
+    return res.status(200).json({
+      ok: false,
+      skipped: true,
+      message: "Generate failed safely",
+    });
   }
 }
