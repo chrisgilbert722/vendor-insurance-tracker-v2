@@ -345,7 +345,7 @@ function Dashboard() {
   });
 
   const [engineMap, setEngineMap] = useState({});
-  const [alertSummary, setAlertSummary] = useState(null);
+  const [alertSummary, setAlertSummary] = useState({});
   const [showAlerts, setShowAlerts] = useState(true);
 // ============================================================
 // DASHBOARD TUTORIAL — FORCE ALERTS PANEL OPEN (STEP 3 FIX)
@@ -2057,5 +2057,3 @@ const td = {
 // END OF DASHBOARD V5 CINEMATIC INTELLIGENCE FILE
 // =======================================
 
-
-export default Dashboard;
