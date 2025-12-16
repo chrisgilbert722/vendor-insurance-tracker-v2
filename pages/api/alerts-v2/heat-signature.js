@@ -1,38 +1,61 @@
-import { getHeatSignatureV2 } from "../../../lib/alertsV2Engine";
+// pages/api/alerts-v2/heat-signature.js
+// ============================================================
+// ALERT HEAT SIGNATURE — ENTERPRISE SAFE
+// - ALWAYS 200
+// - ALWAYS items:[]
+// - NO engine imports
+// - UUID-safe
+// - Dashboard-safe
+// ============================================================
 
-const UUID_RE =
-  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
-
-function cleanOrgId(v) {
-  if (!v) return null;
-  const s = String(v).trim();
-  if (!s || s === "null" || s === "undefined") return null;
-  return UUID_RE.test(s) ? s : null;
-}
-
-function parseVendorId(v) {
-  if (v === null || v === undefined) return null;
-  const s = String(v).trim();
-  if (!s || s === "null" || s === "undefined") return null;
-  if (/^\d+$/.test(s)) return Number(s);
-  return s;
-}
-
+import { sql } from "../../../lib/db";
+import { cleanUUID } from "../../../lib/uuid";
 
 export default async function handler(req, res) {
+  // HARD CONTRACT
   if (req.method !== "GET") {
-    return res.status(405).json({ ok: false, error: "Method not allowed" });
+    return res.status(200).json({
+      ok: false,
+      items: [],
+    });
   }
+
   try {
-    const orgId = cleanOrgId(req.query.orgId);
-    if (!orgId) {
-      return res.status(200).json({ ok: false, skipped: true, items: [] });
-    }
+    const orgId = cleanUUID(req.query.orgId);
     const days = Math.max(1, Math.min(365, Number(req.query.days || 30)));
-    const items = await getHeatSignatureV2(orgId, days);
-    return res.status(200).json({ ok: true, items });
+
+    // HARD SKIP — dashboard safety
+    if (!orgId) {
+      return res.status(200).json({
+        ok: true,
+        skipped: true,
+        items: [],
+      });
+    }
+
+    const rows = await sql`
+      SELECT
+        DATE_TRUNC('day', created_at) AS day,
+        COUNT(*)::int AS count
+      FROM alerts_v2
+      WHERE org_id = ${orgId}
+        AND resolved_at IS NULL
+        AND created_at >= NOW() - (${days}::int || ' days')::interval
+      GROUP BY 1
+      ORDER BY 1 ASC;
+    `;
+
+    return res.status(200).json({
+      ok: true,
+      items: rows || [],
+    });
   } catch (err) {
-    console.error("[alerts-v2/heat-signature] error:", err);
-    return res.status(500).json({ ok: false, error: err.message || "Internal error" });
+    console.error("[alerts-v2/heat-signature] ERROR:", err);
+
+    // NEVER break dashboard
+    return res.status(200).json({
+      ok: false,
+      items: [],
+    });
   }
 }
