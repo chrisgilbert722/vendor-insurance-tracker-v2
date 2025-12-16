@@ -1,23 +1,38 @@
 import { useEffect, useState } from "react";
 
 export default function RenewalBacklog() {
-  const [renewals, setRenewals] = useState([]);
+  const [renewals, setRenewals] = useState([]); // always array
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    let alive = true;
+
     async function load() {
       try {
         const res = await fetch("/api/renewals/list");
         const json = await res.json();
-        if (json.ok) setRenewals(json.data);
+
+        // ✅ HARD GUARANTEE ARRAY
+        if (alive && json && json.ok && Array.isArray(json.data)) {
+          setRenewals(json.data);
+        } else if (alive) {
+          setRenewals([]); // fallback, never undefined
+        }
       } catch (err) {
-        console.error("Backlog load error:", err);
+        console.error("[RenewalBacklog] load error:", err);
+        if (alive) setRenewals([]);
       } finally {
-        setLoading(false);
+        if (alive) setLoading(false);
       }
     }
+
     load();
+    return () => {
+      alive = false;
+    };
   }, []);
+
+  const safeRenewals = Array.isArray(renewals) ? renewals : [];
 
   return (
     <div
@@ -41,9 +56,13 @@ export default function RenewalBacklog() {
       </h3>
 
       {loading ? (
-        <div style={{ fontSize: 13, color: "#9ca3af" }}>Loading renewals…</div>
-      ) : renewals.length === 0 ? (
-        <div style={{ fontSize: 13, color: "#9ca3af" }}>No expiring policies.</div>
+        <div style={{ fontSize: 13, color: "#9ca3af" }}>
+          Loading renewals…
+        </div>
+      ) : safeRenewals.length === 0 ? (
+        <div style={{ fontSize: 13, color: "#9ca3af" }}>
+          No expiring policies.
+        </div>
       ) : (
         <table
           style={{
@@ -65,22 +84,37 @@ export default function RenewalBacklog() {
           </thead>
 
           <tbody>
-            {renewals.map((r) => (
-              <tr
-                key={r.policy_id}
-                style={{
-                  background: "rgba(2,6,23,0.6)",
-                  borderBottom: "1px solid rgba(148,163,184,0.2)",
-                }}
-              >
-                <td style={td}>{r.vendor_name}</td>
-                <td style={td}>{r.coverage_type}</td>
-                <td style={td}>{new Date(r.expiration_date).toLocaleDateString()}</td>
-                <td style={td}>{r.status}</td>
-                <td style={td}>{r.risk.label} ({r.risk.score})</td>
-                <td style={td}>{r.alertsCount}</td>
-              </tr>
-            ))}
+            {safeRenewals.map((r) => {
+              const risk = r?.risk || {};
+              const exp = r?.expiration_date
+                ? new Date(r.expiration_date)
+                : null;
+
+              return (
+                <tr
+                  key={r.policy_id}
+                  style={{
+                    background: "rgba(2,6,23,0.6)",
+                    borderBottom: "1px solid rgba(148,163,184,0.2)",
+                  }}
+                >
+                  <td style={td}>{r.vendor_name || "—"}</td>
+                  <td style={td}>{r.coverage_type || "—"}</td>
+                  <td style={td}>
+                    {exp && !isNaN(exp)
+                      ? exp.toLocaleDateString()
+                      : "—"}
+                  </td>
+                  <td style={td}>{r.status || "—"}</td>
+                  <td style={td}>
+                    {risk.label
+                      ? `${risk.label} (${risk.score ?? "—"})`
+                      : "—"}
+                  </td>
+                  <td style={td}>{r.alertsCount ?? 0}</td>
+                </tr>
+              );
+            })}
           </tbody>
         </table>
       )}
@@ -93,6 +127,11 @@ const th = {
   paddingBottom: 6,
   borderBottom: "1px solid rgba(148,163,184,0.3)",
   color: "#9ca3af",
+};
+
+const td = {
+  padding: "6px 0",
+  borderBottom: "1px solid rgba(148,163,184,0.15)",
 };
 
 const td = {
