@@ -38,7 +38,7 @@ import RenewalAiSummary from "../components/renewals/RenewalAiSummary";
 import ComplianceEvidenceTimeline from "../components/panels/ComplianceEvidenceTimeline";
 
 const safeArray = (v) => (Array.isArray(v) ? v : []);
-
+const safeObject = (v) => (v && typeof v === "object" ? v : {});
 
 /* ============================================================
    ELECTRIC NEON THEME
@@ -63,7 +63,10 @@ const GP = {
 ============================================================ */
 function parseExpiration(dateStr) {
   if (!dateStr) return null;
-  const [mm, dd, yyyy] = String(dateStr).split("/");
+  const parts = String(dateStr).split("/");
+  const mm = parts?.[0];
+  const dd = parts?.[1];
+  const yyyy = parts?.[2];
   if (!mm || !dd || !yyyy) return null;
   const d = new Date(`${yyyy}-${mm}-${dd}`);
   return isNaN(d.getTime()) ? null : d;
@@ -75,7 +78,8 @@ function computeDaysLeft(dateStr) {
 }
 
 function computeRisk(policy) {
-  const daysLeft = computeDaysLeft(policy.expiration_date);
+  const p = policy || {};
+  const daysLeft = computeDaysLeft(p.expiration_date);
   const flags = [];
 
   if (daysLeft === null) {
@@ -166,9 +170,13 @@ function computeAiRisk({ risk, elite, compliance }) {
     else if (elite.overall === "warn") eliteFactor = 0.7;
   }
 
+  const comp = compliance || {};
+  const failing = safeArray(comp.failing);
+  const missing = safeArray(comp.missing);
+
   let complianceFactor = 1.0;
-  if (compliance && compliance.failing?.length > 0) complianceFactor = 0.5;
-  else if (compliance && compliance.missing?.length > 0) complianceFactor = 0.7;
+  if (failing.length > 0) complianceFactor = 0.5;
+  else if (missing.length > 0) complianceFactor = 0.7;
 
   let score = Math.round(base * eliteFactor * complianceFactor);
   score = Math.max(0, Math.min(score, 100));
@@ -187,7 +195,8 @@ function computeAiRisk({ risk, elite, compliance }) {
    COMPLIANCE BADGE (VENDOR-LEVEL)
 ============================================================ */
 function renderComplianceBadge(vendorId, complianceMap) {
-  const data = complianceMap[vendorId];
+  const map = safeObject(complianceMap);
+  const data = map?.[vendorId];
   const base = {
     display: "inline-flex",
     alignItems: "center",
@@ -226,7 +235,10 @@ function renderComplianceBadge(vendorId, complianceMap) {
     );
   }
 
-  if (data.missing?.length > 0) {
+  const missing = safeArray(data.missing);
+  const failing = safeArray(data.failing);
+
+  if (missing.length > 0) {
     return (
       <span
         style={{
@@ -241,7 +253,7 @@ function renderComplianceBadge(vendorId, complianceMap) {
     );
   }
 
-  if (data.failing?.length > 0) {
+  if (failing.length > 0) {
     return (
       <span
         style={{
@@ -285,11 +297,12 @@ function computeV3Tier(score) {
    ENGINE HEALTH SUMMARY
 ============================================================ */
 function summarizeEngineHealth(engineMap) {
-  const vendors = Object.values(engineMap).filter(
-    (v) => v.loaded && !v.error && typeof v.globalScore === "number"
+  const map = safeObject(engineMap);
+  const vendors = safeArray(Object.values(map)).filter(
+    (v) => v && v.loaded && !v.error && typeof v.globalScore === "number"
   );
 
-  if (!safeArray(vendors).length) {
+  if (vendors.length === 0) {
     return { avg: 0, fails: 0, critical: 0, total: 0 };
   }
 
@@ -298,18 +311,21 @@ function summarizeEngineHealth(engineMap) {
   let critical = 0;
 
   vendors.forEach((v) => {
-    totalScore += v.globalScore ?? 0;
-    if (v.failedCount > 0) fails++;
-    if (v.failingRules?.some((r) => r.severity === "critical")) critical++;
+    totalScore += v?.globalScore ?? 0;
+    if ((v?.failedCount ?? 0) > 0) fails++;
+    const failingRules = safeArray(v?.failingRules);
+    if (failingRules.some((r) => (r?.severity || "").toLowerCase() === "critical"))
+      critical++;
   });
 
   return {
-    avg: Math.round(totalScore / safeArray(vendors).length),
+    avg: Math.round(totalScore / vendors.length),
     fails,
     critical,
-    total: safeArray(vendors).length,
+    total: vendors.length,
   };
 }
+
 /* ============================================================
    MAIN DASHBOARD COMPONENT
 ============================================================ */
@@ -347,20 +363,25 @@ function Dashboard() {
   const [engineMap, setEngineMap] = useState({});
   const [alertSummary, setAlertSummary] = useState({});
   const [showAlerts, setShowAlerts] = useState(true);
-// ============================================================
-// DASHBOARD TUTORIAL — FORCE ALERTS PANEL OPEN (STEP 3 FIX)
-// ============================================================
-useEffect(() => {
-  const forceOpenAlerts = () => {
-    setShowAlerts(true);
-  };
 
-  window.addEventListener("dashboard_open_alerts", forceOpenAlerts);
+  // ============================================================
+  // DASHBOARD TUTORIAL — FORCE ALERTS PANEL OPEN (STEP 3 FIX)
+  // ============================================================
+  useEffect(() => {
+    const forceOpenAlerts = () => {
+      setShowAlerts(true);
+    };
 
-  return () => {
-    window.removeEventListener("dashboard_open_alerts", forceOpenAlerts);
-  };
-}, []);
+    if (typeof window !== "undefined") {
+      window.addEventListener("dashboard_open_alerts", forceOpenAlerts);
+    }
+
+    return () => {
+      if (typeof window !== "undefined") {
+        window.removeEventListener("dashboard_open_alerts", forceOpenAlerts);
+      }
+    };
+  }, []);
 
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [drawerVendor, setDrawerVendor] = useState(null);
@@ -385,7 +406,7 @@ useEffect(() => {
       try {
         const res = await fetch(`/api/onboarding/status?orgId=${activeOrgId}`);
         const json = await res.json();
-        if (!json.ok) return;
+        if (!json?.ok) return;
 
         const done = !!json.onboardingComplete;
         const tutorialEnabled = json.dashboardTutorialEnabled === true;
@@ -409,9 +430,6 @@ useEffect(() => {
 
   /* ============================================================
      AUTONOMOUS ALERT GENERATION (V2)
-     Ensures alerts exist without manual trigger.
-     - Runs once per org per page load
-     - Safe: engine dedupes active alerts
 ============================================================ */
   const _alertsGenOnceRef = useRef({ orgId: null, ran: false });
 
@@ -420,8 +438,8 @@ useEffect(() => {
 
     // Prevent repeated generation loops during hot reloads / rerenders
     if (
-      _alertsGenOnceRef.current.ran &&
-      _alertsGenOnceRef.current.orgId === activeOrgId
+      _alertsGenOnceRef.current?.ran &&
+      _alertsGenOnceRef.current?.orgId === activeOrgId
     ) {
       return;
     }
@@ -437,7 +455,7 @@ useEffect(() => {
         // Immediately refresh alert summary after generation
         try {
           window.dispatchEvent(new CustomEvent("alerts:changed"));
-          localStorage.setItem("alerts:changed", Date.now());
+          localStorage.setItem("alerts:changed", String(Date.now()));
         } catch {}
       })
       .catch(() => {});
@@ -466,15 +484,18 @@ useEffect(() => {
     setShowPostTutorialActions(true);
 
     // Remove ?tutorial=1 so dashboard does not re-force tutorial
-    window.history.replaceState({}, "", "/dashboard");
+    if (typeof window !== "undefined") {
+      window.history.replaceState({}, "", "/dashboard");
 
-    // Scroll user to Step 5 CTA (top of dashboard)
-    window.scrollTo({ top: 0, behavior: "smooth" });
+      // Scroll user to Step 5 CTA (top of dashboard)
+      window.scrollTo({ top: 0, behavior: "smooth" });
+    }
 
     try {
       localStorage.setItem("dashboard_tutorial_seen", "true");
     } catch {}
   };
+
   /* ============================================================
      ONBOARDING BANNER DISMISS
 ============================================================ */
@@ -493,7 +514,7 @@ useEffect(() => {
   };
 
   const handleStartOnboarding = () => {
-    window.location.href = "/onboarding/start";
+    if (typeof window !== "undefined") window.location.href = "/onboarding/start";
   };
 
   /* ============================================================
@@ -501,6 +522,7 @@ useEffect(() => {
 ============================================================ */
   useEffect(() => {
     if (onboardingComplete) return;
+    if (typeof window === "undefined") return;
 
     let idleTimer;
     let lastActivity = Date.now();
@@ -512,9 +534,7 @@ useEffect(() => {
 
     idleTimer = setInterval(() => {
       if (Date.now() - lastActivity >= 10000) {
-        window.dispatchEvent(
-          new CustomEvent("onboarding_chat_forceChecklist")
-        );
+        window.dispatchEvent(new CustomEvent("onboarding_chat_forceChecklist"));
         clearInterval(idleTimer);
       }
     }, 1000);
@@ -538,7 +558,7 @@ useEffect(() => {
         setDashboardLoading(true);
         const res = await fetch(`/api/dashboard/metrics?orgId=${activeOrgId}`);
         const json = await res.json();
-        if (json.ok) setDashboard(json.overview);
+        if (json?.ok) setDashboard(json.overview ?? null);
       } catch (err) {
         console.error("[dashboard] metrics error:", err);
       } finally {
@@ -555,27 +575,31 @@ useEffect(() => {
       try {
         const res = await fetch("/api/get-policies");
         const json = await res.json();
-        if (json.ok) setPolicies(json.policies);
+        if (json?.ok) setPolicies(safeArray(json.policies));
+        else setPolicies([]);
       } catch (err) {
         console.error("[dashboard] policies error:", err);
+        setPolicies([]);
       } finally {
         setLoadingPolicies(false);
       }
     })();
   }, []);
+
   /* ============================================================
      ELITE ENGINE — COI Evaluation
 ============================================================ */
   useEffect(() => {
-    if (!safeArray(policies).length) return;
+    const pols = safeArray(policies);
+    if (pols.length === 0) return;
 
-    const vendorIds = [...new Set(policies.map((p) => p.vendor_id))];
+    const vendorIds = [...new Set(pols.map((p) => p?.vendor_id).filter(Boolean))];
 
     vendorIds.forEach((vendorId) => {
-      const existing = eliteMap[vendorId];
+      const existing = eliteMap?.[vendorId];
       if (existing && !existing.loading) return;
 
-      const primary = policies.find((p) => p.vendor_id === vendorId);
+      const primary = pols.find((p) => p?.vendor_id === vendorId);
       if (!primary) return;
 
       const coidata = {
@@ -587,7 +611,7 @@ useEffect(() => {
       };
 
       setEliteMap((prev) => ({
-        ...prev,
+        ...(prev || {}),
         [vendorId]: { loading: true },
       }));
 
@@ -599,15 +623,15 @@ useEffect(() => {
         .then((res) => res.json())
         .then((json) => {
           setEliteMap((prev) => ({
-            ...prev,
-            [vendorId]: json.ok
+            ...(prev || {}),
+            [vendorId]: json?.ok
               ? { loading: false, overall: json.overall, rules: json.rules }
-              : { loading: false, error: json.error },
+              : { loading: false, error: json?.error || "Elite eval failed" },
           }));
         })
         .catch(() =>
           setEliteMap((prev) => ({
-            ...prev,
+            ...(prev || {}),
             [vendorId]: { loading: false, error: "Failed to load" },
           }))
         );
@@ -618,16 +642,17 @@ useEffect(() => {
      RULE ENGINE V5 — run-v3
 ============================================================ */
   useEffect(() => {
-    if (!safeArray(policies).length || !activeOrgId) return;
+    const pols = safeArray(policies);
+    if (pols.length === 0 || !activeOrgId) return;
 
-    const vendorIds = [...new Set(policies.map((p) => p.vendor_id))];
+    const vendorIds = [...new Set(pols.map((p) => p?.vendor_id).filter(Boolean))];
 
     vendorIds.forEach((vendorId) => {
-      const existing = engineMap[vendorId];
+      const existing = engineMap?.[vendorId];
       if (existing && existing.loaded && !existing.error) return;
 
       setEngineMap((prev) => ({
-        ...prev,
+        ...(prev || {}),
         [vendorId]: {
           loading: true,
           loaded: false,
@@ -650,45 +675,46 @@ useEffect(() => {
       })
         .then((res) => res.json())
         .then((json) => {
-          if (!json.ok) {
+          if (!json?.ok) {
             setEngineMap((prev) => ({
-              ...prev,
+              ...(prev || {}),
               [vendorId]: {
                 loading: false,
                 loaded: true,
-                error: json.error || "Rule Engine V5 error",
+                error: json?.error || "Rule Engine V5 error",
               },
             }));
             return;
           }
 
           setComplianceMap((prev) => ({
-            ...prev,
+            ...(prev || {}),
             [vendorId]: {
               loading: false,
               missing: [],
-              failing: json.failingRules || [],
-              passing: json.passingRules || [],
+              failing: safeArray(json.failingRules),
+              passing: safeArray(json.passingRules),
             },
           }));
 
           setEngineMap((prev) => ({
-            ...prev,
+            ...(prev || {}),
             [vendorId]: {
               loading: false,
               loaded: true,
-              globalScore: json.globalScore,
-              failedCount: json.failedCount,
-              totalRules: json.totalRules,
-              failingRules: json.failingRules,
-              passingRules: json.passingRules,
+              globalScore:
+                typeof json.globalScore === "number" ? json.globalScore : null,
+              failedCount: typeof json.failedCount === "number" ? json.failedCount : 0,
+              totalRules: typeof json.totalRules === "number" ? json.totalRules : 0,
+              failingRules: safeArray(json.failingRules),
+              passingRules: safeArray(json.passingRules),
             },
           }));
         })
         .catch((err) => {
           console.error("[engineV5] fail:", err);
           setEngineMap((prev) => ({
-            ...prev,
+            ...(prev || {}),
             [vendorId]: {
               loading: false,
               loaded: true,
@@ -707,7 +733,7 @@ useEffect(() => {
       warn = 0,
       fail = 0;
 
-    Object.values(eliteMap).forEach((e) => {
+    safeArray(Object.values(safeObject(eliteMap))).forEach((e) => {
       if (!e || e.loading || e.error) return;
       if (e.overall === "pass") pass++;
       else if (e.overall === "warn") warn++;
@@ -717,7 +743,7 @@ useEffect(() => {
     setEliteSummary({ pass, warn, fail });
   }, [eliteMap]);
 
-/* ============================================================
+  /* ============================================================
      ALERTS V2 SUMMARY
 ============================================================ */
   const fetchAlertSummary = async () => {
@@ -725,7 +751,7 @@ useEffect(() => {
     try {
       const res = await fetch(`/api/alerts-v2/stats?orgId=${activeOrgId}`);
       const json = await res.json();
-      if (json.ok) setAlertSummary(json.stats || json);
+      if (json?.ok) setAlertSummary(json.stats || json || {});
     } catch (err) {
       console.error("[alerts v2 summary] fail:", err);
     }
@@ -752,7 +778,7 @@ useEffect(() => {
     window.addEventListener("alerts:changed", onAlertsChanged);
 
     const onStorage = (e) => {
-      if (e.key === "alerts:changed") onAlertsChanged();
+      if (e?.key === "alerts:changed") onAlertsChanged();
     };
     window.addEventListener("storage", onStorage);
 
@@ -761,6 +787,7 @@ useEffect(() => {
       window.removeEventListener("storage", onStorage);
     };
   }, [activeOrgId]);
+
   /* ============================================================
      SYSTEM TIMELINE
 ============================================================ */
@@ -770,9 +797,11 @@ useEffect(() => {
         setSystemTimelineLoading(true);
         const res = await fetch("/api/admin/timeline");
         const json = await res.json();
-        if (json.ok) setSystemTimeline(json.timeline);
+        if (json?.ok) setSystemTimeline(safeArray(json.timeline));
+        else setSystemTimeline([]);
       } catch (err) {
         console.error("[system timeline] fail:", err);
+        setSystemTimeline([]);
       } finally {
         setSystemTimelineLoading(false);
       }
@@ -785,11 +814,14 @@ useEffect(() => {
 
   /* DRAWER HANDLERS */
   const openDrawer = (vendorId) => {
-    const vendorPolicies = policies.filter((p) => p.vendor_id === vendorId);
+    const pols = safeArray(policies);
+    const vendorPolicies = pols.filter((p) => p?.vendor_id === vendorId);
+    const first = vendorPolicies?.[0];
+
     setDrawerVendor({
       id: vendorId,
-      name: vendorPolicies[0]?.vendor_name || "Vendor",
-      engine: engineMap[vendorId],
+      name: first?.vendor_name || "Vendor",
+      engine: safeObject(engineMap)?.[vendorId],
     });
     setDrawerPolicies(vendorPolicies);
     setDrawerOpen(true);
@@ -802,14 +834,14 @@ useEffect(() => {
   };
 
   /* FILTERED POLICIES */
-  const filtered = policies.filter((p) => {
-    const t = filterText.toLowerCase();
+  const filtered = safeArray(policies).filter((p) => {
+    const t = String(filterText || "").toLowerCase();
+    if (!t) return true;
     return (
-      !t ||
-      p.vendor_name?.toLowerCase().includes(t) ||
-      p.coverage_type?.toLowerCase().includes(t) ||
-      p.policy_number?.toLowerCase().includes(t) ||
-      p.carrier?.toLowerCase().includes(t)
+      String(p?.vendor_name || "").toLowerCase().includes(t) ||
+      String(p?.coverage_type || "").toLowerCase().includes(t) ||
+      String(p?.policy_number || "").toLowerCase().includes(t) ||
+      String(p?.carrier || "").toLowerCase().includes(t)
     );
   });
 
@@ -817,15 +849,20 @@ useEffect(() => {
   const engineHealth = summarizeEngineHealth(engineMap);
   const avgScore = engineHealth.avg;
   const totalVendors = engineHealth.total;
-  const alertsCount = alertSummary?.total || 0;
 
-  const alertVendorsList = alertSummary
-    ? Object.values(alertSummary.vendors || {}).sort((a, b) => {
-        if (b.critical !== a.critical) return b.critical - a.critical;
-        if (b.high !== a.high) return b.high - a.high;
-        return b.total - a.total;
+  const alertSummarySafe = safeObject(alertSummary);
+  const alertsCount = alertSummarySafe?.total || 0;
+
+  const alertVendorsList = alertSummarySafe
+    ? safeArray(Object.values(alertSummarySafe.vendors || {})).sort((a, b) => {
+        const A = a || {};
+        const B = b || {};
+        if ((B.critical || 0) !== (A.critical || 0)) return (B.critical || 0) - (A.critical || 0);
+        if ((B.high || 0) !== (A.high || 0)) return (B.high || 0) - (A.high || 0);
+        return (B.total || 0) - (A.total || 0);
       })
     : [];
+
   /* ============================================================
      MAIN RENDER
 ============================================================ */
@@ -962,6 +999,7 @@ useEffect(() => {
               <strong style={{ color: GP.neonRed }}>{alertsCount}</strong>
             </span>
           </div>
+
           {/* ORG COMPLIANCE CTA */}
           {(isAdmin || isManager) && (
             <a
@@ -1039,6 +1077,7 @@ useEffect(() => {
             </div>
           </div>
         </div>
+
         {/* RIGHT SIDE — Donut + Elite Snapshot */}
         <div
           style={{
@@ -1161,6 +1200,7 @@ useEffect(() => {
           </div>
         </div>
       </div>
+
       {/* POST-TUTORIAL STEP 5 ACTION BOX */}
       {showPostTutorialActions && (
         <div
@@ -1287,8 +1327,8 @@ useEffect(() => {
               >
                 {engineHealth.total ? engineHealth.avg : "—"}
               </strong>{" "}
-              · Vendors Evaluated:{" "}
-              <strong>{engineHealth.total || 0}</strong> · Failing Vendors:{" "}
+              · Vendors Evaluated: <strong>{engineHealth.total || 0}</strong> ·
+              Failing Vendors:{" "}
               <strong style={{ color: GP.neonRed }}>
                 {engineHealth.fails || 0}
               </strong>
@@ -1367,6 +1407,7 @@ useEffect(() => {
           )}
         </div>
       </div>
+
       {/* ALERTS V2 PANEL (tutorial anchor: alertsRef) */}
       {showAlerts && (
         <div ref={alertsRef}>
@@ -1402,16 +1443,16 @@ useEffect(() => {
                   Alerts V2 Overview
                 </div>
                 <div style={{ fontSize: 14, color: GP.text }}>
-                  {alertSummary
-                    ? `${alertSummary.total} open alerts across ${
-                        Object.keys(alertSummary.vendors || {}).length
+                  {alertSummarySafe
+                    ? `${alertSummarySafe.total || 0} open alerts across ${
+                        Object.keys(alertSummarySafe.vendors || {}).length
                       } vendors.`
                     : "Loading alert summary…"}
                 </div>
               </div>
             </div>
 
-            {alertSummary && (
+            {alertSummarySafe && (
               <div
                 style={{
                   display: "grid",
@@ -1422,28 +1463,28 @@ useEffect(() => {
               >
                 <SeverityBox
                   label="Critical"
-                  count={alertSummary.countsBySeverity?.critical ?? 0}
+                  count={alertSummarySafe.countsBySeverity?.critical ?? 0}
                   color={GP.neonRed}
                 />
                 <SeverityBox
                   label="High"
-                  count={alertSummary.countsBySeverity?.high ?? 0}
+                  count={alertSummarySafe.countsBySeverity?.high ?? 0}
                   color={GP.neonGold}
                 />
                 <SeverityBox
                   label="Medium"
-                  count={alertSummary.countsBySeverity?.medium ?? 0}
+                  count={alertSummarySafe.countsBySeverity?.medium ?? 0}
                   color={GP.neonBlue}
                 />
                 <SeverityBox
                   label="Low"
-                  count={alertSummary.countsBySeverity?.low ?? 0}
+                  count={alertSummarySafe.countsBySeverity?.low ?? 0}
                   color={GP.neonGreen}
                 />
               </div>
             )}
 
-            {alertSummary && safeArray(alertVendorsList).length > 0 && (
+            {alertSummarySafe && safeArray(alertVendorsList).length > 0 && (
               <div
                 style={{
                   marginTop: 8,
@@ -1484,56 +1525,56 @@ useEffect(() => {
                     </tr>
                   </thead>
                   <tbody>
-                    {alertVendorsList.slice(0, 12).map((v) => (
-                      <tr
-                        key={v.vendorId}
-                        onClick={() => openDrawer(v.vendorId)}
-                        style={{
-                          cursor: "pointer",
-                          background:
-                            "linear-gradient(90deg,rgba(15,23,42,0.98),rgba(15,23,42,0.94))",
-                        }}
-                      >
-                        <td style={td}>{v.vendorId}</td>
-                        <td style={td}>{v.total}</td>
-                        <td style={td}>{v.critical}</td>
-                        <td style={td}>{v.high}</td>
-                        <td style={td}>{v.medium}</td>
-                        <td style={td}>{v.low}</td>
-                        <td style={td}>
-                          {v.latest ? (
-                            <span
-                              style={{
-                                fontSize: 11,
-                                color:
-                                  v.latest.severity === "critical"
-                                    ? GP.neonRed
-                                    : v.latest.severity === "high"
-                                    ? GP.neonGold
-                                    : GP.textSoft,
-                              }}
-                            >
-                              {v.latest.code} · {v.latest.message}
-                            </span>
-                          ) : (
-                            <span
-                              style={{ fontSize: 11, color: GP.textMuted }}
-                            >
-                              —
-                            </span>
-                          )}
-                        </td>
-                      </tr>
-                    ))}
+                    {alertVendorsList.slice(0, 12).map((v) => {
+                      const row = v || {};
+                      const latest = row.latest || null;
+                      return (
+                        <tr
+                          key={row.vendorId}
+                          onClick={() => openDrawer(row.vendorId)}
+                          style={{
+                            cursor: "pointer",
+                            background:
+                              "linear-gradient(90deg,rgba(15,23,42,0.98),rgba(15,23,42,0.94))",
+                          }}
+                        >
+                          <td style={td}>{row.vendorId}</td>
+                          <td style={td}>{row.total || 0}</td>
+                          <td style={td}>{row.critical || 0}</td>
+                          <td style={td}>{row.high || 0}</td>
+                          <td style={td}>{row.medium || 0}</td>
+                          <td style={td}>{row.low || 0}</td>
+                          <td style={td}>
+                            {latest ? (
+                              <span
+                                style={{
+                                  fontSize: 11,
+                                  color:
+                                    latest.severity === "critical"
+                                      ? GP.neonRed
+                                      : latest.severity === "high"
+                                      ? GP.neonGold
+                                      : GP.textSoft,
+                                }}
+                              >
+                                {latest.code} · {latest.message}
+                              </span>
+                            ) : (
+                              <span style={{ fontSize: 11, color: GP.textMuted }}>
+                                —
+                              </span>
+                            )}
+                          </td>
+                        </tr>
+                      );
+                    })}
                   </tbody>
                 </table>
               </div>
             )}
 
-            {!alertSummary && (
-              <div
-                style={{ fontSize: 12, color: GP.textSoft, marginTop: 8 }}
-              >
+            {!alertSummarySafe && (
+              <div style={{ fontSize: 12, color: GP.textSoft, marginTop: 8 }}>
                 Loading alert summary…
               </div>
             )}
@@ -1552,13 +1593,13 @@ useEffect(() => {
           gap: 24,
         }}
       >
-        <ComplianceTrajectoryChart data={dashboard?.complianceTrajectory} />
-        <PassFailDonutChart overview={dashboard} />
+        <ComplianceTrajectoryChart data={safeArray(dashboard?.complianceTrajectory)} />
+        <PassFailDonutChart overview={dashboard ?? {}} />
       </div>
 
-      <ExpiringCertsHeatmap policies={policies} />
-      <SeverityDistributionChart overview={dashboard} />
-      <RiskTimelineChart policies={policies} />
+      <ExpiringCertsHeatmap policies={safeArray(policies)} />
+      <SeverityDistributionChart overview={dashboard ?? {}} />
+      <RiskTimelineChart policies={safeArray(policies)} />
 
       <AlertTimelineChart orgId={activeOrgId} />
       <TopAlertTypes orgId={activeOrgId} />
@@ -1566,6 +1607,7 @@ useEffect(() => {
       <SlaBreachWidget orgId={activeOrgId} />
       <CriticalVendorWatchlist orgId={activeOrgId} />
       <AlertHeatSignature orgId={activeOrgId} />
+
       {/* RENEWAL INTELLIGENCE (tutorial anchor: renewalsRef) */}
       <div ref={renewalsRef}>
         <RenewalHeatmap range={90} />
@@ -1586,6 +1628,7 @@ useEffect(() => {
         <RenewalCalendar range={60} />
         <RenewalAiSummary orgId={activeOrgId} />
       </div>
+
       {/* SYSTEM TIMELINE */}
       <div
         style={{
@@ -1631,63 +1674,54 @@ useEffect(() => {
               paddingRight: 6,
             }}
           >
-            {systemTimeline.map((item, idx) => (
-              <div
-                key={idx}
-                style={{
-                  padding: "10px 12px",
-                  borderRadius: 14,
-                  background: "rgba(2,6,23,0.65)",
-                  border: "1px solid rgba(148,163,184,0.28)",
-                  boxShadow: "0 2px 6px rgba(0,0,0,0.25)",
-                }}
-              >
+            {safeArray(systemTimeline).map((item, idx) => {
+              const it = item || {};
+              const action = String(it.action || "").replace(/_/g, " ");
+              return (
                 <div
+                  key={idx}
                   style={{
-                    fontSize: 11,
-                    fontWeight: 600,
-                    textTransform: "uppercase",
-                    color:
-                      item.severity === "critical"
-                        ? GP.neonRed
-                        : item.severity === "high"
-                        ? GP.neonGold
-                        : GP.neonBlue,
-                    marginBottom: 4,
+                    padding: "10px 12px",
+                    borderRadius: 14,
+                    background: "rgba(2,6,23,0.65)",
+                    border: "1px solid rgba(148,163,184,0.28)",
+                    boxShadow: "0 2px 6px rgba(0,0,0,0.25)",
                   }}
                 >
-                  {item.action.replace(/_/g, " ")}
+                  <div
+                    style={{
+                      fontSize: 11,
+                      fontWeight: 600,
+                      textTransform: "uppercase",
+                      color:
+                        it.severity === "critical"
+                          ? GP.neonRed
+                          : it.severity === "high"
+                          ? GP.neonGold
+                          : GP.neonBlue,
+                      marginBottom: 4,
+                    }}
+                  >
+                    {action || "event"}
+                  </div>
+                  <div style={{ fontSize: 13, color: GP.text }}>
+                    {it.message || "—"}
+                  </div>
+                  <div style={{ fontSize: 11, color: GP.textSoft, marginTop: 4 }}>
+                    Vendor:{" "}
+                    <span style={{ color: GP.neonBlue }}>
+                      {it.vendor_name || "Unknown"}
+                    </span>
+                  </div>
+                  <div style={{ fontSize: 11, color: GP.textMuted, marginTop: 2 }}>
+                    {it.created_at ? new Date(it.created_at).toLocaleString() : "—"}
+                  </div>
                 </div>
-                <div style={{ fontSize: 13, color: GP.text }}>
-                  {item.message}
-                </div>
-                <div
-                  style={{
-                    fontSize: 11,
-                    color: GP.textSoft,
-                    marginTop: 4,
-                  }}
-                >
-                  Vendor:{" "}
-                  <span style={{ color: GP.neonBlue }}>
-                    {item.vendor_name || "Unknown"}
-                  </span>
-                </div>
-                <div
-                  style={{
-                    fontSize: 11,
-                    color: GP.textMuted,
-                    marginTop: 2,
-                  }}
-                >
-                  {new Date(item.created_at).toLocaleString()}
-                </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         )}
       </div>
-
 
       {/* COMPLIANCE EVIDENCE (Audit-grade, immutable) */}
       {activeOrgId ? (
@@ -1756,15 +1790,11 @@ useEffect(() => {
         />
 
         {loadingPolicies && (
-          <div style={{ fontSize: 13, color: GP.textSoft }}>
-            Loading policies…
-          </div>
+          <div style={{ fontSize: 13, color: GP.textSoft }}>Loading policies…</div>
         )}
 
         {!loadingPolicies && safeArray(filtered).length === 0 && (
-          <div style={{ fontSize: 13, color: GP.textSoft }}>
-            No matching policies.
-          </div>
+          <div style={{ fontSize: 13, color: GP.textSoft }}>No matching policies.</div>
         )}
 
         {!loadingPolicies && safeArray(filtered).length > 0 && (
@@ -1805,13 +1835,14 @@ useEffect(() => {
                   </tr>
                 </thead>
                 <tbody>
-                  {filtered.map((p) => {
-                    const risk = computeRisk(p);
-                    const flags = risk.flags || [];
-                    const elite = eliteMap[p.vendor_id];
-                    const compliance = complianceMap[p.vendor_id];
+                  {safeArray(filtered).map((p) => {
+                    const policy = p || {};
+                    const risk = computeRisk(policy);
+                    const flags = safeArray(risk.flags);
+                    const elite = safeObject(eliteMap)?.[policy.vendor_id];
+                    const compliance = safeObject(complianceMap)?.[policy.vendor_id];
                     const ai = computeAiRisk({ risk, elite, compliance });
-                    const engine = engineMap[p.vendor_id];
+                    const engine = safeObject(engineMap)?.[policy.vendor_id];
                     const v3Tier =
                       engine && typeof engine.globalScore === "number"
                         ? computeV3Tier(engine.globalScore)
@@ -1819,19 +1850,19 @@ useEffect(() => {
 
                     return (
                       <tr
-                        key={p.id}
-                        onClick={() => openDrawer(p.vendor_id)}
+                        key={policy.id}
+                        onClick={() => openDrawer(policy.vendor_id)}
                         style={{
                           cursor: "pointer",
                           background:
                             "linear-gradient(90deg,rgba(15,23,42,0.98),rgba(15,23,42,0.92))",
                         }}
                       >
-                        <td style={td}>{p.vendor_name || "—"}</td>
-                        <td style={td}>{p.policy_number}</td>
-                        <td style={td}>{p.carrier}</td>
-                        <td style={td}>{p.coverage_type}</td>
-                        <td style={td}>{p.expiration_date || "—"}</td>
+                        <td style={td}>{policy.vendor_name || "—"}</td>
+                        <td style={td}>{policy.policy_number}</td>
+                        <td style={td}>{policy.carrier}</td>
+                        <td style={td}>{policy.coverage_type}</td>
+                        <td style={td}>{policy.expiration_date || "—"}</td>
                         <td style={td}>{risk.daysLeft ?? "—"}</td>
                         <td
                           style={{
@@ -1842,8 +1873,8 @@ useEffect(() => {
                         >
                           {risk.severity === "ok"
                             ? "Active"
-                            : risk.severity.charAt(0).toUpperCase() +
-                              risk.severity.slice(1)}
+                            : String(risk.severity).charAt(0).toUpperCase() +
+                              String(risk.severity).slice(1)}
                         </td>
                         <td style={{ ...td, textAlign: "center" }}>
                           <span
@@ -1901,7 +1932,10 @@ useEffect(() => {
                           </div>
                         </td>
                         <td style={{ ...td, textAlign: "center" }}>
-                          {renderComplianceBadge(p.vendor_id, complianceMap)}
+                          {v3Tier}
+                        </td>
+                        <td style={{ ...td, textAlign: "center" }}>
+                          {renderComplianceBadge(policy.vendor_id, complianceMap)}
                         </td>
                         <td style={{ ...td, textAlign: "center" }}>
                           {elite && !elite.loading && !elite.error ? (
@@ -1917,12 +1951,9 @@ useEffect(() => {
                           )}
                         </td>
                         <td style={{ ...td, textAlign: "center" }}>
-                          {safeArray(flags).length > 0 ? (
-                            <span
-                              title={flags.join("\n")}
-                              style={{ cursor: "help" }}
-                            >
-                              🚩 {safeArray(flags).length}
+                          {flags.length > 0 ? (
+                            <span title={flags.join("\n")} style={{ cursor: "help" }}>
+                              🚩 {flags.length}
                             </span>
                           ) : (
                             <span style={{ opacity: 0.4 }}>—</span>
@@ -1962,6 +1993,7 @@ useEffect(() => {
     </div>
   );
 }
+
 /* =======================================
    SEVERITY BOX COMPONENT
 ======================================= */
@@ -1998,6 +2030,7 @@ function SeverityBox({ label, count, color }) {
     </div>
   );
 }
+
 /* =======================================
    MINI KPI COMPONENT
 ======================================= */
@@ -2033,6 +2066,7 @@ function MiniKpi({ label, value, color, icon }) {
     </div>
   );
 }
+
 /* =======================================
    TABLE HEAD + CELL STYLES
 ======================================= */
@@ -2052,6 +2086,12 @@ const td = {
   fontSize: 12,
   color: "#e5e7eb",
 };
+
+// =======================================
+// END OF DASHBOARD V5 CINEMATIC INTELLIGENCE FILE
+// =======================================
+
+export default Dashboard;
 
 // =======================================
 // END OF DASHBOARD V5 CINEMATIC INTELLIGENCE FILE
