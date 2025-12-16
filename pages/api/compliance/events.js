@@ -1,21 +1,54 @@
 // pages/api/compliance/events.js
+// ============================================================
+// COMPLIANCE EVENTS — ENTERPRISE SAFE
+// - UUID safe
+// - ALWAYS items:[]
+// - NEVER throws
+// ============================================================
+
 import { sql } from "../../../lib/db";
+import { cleanUUID } from "../../../lib/uuid";
 
 export default async function handler(req, res) {
-  const { orgId, vendorId, alertId, limit = 50 } = req.query;
-  if (!orgId) {
-    return res.status(400).json({ ok: false, error: "Missing orgId" });
+  if (req.method !== "GET") {
+    return res.status(200).json({ ok: false, items: [] });
   }
 
-  const rows = await sql`
-    SELECT *
-    FROM compliance_events
-    WHERE org_id = ${Number(orgId)}
-      AND (${vendorId ? sql`vendor_id = ${Number(vendorId)}` : sql`TRUE`})
-      AND (${alertId ? sql`alert_id = ${Number(alertId)}` : sql`TRUE`})
-    ORDER BY occurred_at DESC
-    LIMIT ${Number(limit)};
-  `;
+  try {
+    const orgId = cleanUUID(req.query.orgId);
+    const limit = Math.max(1, Math.min(200, Number(req.query.limit || 40)));
 
-  res.json({ ok: true, events: rows });
+    // HARD SKIP — dashboard safety
+    if (!orgId) {
+      return res.status(200).json({
+        ok: true,
+        items: [],
+        skipped: true,
+      });
+    }
+
+    const rows = await sql`
+      SELECT
+        occurred_at,
+        event_type,
+        source,
+        vendor_id,
+        alert_id
+      FROM compliance_events
+      WHERE org_id = ${orgId}
+      ORDER BY occurred_at DESC
+      LIMIT ${limit};
+    `;
+
+    return res.status(200).json({
+      ok: true,
+      items: rows || [],
+    });
+  } catch (err) {
+    console.error("[compliance/events] ERROR:", err);
+    return res.status(200).json({
+      ok: false,
+      items: [],
+    });
+  }
 }
