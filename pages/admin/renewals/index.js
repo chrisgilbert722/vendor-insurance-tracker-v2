@@ -27,8 +27,8 @@ function computeTierCounts(predictions) {
     "elite safe": 0,
     unknown: 0,
   };
-  predictions.forEach((p) => {
-    const tier = (p.risk_tier || "").toLowerCase();
+  (Array.isArray(predictions) ? predictions : []).forEach((p) => {
+    const tier = (p?.risk_tier || "").toLowerCase();
     if (counts[tier] !== undefined) counts[tier]++;
     else counts.unknown++;
   });
@@ -44,7 +44,11 @@ export default function RenewalPredictionDashboardPage() {
   const [downloading, setDownloading] = useState(false);
 
   useEffect(() => {
-    if (!orgId) return;
+    if (!orgId) {
+      setPredictions([]);
+      setLoading(false);
+      return;
+    }
 
     async function load() {
       try {
@@ -56,10 +60,12 @@ export default function RenewalPredictionDashboardPage() {
         );
         const json = await res.json();
         if (!json.ok) throw new Error(json.error || "Failed to load predictions");
-        setPredictions(json.predictions || []);
+
+        setPredictions(Array.isArray(json.predictions) ? json.predictions : []);
       } catch (err) {
         console.error("[RenewalPredictionDashboard] error:", err);
         setError(err.message || "Failed to load predictions");
+        setPredictions([]);
       } finally {
         setLoading(false);
       }
@@ -98,451 +104,82 @@ export default function RenewalPredictionDashboardPage() {
     }
   }
 
-  const totalVendors = predictions.length;
+  const safePredictions = Array.isArray(predictions) ? predictions : [];
+  const totalVendors = safePredictions.length;
+
   const avgRisk =
     totalVendors > 0
       ? Math.round(
-          predictions.reduce((sum, p) => sum + (p.risk_score || 0), 0) /
+          safePredictions.reduce((sum, p) => sum + (p?.risk_score || 0), 0) /
             totalVendors
         )
       : null;
 
-  const tierCounts = computeTierCounts(predictions);
+  const tierCounts = computeTierCounts(safePredictions);
 
-  const highRiskVendors = predictions
+  const highRiskVendors = safePredictions
     .filter((p) => {
-      const tier = (p.risk_tier || "").toLowerCase();
+      const tier = (p?.risk_tier || "").toLowerCase();
       return tier === "severe" || tier === "high risk";
     })
-    .sort((a, b) => b.risk_score - a.risk_score);
+    .sort((a, b) => (b?.risk_score || 0) - (a?.risk_score || 0));
 
-  const predictedFailures = predictions
-    .filter((p) => (p.likelihood_fail || 0) >= 40)
-    .sort((a, b) => b.likelihood_fail - a.likelihood_fail);
+  const predictedFailures = safePredictions
+    .filter((p) => (p?.likelihood_fail || 0) >= 40)
+    .sort((a, b) => (b?.likelihood_fail || 0) - (a?.likelihood_fail || 0));
+
   return (
-    <div
-      style={{
-        minHeight: "100vh",
-        position: "relative",
-        background:
-          "radial-gradient(circle at top left,#020617 0,#020617 45%,#000 100%)",
-        padding: "32px 40px 40px",
-        color: GP.text,
-      }}
-    >
-      {/* Aura */}
-      <div
-        style={{
-          position: "absolute",
-          top: -260,
-          left: "50%",
-          transform: "translateX(-50%)",
-          width: 1200,
-          height: 1200,
-          background:
-            "radial-gradient(circle, rgba(56,189,248,0.3), transparent 60%)",
-          filter: "blur(140px)",
-          pointerEvents: "none",
-          zIndex: 0,
-        }}
-      />
+    <div style={{ minHeight: "100vh", padding: "32px 40px 40px", color: GP.text }}>
+      <h1>Renewal risk for your entire portfolio</h1>
 
-      {/* Shell */}
-      <div
-        style={{
-          position: "relative",
-          zIndex: 1,
-          borderRadius: 32,
-          padding: 22,
-          background:
-            "radial-gradient(circle at top left,rgba(15,23,42,0.98),rgba(15,23,42,0.95))",
-          border: "1px solid rgba(148,163,184,0.45)",
-          boxShadow: `
-            0 0 60px rgba(15,23,42,0.95),
-            0 0 80px rgba(15,23,42,0.9),
-            inset 0 0 22px rgba(15,23,42,0.9)
-          `,
-        }}
+      <div style={{ marginBottom: 12 }}>
+        Vendors scored: <strong>{totalVendors}</strong> · Avg risk:{" "}
+        <strong>{avgRisk ?? "—"}</strong> · Predicted failures ≥40%:{" "}
+        <strong>{predictedFailures.length}</strong>
+      </div>
+
+      {loading && <div>Loading renewal predictions…</div>}
+      {error && <div style={{ color: GP.severe }}>{error}</div>}
+
+      {!loading && (
+        <>
+          <OrgRenewalPredictionHeatmap orgId={orgId} />
+
+          <div style={{ marginTop: 20 }}>
+            <h3>Top High-Risk Vendors</h3>
+            {highRiskVendors.length === 0 ? (
+              <div>No high-risk vendors.</div>
+            ) : (
+              highRiskVendors.slice(0, 10).map((v) => (
+                <div key={v.vendor_id}>
+                  {v.vendor_name} — {v.risk_tier} ({v.risk_score})
+                </div>
+              ))
+            )}
+          </div>
+
+          <div style={{ marginTop: 20 }}>
+            <h3>Vendors Likely to Fail Renewal</h3>
+            {predictedFailures.length === 0 ? (
+              <div>No predicted failures.</div>
+            ) : (
+              predictedFailures.slice(0, 10).map((v) => (
+                <div key={v.vendor_id}>
+                  {v.vendor_name} — Fail {v.likelihood_fail}%
+                </div>
+              ))
+            )}
+          </div>
+        </>
+      )}
+
+      <button
+        onClick={downloadExecutivePdf}
+        disabled={downloading}
+        style={{ marginTop: 20 }}
       >
-        {/* Header */}
-        <div
-          style={{
-            display: "flex",
-            alignItems: "flex-start",
-            justifyContent: "space-between",
-            gap: 18,
-            marginBottom: 20,
-            flexWrap: "wrap",
-          }}
-        >
-          {/* LEFT SIDE */}
-          <div>
-            <div
-              style={{
-                display: "inline-flex",
-                gap: 8,
-                padding: "4px 10px",
-                borderRadius: 999,
-                border: "1px solid rgba(148,163,184,0.4)",
-                background:
-                  "linear-gradient(120deg,rgba(15,23,42,0.94),rgba(15,23,42,0.7))",
-                marginBottom: 6,
-              }}
-            >
-              <span
-                style={{
-                  fontSize: 10,
-                  color: GP.textSoft,
-                  letterSpacing: "0.14em",
-                  textTransform: "uppercase",
-                }}
-              >
-                Org Renewal Command
-              </span>
-              <span
-                style={{
-                  fontSize: 10,
-                  color: "#38bdf8",
-                  letterSpacing: "0.12em",
-                  textTransform: "uppercase",
-                }}
-              >
-                AI Prediction Dashboard
-              </span>
-            </div>
-
-            <h1
-              style={{
-                margin: 0,
-                fontSize: 26,
-                fontWeight: 600,
-              }}
-            >
-              Renewal risk for{" "}
-              <span
-                style={{
-                  background:
-                    "linear-gradient(90deg,#38bdf8,#a855f7,#f97316)",
-                  WebkitBackgroundClip: "text",
-                  color: "transparent",
-                }}
-              >
-                your entire portfolio
-              </span>
-              .
-            </h1>
-
-            <p
-              style={{
-                marginTop: 6,
-                fontSize: 13,
-                color: GP.textSoft,
-                maxWidth: 640,
-              }}
-            >
-              See which vendors are predicted to renew on time, who is likely
-              to be late, and where renewal failure is most likely — before it
-              happens.
-            </p>
-          </div>
-
-          {/* RIGHT SNAPSHOT + PDF BTN */}
-          <div
-            style={{
-              minWidth: 230,
-              padding: 12,
-              borderRadius: 18,
-              border: "1px solid rgba(51,65,85,0.9)",
-              background: "rgba(15,23,42,0.98)",
-              fontSize: 12,
-              display: "flex",
-              flexDirection: "column",
-              gap: 8,
-            }}
-          >
-            <div style={{ color: GP.textSoft, marginBottom: 4 }}>
-              Org Snapshot
-            </div>
-
-            <div style={{ display: "flex", justifyContent: "space-between" }}>
-              <span>Vendors scored</span>
-              <strong>{totalVendors}</strong>
-            </div>
-
-            <div style={{ display: "flex", justifyContent: "space-between" }}>
-              <span>Avg risk</span>
-              <strong>{avgRisk == null ? "—" : avgRisk}</strong>
-            </div>
-
-            <div style={{ display: "flex", justifyContent: "space-between" }}>
-              <span>Predicted failures ≥40%</span>
-              <strong>{predictedFailures.length}</strong>
-            </div>
-
-            <button
-              onClick={downloadExecutivePdf}
-              disabled={downloading}
-              style={{
-                marginTop: 6,
-                padding: "6px 10px",
-                borderRadius: 999,
-                border: "1px solid rgba(56,189,248,0.8)",
-                background:
-                  "radial-gradient(circle at top left,#38bdf8,#0ea5e9,#0f172a)",
-                color: "#e0f2fe",
-                fontSize: 11,
-                fontWeight: 600,
-                cursor: downloading ? "not-allowed" : "pointer",
-                textAlign: "center",
-                whiteSpace: "nowrap",
-              }}
-            >
-              {downloading ? "Generating PDF…" : "📄 Executive PDF"}
-            </button>
-          </div>
-        </div>
-
-        {/* KPI STRIP */}
-        <div
-          style={{
-            display: "grid",
-            gridTemplateColumns: "repeat(auto-fit,minmax(150px,1fr))",
-            gap: 12,
-            marginBottom: 20,
-          }}
-        >
-          <KpiCard label="Severe Risk" value={tierCounts.severe} color={GP.severe} />
-          <KpiCard label="High Risk" value={tierCounts["high risk"]} color={GP.high} />
-          <KpiCard label="Watch" value={tierCounts.watch} color={GP.watch} />
-          <KpiCard label="Preferred" value={tierCounts.preferred} color={GP.preferred} />
-          <KpiCard label="Elite Safe" value={tierCounts["elite safe"]} color={GP.safe} />
-        </div>
-
-        {/* AI SUMMARY */}
-        <div
-          style={{
-            borderRadius: 18,
-            padding: 14,
-            marginBottom: 20,
-            background: GP.panelBg,
-            border: "1px solid rgba(51,65,85,0.9)",
-          }}
-        >
-          <div
-            style={{
-              fontSize: 11,
-              textTransform: "uppercase",
-              letterSpacing: "0.12em",
-              color: GP.textSoft,
-              marginBottom: 6,
-            }}
-          >
-            AI Org Insight
-          </div>
-
-          <div style={{ fontSize: 13, color: GP.text, lineHeight: 1.5 }}>
-            {loading && "Calculating renewal risk…"}
-
-            {!loading && predictions.length === 0 && (
-              <>No prediction data yet.</>
-            )}
-
-            {!loading && predictions.length > 0 && (
-              <>
-                Your organization has <strong>{totalVendors}</strong> vendors
-                analyzed with an average renewal risk of{" "}
-                <strong>{avgRisk ?? "—"}</strong>.{" "}
-                <strong>{tierCounts.severe}</strong> Severe risk vendors and{" "}
-                <strong>{tierCounts["high risk"]}</strong> High Risk vendors
-                require your team's focus in the next 30–60 days.
-              </>
-            )}
-          </div>
-        </div>
-
-        {/* HEATMAP */}
-        <OrgRenewalPredictionHeatmap orgId={orgId} />
-
-        {/* TWO PANELS */}
-        <div
-          style={{
-            marginTop: 30,
-            display: "grid",
-            gridTemplateColumns: "minmax(0,1.5fr) minmax(0,1.5fr)",
-            gap: 20,
-          }}
-        >
-          <HighRiskVendorsPanel vendors={highRiskVendors} />
-          <PredictedFailuresPanel vendors={predictedFailures} />
-        </div>
-
-        {error && (
-          <div style={{ marginTop: 16, fontSize: 13, color: GP.severe }}>
-            {error}
-          </div>
-        )}
-      </div>
+        {downloading ? "Generating PDF…" : "📄 Executive PDF"}
+      </button>
     </div>
   );
 }
-/* ===========================
-      COMPONENTS
-=========================== */
-
-function KpiCard({ label, value, color }) {
-  return (
-    <div
-      style={{
-        borderRadius: 18,
-        padding: 10,
-        border: "1px solid rgba(51,65,85,0.9)",
-        background: GP.panelBg,
-      }}
-    >
-      <div style={{ fontSize: 11, color: GP.textSoft }}>{label}</div>
-      <div style={{ fontSize: 20, fontWeight: 700, color }}>{value}</div>
-    </div>
-  );
-}
-
-function HighRiskVendorsPanel({ vendors }) {
-  return (
-    <div
-      style={{
-        borderRadius: 18,
-        padding: 14,
-        background: GP.panelBg,
-        border: GP.borderSoft,
-      }}
-    >
-      <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 6 }}>
-        Top High-Risk Vendors
-      </div>
-
-      <div style={{ fontSize: 11, color: GP.textSoft, marginBottom: 8 }}>
-        Vendors in Severe or High Risk tiers.
-      </div>
-
-      {vendors.length === 0 ? (
-        <div style={{ fontSize: 12, color: GP.textSoft }}>
-          No high-risk vendors.
-        </div>
-      ) : (
-        <div style={{ maxHeight: 260, overflowY: "auto", paddingRight: 4 }}>
-          <table
-            style={{
-              width: "100%",
-              fontSize: 12,
-              borderSpacing: 0,
-              borderCollapse: "separate",
-            }}
-          >
-            <thead>
-              <tr>
-                <th style={thCell}>Vendor</th>
-                <th style={thCell}>Tier</th>
-                <th style={thCell}>Risk</th>
-                <th style={thCell}>Fail %</th>
-              </tr>
-            </thead>
-            <tbody>
-              {vendors.slice(0, 10).map((v) => (
-                <tr key={v.vendor_id} style={rowStyle}>
-                  <td style={tdCell}>{v.vendor_name}</td>
-                  <td style={tdCell}>{v.risk_tier}</td>
-                  <td style={tdCell}>{v.risk_score}</td>
-                  <td style={tdCell}>{v.likelihood_fail ?? "—"}%</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      )}
-    </div>
-  );
-}
-function PredictedFailuresPanel({ vendors }) {
-  return (
-    <div
-      style={{
-        borderRadius: 18,
-        padding: 14,
-        background: GP.panelBg,
-        border: GP.borderSoft,
-      }}
-    >
-      <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 6 }}>
-        Vendors Likely to Fail Renewal
-      </div>
-
-      <div style={{ fontSize: 11, color: GP.textSoft, marginBottom: 8 }}>
-        Vendors with failure likelihood ≥ 40%.
-      </div>
-
-      {vendors.length === 0 ? (
-        <div style={{ fontSize: 12, color: GP.textSoft }}>
-          No predicted failures.
-        </div>
-      ) : (
-        <div style={{ maxHeight: 260, overflowY: "auto", paddingRight: 4 }}>
-          <table
-            style={{
-              width: "100%",
-              fontSize: 12,
-              borderSpacing: 0,
-              borderCollapse: "separate",
-            }}
-          >
-            <thead>
-              <tr>
-                <th style={thCell}>Vendor</th>
-                <th style={thCell}>Risk</th>
-                <th style={thCell}>Fail %</th>
-                <th style={thCell}>On-Time %</th>
-              </tr>
-            </thead>
-
-            <tbody>
-              {vendors.slice(0, 10).map((v) => (
-                <tr key={v.vendor_id} style={rowStyle}>
-                  <td style={tdCell}>{v.vendor_name}</td>
-                  <td style={tdCell}>{v.risk_score}</td>
-                  <td style={tdCell}>{v.likelihood_fail}%</td>
-                  <td style={tdCell}>
-                    {v.likelihood_on_time ?? "—"}%
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-
-          </table>
-        </div>
-      )}
-    </div>
-  );
-}
-/* ===========================
-      TABLE STYLES
-=========================== */
-
-const thCell = {
-  padding: "6px 8px",
-  color: GP.textSoft,
-  fontWeight: 600,
-  textAlign: "left",
-  borderBottom: "1px solid rgba(51,65,85,0.8)",
-  fontSize: 11,
-};
-
-const tdCell = {
-  padding: "6px 8px",
-  color: GP.text,
-  borderBottom: "1px solid rgba(51,65,85,0.5)",
-  fontSize: 12,
-};
-
-const rowStyle = {
-  background:
-    "linear-gradient(90deg,rgba(15,23,42,0.98),rgba(15,23,42,0.94))",
-};
-
