@@ -5,9 +5,10 @@
 // - NO server imports (db, uuid, openai)
 // - Fetches /api/admin/org-compliance-v5
 // - Styled to match Dashboard / Alerts / V5 pages
+// - Defensive rendering: never crashes app
 // ============================================================
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useOrg } from "../../context/OrgContext";
 import CommandShell from "../../components/v5/CommandShell";
 import { V5 } from "../../components/v5/v5Theme";
@@ -21,7 +22,9 @@ export default function OrgCompliancePage() {
 
   useEffect(() => {
     if (loadingOrgs) return;
+
     if (!orgId) {
+      setData(null);
       setLoading(false);
       setError("No organization selected.");
       return;
@@ -40,15 +43,15 @@ export default function OrgCompliancePage() {
 
         const json = await res.json().catch(() => ({}));
 
-        if (!json.ok) {
-          throw new Error(json.error || "Org compliance unavailable");
+        if (!json || !json.ok) {
+          throw new Error(json?.error || "Org compliance unavailable");
         }
 
         if (!alive) return;
         setData(json);
       } catch (e) {
         if (!alive) return;
-        setError(e.message || "Failed loading org compliance");
+        setError(e?.message || "Failed loading org compliance");
         setData(null);
       } finally {
         if (alive) setLoading(false);
@@ -61,7 +64,18 @@ export default function OrgCompliancePage() {
     };
   }, [orgId, loadingOrgs]);
 
-  const metrics = data?.metrics;
+  const metrics = useMemo(() => {
+    const m = data?.metrics || {};
+    return {
+      vendorCount: Number.isFinite(Number(m.vendorCount)) ? Number(m.vendorCount) : 0,
+      avgScore: Number.isFinite(Number(m.avgScore)) ? Number(m.avgScore) : 0,
+      combinedScore: Number.isFinite(Number(m.combinedScore)) ? Number(m.combinedScore) : 0,
+      tier: typeof m.tier === "string" && m.tier.trim() ? m.tier : "—",
+    };
+  }, [data]);
+
+  const combinedColor =
+    metrics.combinedScore >= 70 ? V5.green : metrics.combinedScore >= 40 ? V5.yellow : V5.red;
 
   return (
     <CommandShell
@@ -100,17 +114,7 @@ export default function OrgCompliancePage() {
         >
           <MetricCard label="Vendors" value={metrics.vendorCount} color={V5.blue} />
           <MetricCard label="Avg Score" value={metrics.avgScore} color={V5.purple} />
-          <MetricCard
-            label="Combined Score"
-            value={metrics.combinedScore}
-            color={
-              metrics.combinedScore >= 70
-                ? V5.green
-                : metrics.combinedScore >= 40
-                ? V5.yellow
-                : V5.red
-            }
-          />
+          <MetricCard label="Combined Score" value={metrics.combinedScore} color={combinedColor} />
           <MetricCard label="Tier" value={metrics.tier} color={V5.blue} />
 
           <div
@@ -121,8 +125,7 @@ export default function OrgCompliancePage() {
               borderRadius: 22,
               border: `1px solid ${V5.border}`,
               background: V5.panel,
-              boxShadow:
-                "0 0 32px rgba(0,0,0,0.6), inset 0 0 24px rgba(0,0,0,0.65)",
+              boxShadow: "0 0 32px rgba(0,0,0,0.6), inset 0 0 24px rgba(0,0,0,0.65)",
             }}
           >
             <div
@@ -138,7 +141,9 @@ export default function OrgCompliancePage() {
             </div>
 
             <div style={{ fontSize: 14, lineHeight: 1.6 }}>
-              {data.narrative || "No executive narrative available yet."}
+              {typeof data?.narrative === "string" && data.narrative.trim()
+                ? data.narrative
+                : "No executive narrative available yet."}
             </div>
           </div>
         </div>
