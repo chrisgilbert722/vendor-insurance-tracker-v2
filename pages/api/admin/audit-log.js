@@ -26,7 +26,16 @@ export default async function handler(req, res) {
       pageSize = "50",
     } = req.query;
 
-    if (!orgId) return res.status(400).json({ ok: false, error: "Missing orgId" });
+    if (!orgId) {
+      // tolerant mode
+      return res.status(200).json({
+        ok: true,
+        page: 1,
+        pageSize: 50,
+        hasMore: false,
+        events: [],
+      });
+    }
 
     const pageNum = Math.max(1, parseInt(page, 10) || 1);
     const limit = Math.min(200, Math.max(10, parseInt(pageSize, 10) || 50));
@@ -39,9 +48,14 @@ export default async function handler(req, res) {
     const startTs = start ? new Date(start) : null;
     const endTs = end ? new Date(end) : null;
 
-    // Protect against invalid date strings
-    const startOk = startTs && !Number.isNaN(startTs.getTime()) ? startTs.toISOString() : null;
-    const endOk = endTs && !Number.isNaN(endTs.getTime()) ? endTs.toISOString() : null;
+    const startOk =
+      startTs && !Number.isNaN(startTs.getTime())
+        ? startTs.toISOString()
+        : null;
+    const endOk =
+      endTs && !Number.isNaN(endTs.getTime())
+        ? endTs.toISOString()
+        : null;
 
     // ---------------------------------------------------------
     // SYSTEM TIMELINE (org-scoped)
@@ -51,7 +65,7 @@ export default async function handler(req, res) {
         'system'::text AS source,
         st.org_id,
         st.vendor_id,
-        v.vendor_name,
+        v.name AS vendor_name,
         st.action,
         st.message,
         COALESCE(st.severity, 'info')::text AS severity,
@@ -73,7 +87,7 @@ export default async function handler(req, res) {
         'vendor'::text AS source,
         v.org_id,
         al.vendor_id,
-        v.vendor_name,
+        v.name AS vendor_name,
         al.action,
         al.message,
         COALESCE(al.severity, 'info')::text AS severity,
@@ -87,15 +101,11 @@ export default async function handler(req, res) {
         AND (${endOk}::timestamptz IS NULL OR al.created_at <= ${endOk})
     `;
 
-    // Choose source
     let unioned;
     if (src === "system") unioned = systemQuery;
     else if (src === "vendor") unioned = vendorQuery;
-    else {
-      unioned = sql`${systemQuery} UNION ALL ${vendorQuery}`;
-    }
+    else unioned = sql`${systemQuery} UNION ALL ${vendorQuery}`;
 
-    // Final query: order + paginate
     const rows = await sql`
       SELECT *
       FROM (${unioned}) AS x
@@ -104,7 +114,6 @@ export default async function handler(req, res) {
       OFFSET ${offset}
     `;
 
-    // hasMore: simple lookahead
     const lookahead = await sql`
       SELECT 1
       FROM (${unioned}) AS x
