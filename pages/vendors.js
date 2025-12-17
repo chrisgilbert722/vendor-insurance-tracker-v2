@@ -68,6 +68,7 @@ export default function VendorsPage() {
   const [rawVendors, setRawVendors] = useState([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState("");
+  const orgMissingMsg = "Select an organization to view vendors.";
 
   const [statusFilter, setStatusFilter] = useState("All");
   const [search, setSearch] = useState("");
@@ -78,6 +79,12 @@ export default function VendorsPage() {
     let cancelled = false;
 
     async function load() {
+        if (!orgId) {
+          // orgId not ready yet — skip load to prevent 400s
+          setLoading(false);
+          return;
+        }
+
       try {
         setLoading(true);
         setLoadError("");
@@ -185,7 +192,7 @@ export default function VendorsPage() {
 
   // QUICK ADD vendor (Option C)
   async function handleQuickAddVendor() {
-    if (!canCreate) return;
+    if (!canCreate || !orgId) return;
 
     const name =
       window.prompt("Vendor name?", "New Vendor") || "New Vendor";
@@ -606,6 +613,21 @@ export default function VendorsPage() {
         </div>
 
         {/* LIST */}
+{/* ORG MISSING */}
+        {!orgId && !loading && (
+          <div
+            style={{
+              borderRadius: 18,
+              border: "1px dashed rgba(75,85,99,0.9)",
+              padding: "14px 12px",
+              fontSize: 12,
+              color: "#9ca3af",
+            }}
+          >
+            Select an organization to load vendors.
+          </div>
+        )}
+
         <div
           style={{
             display: "flex",
