@@ -1,4 +1,9 @@
 // components/v5/CommandShell.js
+// ==========================================================
+// COMMAND SHELL — V5 EXEC LAYOUT
+// Iron-Man / JARVIS cockpit wrapper for all admin pages
+// ==========================================================
+
 import { V5 } from "./v5Theme";
 
 export default function CommandShell({
@@ -7,16 +12,22 @@ export default function CommandShell({
   subtitle,
   status,
   statusColor,
-  actions,
+  actions = [],
   children,
 }) {
+  const color = statusColor || V5.status[status] || V5.blue;
+
   return (
     <div
       style={{
         minHeight: "100vh",
-        background:
-          "radial-gradient(circle at 20% 0%, rgba(56,189,248,0.12), transparent 35%), radial-gradient(circle at 85% 10%, rgba(168,85,247,0.10), transparent 35%), radial-gradient(circle at 50% 120%, rgba(34,197,94,0.06), transparent 45%), #020617",
-        padding: "34px 42px 60px",
+        background: `
+          radial-gradient(circle at 20% 0%, ${V5.glowBlue}, transparent 35%),
+          radial-gradient(circle at 85% 10%, ${V5.glowPurple}, transparent 35%),
+          radial-gradient(circle at 50% 120%, ${V5.glowGreen}, transparent 45%),
+          ${V5.bg}
+        `,
+        padding: "34px 42px 48px",
         color: V5.text,
         overflowX: "hidden",
       }}
@@ -35,31 +46,17 @@ export default function CommandShell({
         }}
       />
 
-      {/* Aura */}
-      <div
-        style={{
-          position: "absolute",
-          top: -380,
-          left: "50%",
-          transform: "translateX(-50%)",
-          width: 1400,
-          height: 1400,
-          background:
-            "radial-gradient(circle, rgba(56,189,248,0.24), transparent 60%)",
-          filter: "blur(160px)",
-          pointerEvents: "none",
-        }}
-      />
-
+      {/* Shell */}
       <div
         style={{
           position: "relative",
           zIndex: 1,
           borderRadius: 34,
-          padding: 26,
-          border: `1px solid ${V5.border}`,
-          background:
-            "radial-gradient(circle at 20% 0%, rgba(15,23,42,0.95), rgba(15,23,42,0.86))",
+          padding: 22,
+          border: `1px solid ${V5.borderSoft}`,
+          background: `
+            radial-gradient(circle at 20% 0%, rgba(15,23,42,0.95), rgba(15,23,42,0.86))
+          `,
           boxShadow: `
             0 0 70px rgba(0,0,0,0.8),
             0 0 80px ${V5.glowBlue},
@@ -87,10 +84,9 @@ export default function CommandShell({
                 alignItems: "center",
                 padding: "6px 12px",
                 borderRadius: 999,
-                border: `1px solid ${V5.border}`,
-                background:
-                  "linear-gradient(120deg, rgba(2,6,23,0.8), rgba(15,23,42,0.7))",
-                boxShadow: `0 0 18px ${V5.glowBlue}`,
+                border: `1px solid ${V5.borderSoft}`,
+                background: "rgba(2,6,23,0.7)",
+                boxShadow: `0 0 18px ${color}33`,
                 marginBottom: 10,
               }}
             >
@@ -104,25 +100,30 @@ export default function CommandShell({
               >
                 {tag}
               </span>
-              <span
-                style={{
-                  fontSize: 10,
-                  letterSpacing: "0.16em",
-                  textTransform: "uppercase",
-                  color: statusColor,
-                }}
-              >
-                {status}
-              </span>
-              <span
-                style={{
-                  width: 8,
-                  height: 8,
-                  borderRadius: 999,
-                  background: statusColor,
-                  boxShadow: `0 0 14px ${statusColor}`,
-                }}
-              />
+
+              {status && (
+                <>
+                  <span
+                    style={{
+                      fontSize: 10,
+                      letterSpacing: "0.16em",
+                      textTransform: "uppercase",
+                      color,
+                    }}
+                  >
+                    {status}
+                  </span>
+                  <span
+                    style={{
+                      width: 8,
+                      height: 8,
+                      borderRadius: "50%",
+                      background: color,
+                      boxShadow: `0 0 14px ${color}`,
+                    }}
+                  />
+                </>
+              )}
             </div>
 
             <h1
@@ -143,7 +144,7 @@ export default function CommandShell({
                   fontSize: 13,
                   color: V5.soft,
                   maxWidth: 760,
-                  lineHeight: 1.6,
+                  lineHeight: 1.55,
                 }}
               >
                 {subtitle}
@@ -151,11 +152,17 @@ export default function CommandShell({
             )}
           </div>
 
-          {actions && (
-            <div style={{ display: "flex", gap: 10 }}>{actions}</div>
+          {/* ACTIONS */}
+          {actions.length > 0 && (
+            <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+              {actions.map((a, i) => (
+                <div key={i}>{a}</div>
+              ))}
+            </div>
           )}
         </div>
 
+        {/* CONTENT */}
         {children}
       </div>
     </div>
