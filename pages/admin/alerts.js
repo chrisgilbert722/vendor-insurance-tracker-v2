@@ -2,13 +2,24 @@ import { useEffect, useMemo, useState } from "react";
 import { useRole } from "../../lib/useRole";
 import { useOrg } from "../../context/OrgContext";
 import ToastV2 from "../../components/ToastV2";
-
 import CommandShell from "../../components/v5/CommandShell";
-import { V5 } from "../../components/v5/v5Theme";
 
 /* ==========================================================
-   ALERTS V5 — INCIDENT COMMAND (Shell-driven)
+   ALERTS V5 — INCIDENT COMMAND (BUILD-SAFE)
 ========================================================== */
+
+/* INLINE V5 THEME (NO EXTERNAL DEPENDENCY) */
+const V5 = {
+  panel: "rgba(15,23,42,0.96)",
+  border: "rgba(148,163,184,0.28)",
+  text: "#e5e7eb",
+  soft: "#9ca3af",
+
+  blue: "#38bdf8",
+  green: "#22c55e",
+  yellow: "#facc15",
+  red: "#fb7185",
+};
 
 const SEVERITY = {
   critical: { label: "CRITICAL", color: V5.red },
@@ -19,13 +30,9 @@ const SEVERITY = {
 
 function getSlaState(alert) {
   if (!alert?.sla_due_at) return null;
-  const due = new Date(alert.sla_due_at);
-  const now = new Date();
-  const diff = due - now;
+  const diff = new Date(alert.sla_due_at) - new Date();
 
-  if (diff <= 0) {
-    return { label: "SLA BREACHED", color: V5.red };
-  }
+  if (diff <= 0) return { label: "SLA BREACHED", color: V5.red };
 
   const hours = Math.floor(diff / 3600000);
   const days = Math.floor(hours / 24);
@@ -81,9 +88,7 @@ function CountCard({ label, value, color, active, onClick }) {
       >
         {label}
       </div>
-      <div style={{ fontSize: 24, fontWeight: 900, color: V5.text }}>
-        {value}
-      </div>
+      <div style={{ fontSize: 24, fontWeight: 900 }}>{value}</div>
     </div>
   );
 }
@@ -96,16 +101,11 @@ export default function AlertsV5() {
   const [alerts, setAlerts] = useState([]);
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState("all");
-  const [toast, setToast] = useState({
-    open: false,
-    type: "success",
-    message: "",
-  });
+  const [toast, setToast] = useState({ open: false, type: "success", message: "" });
 
   useEffect(() => {
     if (!orgId || loadingOrgs) return;
     loadAlerts();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [orgId, loadingOrgs]);
 
   async function loadAlerts() {
@@ -125,7 +125,7 @@ export default function AlertsV5() {
 
   const counts = useMemo(() => {
     const c = { all: 0, critical: 0, high: 0, medium: 0, low: 0, sla: 0 };
-    (Array.isArray(alerts) ? alerts : []).forEach((a) => {
+    alerts.forEach((a) => {
       c.all++;
       if (c[a.severity] !== undefined) c[a.severity]++;
       if (getSlaState(a)?.label === "SLA BREACHED") c.sla++;
@@ -134,16 +134,11 @@ export default function AlertsV5() {
   }, [alerts]);
 
   const filtered = useMemo(() => {
-    const safe = Array.isArray(alerts) ? alerts : [];
-    if (filter === "all") return safe;
+    if (filter === "all") return alerts;
     if (filter === "sla")
-      return safe.filter((a) => getSlaState(a)?.label === "SLA BREACHED");
-    return safe.filter((a) => a.severity === filter);
+      return alerts.filter((a) => getSlaState(a)?.label === "SLA BREACHED");
+    return alerts.filter((a) => a.severity === filter);
   }, [alerts, filter]);
-
-  function openFix(alert) {
-    window.location.href = `/admin/vendor/${alert.vendor_id}/fix?alertId=${alert.id}`;
-  }
 
   async function resolveAlert(alert) {
     try {
@@ -153,9 +148,8 @@ export default function AlertsV5() {
         body: JSON.stringify({ alertId: alert.id }),
       });
       const json = await res.json();
-      if (!json.ok) throw new Error(json.error || "Resolve failed");
-
-      setAlerts((prev) => (Array.isArray(prev) ? prev : []).filter((a) => a.id !== alert.id));
+      if (!json.ok) throw new Error(json.error);
+      setAlerts((p) => p.filter((a) => a.id !== alert.id));
       setToast({ open: true, type: "success", message: "Incident resolved" });
     } catch (e) {
       setToast({ open: true, type: "error", message: e.message });
@@ -163,9 +157,9 @@ export default function AlertsV5() {
   }
 
   const system =
-    counts.critical > 0 || counts.sla > 0
+    counts.critical || counts.sla
       ? { label: "CRITICAL", color: V5.red }
-      : counts.high > 0
+      : counts.high
       ? { label: "ELEVATED", color: V5.yellow }
       : { label: "STABLE", color: V5.green };
 
@@ -173,7 +167,7 @@ export default function AlertsV5() {
     <CommandShell
       tag="INCIDENT COMMAND"
       title="Alerts & Compliance"
-      subtitle="Real-time compliance incidents, SLA exposure, and escalation control across your org."
+      subtitle="Real-time compliance incidents, SLA exposure, and escalation control"
       status={loading ? "SYNCING" : system.label}
       statusColor={loading ? V5.blue : system.color}
       actions={[
@@ -206,48 +200,12 @@ export default function AlertsV5() {
           marginBottom: 20,
         }}
       >
-        <CountCard
-          label="All"
-          value={counts.all}
-          color={V5.blue}
-          active={filter === "all"}
-          onClick={() => setFilter("all")}
-        />
-        <CountCard
-          label="Critical"
-          value={counts.critical}
-          color={V5.red}
-          active={filter === "critical"}
-          onClick={() => setFilter("critical")}
-        />
-        <CountCard
-          label="High"
-          value={counts.high}
-          color={V5.yellow}
-          active={filter === "high"}
-          onClick={() => setFilter("high")}
-        />
-        <CountCard
-          label="Medium"
-          value={counts.medium}
-          color={V5.blue}
-          active={filter === "medium"}
-          onClick={() => setFilter("medium")}
-        />
-        <CountCard
-          label="Low"
-          value={counts.low}
-          color={V5.green}
-          active={filter === "low"}
-          onClick={() => setFilter("low")}
-        />
-        <CountCard
-          label="SLA Breached"
-          value={counts.sla}
-          color={V5.red}
-          active={filter === "sla"}
-          onClick={() => setFilter("sla")}
-        />
+        <CountCard label="All" value={counts.all} color={V5.blue} active={filter === "all"} onClick={() => setFilter("all")} />
+        <CountCard label="Critical" value={counts.critical} color={V5.red} active={filter === "critical"} onClick={() => setFilter("critical")} />
+        <CountCard label="High" value={counts.high} color={V5.yellow} active={filter === "high"} onClick={() => setFilter("high")} />
+        <CountCard label="Medium" value={counts.medium} color={V5.blue} active={filter === "medium"} onClick={() => setFilter("medium")} />
+        <CountCard label="Low" value={counts.low} color={V5.green} active={filter === "low"} onClick={() => setFilter("low")} />
+        <CountCard label="SLA Breached" value={counts.sla} color={V5.red} active={filter === "sla"} onClick={() => setFilter("sla")} />
       </div>
 
       {/* INCIDENT STREAM */}
@@ -260,7 +218,7 @@ export default function AlertsV5() {
       ) : (
         <div style={{ display: "grid", gap: 12 }}>
           {filtered.map((a) => {
-            const sev = SEVERITY[a.severity] || { label: "UNKNOWN", color: V5.soft };
+            const sev = SEVERITY[a.severity];
             const sla = getSlaState(a);
 
             return (
@@ -271,56 +229,31 @@ export default function AlertsV5() {
                   borderRadius: 20,
                   background: V5.panel,
                   border: `1px solid ${sev.color}77`,
-                  boxShadow: `0 0 24px ${sev.color}22, inset 0 0 22px rgba(0,0,0,0.6)`,
+                  boxShadow: `0 0 24px ${sev.color}22`,
                 }}
               >
                 <div style={{ display: "flex", justifyContent: "space-between", gap: 14 }}>
-                  <div style={{ minWidth: 0 }}>
-                    <div
-                      style={{
-                        fontSize: 11,
-                        fontWeight: 900,
-                        letterSpacing: "0.12em",
-                        textTransform: "uppercase",
-                        color: sev.color,
-                        marginBottom: 6,
-                      }}
-                    >
+                  <div>
+                    <div style={{ fontSize: 11, fontWeight: 900, color: sev.color }}>
                       {sev.label}
                     </div>
-
                     <div style={{ fontSize: 16, fontWeight: 800 }}>
                       {a.vendor_name || "Unknown Vendor"}
                     </div>
-
-                    <div style={{ marginTop: 4, fontSize: 13, color: V5.soft }}>
-                      {a.message || "No message"}
+                    <div style={{ fontSize: 13, color: V5.soft }}>
+                      {a.message}
                     </div>
                   </div>
-
-                  {sla ? (
-                    <div
-                      style={{
-                        padding: "6px 10px",
-                        borderRadius: 999,
-                        border: `1px solid ${sla.color}99`,
-                        color: sla.color,
-                        fontSize: 11,
-                        fontWeight: 900,
-                        letterSpacing: "0.10em",
-                        textTransform: "uppercase",
-                        whiteSpace: "nowrap",
-                        height: "fit-content",
-                      }}
-                    >
+                  {sla && (
+                    <div style={{ color: sla.color, fontWeight: 900 }}>
                       {sla.label}
                     </div>
-                  ) : null}
+                  )}
                 </div>
 
                 {canEdit && (
                   <div style={{ display: "flex", gap: 10, marginTop: 14 }}>
-                    <ActionButton label="Fix" color={V5.blue} onClick={() => openFix(a)} />
+                    <ActionButton label="Fix" color={V5.blue} onClick={() => (window.location.href = `/admin/vendor/${a.vendor_id}/fix?alertId=${a.id}`)} />
                     <ActionButton label="Resolve" color={V5.green} onClick={() => resolveAlert(a)} />
                   </div>
                 )}
@@ -339,3 +272,4 @@ export default function AlertsV5() {
     </CommandShell>
   );
 }
+
