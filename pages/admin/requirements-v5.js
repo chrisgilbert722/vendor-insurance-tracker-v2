@@ -8,6 +8,9 @@ import { useEffect, useState, useMemo, useRef } from "react";
 import { useRole } from "../../lib/useRole";
 import { useOrg } from "../../context/OrgContext";
 import ToastV2 from "../../components/ToastV2";
+
+import CommandShell from "../../components/v5/CommandShell";
+import { V5 } from "../../components/v5/v5Theme";
 import { DndProvider, useDrag, useDrop } from "react-dnd";
 import { HTML5Backend } from "react-dnd-html5-backend";
 
@@ -246,8 +249,15 @@ function LaneColumn({
   conflictedRuleIds,
 }) {
   return (
-    <div
-      style={{
+    <CommandShell
+      tag="REQUIREMENTS ENGINE • V5"
+      title="Coverage Requirements Engine"
+      subtitle="AI-built, explainable coverage rules that power alerts and enforcement"
+      status={runningEngine ? "RUNNING" : conflictLoading ? "SCANNING" : conflicts.length ? "CONFLICTS" : "ONLINE"}
+      statusColor={runningEngine ? V5.blue : conflictLoading ? V5.red : conflicts.length ? V5.red : V5.green}
+    >
+      <div
+        style={{
         padding: 12,
         borderRadius: 18,
         background: "rgba(15,23,42,0.82)",
@@ -990,31 +1000,7 @@ export default function RequirementsV5Page() {
         overflow: "hidden",
       }}
     >
-      {/* BACKGROUND AURA */}
-      <div
-        style={{
-          position: "absolute",
-          inset: 0,
-          background:
-            "radial-gradient(circle at 10% 0%,rgba(56,189,248,0.18),transparent 55%),radial-gradient(circle at 90% 10%,rgba(129,140,248,0.18),transparent 55%)",
-          pointerEvents: "none",
-        }}
-      />
-
-      {/* SCANLINES */}
-      <div
-        style={{
-          position: "absolute",
-          inset: 0,
-          background:
-            "linear-gradient(rgba(148,163,184,0.08) 1px, transparent 1px)",
-          backgroundSize: "100% 3px",
-          opacity: 0.2,
-          pointerEvents: "none",
-        }}
-      />
-
-      {/* MAIN CONTENT */}
+{/* MAIN CONTENT */}
       <div style={{ position: "relative", zIndex: 1 }}>
         {/* HEADER */}
         <div style={{ marginBottom: 18 }}>
@@ -2311,6 +2297,8 @@ Must include Additional Insured and Waiver of Subrogation."`}
           Saving…
         </div>
       )}
+
+    </CommandShell>
 
       {/* TOAST */}
       <ToastV2
