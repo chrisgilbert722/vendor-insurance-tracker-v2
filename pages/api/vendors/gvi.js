@@ -88,17 +88,15 @@ function computeNextRenewalAction(stage) {
 ============================================================ */
 export default async function handler(req, res) {
   if (req.method !== "GET") {
-    return res
-      .status(405)
-      .json({ ok: false, error: "Use GET." });
+    return res.status(405).json({ ok: false, error: "Use GET." });
   }
 
   try {
-    const orgId = Number(req.query.orgId || 0);
+    // 🔒 TOLERANT MODE: if orgId missing, return empty payload instead of 400
+    const rawOrgId = req.query.orgId;
+    const orgId = Number(rawOrgId || 0);
     if (!orgId) {
-      return res
-        .status(400)
-        .json({ ok: false, error: "Missing orgId." });
+      return res.status(200).json({ ok: true, vendors: [] });
     }
 
     /* -------------------------------------------
@@ -179,9 +177,9 @@ export default async function handler(req, res) {
 
     const rowsOut = vendors.map((v) => {
       const comp = complianceMap[v.id] || {};
-      const failing = comp.failing || [];
-      const passing = comp.passing || [];
-      const missing = comp.missing || [];
+      const failing = Array.isArray(comp.failing) ? comp.failing : [];
+      const passing = Array.isArray(comp.passing) ? comp.passing : [];
+      const missing = Array.isArray(comp.missing) ? comp.missing : [];
 
       const totalRules = failing.length + passing.length + missing.length;
       const fixedRules = passing.length;
@@ -210,16 +208,10 @@ export default async function handler(req, res) {
         missing.length
       );
 
-      /* -------------------------------------------
-         Renewal Intelligence Object
-      ------------------------------------------- */
       const renewalStage = computeRenewalStage(expDays);
       const renewalUrgency = computeRenewalUrgencyScore(expDays);
       const nextAction = computeNextRenewalAction(renewalStage);
 
-      /* -------------------------------------------
-         Contract Intelligence (from vendors table)
-      ------------------------------------------- */
       const rawIssues = Array.isArray(v.contract_issues_json)
         ? v.contract_issues_json
         : [];
@@ -258,7 +250,6 @@ export default async function handler(req, res) {
           next_action: nextAction,
         },
 
-        // ⭐ CONTRACT INTELLIGENCE V3
         contractStatus,
         contractRiskScore,
         contractIssuesCount,
