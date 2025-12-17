@@ -5,7 +5,7 @@ export default async function handler(req, res) {
   try {
     const { orgId } = req.query;
 
-    if (!orgId) {
+    if (!orgId || typeof orgId !== "string") {
       return res.status(200).json({ ok: true, vendors: [] });
     }
 
