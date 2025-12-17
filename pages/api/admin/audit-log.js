@@ -8,7 +8,7 @@ export default async function handler(req, res) {
     }
 
     const {
-      orgId,        // UUID
+      orgId,        // UUID (string)
       vendorId,     // integer (optional)
       severity,
       source = "all",
@@ -41,7 +41,7 @@ export default async function handler(req, res) {
     const startOk = start ? new Date(start).toISOString() : null;
     const endOk = end ? new Date(end).toISOString() : null;
 
-    // ---------------- SYSTEM EVENTS ----------------
+    /* ---------------- SYSTEM EVENTS ---------------- */
     const systemQuery = sql`
       SELECT
         'system' AS source,
@@ -61,7 +61,7 @@ export default async function handler(req, res) {
         ${endOk ? sql`AND st.created_at <= ${endOk}` : sql``}
     `;
 
-    // ---------------- VENDOR EVENTS ----------------
+    /* ---------------- VENDOR EVENTS ---------------- */
     const vendorQuery = sql`
       SELECT
         'vendor' AS source,
