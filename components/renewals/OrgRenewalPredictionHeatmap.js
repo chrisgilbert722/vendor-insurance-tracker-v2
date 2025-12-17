@@ -10,17 +10,23 @@ const GP = {
   unknown: "#64748b",
   text: "#e5e7eb",
   bg: "rgba(15,23,42,0.96)",
-  border: "1px solid rgba(51,65,85,0.9)"
+  border: "1px solid rgba(51,65,85,0.9)",
 };
 
 function getColor(tier) {
   switch ((tier || "").toLowerCase()) {
-    case "severe": return GP.severe;
-    case "high risk": return GP.high;
-    case "watch": return GP.watch;
-    case "preferred": return GP.preferred;
-    case "elite safe": return GP.safe;
-    default: return GP.unknown;
+    case "severe":
+      return GP.severe;
+    case "high risk":
+      return GP.high;
+    case "watch":
+      return GP.watch;
+    case "preferred":
+      return GP.preferred;
+    case "elite safe":
+      return GP.safe;
+    default:
+      return GP.unknown;
   }
 }
 
@@ -30,17 +36,31 @@ export default function OrgRenewalPredictionHeatmap({ orgId }) {
   const [error, setError] = useState("");
 
   useEffect(() => {
-    if (!orgId) return;
+    if (!orgId) {
+      setPredictions([]);
+      setLoading(false);
+      return;
+    }
 
     async function load() {
       try {
         setLoading(true);
-        const res = await fetch(`/api/renewals/predict-org-v1?orgId=${orgId}`);
+        setError("");
+
+        const res = await fetch(
+          `/api/renewals/predict-org-v1?orgId=${encodeURIComponent(orgId)}`
+        );
         const json = await res.json();
-        if (!json.ok) throw new Error(json.error);
-        setPredictions(json.predictions);
+
+        if (!json || !json.ok) {
+          throw new Error(json?.error || "Failed loading predictions.");
+        }
+
+        setPredictions(Array.isArray(json.predictions) ? json.predictions : []);
       } catch (err) {
+        console.error("[OrgRenewalPredictionHeatmap] error:", err);
         setError(err.message || "Failed loading predictions.");
+        setPredictions([]);
       } finally {
         setLoading(false);
       }
@@ -49,6 +69,8 @@ export default function OrgRenewalPredictionHeatmap({ orgId }) {
     load();
   }, [orgId]);
 
+  const safePredictions = Array.isArray(predictions) ? predictions : [];
+
   return (
     <div
       style={{
@@ -56,7 +78,7 @@ export default function OrgRenewalPredictionHeatmap({ orgId }) {
         padding: 20,
         borderRadius: 20,
         background: GP.bg,
-        border: GP.border
+        border: GP.border,
       }}
     >
       <h2
@@ -65,40 +87,38 @@ export default function OrgRenewalPredictionHeatmap({ orgId }) {
           fontSize: 18,
           fontWeight: 600,
           color: GP.text,
-          marginBottom: 12
+          marginBottom: 12,
         }}
       >
         Renewal Prediction Heatmap (AI)
       </h2>
 
-      {loading && (
-        <div style={{ color: GP.text }}>Loading predictions...</div>
-      )}
+      {loading && <div style={{ color: GP.text }}>Loading predictions…</div>}
 
-      {error && (
+      {!loading && error && (
         <div style={{ color: GP.severe }}>{error}</div>
       )}
 
-      {!loading && predictions.length === 0 && (
+      {!loading && safePredictions.length === 0 && !error && (
         <div style={{ color: GP.text }}>No prediction data yet.</div>
       )}
 
-      {!loading && predictions.length > 0 && (
+      {!loading && safePredictions.length > 0 && (
         <div
           style={{
             display: "grid",
             gridTemplateColumns: "repeat(auto-fill, minmax(140px, 1fr))",
-            gap: 12
+            gap: 12,
           }}
         >
-          {predictions.map((p) => (
+          {safePredictions.map((p) => (
             <div
               key={p.vendor_id}
               style={{
                 borderRadius: 16,
                 padding: 10,
                 background: "rgba(2,6,23,0.8)",
-                border: GP.border
+                border: GP.border,
               }}
             >
               <div
@@ -106,10 +126,10 @@ export default function OrgRenewalPredictionHeatmap({ orgId }) {
                   fontSize: 13,
                   fontWeight: 600,
                   color: GP.text,
-                  marginBottom: 6
+                  marginBottom: 6,
                 }}
               >
-                {p.vendor_name}
+                {p.vendor_name || "Unknown Vendor"}
               </div>
 
               {/* Score Bar */}
@@ -120,14 +140,17 @@ export default function OrgRenewalPredictionHeatmap({ orgId }) {
                   borderRadius: 10,
                   overflow: "hidden",
                   background: "#1e293b",
-                  marginBottom: 8
+                  marginBottom: 8,
                 }}
               >
                 <div
                   style={{
                     height: "100%",
-                    width: `${p.risk_score}%`,
-                    background: getColor(p.risk_tier)
+                    width: `${Math.max(
+                      0,
+                      Math.min(100, Number(p.risk_score) || 0)
+                    )}%`,
+                    background: getColor(p.risk_tier),
                   }}
                 />
               </div>
@@ -136,10 +159,10 @@ export default function OrgRenewalPredictionHeatmap({ orgId }) {
                 style={{
                   fontSize: 12,
                   color: getColor(p.risk_tier),
-                  fontWeight: 700
+                  fontWeight: 700,
                 }}
               >
-                {p.risk_tier}
+                {p.risk_tier || "Unknown"}
               </div>
 
               <div
@@ -147,12 +170,12 @@ export default function OrgRenewalPredictionHeatmap({ orgId }) {
                   fontSize: 11,
                   color: GP.text,
                   marginTop: 4,
-                  lineHeight: 1.4
+                  lineHeight: 1.4,
                 }}
               >
-                <div>On-Time: {p.likelihood_on_time}%</div>
-                <div>Late: {p.likelihood_late}%</div>
-                <div>Fail: {p.likelihood_fail}%</div>
+                <div>On-Time: {p.likelihood_on_time ?? "—"}%</div>
+                <div>Late: {p.likelihood_late ?? "—"}%</div>
+                <div>Fail: {p.likelihood_fail ?? "—"}%</div>
               </div>
             </div>
           ))}
