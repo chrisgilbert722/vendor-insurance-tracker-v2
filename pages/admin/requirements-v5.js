@@ -387,8 +387,8 @@ export default function RequirementsV5Page() {
       const json = await res.json();
       if (!json.ok) throw new Error(json.error);
 
-      setGroups(json.groups || []);
-      if (json.groups.length > 0) {
+      setGroups(Array.isArray(json.groups) ? json.groups : []);
+      if (Array.isArray(json.groups) && json.groups.length > 0) {
         const firstId = json.groups[0].id;
         setActiveGroupId(firstId);
         await loadRulesForGroup(firstId);
@@ -413,7 +413,7 @@ export default function RequirementsV5Page() {
       const res = await fetch(`/api/requirements-v2/rules?groupId=${id}`);
       const json = await res.json();
       if (!json.ok) throw new Error(json.error);
-      setRules(json.rules || []);
+      setRules(Array.isArray(json.rules) ? json.rules : []);
     } catch (err) {
       console.error(err);
       setError(err.message);
