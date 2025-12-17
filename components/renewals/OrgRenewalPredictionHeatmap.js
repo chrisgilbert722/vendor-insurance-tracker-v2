@@ -1,49 +1,33 @@
 // components/renewals/OrgRenewalPredictionHeatmap.js
 // ============================================================
-// RENEWAL HEATMAP V5 — CINEMATIC GRID
-// - Iron‑Man cockpit tile grid + legend + hover stats
-// - Defensive data handling (no unsafe .length)
+// RENEWAL HEATMAP V5 — EXEC HUD GRID
+// Fully aligned with CommandShell / Alerts / Renewals / AI Setup
 // ============================================================
 
 import { useEffect, useMemo, useState } from "react";
+import { V5 } from "../v5/v5Theme";
 
-const GP = {
-  severe: "#fb7185",
-  high: "#fbbf24",
-  watch: "#facc15",
-  preferred: "#38bdf8",
-  safe: "#22c55e",
-  unknown: "#64748b",
-  text: "#e5e7eb",
-  textSoft: "#9ca3af",
-  textMuted: "#6b7280",
-  bg: "rgba(15,23,42,0.92)",
-  border: "1px solid rgba(51,65,85,0.9)",
-};
-
-function getColor(tier) {
-  switch ((tier || "").toLowerCase()) {
-    case "severe":
-      return GP.severe;
-    case "high risk":
-      return GP.high;
-    case "watch":
-      return GP.watch;
-    case "preferred":
-      return GP.preferred;
-    case "elite safe":
-      return GP.safe;
-    default:
-      return GP.unknown;
-  }
+/* ------------------------------------------------------------
+   HELPERS
+------------------------------------------------------------ */
+function tierColor(tier) {
+  const t = String(tier || "").toLowerCase();
+  if (t === "severe") return V5.red;
+  if (t === "high risk") return V5.yellow;
+  if (t === "watch") return V5.orange;
+  if (t === "preferred") return V5.blue;
+  if (t === "elite safe") return V5.green;
+  return V5.soft;
 }
 
 function clamp100(n) {
   const x = Number(n);
-  if (!Number.isFinite(x)) return 0;
-  return Math.max(0, Math.min(100, Math.round(x)));
+  return Number.isFinite(x) ? Math.max(0, Math.min(100, Math.round(x))) : 0;
 }
 
+/* ------------------------------------------------------------
+   COMPONENT
+------------------------------------------------------------ */
 export default function OrgRenewalPredictionHeatmap({ orgId }) {
   const [loading, setLoading] = useState(true);
   const [predictions, setPredictions] = useState([]);
@@ -60,9 +44,8 @@ export default function OrgRenewalPredictionHeatmap({ orgId }) {
 
     let alive = true;
 
-    async function load() {
+    (async () => {
       try {
-        if (!alive) return;
         setLoading(true);
         setError("");
 
@@ -71,160 +54,176 @@ export default function OrgRenewalPredictionHeatmap({ orgId }) {
         );
         const json = await res.json().catch(() => ({}));
 
-        if (!json?.ok) {
-          throw new Error(json?.error || "Failed loading predictions.");
-        }
+        if (!json?.ok) throw new Error(json?.error || "Load failed");
 
         if (!alive) return;
         setPredictions(Array.isArray(json.predictions) ? json.predictions : []);
-      } catch (err) {
-        console.error("[OrgRenewalPredictionHeatmap] error:", err);
+      } catch (e) {
         if (!alive) return;
-        setError(err?.message || "Failed loading predictions.");
+        setError(e.message || "Failed loading predictions");
         setPredictions([]);
       } finally {
-        if (!alive) return;
-        setLoading(false);
+        if (alive) setLoading(false);
       }
-    }
+    })();
 
-    load();
-    return () => {
-      alive = false;
-    };
+    return () => (alive = false);
   }, [orgId]);
 
-  const safePredictions = Array.isArray(predictions) ? predictions : [];
+  const safe = Array.isArray(predictions) ? predictions : [];
 
   const summary = useMemo(() => {
-    const total = safePredictions.length;
-    const severe = safePredictions.filter((p) => (p?.risk_tier || "").toLowerCase() === "severe").length;
-    const high = safePredictions.filter((p) => (p?.risk_tier || "").toLowerCase() === "high risk").length;
-    const fail40 = safePredictions.filter((p) => (Number(p?.likelihood_fail) || 0) >= 40).length;
-    return { total, severe, high, fail40 };
-  }, [safePredictions]);
+    return {
+      total: safe.length,
+      severe: safe.filter(
+        (p) => String(p?.risk_tier).toLowerCase() === "severe"
+      ).length,
+      high: safe.filter(
+        (p) => String(p?.risk_tier).toLowerCase() === "high risk"
+      ).length,
+      fail40: safe.filter((p) => (Number(p?.likelihood_fail) || 0) >= 40).length,
+    };
+  }, [safe]);
 
   return (
     <div
       style={{
-        marginTop: 18,
-        padding: 16,
+        marginTop: 22,
+        padding: 18,
         borderRadius: 28,
-        background:
-          "radial-gradient(circle at 15% 0%, rgba(56,189,248,0.10), transparent 45%), radial-gradient(circle at 85% 20%, rgba(168,85,247,0.08), transparent 45%), rgba(15,23,42,0.86)",
-        border: "1px solid rgba(148,163,184,0.28)",
+        border: `1px solid ${V5.border}`,
+        background: V5.panel,
         boxShadow:
-          "0 22px 60px rgba(0,0,0,0.55), inset 0 0 26px rgba(0,0,0,0.55)",
+          "0 0 40px rgba(0,0,0,0.6), inset 0 0 28px rgba(0,0,0,0.65)",
       }}
     >
-      <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "flex-start", flexWrap: "wrap" }}>
+      {/* HEADER */}
+      <div
+        style={{
+          display: "flex",
+          justifyContent: "space-between",
+          gap: 14,
+          alignItems: "flex-start",
+          flexWrap: "wrap",
+          marginBottom: 14,
+        }}
+      >
         <div>
-          <div style={{ fontSize: 12, color: GP.textSoft, textTransform: "uppercase", letterSpacing: "0.16em" }}>
+          <div
+            style={{
+              fontSize: 12,
+              letterSpacing: "0.16em",
+              textTransform: "uppercase",
+              color: V5.soft,
+            }}
+          >
             Renewal Prediction Heatmap
           </div>
-          <div style={{ marginTop: 6, fontSize: 13, color: GP.textMuted }}>
-            Grid intelligence • hover any tile for vendor detail
+          <div style={{ marginTop: 6, fontSize: 13, color: V5.muted }}>
+            Portfolio-level risk grid • hover for vendor intelligence
           </div>
         </div>
 
-        {/* Legend + quick stats */}
-        <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
-          <LegendPill label="Severe" color={GP.severe} />
-          <LegendPill label="High" color={GP.high} />
-          <LegendPill label="Watch" color={GP.watch} />
-          <LegendPill label="Preferred" color={GP.preferred} />
-          <LegendPill label="Elite Safe" color={GP.safe} />
+        {/* LEGEND */}
+        <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+          <Legend label="Severe" color={V5.red} />
+          <Legend label="High" color={V5.yellow} />
+          <Legend label="Watch" color={V5.orange} />
+          <Legend label="Preferred" color={V5.blue} />
+          <Legend label="Elite Safe" color={V5.green} />
 
           <div
             style={{
-              marginLeft: 6,
               padding: "6px 10px",
               borderRadius: 999,
-              border: "1px solid rgba(51,65,85,0.7)",
-              background: "rgba(2,6,23,0.35)",
+              border: `1px solid ${V5.border}`,
+              background: "rgba(2,6,23,0.45)",
               fontSize: 11,
-              color: GP.textSoft,
-              display: "inline-flex",
-              gap: 10,
-              alignItems: "center",
+              color: V5.soft,
               whiteSpace: "nowrap",
             }}
           >
-            <span>Total: <strong style={{ color: GP.text }}>{summary.total}</strong></span>
-            <span>Fail ≥40%: <strong style={{ color: GP.severe }}>{summary.fail40}</strong></span>
+            Total <strong style={{ color: V5.text }}>{summary.total}</strong> ·
+            Fail ≥40%{" "}
+            <strong style={{ color: V5.red }}>{summary.fail40}</strong>
           </div>
         </div>
       </div>
 
-      {/* Status */}
-      <div style={{ marginTop: 12 }}>
-        {loading && <div style={{ color: GP.textSoft, fontSize: 12 }}>Loading predictions…</div>}
-        {!loading && error && <div style={{ color: GP.severe, fontSize: 12 }}>{error}</div>}
-        {!loading && !error && safePredictions.length === 0 && (
-          <div style={{ color: GP.textSoft, fontSize: 12 }}>
-            No prediction data yet.
-          </div>
-        )}
-      </div>
+      {/* STATUS */}
+      {loading && (
+        <div style={{ fontSize: 12, color: V5.soft }}>
+          Loading predictions…
+        </div>
+      )}
+      {!loading && error && (
+        <div style={{ fontSize: 12, color: V5.red }}>{error}</div>
+      )}
+      {!loading && !error && safe.length === 0 && (
+        <div style={{ fontSize: 12, color: V5.soft }}>
+          No prediction data yet.
+        </div>
+      )}
 
-      {/* Grid + hover inspector */}
-      {!loading && safePredictions.length > 0 && (
+      {/* GRID */}
+      {!loading && safe.length > 0 && (
         <div
           style={{
-            marginTop: 14,
+            marginTop: 16,
             display: "grid",
-            gridTemplateColumns: "minmax(0, 2.2fr) minmax(0, 1fr)",
-            gap: 16,
-            alignItems: "start",
+            gridTemplateColumns: "minmax(0,2.3fr) minmax(0,1fr)",
+            gap: 18,
           }}
         >
+          {/* TILES */}
           <div
             style={{
               borderRadius: 22,
-              border: "1px solid rgba(51,65,85,0.7)",
-              background: "rgba(2,6,23,0.35)",
-              padding: 12,
+              border: `1px solid ${V5.border}`,
+              background: "rgba(2,6,23,0.45)",
+              padding: 14,
             }}
           >
             <div
               style={{
                 display: "grid",
-                gridTemplateColumns: "repeat(auto-fill, minmax(140px, 1fr))",
-                gap: 12,
+                gridTemplateColumns: "repeat(auto-fill,minmax(150px,1fr))",
+                gap: 14,
               }}
             >
-              {safePredictions.map((p) => {
-                const c = getColor(p?.risk_tier);
+              {safe.map((p) => {
+                const c = tierColor(p?.risk_tier);
                 const score = clamp100(p?.risk_score);
+
                 return (
-                  <button
+                  <div
                     key={p.vendor_id}
                     onMouseEnter={() => setHover(p)}
                     onMouseLeave={() => setHover(null)}
                     style={{
-                      textAlign: "left",
-                      borderRadius: 18,
-                      padding: 12,
-                      background:
-                        "linear-gradient(145deg, rgba(15,23,42,0.95), rgba(2,6,23,0.6))",
+                      borderRadius: 20,
+                      padding: 14,
                       border: `1px solid ${c}55`,
-                      boxShadow: `0 0 18px ${c}22, inset 0 0 18px rgba(0,0,0,0.5)`,
-                      cursor: "default",
-                      outline: "none",
+                      background: V5.panel,
+                      boxShadow: `0 0 20px ${c}22, inset 0 0 22px rgba(0,0,0,0.6)`,
                     }}
-                    type="button"
                   >
-                    <div style={{ fontSize: 12, fontWeight: 700, color: GP.text, marginBottom: 8 }}>
+                    <div
+                      style={{
+                        fontSize: 12,
+                        fontWeight: 800,
+                        marginBottom: 10,
+                      }}
+                    >
                       {p.vendor_name || "Unknown Vendor"}
                     </div>
 
                     <div
                       style={{
                         height: 8,
-                        width: "100%",
                         borderRadius: 999,
-                        overflow: "hidden",
                         background: "rgba(30,41,59,1)",
+                        overflow: "hidden",
                         marginBottom: 10,
                       }}
                     >
@@ -238,72 +237,108 @@ export default function OrgRenewalPredictionHeatmap({ orgId }) {
                       />
                     </div>
 
-                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                      <div style={{ fontSize: 11, fontWeight: 800, color: c, textTransform: "uppercase", letterSpacing: "0.08em" }}>
+                    <div
+                      style={{
+                        display: "flex",
+                        justifyContent: "space-between",
+                        fontSize: 11,
+                      }}
+                    >
+                      <span
+                        style={{
+                          color: c,
+                          fontWeight: 900,
+                          textTransform: "uppercase",
+                          letterSpacing: "0.1em",
+                        }}
+                      >
                         {p.risk_tier || "Unknown"}
-                      </div>
-                      <div style={{ fontSize: 11, color: GP.textSoft }}>
-                        Risk <strong style={{ color: GP.text }}>{score}</strong>
-                      </div>
+                      </span>
+                      <span style={{ color: V5.soft }}>
+                        Risk{" "}
+                        <strong style={{ color: V5.text }}>{score}</strong>
+                      </span>
                     </div>
-                  </button>
+                  </div>
                 );
               })}
             </div>
           </div>
 
+          {/* INSPECTOR */}
           <div
             style={{
               borderRadius: 22,
-              border: "1px solid rgba(51,65,85,0.7)",
-              background: "rgba(2,6,23,0.35)",
-              padding: 12,
+              border: `1px solid ${V5.border}`,
+              background: "rgba(2,6,23,0.45)",
+              padding: 16,
               position: "sticky",
-              top: 12,
+              top: 16,
             }}
           >
-            <div style={{ fontSize: 11, color: GP.textSoft, textTransform: "uppercase", letterSpacing: "0.14em", marginBottom: 10 }}>
+            <div
+              style={{
+                fontSize: 11,
+                letterSpacing: "0.14em",
+                textTransform: "uppercase",
+                color: V5.soft,
+                marginBottom: 10,
+              }}
+            >
               Hover Inspector
             </div>
 
             {!hover ? (
-              <div style={{ fontSize: 12, color: GP.textMuted, lineHeight: 1.55 }}>
-                Hover a vendor tile to view operational detail.
-                <div style={{ marginTop: 8, color: GP.textSoft }}>
-                  Tip: start generating predictions by running <strong>Predict V1</strong> on vendors.
-                </div>
+              <div style={{ fontSize: 12, color: V5.muted, lineHeight: 1.6 }}>
+                Hover a vendor tile to inspect renewal intelligence.
               </div>
             ) : (
-              <div style={{ fontSize: 12, color: GP.text }}>
-                <div style={{ fontSize: 14, fontWeight: 800, marginBottom: 6 }}>
+              <div style={{ fontSize: 12 }}>
+                <div
+                  style={{
+                    fontSize: 14,
+                    fontWeight: 900,
+                    marginBottom: 8,
+                  }}
+                >
                   {hover.vendor_name || "Unknown Vendor"}
                 </div>
 
-                <div style={{ display: "flex", gap: 10, alignItems: "center", marginBottom: 10 }}>
-                  <span
-                    style={{
-                      padding: "4px 10px",
-                      borderRadius: 999,
-                      border: `1px solid ${getColor(hover.risk_tier)}55`,
-                      color: getColor(hover.risk_tier),
-                      fontWeight: 800,
-                      textTransform: "uppercase",
-                      letterSpacing: "0.08em",
-                      background: "rgba(15,23,42,0.7)",
-                      fontSize: 11,
-                    }}
-                  >
-                    {hover.risk_tier || "Unknown"}
-                  </span>
-                  <span style={{ color: GP.textSoft }}>
-                    Risk <strong style={{ color: GP.text }}>{clamp100(hover.risk_score)}</strong>
-                  </span>
+                <div
+                  style={{
+                    marginBottom: 12,
+                    padding: "4px 10px",
+                    borderRadius: 999,
+                    border: `1px solid ${tierColor(hover.risk_tier)}55`,
+                    display: "inline-block",
+                    color: tierColor(hover.risk_tier),
+                    fontWeight: 900,
+                    letterSpacing: "0.1em",
+                    textTransform: "uppercase",
+                  }}
+                >
+                  {hover.risk_tier || "Unknown"}
                 </div>
 
-                <div style={{ color: GP.textSoft, lineHeight: 1.6 }}>
-                  <div>On‑Time: <strong style={{ color: GP.text }}>{clamp100(hover.likelihood_on_time)}%</strong></div>
-                  <div>Late: <strong style={{ color: GP.text }}>{clamp100(hover.likelihood_late)}%</strong></div>
-                  <div>Fail: <strong style={{ color: GP.severe }}>{clamp100(hover.likelihood_fail)}%</strong></div>
+                <div style={{ color: V5.soft, lineHeight: 1.6 }}>
+                  <div>
+                    On-Time:{" "}
+                    <strong style={{ color: V5.text }}>
+                      {clamp100(hover.likelihood_on_time)}%
+                    </strong>
+                  </div>
+                  <div>
+                    Late:{" "}
+                    <strong style={{ color: V5.text }}>
+                      {clamp100(hover.likelihood_late)}%
+                    </strong>
+                  </div>
+                  <div>
+                    Fail:{" "}
+                    <strong style={{ color: V5.red }}>
+                      {clamp100(hover.likelihood_fail)}%
+                    </strong>
+                  </div>
                 </div>
               </div>
             )}
@@ -314,7 +349,10 @@ export default function OrgRenewalPredictionHeatmap({ orgId }) {
   );
 }
 
-function LegendPill({ label, color }) {
+/* ------------------------------------------------------------
+   LEGEND
+------------------------------------------------------------ */
+function Legend({ label, color }) {
   return (
     <div
       style={{
@@ -324,8 +362,8 @@ function LegendPill({ label, color }) {
         padding: "6px 10px",
         borderRadius: 999,
         border: `1px solid ${color}55`,
-        background: "rgba(2,6,23,0.35)",
-        color: GP.textSoft,
+        background: "rgba(2,6,23,0.45)",
+        color: V5.soft,
         fontSize: 11,
         whiteSpace: "nowrap",
       }}
