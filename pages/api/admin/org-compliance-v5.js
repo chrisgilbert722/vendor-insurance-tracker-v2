@@ -1,18 +1,19 @@
 // pages/api/admin/org-compliance-v5.js
 // ============================================================
-// ORG-LEVEL COMPLIANCE INTELLIGENCE — V5 (SCHEMA-SAFE)
-// - NO orgs table dependency
+// ORG-LEVEL COMPLIANCE INTELLIGENCE ENGINE — V5 (FIXED)
+// - Correct import paths
 // - UUID-safe
-// - Never 500s UI
+// - Build-safe on Vercel
 // ============================================================
 
 import { sql } from "../../../lib/db";
 import { cleanUUID } from "../../../lib/uuid";
+import { openai } from "../../../lib/openaiClient";
 
 export default async function handler(req, res) {
   try {
     if (req.method !== "GET") {
-      return res.status(200).json({ ok: false });
+      return res.status(405).json({ ok: false, error: "Method not allowed" });
     }
 
     const orgId = cleanUUID(req.query.orgId);
@@ -20,64 +21,70 @@ export default async function handler(req, res) {
     if (!orgId) {
       return res.status(200).json({
         ok: false,
-        error: "Missing orgId",
+        error: "Organization not found",
+        reason: "missing-org-id",
       });
     }
 
-    /* ---------------------------------------------------------
-       1) VERIFY ORG VIA VENDORS (REAL SOURCE OF TRUTH)
-    --------------------------------------------------------- */
-    const vendorRows = await sql`
+    // ============================================================
+    // ORG LOOKUP (SAFE)
+    // ============================================================
+    let orgRow;
+    try {
+      const orgRows = await sql`
+        SELECT id, name
+        FROM orgs
+        WHERE id = ${orgId}
+        LIMIT 1;
+      `;
+      orgRow = orgRows?.[0];
+    } catch (e) {
+      console.error("[org-compliance] org lookup failed:", e);
+      return res.status(200).json({
+        ok: false,
+        error: "Organization not found (or org table missing)",
+      });
+    }
+
+    if (!orgRow) {
+      return res.status(200).json({
+        ok: false,
+        error: "Organization not found",
+      });
+    }
+
+    // ============================================================
+    // VENDORS
+    // ============================================================
+    const vendors = await sql`
       SELECT id, name
       FROM vendors
       WHERE org_id = ${orgId};
     `;
 
-    if (vendorRows.length === 0) {
-      return res.status(200).json({
-        ok: false,
-        error: "Organization not found (no vendors for org)",
-      });
-    }
+    const vendorCount = vendors.length;
 
-    const vendorCount = vendorRows.length;
-
-    /* ---------------------------------------------------------
-       2) V5 ENGINE — vendor_compliance_cache
-    --------------------------------------------------------- */
+    // ============================================================
+    // COMPLIANCE CACHE (V5)
+    // ============================================================
     const cacheRows = await sql`
       SELECT vendor_id, score
       FROM vendor_compliance_cache
       WHERE org_id = ${orgId};
     `;
 
-    let globalScoreAvg = 0;
-    const scoreBands = {
-      elite: 0,
-      preferred: 0,
-      watch: 0,
-      high_risk: 0,
-      severe: 0,
-    };
-
+    let avgScore = 0;
     if (cacheRows.length) {
-      let sum = 0;
-      for (const r of cacheRows) {
-        const s = Number(r.score) || 0;
-        sum += s;
-        if (s >= 85) scoreBands.elite++;
-        else if (s >= 70) scoreBands.preferred++;
-        else if (s >= 55) scoreBands.watch++;
-        else if (s >= 35) scoreBands.high_risk++;
-        else scoreBands.severe++;
-      }
-      globalScoreAvg = Math.round(sum / cacheRows.length);
+      avgScore = Math.round(
+        cacheRows.reduce((s, r) => s + (Number(r.score) || 0), 0) /
+          cacheRows.length
+      );
     }
 
-    /* ---------------------------------------------------------
-       3) ALERTS ENGINE — alerts_v2
-    --------------------------------------------------------- */
-    const alertRows = await sql`
+    // ============================================================
+    // ALERTS (V5)
+    // ============================================================
+    const alerts = await sql`
       SELECT severity
       FROM alerts_v2
       WHERE org_id = ${orgId}
@@ -85,55 +92,69 @@ export default async function handler(req, res) {
     `;
 
     const alertCounts = { critical: 0, high: 0, medium: 0, low: 0 };
-    for (const a of alertRows) {
-      const s = (a.severity || "").toLowerCase();
-      if (alertCounts[s] !== undefined) alertCounts[s]++;
+    for (const a of alerts) {
+      const sev = (a.severity || "").toLowerCase();
+      if (alertCounts[sev] !== undefined) alertCounts[sev]++;
     }
 
-    /* ---------------------------------------------------------
-       4) COMBINED SCORE (SAFE)
-    --------------------------------------------------------- */
-    let combinedScore = globalScoreAvg;
+    // ============================================================
+    // COMBINED SCORE
+    // ============================================================
+    let combinedScore = avgScore;
     combinedScore -= alertCounts.critical * 2;
     combinedScore -= alertCounts.high;
-    combinedScore = Math.max(0, Math.min(100, combinedScore));
 
-    let overallTier = "Watch";
-    if (combinedScore >= 85) overallTier = "Elite Org";
-    else if (combinedScore >= 70) overallTier = "Stable";
-    else if (combinedScore >= 55) overallTier = "Watch";
-    else if (combinedScore >= 35) overallTier = "High Risk";
-    else overallTier = "Severe Exposure";
+    combinedScore = Math.max(0, Math.min(100, Math.round(combinedScore)));
 
-    /* ---------------------------------------------------------
-       5) RESPONSE (UI-SAFE)
-    --------------------------------------------------------- */
+    let tier = "Watch";
+    if (combinedScore >= 85) tier = "Elite";
+    else if (combinedScore >= 70) tier = "Stable";
+    else if (combinedScore >= 55) tier = "Watch";
+    else if (combinedScore >= 35) tier = "High Risk";
+    else tier = "Severe";
+
+    // ============================================================
+    // AI EXEC SUMMARY (NON-BLOCKING)
+    // ============================================================
+    let narrative = "";
+    try {
+      const completion = await openai.chat.completions.create({
+        model: "gpt-4.1-mini",
+        temperature: 0.3,
+        messages: [
+          {
+            role: "user",
+            content: `Write a concise executive summary (4–6 sentences)
+for an insurance compliance dashboard.
+
+Org: ${orgRow.name}
+Vendors: ${vendorCount}
+Avg score: ${avgScore}
+Alerts: ${JSON.stringify(alertCounts)}
+Overall tier: ${tier}`,
+          },
+        ],
+      });
+
+      narrative = completion.choices?.[0]?.message?.content || "";
+    } catch (e) {
+      console.warn("[org-compliance] AI summary skipped:", e.message);
+    }
+
     return res.status(200).json({
       ok: true,
-      org: {
-        id: orgId,
+      org: orgRow,
+      metrics: {
         vendorCount,
-      },
-      v5Engine: {
-        vendorCount,
-        globalScoreAvg,
-        scoreBands,
-      },
-      alertsEngine: {
-        totalAlerts: alertRows.length,
+        avgScore,
         alertCounts,
-      },
-      combined: {
         combinedScore,
-        overallTier,
-        narrative:
-          `Your organization has ${vendorCount} vendors with an average compliance score of ${globalScoreAvg}. ` +
-          `There are ${alertCounts.critical} critical and ${alertCounts.high} high alerts. ` +
-          `Overall status: ${overallTier}.`,
+        tier,
       },
+      narrative,
     });
   } catch (err) {
-    console.error("[org-compliance-v5] swallowed error:", err);
+    console.error("[org-compliance-v5] fatal:", err);
     return res.status(200).json({
       ok: false,
       error: "Org compliance unavailable",
