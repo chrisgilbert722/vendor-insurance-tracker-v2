@@ -1,7 +1,9 @@
+
 // pages/api/renewals/predict-org-v1.js
 // Returns all renewal_predictions for an org (for heatmap/dashboards)
 
 import { sql } from "../../../lib/db";
+import { resolveOrg } from "../../../lib/resolveOrg";
 
 export default async function handler(req, res) {
   if (req.method !== "GET") {
@@ -10,11 +12,9 @@ export default async function handler(req, res) {
   }
 
   try {
-    const { orgId } = req.query;
-
-    if (!orgId) {
-      return res.status(400).json({ ok: false, error: "Missing orgId" });
-    }
+    // 🔒 Resolve external UUID → internal INTEGER org_id
+    const orgId = await resolveOrg(req, res);
+    if (!orgId) return;
 
     const rows = await sql`
       SELECT 
@@ -25,7 +25,7 @@ export default async function handler(req, res) {
         rp.likelihood_on_time,
         rp.likelihood_late,
         rp.likelihood_fail,
-        v.name as vendor_name
+        v.name AS vendor_name
       FROM renewal_predictions rp
       JOIN vendors v ON v.id = rp.vendor_id
       WHERE rp.org_id = ${orgId}
@@ -35,13 +35,13 @@ export default async function handler(req, res) {
     return res.status(200).json({
       ok: true,
       orgId,
-      predictions: rows,
+      predictions: Array.isArray(rows) ? rows : [],
     });
   } catch (err) {
     console.error("[predict-org-v1] ERROR:", err);
     return res.status(500).json({
       ok: false,
-      error: err.message,
+      error: err.message || "Failed to load org predictions.",
     });
   }
 }
