@@ -189,7 +189,6 @@ export default function RenewalIntelligenceV5() {
   const [predictions, setPredictions] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
-  const [downloading, setDownloading] = useState(false);
 
   useEffect(() => {
     if (!orgId) {
@@ -255,25 +254,7 @@ export default function RenewalIntelligenceV5() {
       subtitle="Predict renewal risk before it happens"
       status={loading ? "SYNCING" : error ? "DEGRADED" : "ONLINE"}
       statusColor={loading ? V5.blue : error ? V5.red : V5.green}
-      actions={[
-        <button
-          key="pdf"
-          onClick={() => setDownloading(true)}
-          style={{
-            padding: "8px 14px",
-            borderRadius: 999,
-            border: `1px solid ${V5.blue}`,
-            background: "transparent",
-            color: V5.blue,
-            fontWeight: 700,
-            fontSize: 12,
-          }}
-        >
-          Executive PDF
-        </button>,
-      ]}
     >
-      {/* METRICS */}
       <div
         style={{
           display: "grid",
@@ -291,7 +272,6 @@ export default function RenewalIntelligenceV5() {
         />
       </div>
 
-      {/* KPI STRIP */}
       <div
         style={{
           display: "grid",
@@ -315,10 +295,8 @@ export default function RenewalIntelligenceV5() {
         />
       </div>
 
-      {/* HEATMAP */}
       <OrgRenewalPredictionHeatmap orgId={orgId} />
 
-      {/* TABLES */}
       <div
         style={{
           marginTop: 24,
@@ -399,11 +377,6 @@ const tdCell = {
   color: V5.text,
   borderBottom: `1px solid ${V5.border}`,
   fontSize: 12,
-};
-
-const rowStyle = {
-  background:
-    "linear-gradient(90deg, rgba(15,23,42,0.98), rgba(15,23,42,0.92))",
 };
 
 const rowStyle = {
