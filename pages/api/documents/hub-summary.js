@@ -16,60 +16,95 @@ function normalizeType(t) {
 
 export default async function handler(req, res) {
   try {
-    const { orgId } = req.query;
-    if (!orgId) return res.status(400).json({ ok: false, error: "Missing orgId" });
+    // 🔒 TOLERANT MODE — never throw on missing org bootstrap
+    const rawOrgId = req.query.orgId;
+    const orgId = Number(rawOrgId || 0);
+    if (!orgId) {
+      return res.status(200).json({
+        ok: true,
+        vendorCount: 0,
+        types: [],
+      });
+    }
 
-    // Pull vendors (baseline)
+    // -----------------------------
+    // Vendors (baseline)
+    // -----------------------------
     const vendors = await sql`
       SELECT id
       FROM vendors
-      WHERE org_id = ${Number(orgId)};
+      WHERE org_id = ${orgId};
     `;
-    const vendorCount = vendors.length;
+    const vendorCount = Array.isArray(vendors) ? vendors.length : 0;
 
-    // Pull docs from BOTH tables safely:
-    // 1) vendor_documents (new system)
+    // -----------------------------
+    // New documents table
+    // -----------------------------
     const vdocs = await sql`
       SELECT vendor_id, document_type, uploaded_at
       FROM vendor_documents
-      WHERE org_id = ${Number(orgId)};
+      WHERE org_id = ${orgId};
     `;
 
-    // 2) documents (legacy table used by vendor profile)
-    const legacy = await sql`
-      SELECT vendor_id, type, created_at
-      FROM documents
-      WHERE org_id = ${Number(orgId)};
-    `.catch(() => []); // don't break if table doesn't have org_id
+    // -----------------------------
+    // Legacy documents table (optional)
+    // -----------------------------
+    let legacy = [];
+    try {
+      legacy = await sql`
+        SELECT vendor_id, type, created_at
+        FROM documents
+        WHERE org_id = ${orgId};
+      `;
+    } catch {
+      legacy = [];
+    }
 
     const all = [];
 
-    for (const d of vdocs) {
+    for (const d of Array.isArray(vdocs) ? vdocs : []) {
       all.push({
         vendor_id: d.vendor_id,
         type: normalizeType(d.document_type),
         at: d.uploaded_at,
-        source: "vendor_documents",
       });
     }
 
-    for (const d of legacy || []) {
+    for (const d of Array.isArray(legacy) ? legacy : []) {
       all.push({
         vendor_id: d.vendor_id,
         type: normalizeType(d.type),
         at: d.created_at,
-        source: "documents",
       });
     }
 
+    // -----------------------------
     // Aggregate by type
+    // -----------------------------
     const byType = {};
+
     for (const row of all) {
       const t = row.type || "other";
-      if (!byType[t]) byType[t] = { type: t, docCount: 0, vendorSet: new Set(), lastAt: null };
+      if (!byType[t]) {
+        byType[t] = {
+          type: t,
+          docCount: 0,
+          vendorSet: new Set(),
+          lastAt: null,
+        };
+      }
+
       byType[t].docCount += 1;
-      if (row.vendor_id) byType[t].vendorSet.add(row.vendor_id);
-      if (row.at && (!byType[t].lastAt || new Date(row.at) > new Date(byType[t].lastAt))) {
+
+      if (row.vendor_id) {
+        byType[t].vendorSet.add(row.vendor_id);
+      }
+
+      if (
+        row.at &&
+        (!byType[t].lastAt ||
+          new Date(row.at) > new Date(byType[t].lastAt))
+      ) {
         byType[t].lastAt = row.at;
       }
     }
@@ -82,24 +117,43 @@ export default async function handler(req, res) {
       lastUploadedAt: x.lastAt,
     }));
 
-    // Ensure all “expected” tiles exist even if 0 docs
-    const expected = ["coi","w9","license","contract","endorsement","safety","waiver","other"];
-    const map = Object.fromEntries(types.map((t) => [t.type, t]));
-    const final = expected.map((k) => map[k] || ({
-      type: k,
-      docCount: 0,
-      vendorCount: 0,
-      missingVendorCount: vendorCount,
-      lastUploadedAt: null,
-    }));
+    // -----------------------------
+    // Ensure expected tiles exist
+    // -----------------------------
+    const expected = [
+      "coi",
+      "w9",
+      "license",
+      "contract",
+      "endorsement",
+      "safety",
+      "waiver",
+      "other",
+    ];
 
-    return res.json({
+    const map = Object.fromEntries(types.map((t) => [t.type, t]));
+
+    const final = expected.map(
+      (k) =>
+        map[k] || {
+          type: k,
+          docCount: 0,
+          vendorCount: 0,
+          missingVendorCount: vendorCount,
+          lastUploadedAt: null,
+        }
+    );
+
+    return res.status(200).json({
       ok: true,
       vendorCount,
       types: final,
     });
   } catch (err) {
     console.error("[hub-summary] error:", err);
-    return res.status(500).json({ ok: false, error: err.message || "Internal error" });
+    return res.status(500).json({
+      ok: false,
+      error: err.message || "Internal error",
+    });
   }
 }
