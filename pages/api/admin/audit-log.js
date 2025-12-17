@@ -16,18 +16,18 @@ export default async function handler(req, res) {
     }
 
     const {
-      orgId,
-      vendorId,
+      orgId,           // UUID (string)
+      vendorId,        // integer
       severity,
       source,          // all | system | vendor
-      start,           // ISO string
-      end,             // ISO string
+      start,
+      end,
       page = "1",
       pageSize = "50",
     } = req.query;
 
-    if (!orgId) {
-      // tolerant mode
+    // 🔒 TOLERANT MODE
+    if (!orgId || typeof orgId !== "string") {
       return res.status(200).json({
         ok: true,
         page: 1,
@@ -37,11 +37,16 @@ export default async function handler(req, res) {
       });
     }
 
-    const pageNum = Math.max(1, parseInt(page, 10) || 1);
-    const limit = Math.min(200, Math.max(10, parseInt(pageSize, 10) || 50));
+    const pageNum = Math.max(1, Number(page) || 1);
+    const limit = Math.min(200, Math.max(10, Number(pageSize) || 50));
     const offset = (pageNum - 1) * limit;
 
-    const vendorIdInt = vendorId ? parseInt(vendorId, 10) : null;
+    // vendorId IS an int
+    const vendorIdInt =
+      vendorId && !Number.isNaN(Number(vendorId))
+        ? Number(vendorId)
+        : null;
+
     const sev = severity ? String(severity).toLowerCase() : null;
     const src = source ? String(source).toLowerCase() : "all";
 
@@ -58,7 +63,7 @@ export default async function handler(req, res) {
         : null;
 
     // ---------------------------------------------------------
-    // SYSTEM TIMELINE (org-scoped)
+    // SYSTEM TIMELINE (org-scoped, UUID)
     // ---------------------------------------------------------
     const systemQuery = sql`
       SELECT
@@ -80,7 +85,7 @@ export default async function handler(req, res) {
     `;
 
     // ---------------------------------------------------------
-    // VENDOR ACTIVITY LOG (vendor-scoped; org comes via vendors)
+    // VENDOR ACTIVITY LOG (org via vendors)
     // ---------------------------------------------------------
     const vendorQuery = sql`
       SELECT
@@ -131,6 +136,9 @@ export default async function handler(req, res) {
     });
   } catch (err) {
     console.error("[audit-log]", err);
-    return res.status(500).json({ ok: false, error: err.message || "Server error" });
+    return res.status(500).json({
+      ok: false,
+      error: err.message || "Server error",
+    });
   }
 }
