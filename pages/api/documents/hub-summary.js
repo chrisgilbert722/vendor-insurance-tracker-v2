@@ -1,5 +1,6 @@
 // pages/api/documents/hub-summary.js
 import { sql } from "../../../lib/db";
+import { requireOrgId } from "../../../lib/requireOrg";
 
 function normalizeType(t) {
   const x = String(t || "").toLowerCase().trim();
@@ -16,16 +17,9 @@ function normalizeType(t) {
 
 export default async function handler(req, res) {
   try {
-    // 🔒 TOLERANT MODE — never throw on missing org bootstrap
-    const rawOrgId = req.query.orgId;
-    const orgId = Number(rawOrgId || 0);
-    if (!orgId) {
-      return res.status(200).json({
-        ok: true,
-        vendorCount: 0,
-        types: [],
-      });
-    }
+    // 🔒 Canonical org guard (UUID only)
+    const orgId = requireOrgId(req, res);
+    if (!orgId) return;
 
     // -----------------------------
     // Vendors (baseline)
@@ -150,7 +144,7 @@ export default async function handler(req, res) {
       types: final,
     });
   } catch (err) {
-    console.error("[hub-summary] error:", err);
+    console.error("[hub-summary]", err);
     return res.status(500).json({
       ok: false,
       error: err.message || "Internal error",
