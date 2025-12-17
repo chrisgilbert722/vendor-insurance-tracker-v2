@@ -1,6 +1,5 @@
-// pages/api/admin/audit-log.js
 import { sql } from "../../../lib/db";
-import { requireOrgId } from "../../../lib/requireOrg";
+import { resolveOrg } from "../../../lib/resolveOrg";
 
 export default async function handler(req, res) {
   try {
@@ -8,12 +7,12 @@ export default async function handler(req, res) {
       return res.status(405).json({ ok: false, error: "GET only" });
     }
 
-    // 🔒 Canonical org guard (UUID only, never cast)
-    const orgId = requireOrgId(req, res);
+    // 🔒 Resolve UUID -> INT
+    const orgId = await resolveOrg(req, res);
     if (!orgId) return;
 
     const {
-      vendorId,     // integer (optional)
+      vendorId,
       severity,
       source = "all",
       start,
@@ -25,28 +24,15 @@ export default async function handler(req, res) {
     const limit = Math.min(200, Math.max(10, Number(pageSize) || 50));
     const offset = (Math.max(1, Number(page)) - 1) * limit;
 
-    // vendorId is the ONLY thing allowed to be parsed as int
     const vendorIdInt =
       vendorId && Number.isInteger(Number(vendorId))
         ? Number(vendorId)
         : null;
 
     const sev = severity ? String(severity).toLowerCase() : null;
+    const startOk = start ? new Date(start).toISOString() : null;
+    const endOk = end ? new Date(end).toISOString() : null;
 
-    const startTs = start ? new Date(start) : null;
-    const endTs = end ? new Date(end) : null;
-
-    const startOk =
-      startTs && !Number.isNaN(startTs.getTime())
-        ? startTs.toISOString()
-        : null;
-
-    const endOk =
-      endTs && !Number.isNaN(endTs.getTime())
-        ? endTs.toISOString()
-        : null;
-
-    /* ---------------- SYSTEM EVENTS ---------------- */
     const systemQuery = sql`
       SELECT
         'system' AS source,
@@ -55,7 +41,7 @@ export default async function handler(req, res) {
         v.name AS vendor_name,
         st.action,
         st.message,
-        COALESCE(st.severity, 'info') AS severity,
+        COALESCE(st.severity,'info') AS severity,
         st.created_at
       FROM system_timeline st
       LEFT JOIN vendors v ON v.id = st.vendor_id
@@ -66,7 +52,6 @@ export default async function handler(req, res) {
         ${endOk ? sql`AND st.created_at <= ${endOk}` : sql``}
     `;
 
-    /* ---------------- VENDOR EVENTS ---------------- */
     const vendorQuery = sql`
       SELECT
         'vendor' AS source,
@@ -75,7 +60,7 @@ export default async function handler(req, res) {
         v.name AS vendor_name,
         al.action,
         al.message,
-        COALESCE(al.severity, 'info') AS severity,
+        COALESCE(al.severity,'info') AS severity,
         al.created_at
       FROM vendor_activity_log al
       JOIN vendors v ON v.id = al.vendor_id
