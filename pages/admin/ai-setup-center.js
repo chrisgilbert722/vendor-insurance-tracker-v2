@@ -2,14 +2,33 @@
 // ============================================================
 // AI SETUP CENTER — EXEC V5 (COMMAND SHELL)
 // Iron-Man / JARVIS Tier Control Deck
-// Fully consistent with Alerts / Renewals / Requirements V5
+// BUILD-SAFE (no missing imports)
 // ============================================================
 
 import { useEffect, useState } from "react";
 import { useOrg } from "../../context/OrgContext";
 import CommandShell from "../../components/v5/CommandShell";
-import { V5 } from "../../components/v5/v5Theme";
 
+/* ============================================================
+   LOCAL V5 THEME (INLINE — BUILD SAFE)
+============================================================ */
+const V5 = {
+  bg: "#020617",
+  panel: "rgba(15,23,42,0.96)",
+  border: "rgba(148,163,184,0.28)",
+  soft: "#9ca3af",
+  text: "#e5e7eb",
+
+  blue: "#38bdf8",
+  purple: "#a855f7",
+  green: "#22c55e",
+  yellow: "#facc15",
+  red: "#fb7185",
+};
+
+/* ============================================================
+   STATUS PILL
+============================================================ */
 function StatusPill({ label, state }) {
   const color =
     state === "ONLINE"
@@ -49,6 +68,9 @@ function StatusPill({ label, state }) {
   );
 }
 
+/* ============================================================
+   METRIC CARD
+============================================================ */
 function MetricCard({ label, value, color }) {
   return (
     <div
@@ -78,9 +100,11 @@ function MetricCard({ label, value, color }) {
   );
 }
 
+/* ============================================================
+   MAIN PAGE
+============================================================ */
 export default function AiSetupCenterV5() {
   const { activeOrgId: orgId } = useOrg();
-
   const [loading, setLoading] = useState(true);
 
   const [systems, setSystems] = useState({
@@ -105,7 +129,7 @@ export default function AiSetupCenterV5() {
       if (!alive) return;
       setLoading(true);
 
-      // SAFE PLACEHOLDERS — ZERO RISK
+      // SAFE PLACEHOLDERS (NO NETWORK DEPENDENCIES)
       setSystems({
         Rules: "ONLINE",
         Alerts: "ONLINE",
@@ -125,7 +149,9 @@ export default function AiSetupCenterV5() {
     }
 
     boot();
-    return () => (alive = false);
+    return () => {
+      alive = false;
+    };
   }, [orgId]);
 
   return (
@@ -136,20 +162,13 @@ export default function AiSetupCenterV5() {
       status={loading ? "SYNCING" : "ONLINE"}
     >
       {/* SYSTEM STATUS */}
-      <div
-        style={{
-          display: "flex",
-          gap: 12,
-          flexWrap: "wrap",
-          marginBottom: 24,
-        }}
-      >
+      <div style={{ display: "flex", gap: 12, flexWrap: "wrap", marginBottom: 24 }}>
         {Object.entries(systems).map(([label, state]) => (
           <StatusPill key={label} label={label} state={state} />
         ))}
       </div>
 
-      {/* METRICS */}
+      {/* METRICS GRID */}
       <div
         style={{
           display: "grid",
@@ -158,29 +177,13 @@ export default function AiSetupCenterV5() {
           marginBottom: 28,
         }}
       >
-        <MetricCard
-          label="Rules Defined"
-          value={metrics.rules}
-          color={V5.blue}
-        />
-        <MetricCard
-          label="Vendors Covered"
-          value={metrics.vendors}
-          color={V5.purple}
-        />
-        <MetricCard
-          label="Active Alerts"
-          value={metrics.alerts}
-          color={V5.yellow}
-        />
-        <MetricCard
-          label="Renewals Predicted"
-          value={metrics.renewals}
-          color={V5.green}
-        />
+        <MetricCard label="Rules Defined" value={metrics.rules} color={V5.blue} />
+        <MetricCard label="Vendors Covered" value={metrics.vendors} color={V5.purple} />
+        <MetricCard label="Active Alerts" value={metrics.alerts} color={V5.yellow} />
+        <MetricCard label="Renewals Predicted" value={metrics.renewals} color={V5.green} />
       </div>
 
-      {/* EXECUTIVE NARRATIVE */}
+      {/* EXEC NARRATIVE */}
       <div
         style={{
           borderRadius: 26,
@@ -208,14 +211,17 @@ export default function AiSetupCenterV5() {
             "Initializing AI subsystems…"
           ) : (
             <>
-              All AI engines are online and stable. Your organization is fully
-              armed with automated compliance enforcement, renewal prediction,
-              alert intelligence, and conflict detection.
+              All AI engines are online and stable.
               <br />
               <br />
-              This command center will evolve into a self-optimizing AI brain —
-              continuously tuning rules, permissions, escalation logic, and
-              enforcement strategies based on real-world behavior.
+              Your organization is fully armed with automated compliance
+              enforcement, renewal prediction, alert intelligence, and conflict
+              detection.
+              <br />
+              <br />
+              This command center evolves into a self-optimizing AI brain —
+              continuously tuning rules, escalation logic, and enforcement
+              strategies based on real-world behavior.
             </>
           )}
         </div>
