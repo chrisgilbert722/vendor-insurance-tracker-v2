@@ -1,168 +1,177 @@
-// pages/api/admin/org-compliance-v5.js
+// pages/admin/org-compliance.js
 // ============================================================
-// ORG-LEVEL COMPLIANCE INTELLIGENCE ENGINE — V5 (UUID SAFE)
+// ORG COMPLIANCE — EXEC DASHBOARD (CLIENT ONLY)
+// - SAFE for Vercel / Turbopack
+// - NO server imports (db, uuid, openai)
+// - Fetches /api/admin/org-compliance-v5
+// - Styled to match Dashboard / Alerts / V5 pages
 // ============================================================
 
-import { sql } from "../../../lib/db";
-import { cleanUUID } from "../../../lib/uuid";
-import { openai } from "../../../lib/openaiClient";
+import { useEffect, useState } from "react";
+import { useOrg } from "../../context/OrgContext";
+import CommandShell from "../../components/v5/CommandShell";
+import { V5 } from "../../components/v5/v5Theme";
 
-export default async function handler(req, res) {
-  try {
-    if (req.method !== "GET") {
-      return res.status(200).json({ ok: false, error: "GET only" });
-    }
+export default function OrgCompliancePage() {
+  const { activeOrgId: orgId, loadingOrgs } = useOrg();
 
-    const orgId = cleanUUID(req.query.orgId);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+  const [data, setData] = useState(null);
 
-    // HARD GUARD — never crash UI
+  useEffect(() => {
+    if (loadingOrgs) return;
     if (!orgId) {
-      return res.status(200).json({
-        ok: false,
-        skipped: true,
-        error: "Invalid orgId",
-      });
+      setLoading(false);
+      setError("No organization selected.");
+      return;
     }
 
-    /* ============================================================
-       1) ORG LOOKUP (UUID SAFE)
-    ============================================================ */
-    const orgRows = await sql`
-      SELECT id, name
-      FROM organizations
-      WHERE id = ${orgId}
-      LIMIT 1;
-    `;
+    let alive = true;
 
-    if (!orgRows.length) {
-      return res.status(200).json({
-        ok: false,
-        skipped: true,
-        error: "Organization not found",
-      });
-    }
+    async function load() {
+      try {
+        setLoading(true);
+        setError("");
 
-    const org = orgRows[0];
+        const res = await fetch(
+          `/api/admin/org-compliance-v5?orgId=${encodeURIComponent(orgId)}`
+        );
 
-    /* ============================================================
-       2) VENDORS
-    ============================================================ */
-    const vendors = await sql`
-      SELECT id, name
-      FROM vendors
-      WHERE org_id = ${orgId};
-    `;
-    const vendorCount = vendors.length;
+        const json = await res.json().catch(() => ({}));
 
-    /* ============================================================
-       3) V5 SCORE CACHE
-    ============================================================ */
-    const cacheRows = await sql`
-      SELECT vendor_id, score
-      FROM vendor_compliance_cache
-      WHERE org_id = ${orgId};
-    `;
+        if (!json.ok) {
+          throw new Error(json.error || "Org compliance unavailable");
+        }
 
-    let globalScoreAvg = 0;
-    const scoreBands = {
-      elite: 0,
-      preferred: 0,
-      watch: 0,
-      high_risk: 0,
-      severe: 0,
-    };
-
-    if (cacheRows.length) {
-      let sum = 0;
-      for (const r of cacheRows) {
-        const s = Number(r.score) || 0;
-        sum += s;
-        if (s >= 85) scoreBands.elite++;
-        else if (s >= 70) scoreBands.preferred++;
-        else if (s >= 55) scoreBands.watch++;
-        else if (s >= 35) scoreBands.high_risk++;
-        else scoreBands.severe++;
+        if (!alive) return;
+        setData(json);
+      } catch (e) {
+        if (!alive) return;
+        setError(e.message || "Failed loading org compliance");
+        setData(null);
+      } finally {
+        if (alive) setLoading(false);
       }
-      globalScoreAvg = Math.round(sum / cacheRows.length);
     }
 
-    /* ============================================================
-       4) ALERTS
-    ============================================================ */
-    const alertRows = await sql`
-      SELECT severity
-      FROM alerts_v2
-      WHERE org_id = ${orgId}
-        AND resolved_at IS NULL;
-    `;
+    load();
+    return () => {
+      alive = false;
+    };
+  }, [orgId, loadingOrgs]);
 
-    const alertCounts = { critical: 0, high: 0, medium: 0, low: 0 };
-    for (const a of alertRows) {
-      const sev = (a.severity || "").toLowerCase();
-      if (alertCounts[sev] !== undefined) alertCounts[sev]++;
-    }
+  const metrics = data?.metrics;
 
-    /* ============================================================
-       5) COMBINED SCORE
-    ============================================================ */
-    let combinedScore = globalScoreAvg;
-    combinedScore -= alertCounts.critical * 2;
-    combinedScore -= alertCounts.high;
+  return (
+    <CommandShell
+      tag="EXEC AI • ORG COMPLIANCE"
+      title="Organization Compliance"
+      subtitle="Executive-level compliance health across your entire organization"
+      status={loading ? "SYNCING" : error ? "DEGRADED" : "ONLINE"}
+      statusColor={loading ? V5.blue : error ? V5.red : V5.green}
+    >
+      {loading && (
+        <div style={{ color: V5.soft }}>Loading organization compliance…</div>
+      )}
 
-    combinedScore = Math.max(0, Math.min(100, Math.round(combinedScore)));
+      {!loading && error && (
+        <div
+          style={{
+            padding: 16,
+            borderRadius: 18,
+            background: "rgba(127,29,29,0.85)",
+            border: "1px solid rgba(248,113,113,0.9)",
+            color: "#fecaca",
+            fontSize: 14,
+          }}
+        >
+          {error}
+        </div>
+      )}
 
-    let overallTier = "Unknown";
-    if (combinedScore >= 85) overallTier = "Elite Org";
-    else if (combinedScore >= 70) overallTier = "Stable";
-    else if (combinedScore >= 55) overallTier = "Watch";
-    else if (combinedScore >= 35) overallTier = "High Risk";
-    else overallTier = "Severe Exposure";
+      {!loading && !error && data && (
+        <div
+          style={{
+            display: "grid",
+            gridTemplateColumns: "repeat(auto-fit,minmax(220px,1fr))",
+            gap: 16,
+          }}
+        >
+          <MetricCard label="Vendors" value={metrics.vendorCount} color={V5.blue} />
+          <MetricCard label="Avg Score" value={metrics.avgScore} color={V5.purple} />
+          <MetricCard
+            label="Combined Score"
+            value={metrics.combinedScore}
+            color={
+              metrics.combinedScore >= 70
+                ? V5.green
+                : metrics.combinedScore >= 40
+                ? V5.yellow
+                : V5.red
+            }
+          />
+          <MetricCard label="Tier" value={metrics.tier} color={V5.blue} />
 
-    /* ============================================================
-       6) AI NARRATIVE (SAFE)
-    ============================================================ */
-    let narrative = "";
-    try {
-      const completion = await openai.chat.completions.create({
-        model: "gpt-4.1-mini",
-        temperature: 0.3,
-        messages: [
-          {
-            role: "user",
-            content: `Write a concise executive compliance summary for this org:\n\nOrg: ${org.name}\nScore: ${combinedScore}\nTier: ${overallTier}`,
-          },
-        ],
-      });
+          <div
+            style={{
+              gridColumn: "1 / -1",
+              marginTop: 10,
+              padding: 18,
+              borderRadius: 22,
+              border: `1px solid ${V5.border}`,
+              background: V5.panel,
+              boxShadow:
+                "0 0 32px rgba(0,0,0,0.6), inset 0 0 24px rgba(0,0,0,0.65)",
+            }}
+          >
+            <div
+              style={{
+                fontSize: 12,
+                letterSpacing: "0.16em",
+                textTransform: "uppercase",
+                color: V5.soft,
+                marginBottom: 8,
+              }}
+            >
+              Executive Summary
+            </div>
 
-      narrative =
-        completion.choices?.[0]?.message?.content?.trim() || "";
-    } catch {
-      narrative = "";
-    }
+            <div style={{ fontSize: 14, lineHeight: 1.6 }}>
+              {data.narrative || "No executive narrative available yet."}
+            </div>
+          </div>
+        </div>
+      )}
+    </CommandShell>
+  );
+}
 
-    return res.status(200).json({
-      ok: true,
-      org,
-      v5Engine: {
-        vendorCount,
-        globalScoreAvg,
-        scoreBands,
-      },
-      alertsEngine: {
-        alertCounts,
-      },
-      combined: {
-        combinedScore,
-        overallTier,
-        narrative,
-      },
-    });
-  } catch (err) {
-    console.error("[org-compliance-v5] ERROR:", err);
-    return res.status(200).json({
-      ok: false,
-      skipped: true,
-      error: "Org compliance unavailable",
-    });
-  }
+function MetricCard({ label, value, color }) {
+  return (
+    <div
+      style={{
+        borderRadius: 20,
+        padding: 16,
+        background: V5.panel,
+        border: `1px solid ${color}55`,
+        boxShadow: `0 0 22px ${color}22, inset 0 0 22px rgba(0,0,0,0.6)`,
+      }}
+    >
+      <div
+        style={{
+          fontSize: 11,
+          color: V5.soft,
+          letterSpacing: "0.14em",
+          textTransform: "uppercase",
+          marginBottom: 6,
+        }}
+      >
+        {label}
+      </div>
+      <div style={{ fontSize: 26, fontWeight: 800, color }}>
+        {value ?? "—"}
+      </div>
+    </div>
+  );
 }
