@@ -4,7 +4,6 @@
 // - SAFE for Vercel / Turbopack
 // - NO server imports (db, uuid, openai)
 // - Fetches /api/admin/org-compliance-v5
-// - Styled to match Dashboard / Alerts / V5 pages
 // - Defensive rendering: never crashes app
 // ============================================================
 
@@ -64,6 +63,8 @@ export default function OrgCompliancePage() {
     };
   }, [orgId, loadingOrgs]);
 
+  const hasValidMetrics = !!data && typeof data === "object" && data.metrics;
+
   const metrics = useMemo(() => {
     const m = data?.metrics || {};
     return {
@@ -75,7 +76,11 @@ export default function OrgCompliancePage() {
   }, [data]);
 
   const combinedColor =
-    metrics.combinedScore >= 70 ? V5.green : metrics.combinedScore >= 40 ? V5.yellow : V5.red;
+    metrics.combinedScore >= 70
+      ? V5.green
+      : metrics.combinedScore >= 40
+      ? V5.yellow
+      : V5.red;
 
   return (
     <CommandShell
@@ -86,7 +91,9 @@ export default function OrgCompliancePage() {
       statusColor={loading ? V5.blue : error ? V5.red : V5.green}
     >
       {loading && (
-        <div style={{ color: V5.soft }}>Loading organization compliance…</div>
+        <div style={{ color: V5.soft }}>
+          Loading organization compliance…
+        </div>
       )}
 
       {!loading && error && (
@@ -104,7 +111,7 @@ export default function OrgCompliancePage() {
         </div>
       )}
 
-      {!loading && !error && data && (
+      {!loading && !error && hasValidMetrics && (
         <div
           style={{
             display: "grid",
@@ -114,7 +121,11 @@ export default function OrgCompliancePage() {
         >
           <MetricCard label="Vendors" value={metrics.vendorCount} color={V5.blue} />
           <MetricCard label="Avg Score" value={metrics.avgScore} color={V5.purple} />
-          <MetricCard label="Combined Score" value={metrics.combinedScore} color={combinedColor} />
+          <MetricCard
+            label="Combined Score"
+            value={metrics.combinedScore}
+            color={combinedColor}
+          />
           <MetricCard label="Tier" value={metrics.tier} color={V5.blue} />
 
           <div
@@ -125,7 +136,8 @@ export default function OrgCompliancePage() {
               borderRadius: 22,
               border: `1px solid ${V5.border}`,
               background: V5.panel,
-              boxShadow: "0 0 32px rgba(0,0,0,0.6), inset 0 0 24px rgba(0,0,0,0.65)",
+              boxShadow:
+                "0 0 32px rgba(0,0,0,0.6), inset 0 0 24px rgba(0,0,0,0.65)",
             }}
           >
             <div
@@ -146,6 +158,12 @@ export default function OrgCompliancePage() {
                 : "No executive narrative available yet."}
             </div>
           </div>
+        </div>
+      )}
+
+      {!loading && !error && !hasValidMetrics && (
+        <div style={{ color: V5.soft, fontSize: 14 }}>
+          Organization compliance data is not yet available.
         </div>
       )}
     </CommandShell>
