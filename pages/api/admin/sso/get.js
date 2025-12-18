@@ -21,7 +21,6 @@ export default async function handler(req, res) {
       SELECT
         id,
         name,
-        domain,
         allowed_domains,
         external_uuid,
         sso_provider,
