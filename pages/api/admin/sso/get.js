@@ -6,8 +6,8 @@ export default async function handler(req, res) {
     return res.status(405).json({ ok: false, error: "Method not allowed" });
   }
 
-  const orgId = String(req.query.orgId || "").trim();
-  if (!orgId) {
+  const orgExternalId = String(req.query.orgId || "").trim();
+  if (!orgExternalId) {
     return res.status(400).json({ ok: false, error: "Invalid orgId" });
   }
 
@@ -28,10 +28,10 @@ export default async function handler(req, res) {
         azure_tenant_id,
         azure_client_id
       FROM organizations
-      WHERE id = $1
+      WHERE external_uuid = $1
       LIMIT 1
       `,
-      [orgId]
+      [orgExternalId]
     );
 
     const org = r.rows[0];
@@ -51,10 +51,6 @@ export default async function handler(req, res) {
     console.error("[admin/sso/get] error:", err);
     return res.status(500).json({ ok: false, error: err.message });
   } finally {
-    if (client) {
-      try {
-        await client.end();
-      } catch (_) {}
-    }
+    if (client) try { await client.end(); } catch (_) {}
   }
 }
