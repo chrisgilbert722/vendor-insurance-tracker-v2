@@ -1,10 +1,15 @@
+// pages/api/admin/sso/get.js
 import { Client } from "pg";
 
 export default async function handler(req, res) {
-  if (req.method !== "GET") return res.status(405).json({ ok: false, error: "Method not allowed" });
+  if (req.method !== "GET") {
+    return res.status(405).json({ ok: false, error: "Method not allowed" });
+  }
 
-  const orgId = Number(req.query.orgId);
-  if (!Number.isFinite(orgId)) return res.status(400).json({ ok: false, error: "Invalid orgId" });
+  const orgId = String(req.query.orgId || "").trim();
+  if (!orgId) {
+    return res.status(400).json({ ok: false, error: "Invalid orgId" });
+  }
 
   let client;
   try {
@@ -14,10 +19,15 @@ export default async function handler(req, res) {
     const r = await client.query(
       `
       SELECT
-        id, name, domain, allowed_domains,
+        id,
+        name,
+        domain,
+        allowed_domains,
         external_uuid,
-        sso_provider, sso_enforced,
-        azure_tenant_id, azure_client_id
+        sso_provider,
+        sso_enforced,
+        azure_tenant_id,
+        azure_client_id
       FROM organizations
       WHERE id = $1
       LIMIT 1
@@ -26,16 +36,26 @@ export default async function handler(req, res) {
     );
 
     const org = r.rows[0];
-    if (!org) return res.status(404).json({ ok: false, error: "Organization not found" });
+    if (!org) {
+      return res.status(404).json({ ok: false, error: "Organization not found" });
+    }
 
     const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || "";
     const callbackUrl = siteUrl ? `${siteUrl}/auth/callback` : "";
 
-    return res.status(200).json({ ok: true, org, callbackUrl });
-  } catch (e) {
-    console.error("[admin/sso/get] error:", e);
-    return res.status(500).json({ ok: false, error: e.message || "Server error" });
+    return res.status(200).json({
+      ok: true,
+      org,
+      callbackUrl,
+    });
+  } catch (err) {
+    console.error("[admin/sso/get] error:", err);
+    return res.status(500).json({ ok: false, error: err.message });
   } finally {
-    if (client) try { await client.end(); } catch (_) {}
+    if (client) {
+      try {
+        await client.end();
+      } catch (_) {}
+    }
   }
 }
