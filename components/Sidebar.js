@@ -34,8 +34,7 @@ export default function Sidebar({ pathname, isAdmin, isManager }) {
     fetchStatus();
   }, [activeOrgId]);
 
-  const onboardingActive =
-    pathname.startsWith("/onboarding") && !onboardingComplete;
+  const onboardingActive = pathname.startsWith("/onboarding");
 
   function ProgressRing({ percent }) {
     const size = 26;
@@ -134,7 +133,6 @@ export default function Sidebar({ pathname, isAdmin, isManager }) {
             active={pathname.startsWith("/admin/audit-log")}
           />
 
-          {/* ✅ ROLES → ORGANIZATION */}
           <RailLink
             href="/admin/organization"
             label="Roles"
@@ -165,12 +163,14 @@ export default function Sidebar({ pathname, isAdmin, isManager }) {
         </>
       )}
 
-      {/* ONBOARDING */}
-      {!onboardingComplete && isAdmin && (
+      {/* ONBOARDING — ALWAYS VISIBLE FOR ADMINS */}
+      {isAdmin && (
         <RailLink
           href="/onboarding/ai-wizard"
           label="Onboard"
-          icon={<ProgressRing percent={wizardProgress} />}
+          icon={
+            onboardingComplete ? "🧭" : <ProgressRing percent={wizardProgress} />
+          }
           active={onboardingActive}
         />
       )}
