@@ -7,7 +7,7 @@ export default async function handler(req, res) {
   }
 
   const {
-    orgId,
+    orgId, // external_uuid
     ssoProvider = "none",
     azureTenantId = "",
     azureClientId = "",
@@ -15,8 +15,8 @@ export default async function handler(req, res) {
     allowedDomains = [],
   } = req.body || {};
 
-  const oid = String(orgId || "").trim();
-  if (!oid) {
+  const orgExternalId = String(orgId || "").trim();
+  if (!orgExternalId) {
     return res.status(400).json({ ok: false, error: "Invalid orgId" });
   }
 
@@ -33,9 +33,8 @@ export default async function handler(req, res) {
     client = new Client({ connectionString: process.env.DATABASE_URL });
     await client.connect();
 
-    if (azureClientSecret && String(azureClientSecret).trim()) {
-      await client.query(
-        `
+    const baseQuery = azureClientSecret && String(azureClientSecret).trim()
+      ? `
         UPDATE organizations
         SET
           sso_provider = $2,
@@ -43,48 +42,29 @@ export default async function handler(req, res) {
           azure_client_id = $4,
           azure_client_secret = $5,
           allowed_domains = $6
-        WHERE id = $1
-        `,
-        [
-          oid,
-          provider,
-          azureTenantId || null,
-          azureClientId || null,
-          String(azureClientSecret),
-          domains,
-        ]
-      );
-    } else {
-      await client.query(
-        `
+        WHERE external_uuid = $1
+      `
+      : `
         UPDATE organizations
         SET
           sso_provider = $2,
           azure_tenant_id = $3,
           azure_client_id = $4,
           allowed_domains = $5
-        WHERE id = $1
-        `,
-        [
-          oid,
-          provider,
-          azureTenantId || null,
-          azureClientId || null,
-          domains,
-        ]
-      );
-    }
+        WHERE external_uuid = $1
+      `;
+
+    const params = azureClientSecret && String(azureClientSecret).trim()
+      ? [orgExternalId, provider, azureTenantId || null, azureClientId || null, String(azureClientSecret), domains]
+      : [orgExternalId, provider, azureTenantId || null, azureClientId || null, domains];
+
+    await client.query(baseQuery, params);
 
     return res.status(200).json({ ok: true });
   } catch (err) {
     console.error("[admin/sso/update] error:", err);
     return res.status(500).json({ ok: false, error: err.message });
   } finally {
-    if (client) {
-      try {
-        await client.end();
-      } catch (_) {}
-    }
+    if (client) try { await client.end(); } catch (_) {}
   }
 }
- 
