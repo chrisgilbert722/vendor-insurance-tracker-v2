@@ -7,9 +7,9 @@ export default async function handler(req, res) {
   }
 
   const { orgId, enforce } = req.body || {};
-  const oid = String(orgId || "").trim();
+  const orgExternalId = String(orgId || "").trim();
 
-  if (!oid) {
+  if (!orgExternalId) {
     return res.status(400).json({ ok: false, error: "Invalid orgId" });
   }
 
@@ -22,10 +22,10 @@ export default async function handler(req, res) {
       `
       SELECT sso_provider, azure_tenant_id, azure_client_id
       FROM organizations
-      WHERE id = $1
+      WHERE external_uuid = $1
       LIMIT 1
       `,
-      [oid]
+      [orgExternalId]
     );
 
     const org = r.rows[0];
@@ -50,8 +50,8 @@ export default async function handler(req, res) {
     }
 
     await client.query(
-      `UPDATE organizations SET sso_enforced = $2 WHERE id = $1`,
-      [oid, !!enforce]
+      `UPDATE organizations SET sso_enforced = $2 WHERE external_uuid = $1`,
+      [orgExternalId, !!enforce]
     );
 
     return res.status(200).json({ ok: true });
@@ -59,11 +59,6 @@ export default async function handler(req, res) {
     console.error("[admin/sso/enforce] error:", err);
     return res.status(500).json({ ok: false, error: err.message });
   } finally {
-    if (client) {
-      try {
-        await client.end();
-      } catch (_) {}
-    }
+    if (client) try { await client.end(); } catch (_) {}
   }
 }
- 
