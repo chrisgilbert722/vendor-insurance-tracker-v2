@@ -9,23 +9,24 @@ export function OrgProvider({ children }) {
   const [activeOrgId, setActiveOrgId] = useState(null);
   const [loading, setLoading] = useState(true);
 
-  // Load orgs for logged-in user
   useEffect(() => {
     let cancelled = false;
 
     async function loadOrgs() {
       try {
+        setLoading(true);
+
         const { data: sessionData } = await supabase.auth.getSession();
         const user = sessionData?.session?.user;
         if (!user) return;
 
-        // 🔥 FIX: include external_uuid in org fetch
+        // ✅ FIX: correct relation name = organizations
         const { data, error } = await supabase
           .from("org_members")
           .select(
             `
             org_id,
-            orgs:org_id (
+            organizations:org_id (
               id,
               name,
               external_uuid
@@ -37,19 +38,22 @@ export function OrgProvider({ children }) {
         if (error) throw error;
 
         const uniqueOrgs = (data || [])
-          .map((r) => r.orgs)
+          .map((r) => r.organizations)
           .filter(Boolean);
 
         if (!cancelled) {
           setOrgs(uniqueOrgs);
 
-          // Auto-select first org if none selected
           if (!activeOrgId && uniqueOrgs.length > 0) {
             setActiveOrgId(uniqueOrgs[0].id);
           }
         }
       } catch (err) {
         console.error("[OrgContext] load error:", err);
+        if (!cancelled) {
+          setOrgs([]);
+          setActiveOrgId(null);
+        }
       } finally {
         if (!cancelled) setLoading(false);
       }
@@ -59,25 +63,20 @@ export function OrgProvider({ children }) {
     return () => (cancelled = true);
   }, []);
 
-  // 🔥 NEW: derive full activeOrg object (with external_uuid)
   const activeOrg = useMemo(() => {
     return orgs.find((o) => o.id === activeOrgId) || null;
   }, [orgs, activeOrgId]);
 
   const value = {
     orgs,
+    activeOrg,
     activeOrgId,
-    activeOrg,          // ✅ now available everywhere
     setActiveOrgId,
     loading,
     onboardingComplete: true,
   };
 
-  return (
-    <OrgContext.Provider value={value}>
-      {children}
-    </OrgContext.Provider>
-  );
+  return <OrgContext.Provider value={value}>{children}</OrgContext.Provider>;
 }
 
 export function useOrg() {
