@@ -1,7 +1,10 @@
+// pages/api/admin/sso/update.js
 import { Client } from "pg";
 
 export default async function handler(req, res) {
-  if (req.method !== "POST") return res.status(405).json({ ok: false, error: "Method not allowed" });
+  if (req.method !== "POST") {
+    return res.status(405).json({ ok: false, error: "Method not allowed" });
+  }
 
   const {
     orgId,
@@ -12,10 +15,15 @@ export default async function handler(req, res) {
     allowedDomains = [],
   } = req.body || {};
 
-  const oid = Number(orgId);
-  if (!Number.isFinite(oid)) return res.status(400).json({ ok: false, error: "Invalid orgId" });
+  const oid = String(orgId || "").trim();
+  if (!oid) {
+    return res.status(400).json({ ok: false, error: "Invalid orgId" });
+  }
 
-  const provider = ["none", "azure"].includes(String(ssoProvider)) ? String(ssoProvider) : "none";
+  const provider = ["none", "azure"].includes(String(ssoProvider))
+    ? String(ssoProvider)
+    : "none";
+
   const domains = Array.isArray(allowedDomains)
     ? allowedDomains.map((d) => String(d).trim().toLowerCase()).filter(Boolean)
     : [];
@@ -25,7 +33,6 @@ export default async function handler(req, res) {
     client = new Client({ connectionString: process.env.DATABASE_URL });
     await client.connect();
 
-    // Keep existing secret if not provided
     if (azureClientSecret && String(azureClientSecret).trim()) {
       await client.query(
         `
@@ -38,7 +45,14 @@ export default async function handler(req, res) {
           allowed_domains = $6
         WHERE id = $1
         `,
-        [oid, provider, azureTenantId || null, azureClientId || null, String(azureClientSecret), domains]
+        [
+          oid,
+          provider,
+          azureTenantId || null,
+          azureClientId || null,
+          String(azureClientSecret),
+          domains,
+        ]
       );
     } else {
       await client.query(
@@ -51,15 +65,25 @@ export default async function handler(req, res) {
           allowed_domains = $5
         WHERE id = $1
         `,
-        [oid, provider, azureTenantId || null, azureClientId || null, domains]
+        [
+          oid,
+          provider,
+          azureTenantId || null,
+          azureClientId || null,
+          domains,
+        ]
       );
     }
 
     return res.status(200).json({ ok: true });
-  } catch (e) {
-    console.error("[admin/sso/update] error:", e);
-    return res.status(500).json({ ok: false, error: e.message || "Server error" });
+  } catch (err) {
+    console.error("[admin/sso/update] error:", err);
+    return res.status(500).json({ ok: false, error: err.message });
   } finally {
-    if (client) try { await client.end(); } catch (_) {}
+    if (client) {
+      try {
+        await client.end();
+      } catch (_) {}
+    }
   }
 }
