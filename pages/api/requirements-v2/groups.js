@@ -3,20 +3,27 @@ import { sql } from "../../../lib/db";
 import { resolveOrg } from "../../../lib/resolveOrg";
 
 export const config = {
-  api: { bodyParser: true },
+  api: {
+    bodyParser: {
+      sizeLimit: "1mb",
+    },
+  },
 };
 
 export default async function handler(req, res) {
   try {
     const { method } = req;
 
-    // 🔒 Resolve external UUID → internal org integer
+    // =========================================================
+    // 🔒 Resolve orgExternalId → internal numeric org_id
+    // (centralized, canonical, safe)
+    // =========================================================
     const orgId = await resolveOrg(req, res);
-    if (!orgId) return;
+    if (!orgId) return; // resolveOrg already responded
 
-    // -------------------------
-    // GET — list groups for org
-    // -------------------------
+    // =========================================================
+    // GET — list requirement groups for org
+    // =========================================================
     if (method === "GET") {
       const rows = await sql`
         SELECT 
@@ -38,19 +45,22 @@ export default async function handler(req, res) {
         ORDER BY g.order_index ASC, g.created_at ASC;
       `;
 
-      return res.status(200).json({ ok: true, groups: rows || [] });
+      return res.status(200).json({
+        ok: true,
+        groups: rows || [],
+      });
     }
 
-    // -------------------------
-    // POST — create group
-    // -------------------------
+    // =========================================================
+    // POST — create new group
+    // =========================================================
     if (method === "POST") {
-      const { name, description } = req.body;
+      const { name, description } = req.body || {};
 
-      if (!name) {
+      if (!name || typeof name !== "string") {
         return res.status(400).json({
           ok: false,
-          error: "Missing group name",
+          error: "Missing or invalid group name",
         });
       }
 
@@ -62,14 +72,17 @@ export default async function handler(req, res) {
         RETURNING *;
       `;
 
-      return res.status(200).json({ ok: true, group: rows[0] });
+      return res.status(200).json({
+        ok: true,
+        group: rows[0],
+      });
     }
 
-    // -------------------------
-    // PUT — update group
-    // -------------------------
+    // =========================================================
+    // PUT — update existing group
+    // =========================================================
     if (method === "PUT") {
-      const { name, description, is_active, order_index, id } = req.body;
+      const { id, name, description, is_active, order_index } = req.body || {};
       const groupId = Number(id);
 
       if (!Number.isInteger(groupId)) {
@@ -88,37 +101,55 @@ export default async function handler(req, res) {
           order_index = COALESCE(${order_index}, order_index),
           updated_at  = NOW()
         WHERE id = ${groupId}
+          AND org_id = ${orgId}
         RETURNING *;
       `;
 
-      return res.status(200).json({ ok: true, group: rows[0] });
+      return res.status(200).json({
+        ok: true,
+        group: rows[0],
+      });
     }
 
-    // -------------------------
+    // =========================================================
     // DELETE — remove group
-    // -------------------------
+    // =========================================================
     if (method === "DELETE") {
-      const rawId = req.query.id;
+      const rawId = req.query?.id;
       const groupId = Number(rawId);
 
       if (!Number.isInteger(groupId)) {
-        return res.status(200).json({ ok: true, deleted: false });
+        return res.status(200).json({
+          ok: true,
+          deleted: false,
+        });
       }
 
       await sql`
         DELETE FROM requirements_groups_v2
-        WHERE id = ${groupId};
+        WHERE id = ${groupId}
+          AND org_id = ${orgId};
       `;
 
-      return res.status(200).json({ ok: true, deleted: true });
+      return res.status(200).json({
+        ok: true,
+        deleted: true,
+      });
     }
 
-    return res
-      .status(405)
-      .json({ ok: false, error: "Method not allowed" });
+    // =========================================================
+    // Unsupported method
+    // =========================================================
+    return res.status(405).json({
+      ok: false,
+      error: "Method not allowed",
+    });
 
   } catch (err) {
-    console.error("GROUPS API ERROR:", err);
-    return res.status(500).json({ ok: false, error: err.message });
+    console.error("[requirements-v2/groups] ERROR:", err);
+    return res.status(500).json({
+      ok: false,
+      error: "Internal server error",
+    });
   }
 }
