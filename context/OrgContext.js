@@ -1,3 +1,4 @@
+// context/OrgContext.js
 import { createContext, useContext, useEffect, useState } from "react";
 import { supabase } from "../lib/supabaseClient";
 
@@ -5,7 +6,6 @@ const OrgContext = createContext(null);
 
 export function OrgProvider({ children }) {
   const [orgs, setOrgs] = useState([]);
-  const [activeOrg, setActiveOrg] = useState(null);
   const [activeOrgId, setActiveOrgId] = useState(null);
   const [loading, setLoading] = useState(true);
 
@@ -14,45 +14,29 @@ export function OrgProvider({ children }) {
 
     async function loadOrgs() {
       try {
-        setLoading(true);
-
         const { data: sessionData } = await supabase.auth.getSession();
         const user = sessionData?.session?.user;
-        if (!user) {
-          setLoading(false);
-          return;
-        }
+        if (!user) return;
 
-        // 🔑 CRITICAL JOIN (THIS WAS MISSING / BROKEN BEFORE)
+        // ✅ CORRECT TABLE NAME
         const { data, error } = await supabase
           .from("organization_members")
-          .select(`
-            role,
-            orgs:org_id (
-              id,
-              name,
-              external_uuid
-            )
-          `)
+          .select("org_id, organizations:org_id (id, name, external_uuid)")
           .eq("user_id", user.id);
 
         if (error) throw error;
 
-        const cleaned = (data || [])
-          .map((r) => r.orgs)
+        const orgList = (data || [])
+          .map((r) => r.organizations)
           .filter(Boolean);
 
-        if (cancelled) return;
+        if (!cancelled) {
+          setOrgs(orgList);
 
-        setOrgs(cleaned);
-
-        // 🔑 AUTO-SELECT FIRST ORG (SIDEBAR DEPENDS ON THIS)
-        if (cleaned.length > 0) {
-          setActiveOrg(cleaned[0]);
-          setActiveOrgId(cleaned[0].id);
-        } else {
-          setActiveOrg(null);
-          setActiveOrgId(null);
+          // ✅ Auto-select first org
+          if (!activeOrgId && orgList.length > 0) {
+            setActiveOrgId(orgList[0].id);
+          }
         }
       } catch (err) {
         console.error("[OrgContext] load error:", err);
@@ -62,22 +46,18 @@ export function OrgProvider({ children }) {
     }
 
     loadOrgs();
-    return () => {
-      cancelled = true;
-    };
+    return () => (cancelled = true);
   }, []);
 
-  const value = {
-    orgs,
-    activeOrg,
-    activeOrgId,
-    setActiveOrg,
-    setActiveOrgId,
-    loading,
-  };
-
   return (
-    <OrgContext.Provider value={value}>
+    <OrgContext.Provider
+      value={{
+        orgs,
+        activeOrgId,
+        setActiveOrgId,
+        loading,
+      }}
+    >
       {children}
     </OrgContext.Provider>
   );
