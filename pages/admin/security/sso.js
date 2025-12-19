@@ -4,26 +4,26 @@ import CommandShell from "../../../components/v5/CommandShell";
 import { V5 } from "../../../components/v5/v5Theme";
 
 export default function EnterpriseSSOPage() {
-  const { activeOrgId, loading } = useOrg();
-  const [loadingPage, setLoadingPage] = useState(true);
+  const { activeOrgId, orgs, loading } = useOrg();
+  const org = orgs.find(o => o.id === activeOrgId);
+
   const [error, setError] = useState("");
-  const [model, setModel] = useState(null);
+  const [loadingPage, setLoadingPage] = useState(true);
 
   useEffect(() => {
     if (loading) return;
 
-    if (!activeOrgId) {
-      setLoadingPage(false);
+    if (!org) {
       setError("No organization selected.");
+      setLoadingPage(false);
       return;
     }
 
     async function load() {
       try {
-        const res = await fetch(`/api/admin/sso/get?orgId=${activeOrgId}`);
+        const res = await fetch(`/api/admin/sso/get?orgId=${org.id}`);
         const json = await res.json();
         if (!json.ok) throw new Error(json.error);
-        setModel(json);
       } catch (e) {
         setError(e.message);
       } finally {
@@ -32,27 +32,22 @@ export default function EnterpriseSSOPage() {
     }
 
     load();
-  }, [activeOrgId, loading]);
+  }, [org, loading]);
 
   return (
     <CommandShell
       tag="ENTERPRISE • SECURITY"
       title="Enterprise SSO"
       subtitle="Azure AD / Entra ID configuration"
-      status={error ? "DEGRADED" : "CONFIGURED"}
+      status={error ? "DEGRADED" : "ACTIVE"}
       statusColor={error ? V5.red : V5.green}
     >
-      {loadingPage && <div>Loading SSO settings…</div>}
-
-      {!loadingPage && error && (
-        <div style={{ color: "#fecaca" }}>{error}</div>
-      )}
-
-      {model && (
+      {loadingPage && <div>Loading…</div>}
+      {!loadingPage && error && <div style={{ color: "red" }}>{error}</div>}
+      {!loadingPage && !error && (
         <div>
-          <strong>{model.org.name}</strong>
-          <div>External UUID: {model.org.external_uuid}</div>
-          <div>Callback URL: {model.callbackUrl}</div>
+          <strong>{org.name}</strong>
+          <div>External UUID: {org.external_uuid}</div>
         </div>
       )}
     </CommandShell>
