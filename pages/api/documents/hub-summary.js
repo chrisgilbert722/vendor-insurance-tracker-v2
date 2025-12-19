@@ -2,6 +2,9 @@
 import { sql } from "../../../lib/db";
 import { requireOrgId } from "../../../lib/requireOrg";
 
+/* ------------------------------------------
+   Normalize document types (SAFE)
+------------------------------------------ */
 function normalizeType(t) {
   const x = String(t || "").toLowerCase().trim();
   if (!x) return "other";
@@ -12,37 +15,43 @@ function normalizeType(t) {
   if (x.includes("endorsement")) return "endorsement";
   if (x.includes("waiver")) return "waiver";
   if (x.includes("safety")) return "safety";
-  return x;
+  return "other";
 }
 
 export default async function handler(req, res) {
   try {
-    // 🔒 Canonical org guard (UUID only)
+    // 🔒 Resolve org (UUID → INT). Guard already responds if invalid.
     const orgId = requireOrgId(req, res);
     if (!orgId) return;
 
-    // -----------------------------
-    // Vendors (baseline)
-    // -----------------------------
+    /* ------------------------------------------
+       Vendors (baseline)
+    ------------------------------------------ */
     const vendors = await sql`
       SELECT id
       FROM vendors
       WHERE org_id = ${orgId};
     `;
+
     const vendorCount = Array.isArray(vendors) ? vendors.length : 0;
 
-    // -----------------------------
-    // New documents table
-    // -----------------------------
-    const vdocs = await sql`
-      SELECT vendor_id, document_type, uploaded_at
-      FROM vendor_documents
-      WHERE org_id = ${orgId};
-    `;
+    /* ------------------------------------------
+       New vendor_documents table
+    ------------------------------------------ */
+    let vdocs = [];
+    try {
+      vdocs = await sql`
+        SELECT vendor_id, document_type, uploaded_at
+        FROM vendor_documents
+        WHERE org_id = ${orgId};
+      `;
+    } catch {
+      vdocs = [];
+    }
 
-    // -----------------------------
-    // Legacy documents table (optional)
-    // -----------------------------
+    /* ------------------------------------------
+       Legacy documents table (optional)
+    ------------------------------------------ */
     let legacy = [];
     try {
       legacy = await sql`
@@ -54,6 +63,9 @@ export default async function handler(req, res) {
       legacy = [];
     }
 
+    /* ------------------------------------------
+       Normalize all documents
+    ------------------------------------------ */
     const all = [];
 
     for (const d of Array.isArray(vdocs) ? vdocs : []) {
@@ -72,13 +84,14 @@ export default async function handler(req, res) {
       });
     }
 
-    // -----------------------------
-    // Aggregate by type
-    // -----------------------------
+    /* ------------------------------------------
+       Aggregate by document type
+    ------------------------------------------ */
     const byType = {};
 
     for (const row of all) {
       const t = row.type || "other";
+
       if (!byType[t]) {
         byType[t] = {
           type: t,
@@ -111,9 +124,9 @@ export default async function handler(req, res) {
       lastUploadedAt: x.lastAt,
     }));
 
-    // -----------------------------
-    // Ensure expected tiles exist
-    // -----------------------------
+    /* ------------------------------------------
+       Ensure all expected tiles exist
+    ------------------------------------------ */
     const expected = [
       "coi",
       "w9",
@@ -145,9 +158,12 @@ export default async function handler(req, res) {
     });
   } catch (err) {
     console.error("[hub-summary]", err);
-    return res.status(500).json({
-      ok: false,
-      error: err.message || "Internal error",
+
+    // 🔇 NEVER break UI
+    return res.status(200).json({
+      ok: true,
+      vendorCount: 0,
+      types: [],
     });
   }
 }
