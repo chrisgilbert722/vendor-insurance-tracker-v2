@@ -1,4 +1,5 @@
-// context/OrgContext.js
+// context/OrgContext.js — SINGLE SOURCE OF TRUTH
+
 import { createContext, useContext, useEffect, useState } from "react";
 import { supabase } from "../lib/supabaseClient";
 
@@ -6,7 +7,7 @@ const OrgContext = createContext(null);
 
 export function OrgProvider({ children }) {
   const [orgs, setOrgs] = useState([]);
-  const [activeOrg, setActiveOrg] = useState(null);
+  const [activeOrgId, setActiveOrgId] = useState(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -14,27 +15,29 @@ export function OrgProvider({ children }) {
 
     async function load() {
       try {
-        const { data: session } = await supabase.auth.getSession();
-        const user = session?.session?.user;
+        const { data: sessionData } = await supabase.auth.getSession();
+        const user = sessionData?.session?.user;
         if (!user) return;
 
         const { data, error } = await supabase
           .from("organization_members")
-          .select("org_id, role, organizations:org_id (id, name, external_uuid)")
+          .select("org_id, organizations:org_id (id, name)")
           .eq("user_id", user.id);
 
         if (error) throw error;
 
-        const orgList = (data || [])
+        const list = (data || [])
           .map((r) => r.organizations)
           .filter(Boolean);
 
         if (!cancelled) {
-          setOrgs(orgList);
-          setActiveOrg(orgList[0] || null);
+          setOrgs(list);
+          if (!activeOrgId && list.length > 0) {
+            setActiveOrgId(list[0].id);
+          }
         }
-      } catch (err) {
-        console.error("[OrgContext] load error:", err);
+      } catch (e) {
+        console.error("[OrgContext] load error", e);
       } finally {
         if (!cancelled) setLoading(false);
       }
@@ -48,8 +51,8 @@ export function OrgProvider({ children }) {
     <OrgContext.Provider
       value={{
         orgs,
-        activeOrg,
-        setActiveOrg,
+        activeOrgId,
+        setActiveOrgId,
         loading,
       }}
     >
@@ -57,6 +60,11 @@ export function OrgProvider({ children }) {
     </OrgContext.Provider>
   );
 }
+
+export function useOrg() {
+  return useContext(OrgContext);
+}
+
 
 export function useOrg() {
   return useContext(OrgContext);
