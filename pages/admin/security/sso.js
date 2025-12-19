@@ -1,4 +1,3 @@
-// pages/admin/security/sso.js
 import { useEffect, useMemo, useState } from "react";
 import { useOrg } from "../../../context/OrgContext";
 import CommandShell from "../../../components/v5/CommandShell";
@@ -22,8 +21,8 @@ export default function EnterpriseSSOPage() {
 
     async function load() {
       try {
-        setLoadingPage(true);
         setError("");
+        setLoadingPage(true);
 
         const res = await fetch(`/api/admin/sso/get?orgId=${activeOrgId}`);
         const json = await res.json();
@@ -58,15 +57,12 @@ export default function EnterpriseSSOPage() {
       statusColor={V5.blue}
     >
       {loadingPage && <div>Loading SSO settings…</div>}
+      {error && <div style={{ color: "#fca5a5" }}>{error}</div>}
 
-      {!loadingPage && error && (
-        <div style={{ color: "#fecaca" }}>{error}</div>
-      )}
-
-      {!loadingPage && model && (
+      {model && (
         <div>
           <strong>{model.org.name}</strong>
-          <div>External UUID: {model.org.external_uuid}</div>
+          <div>External UUID: {model.org.external_uuid || "—"}</div>
           <div>Callback URL: {model.callbackUrl}</div>
         </div>
       )}
