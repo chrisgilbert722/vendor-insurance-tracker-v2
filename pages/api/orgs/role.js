@@ -1,7 +1,12 @@
 // pages/api/orgs/role.js
 import { sql } from "../../../lib/db";
 import { resolveOrg } from "../../../lib/resolveOrg";
-import { supabase } from "../../../lib/supabaseClient";
+import { createClient } from "@supabase/supabase-js";
+
+const supabaseServer = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL,
+  process.env.SUPABASE_SERVICE_ROLE_KEY
+);
 
 export default async function handler(req, res) {
   if (req.method !== "GET") {
@@ -9,37 +14,46 @@ export default async function handler(req, res) {
   }
 
   try {
-    // 🔐 Resolve user from Supabase session
-    const {
-      data: { session },
-      error: sessionError,
-    } = await supabase.auth.getSession();
+    // 🔐 Extract Bearer token
+    const authHeader = req.headers.authorization || "";
+    const token = authHeader.startsWith("Bearer ")
+      ? authHeader.slice(7)
+      : null;
 
-    if (sessionError || !session?.user?.id) {
-      return res.status(401).json({ ok: false, error: "Unauthorized" });
+    if (!token) {
+      // 🚫 No token → viewer (NO 401 SPAM)
+      return res.status(200).json({ ok: true, role: "viewer" });
     }
 
-    // 🔒 Resolve org (UUID → internal int)
+    // 🔐 Validate user
+    const { data, error } = await supabaseServer.auth.getUser(token);
+
+    if (error || !data?.user?.id) {
+      return res.status(200).json({ ok: true, role: "viewer" });
+    }
+
+    const userId = data.user.id;
+
+    // 🔒 Resolve org (external UUID → internal int)
     const orgId = await resolveOrg(req, res);
-    if (!orgId) return; // resolveOrg already responded
+    if (!orgId) return;
 
     // 🎯 Fetch org-scoped role
     const rows = await sql`
       SELECT role
       FROM org_members
       WHERE org_id = ${orgId}
-        AND user_id = ${session.user.id}
+        AND user_id = ${userId}
       LIMIT 1;
     `;
 
-    const role = rows[0]?.role || "viewer";
-
     return res.status(200).json({
       ok: true,
-      role,
+      role: rows[0]?.role || "viewer",
     });
   } catch (err) {
     console.error("[ORG ROLE ERROR]", err);
-    return res.status(500).json({ ok: false, error: err.message });
+    // 🔇 Never spam 500s for role checks
+    return res.status(200).json({ ok: true, role: "viewer" });
   }
 }
