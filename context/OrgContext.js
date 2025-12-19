@@ -12,32 +12,50 @@ export function OrgProvider({ children }) {
   useEffect(() => {
     let cancelled = false;
 
-    async function load() {
+    async function loadOrgs() {
       try {
-        const { data } = await supabase.auth.getSession();
-        const user = data?.session?.user;
-        if (!user) return;
+        setLoading(true);
 
-        // 🔥 ALWAYS hit NEON via API — never Supabase SQL
-        const res = await fetch("/api/orgs/for-user");
-        const json = await res.json();
+        const { data: sessionData } = await supabase.auth.getSession();
+        const session = sessionData?.session;
 
-        if (!json.ok) throw new Error(json.error);
-
-        if (!cancelled) {
-          setOrgs(json.orgs);
-          if (!activeOrgId && json.orgs.length > 0) {
-            setActiveOrgId(json.orgs[0].id);
+        if (!session) {
+          if (!cancelled) {
+            setOrgs([]);
+            setActiveOrgId(null);
+            setLoading(false);
           }
+          return;
         }
-      } catch (e) {
-        console.error("[OrgContext]", e);
+
+        const res = await fetch("/api/orgs/for-user", {
+          headers: {
+            Authorization: `Bearer ${session.access_token}`,
+          },
+        });
+
+        const json = await res.json();
+        if (!json.ok) throw new Error(json.error || "Failed to load orgs");
+
+        if (cancelled) return;
+
+        setOrgs(json.orgs || []);
+
+        if (!activeOrgId && json.orgs?.length > 0) {
+          setActiveOrgId(json.orgs[0].id);
+        }
+      } catch (err) {
+        console.error("[OrgContext] load error:", err);
+        if (!cancelled) {
+          setOrgs([]);
+          setActiveOrgId(null);
+        }
       } finally {
         if (!cancelled) setLoading(false);
       }
     }
 
-    load();
+    loadOrgs();
     return () => {
       cancelled = true;
     };
@@ -57,11 +75,6 @@ export function OrgProvider({ children }) {
   );
 }
 
-// 🚨 THIS MUST EXIST ONLY ONCE
 export function useOrg() {
-  const ctx = useContext(OrgContext);
-  if (!ctx) {
-    throw new Error("useOrg must be used within OrgProvider");
-  }
-  return ctx;
+  return useContext(OrgContext);
 }
