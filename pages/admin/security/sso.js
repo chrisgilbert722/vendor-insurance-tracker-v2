@@ -12,7 +12,11 @@ export default function EnterpriseSSOPage() {
   const [error, setError] = useState("");
   const [okMsg, setOkMsg] = useState("");
   const [enforced, setEnforced] = useState(false);
+  const [azureReady, setAzureReady] = useState(false);
 
+  // ============================================================
+  // LOAD SSO STATE (ADMIN ONLY)
+  // ============================================================
   useEffect(() => {
     if (orgLoading || roleLoading) return;
 
@@ -35,10 +39,21 @@ export default function EnterpriseSSOPage() {
 
         if (!json.ok) throw new Error(json.error);
 
-        setEnforced(!!json.org.sso_enforced);
+        const org = json.org;
+
+        setEnforced(!!org.sso_enforced);
+
+        // ✅ Azure readiness guard
+        const ready =
+          org.sso_provider === "azure" &&
+          !!org.azure_tenant_id &&
+          !!org.azure_client_id &&
+          !!org.azure_client_secret;
+
+        setAzureReady(ready);
         setError("");
       } catch (e) {
-        setError(e.message);
+        setError(e.message || "Failed to load SSO settings");
       } finally {
         setLoading(false);
       }
@@ -47,6 +62,9 @@ export default function EnterpriseSSOPage() {
     load();
   }, [activeOrgId, orgLoading, roleLoading, isAdmin]);
 
+  // ============================================================
+  // TOGGLE ENFORCEMENT (SAFE)
+  // ============================================================
   async function toggleEnforcement(next) {
     setOkMsg("");
     setError("");
@@ -71,10 +89,13 @@ export default function EnterpriseSSOPage() {
           : "SSO enforcement disabled."
       );
     } catch (e) {
-      setError(e.message);
+      setError(e.message || "Failed to update enforcement");
     }
   }
 
+  // ============================================================
+  // RENDER
+  // ============================================================
   return (
     <CommandShell
       tag="ENTERPRISE • SECURITY"
@@ -83,7 +104,9 @@ export default function EnterpriseSSOPage() {
       status={error ? "DEGRADED" : enforced ? "ENFORCED" : "READY"}
       statusColor={error ? V5.red : enforced ? V5.red : V5.green}
     >
-      {loading && <div style={{ color: V5.soft }}>Loading SSO settings…</div>}
+      {loading && (
+        <div style={{ color: V5.soft }}>Loading SSO settings…</div>
+      )}
 
       {error && (
         <div style={{ color: "#f87171", marginBottom: 12 }}>{error}</div>
@@ -113,6 +136,7 @@ export default function EnterpriseSSOPage() {
           </div>
 
           <button
+            disabled={!azureReady}
             onClick={() => toggleEnforcement(!enforced)}
             style={{
               padding: "10px 14px",
@@ -120,16 +144,25 @@ export default function EnterpriseSSOPage() {
               border: enforced
                 ? "1px solid rgba(248,113,113,0.6)"
                 : "1px solid rgba(56,189,248,0.5)",
-              background: enforced
+              background: !azureReady
+                ? "rgba(127,29,29,0.45)"
+                : enforced
                 ? "rgba(127,29,29,0.6)"
                 : "rgba(2,6,23,0.6)",
               color: "#e5e7eb",
               fontWeight: 800,
-              cursor: "pointer",
+              cursor: azureReady ? "pointer" : "not-allowed",
             }}
           >
             {enforced ? "Disable Enforcement" : "Enforce SSO"}
           </button>
+
+          {!azureReady && (
+            <div style={{ marginTop: 10, fontSize: 12, color: "#fca5a5" }}>
+              Azure Tenant ID, Client ID, and Client Secret are required before
+              enforcing SSO.
+            </div>
+          )}
         </div>
       )}
     </CommandShell>
