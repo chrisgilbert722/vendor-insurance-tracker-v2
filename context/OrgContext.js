@@ -14,11 +14,11 @@ export function OrgProvider({ children }) {
 
     async function load() {
       try {
-        const { data: session } = await supabase.auth.getSession();
-        const user = session?.session?.user;
+        const { data } = await supabase.auth.getSession();
+        const user = data?.session?.user;
         if (!user) return;
 
-        // 🚨 THIS QUERY HITS NEON VIA API — NOT SUPABASE DB
+        // 🔥 ALWAYS hit NEON via API — never Supabase SQL
         const res = await fetch("/api/orgs/for-user");
         const json = await res.json();
 
@@ -38,7 +38,9 @@ export function OrgProvider({ children }) {
     }
 
     load();
-    return () => (cancelled = true);
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   return (
@@ -55,8 +57,11 @@ export function OrgProvider({ children }) {
   );
 }
 
+// 🚨 THIS MUST EXIST ONLY ONCE
 export function useOrg() {
   const ctx = useContext(OrgContext);
-  if (!ctx) throw new Error("useOrg must be used inside OrgProvider");
+  if (!ctx) {
+    throw new Error("useOrg must be used within OrgProvider");
+  }
   return ctx;
 }
