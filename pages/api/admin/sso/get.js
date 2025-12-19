@@ -1,45 +1,58 @@
 // pages/api/admin/sso/get.js
-import { createClient } from "@supabase/supabase-js";
-
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL,
-  process.env.SUPABASE_SERVICE_ROLE_KEY
-);
+import { Client } from "pg";
 
 export default async function handler(req, res) {
   if (req.method !== "GET") {
-    return res.status(405).json({ ok: false, error: "Method not allowed" });
+    return res.status(405).json({ ok: false });
   }
 
   const orgId = Number(req.query.orgId);
-  if (!orgId) {
+  if (!Number.isInteger(orgId)) {
     return res.status(400).json({ ok: false, error: "Invalid orgId" });
   }
 
-  const { data: org, error } = await supabase
-    .from("organizations")
-    .select(`
-      id,
-      name,
-      external_uuid,
-      sso_provider,
-      sso_enforced,
-      allowed_domains,
-      azure_tenant_id,
-      azure_client_id
-    `)
-    .eq("id", orgId)
-    .single();
+  const client = new Client({ connectionString: process.env.DATABASE_URL });
 
-  if (error || !org) {
-    return res.status(404).json({ ok: false, error: "Organization not found" });
+  try {
+    await client.connect();
+
+    const r = await client.query(
+      `
+      SELECT
+        id,
+        name,
+        external_uuid,
+        sso_provider,
+        sso_enforced,
+        allowed_domains,
+        azure_tenant_id,
+        azure_client_id
+      FROM organizations
+      WHERE id = $1
+      LIMIT 1
+      `,
+      [orgId]
+    );
+
+    if (!r.rows[0]) {
+      return res.status(404).json({ ok: false, error: "Org not found" });
+    }
+
+    const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || "";
+
+    return res.json({
+      ok: true,
+      org: r.rows[0],
+      callbackUrl: `${siteUrl}/auth/callback`,
+    });
+  } catch (e) {
+    console.error("[sso/get]", e);
+    res.status(500).json({ ok: false, error: e.message });
+  } finally {
+    await client.end();
   }
+}
 
-  const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || "";
-  const callbackUrl = `${siteUrl}/auth/callback`;
-
-  return res.status(200).json({
-    ok: true,
     org,
     callbackUrl,
   });
