@@ -1,67 +1,54 @@
-import { supabaseAdmin } from "../../../lib/supabaseAdmin";
-import { getUserFromRequest } from "../../../lib/auth";
+// pages/api/orgs/role.js
+import { createServerSupabaseClient } from "@supabase/auth-helpers-nextjs";
+import { sql } from "../../../lib/db";
 
 export default async function handler(req, res) {
   if (req.method !== "GET") {
-    return res.status(405).json({
-      ok: false,
-      error: "Method not allowed",
-    });
+    return res.status(405).json({ ok: false, error: "Method not allowed" });
+  }
+
+  const rawOrgId = req.query.orgId;
+  const orgId = Number(rawOrgId);
+
+  // 🚫 Invalid org → safe viewer
+  if (!Number.isInteger(orgId)) {
+    return res.status(200).json({ ok: true, role: "viewer" });
   }
 
   try {
-    // -------------------------------------------------
-    // 🔐 Authenticate user (REQUIRED)
-    // -------------------------------------------------
-    const user = await getUserFromRequest(req);
-    if (!user) {
-      return res.status(401).json({
-        ok: false,
-        error: "Not authenticated",
-      });
+    // 🔐 Supabase auth (server-side)
+    const supabase = createServerSupabaseClient({ req, res });
+    const {
+      data: { session },
+    } = await supabase.auth.getSession();
+
+    // 🚫 No session → viewer (NO 401)
+    if (!session?.user?.id) {
+      return res.status(200).json({ ok: true, role: "viewer" });
     }
 
-    // -------------------------------------------------
-    // 🧠 Validate orgId (MUST be integer)
-    // -------------------------------------------------
-    const rawOrgId = req.query.orgId;
-    const orgId = Number(rawOrgId);
+    const userId = session.user.id;
 
-    if (!Number.isInteger(orgId)) {
-      return res.status(400).json({
-        ok: false,
-        error: "Invalid orgId",
-      });
-    }
+    // 🔎 Org-scoped role lookup
+    const rows = await sql`
+      SELECT role
+      FROM org_members
+      WHERE org_id = ${orgId}
+        AND user_id = ${userId}
+      LIMIT 1;
+    `;
 
-    // -------------------------------------------------
-    // 🎯 Lookup role from org_members
-    // -------------------------------------------------
-    const { data, error } = await supabaseAdmin
-      .from("org_members")
-      .select("role")
-      .eq("org_id", orgId)
-      .eq("user_id", user.id)
-      .single();
-
-    if (error || !data?.role) {
-      // IMPORTANT: do NOT 401 here — user may simply be viewer
-      return res.status(200).json({
-        ok: true,
-        role: "viewer",
-      });
+    if (!rows || rows.length === 0) {
+      return res.status(200).json({ ok: true, role: "viewer" });
     }
 
     return res.status(200).json({
       ok: true,
-      role: data.role,
+      role: rows[0].role || "viewer",
     });
-
   } catch (err) {
-    console.error("[api/orgs/role] ERROR:", err);
-    return res.status(500).json({
-      ok: false,
-      error: "Internal server error",
-    });
+    console.error("[orgs/role] error:", err);
+    // 🔥 Never break UI permissions
+    return res.status(200).json({ ok: true, role: "viewer" });
   }
 }
