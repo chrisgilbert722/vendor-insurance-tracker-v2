@@ -1,5 +1,10 @@
 // pages/api/admin/sso/get.js
-import { Client } from "pg";
+import { createClient } from "@supabase/supabase-js";
+
+const supabase = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL,
+  process.env.SUPABASE_SERVICE_ROLE_KEY
+);
 
 export default async function handler(req, res) {
   if (req.method !== "GET") {
@@ -11,50 +16,31 @@ export default async function handler(req, res) {
     return res.status(400).json({ ok: false, error: "Invalid orgId" });
   }
 
-  const client = new Client({
-    connectionString: process.env.DATABASE_URL,
-  });
+  const { data: org, error } = await supabase
+    .from("organizations")
+    .select(`
+      id,
+      name,
+      external_uuid,
+      sso_provider,
+      sso_enforced,
+      allowed_domains,
+      azure_tenant_id,
+      azure_client_id
+    `)
+    .eq("id", orgId)
+    .single();
 
-  try {
-    await client.connect();
-
-    const r = await client.query(
-      `
-      SELECT
-        id,
-        name,
-        external_uuid,
-        allowed_domains,
-        sso_provider,
-        sso_enforced,
-        azure_tenant_id,
-        azure_client_id
-      FROM organizations
-      WHERE id = $1
-      LIMIT 1
-      `,
-      [orgId]
-    );
-
-    const org = r.rows[0];
-    if (!org) {
-      return res.status(404).json({ ok: false, error: "Organization not found" });
-    }
-
-    const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || "";
-    const callbackUrl = siteUrl
-      ? `${siteUrl}/auth/callback/${org.external_uuid}`
-      : "";
-
-    return res.status(200).json({
-      ok: true,
-      org,
-      callbackUrl,
-    });
-  } catch (err) {
-    console.error("[admin/sso/get] error:", err);
-    return res.status(500).json({ ok: false, error: err.message });
-  } finally {
-    await client.end();
+  if (error || !org) {
+    return res.status(404).json({ ok: false, error: "Organization not found" });
   }
+
+  const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || "";
+  const callbackUrl = `${siteUrl}/auth/callback`;
+
+  return res.status(200).json({
+    ok: true,
+    org,
+    callbackUrl,
+  });
 }
