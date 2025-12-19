@@ -1,82 +1,73 @@
+// pages/admin/security/sso.js
 import { useEffect, useMemo, useState } from "react";
 import { useOrg } from "../../../context/OrgContext";
 import CommandShell from "../../../components/v5/CommandShell";
 import { V5 } from "../../../components/v5/v5Theme";
 
 export default function EnterpriseSSOPage() {
-  const { activeOrg, loading } = useOrg();
-  const orgExternalId = activeOrg?.external_uuid || null;
+  const { activeOrgId, loading } = useOrg();
 
   const [loadingPage, setLoadingPage] = useState(true);
   const [error, setError] = useState("");
-  const [org, setOrg] = useState(null);
-  const [callbackUrl, setCallbackUrl] = useState("");
+  const [model, setModel] = useState(null);
 
   useEffect(() => {
     if (loading) return;
 
-    if (!orgExternalId) {
+    if (!activeOrgId) {
       setLoadingPage(false);
-      setError("Organization missing external UUID.");
+      setError("No organization selected.");
       return;
     }
-
-    let alive = true;
 
     async function load() {
       try {
         setLoadingPage(true);
         setError("");
 
-        const res = await fetch(
-          `/api/admin/sso/get?orgId=${orgExternalId}`
-        );
+        const res = await fetch(`/api/admin/sso/get?orgId=${activeOrgId}`);
         const json = await res.json();
 
         if (!json.ok) throw new Error(json.error);
 
-        if (!alive) return;
-        setOrg(json.org);
-        setCallbackUrl(json.callbackUrl);
+        setModel(json);
       } catch (e) {
-        if (alive) setError(e.message);
+        setError(e.message);
       } finally {
-        if (alive) setLoadingPage(false);
+        setLoadingPage(false);
       }
     }
 
     load();
-    return () => (alive = false);
-  }, [orgExternalId, loading]);
+  }, [activeOrgId, loading]);
 
   const status = useMemo(() => {
-    if (loadingPage) return { label: "SYNCING", color: V5.blue };
-    if (error) return { label: "DEGRADED", color: V5.red };
-    if (org?.sso_enforced) return { label: "ENFORCED", color: V5.red };
-    if (org?.sso_provider !== "none")
-      return { label: "CONFIGURED", color: V5.green };
-    return { label: "DISABLED", color: V5.soft };
-  }, [loadingPage, error, org]);
+    if (loadingPage) return "SYNCING";
+    if (error) return "DEGRADED";
+    if (model?.org?.sso_enforced) return "ENFORCED";
+    if (model?.org?.sso_provider !== "none") return "CONFIGURED";
+    return "DISABLED";
+  }, [loadingPage, error, model]);
 
   return (
     <CommandShell
       tag="ENTERPRISE • SECURITY"
       title="Enterprise SSO"
       subtitle="Azure AD / Entra ID configuration"
-      status={status.label}
-      statusColor={status.color}
+      status={status}
+      statusColor={V5.blue}
     >
-      {loadingPage && <div style={{ color: V5.soft }}>Loading SSO…</div>}
+      {loadingPage && <div>Loading SSO settings…</div>}
 
       {!loadingPage && error && (
         <div style={{ color: "#fecaca" }}>{error}</div>
       )}
 
-      {!loadingPage && org && (
+      {!loadingPage && model && (
         <div>
-          <strong>{org.name}</strong>
-          <div>External UUID: {org.external_uuid}</div>
-          <div>Callback URL: {callbackUrl}</div>
+          <strong>{model.org.name}</strong>
+          <div>External UUID: {model.org.external_uuid}</div>
+          <div>Callback URL: {model.callbackUrl}</div>
         </div>
       )}
     </CommandShell>
