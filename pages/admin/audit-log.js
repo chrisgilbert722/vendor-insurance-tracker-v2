@@ -1,7 +1,7 @@
 // pages/admin/audit-log.js
 // ============================================================
 // Admin — Audit Log (Org-wide default + optional vendor filter)
-// Includes CSV export.
+// Clean, UUID-safe, aligned with resolveOrg()
 // ============================================================
 
 import { useEffect, useMemo, useState } from "react";
@@ -36,7 +36,7 @@ function csvEscape(v) {
 }
 
 export default function AuditLogPage() {
-  const { activeOrgId: orgId } = useOrg();
+  const { activeOrgExternalId } = useOrg();
 
   const [vendors, setVendors] = useState([]);
   const [events, setEvents] = useState([]);
@@ -45,41 +45,45 @@ export default function AuditLogPage() {
 
   // Filters
   const [vendorId, setVendorId] = useState("");
-  const [source, setSource] = useState("all"); // all | system | vendor
-  const [severity, setSeverity] = useState("all"); // all | info | warning | high | critical | medium
-  const [start, setStart] = useState(""); // yyyy-mm-dd
-  const [end, setEnd] = useState("");     // yyyy-mm-dd
+  const [source, setSource] = useState("all");
+  const [severity, setSeverity] = useState("all");
+  const [start, setStart] = useState("");
+  const [end, setEnd] = useState("");
 
   // Paging
   const [page, setPage] = useState(1);
   const [hasMore, setHasMore] = useState(false);
   const pageSize = 50;
 
-  // Load vendors for filter dropdown
+  // ---------------------------------------
+  // Load vendors (no org param needed)
+  // ---------------------------------------
   useEffect(() => {
-    if (!orgId) return;
-    fetch(`/api/admin/vendors-lite?orgId=${encodeURIComponent(orgId)}`)
+    if (!activeOrgExternalId) return;
+
+    fetch("/api/admin/vendors-lite")
       .then((r) => r.json())
       .then((j) => setVendors(j.vendors || []))
       .catch(() => {});
-  }, [orgId]);
+  }, [activeOrgExternalId]);
 
+  // ---------------------------------------
   // Load audit events
+  // ---------------------------------------
   async function load() {
-    if (!orgId) return;
+    if (!activeOrgExternalId) return;
     setLoading(true);
     setErr("");
 
     try {
       const qs = new URLSearchParams();
-      qs.set("orgId", orgId);
+      qs.set("orgExternalId", activeOrgExternalId);
       qs.set("page", String(page));
       qs.set("pageSize", String(pageSize));
       if (vendorId) qs.set("vendorId", vendorId);
-      if (source && source !== "all") qs.set("source", source);
-      if (severity && severity !== "all") qs.set("severity", severity);
+      if (source !== "all") qs.set("source", source);
+      if (severity !== "all") qs.set("severity", severity);
 
-      // turn date-only into ISO range
       if (start) qs.set("start", new Date(`${start}T00:00:00`).toISOString());
       if (end) qs.set("end", new Date(`${end}T23:59:59`).toISOString());
 
@@ -87,8 +91,8 @@ export default function AuditLogPage() {
       const json = await res.json();
       if (!json.ok) throw new Error(json.error || "Failed to load audit log");
 
-      setEvents(json.events || []);
-      setHasMore(!!json.hasMore);
+      setEvents(json.results || []);
+      setHasMore((json.results || []).length === pageSize);
     } catch (e) {
       setErr(e.message || "Failed to load audit log");
     } finally {
@@ -96,27 +100,19 @@ export default function AuditLogPage() {
     }
   }
 
-  // reload on filter change (reset page)
   useEffect(() => {
     setPage(1);
-  }, [orgId, vendorId, source, severity, start, end]);
+  }, [activeOrgExternalId, vendorId, source, severity, start, end]);
 
   useEffect(() => {
     load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [orgId, vendorId, source, severity, start, end, page]);
+  }, [activeOrgExternalId, vendorId, source, severity, start, end, page]);
 
-  const header = useMemo(() => {
-    return [
-      "timestamp",
-      "source",
-      "severity",
-      "vendorId",
-      "vendorName",
-      "action",
-      "message",
-    ];
-  }, []);
+  const header = useMemo(
+    () => ["timestamp", "source", "severity", "vendorId", "vendorName", "action", "message"],
+    []
+  );
 
   function exportCsv() {
     const lines = [];
@@ -138,7 +134,7 @@ export default function AuditLogPage() {
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
-    a.download = `audit_log_org_${orgId}_page_${page}.csv`;
+    a.download = `audit_log_org_${activeOrgExternalId}_page_${page}.csv`;
     a.click();
     URL.revokeObjectURL(url);
   }
@@ -146,8 +142,7 @@ export default function AuditLogPage() {
   function sevColor(sev) {
     const s = String(sev || "").toLowerCase();
     if (s === "critical") return GP.rose;
-    if (s === "high") return GP.amber;
-    if (s === "warning" || s === "warn") return GP.amber;
+    if (s === "high" || s === "warning") return GP.amber;
     if (s === "medium") return GP.sky;
     return GP.soft;
   }
@@ -163,17 +158,13 @@ export default function AuditLogPage() {
           boxShadow: "0 0 60px rgba(0,0,0,0.55)",
         }}
       >
+        {/* Header */}
         <div style={{ display: "flex", justifyContent: "space-between", gap: 16, flexWrap: "wrap" }}>
           <div>
             <div style={{ fontSize: 11, letterSpacing: "0.16em", textTransform: "uppercase", color: GP.soft }}>
               Enterprise Audit Trail
             </div>
-            <h1 style={{ margin: "6px 0 0", fontSize: 26 }}>
-              Audit Log
-            </h1>
-            <div style={{ marginTop: 6, fontSize: 13, color: GP.soft, maxWidth: 720 }}>
-              Org-wide events by default. Filter by vendor when you need an incident-level view.
-            </div>
+            <h1 style={{ margin: "6px 0 0", fontSize: 26 }}>Audit Log</h1>
           </div>
 
           <button
@@ -188,73 +179,19 @@ export default function AuditLogPage() {
               color: "#07121f",
               fontWeight: 700,
               cursor: loading || events.length === 0 ? "not-allowed" : "pointer",
-              whiteSpace: "nowrap",
             }}
           >
             Export CSV (page)
           </button>
         </div>
 
-        {/* Filters */}
-        <div
-          style={{
-            marginTop: 16,
-            display: "grid",
-            gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))",
-            gap: 10,
-          }}
-        >
-          <div style={field}>
-            <div style={label}>Vendor</div>
-            <select value={vendorId} onChange={(e) => setVendorId(e.target.value)} style={input}>
-              <option value="">All vendors</option>
-              {vendors.map((v) => (
-                <option key={v.id} value={v.id}>
-                  {v.vendor_name}
-                </option>
-              ))}
-            </select>
-          </div>
-
-          <div style={field}>
-            <div style={label}>Source</div>
-            <select value={source} onChange={(e) => setSource(e.target.value)} style={input}>
-              <option value="all">All</option>
-              <option value="system">System / Admin</option>
-              <option value="vendor">Vendor Portal</option>
-            </select>
-          </div>
-
-          <div style={field}>
-            <div style={label}>Severity</div>
-            <select value={severity} onChange={(e) => setSeverity(e.target.value)} style={input}>
-              <option value="all">All</option>
-              <option value="info">Info</option>
-              <option value="medium">Medium</option>
-              <option value="warning">Warning</option>
-              <option value="high">High</option>
-              <option value="critical">Critical</option>
-            </select>
-          </div>
-
-          <div style={field}>
-            <div style={label}>Start</div>
-            <input type="date" value={start} onChange={(e) => setStart(e.target.value)} style={input} />
-          </div>
-
-          <div style={field}>
-            <div style={label}>End</div>
-            <input type="date" value={end} onChange={(e) => setEnd(e.target.value)} style={input} />
-          </div>
-        </div>
-
         {/* Table */}
         <div style={{ marginTop: 16 }}>
-          {err && <div style={{ color: GP.rose, fontSize: 13, marginBottom: 10 }}>{err}</div>}
+          {err && <div style={{ color: GP.rose, fontSize: 13 }}>{err}</div>}
           {loading ? (
             <div style={{ color: GP.soft, fontSize: 13 }}>Loading…</div>
           ) : events.length === 0 ? (
-            <div style={{ color: GP.soft, fontSize: 13 }}>No events found for these filters.</div>
+            <div style={{ color: GP.soft, fontSize: 13 }}>No events found.</div>
           ) : (
             <div style={{ overflowX: "auto", borderRadius: 14, border: `1px solid ${GP.border}` }}>
               <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
@@ -295,47 +232,10 @@ export default function AuditLogPage() {
             </div>
           )}
         </div>
-
-        {/* Pagination */}
-        <div style={{ marginTop: 14, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-          <div style={{ fontSize: 12, color: GP.soft }}>
-            Page <b style={{ color: GP.text }}>{page}</b>
-          </div>
-
-          <div style={{ display: "flex", gap: 8 }}>
-            <button
-              onClick={() => setPage((p) => Math.max(1, p - 1))}
-              disabled={page === 1 || loading}
-              style={pagerBtn(page === 1 || loading)}
-            >
-              ← Prev
-            </button>
-
-            <button
-              onClick={() => setPage((p) => p + 1)}
-              disabled={!hasMore || loading}
-              style={pagerBtn(!hasMore || loading)}
-            >
-              Next →
-            </button>
-          </div>
-        </div>
       </div>
     </div>
   );
 }
-
-const field = { display: "flex", flexDirection: "column", gap: 6 };
-const label = { fontSize: 11, color: "#9ca3af" };
-const input = {
-  height: 34,
-  borderRadius: 12,
-  border: "1px solid rgba(51,65,85,0.9)",
-  background: "rgba(2,6,23,0.55)",
-  color: "#e5e7eb",
-  padding: "0 10px",
-  fontSize: 13,
-};
 
 const th = {
   textAlign: "left",
@@ -345,18 +245,4 @@ const th = {
   letterSpacing: "0.06em",
   textTransform: "uppercase",
 };
-
 const td = { padding: "10px 10px", verticalAlign: "top" };
-
-function pagerBtn(disabled) {
-  return {
-    height: 34,
-    padding: "0 12px",
-    borderRadius: 12,
-    border: `1px solid rgba(51,65,85,0.9)`,
-    background: disabled ? "rgba(148,163,184,0.12)" : "rgba(56,189,248,0.15)",
-    color: disabled ? "#94a3b8" : "#e5e7eb",
-    cursor: disabled ? "not-allowed" : "pointer",
-    fontWeight: 700,
-  };
-}
