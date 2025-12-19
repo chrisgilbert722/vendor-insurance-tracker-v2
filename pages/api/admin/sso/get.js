@@ -1,24 +1,9 @@
 // pages/api/admin/sso/get.js
 import { Client } from "pg";
-import { getUserFromRequest } from "../../../../lib/auth";
 
 export default async function handler(req, res) {
   if (req.method !== "GET") {
     return res.status(405).json({ ok: false, error: "Method not allowed" });
-  }
-
-  // 🔐 AUTH — must be logged in
-  const user = await getUserFromRequest(req);
-  if (!user) {
-    return res.status(401).json({ ok: false, error: "Unauthorized" });
-  }
-
-  // 🔒 ADMIN ONLY
-  if (user.role !== "admin") {
-    return res.status(403).json({
-      ok: false,
-      error: "Admin access required",
-    });
   }
 
   const orgId = Number(req.query.orgId);
