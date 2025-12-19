@@ -1,5 +1,4 @@
-// context/OrgContext.js — SINGLE SOURCE OF TRUTH
-
+// context/OrgContext.js
 import { createContext, useContext, useEffect, useState } from "react";
 import { supabase } from "../lib/supabaseClient";
 
@@ -13,7 +12,7 @@ export function OrgProvider({ children }) {
   useEffect(() => {
     let cancelled = false;
 
-    async function load() {
+    async function loadOrgs() {
       try {
         const { data: sessionData } = await supabase.auth.getSession();
         const user = sessionData?.session?.user;
@@ -21,51 +20,62 @@ export function OrgProvider({ children }) {
 
         const { data, error } = await supabase
           .from("organization_members")
-          .select("org_id, organizations:org_id (id, name)")
+          .select(
+            `
+            org_id,
+            organizations:org_id (
+              id,
+              name,
+              external_uuid
+            )
+          `
+          )
           .eq("user_id", user.id);
 
         if (error) throw error;
 
-        const list = (data || [])
+        const cleanOrgs = (data || [])
           .map((r) => r.organizations)
           .filter(Boolean);
 
         if (!cancelled) {
-          setOrgs(list);
-          if (!activeOrgId && list.length > 0) {
-            setActiveOrgId(list[0].id);
+          setOrgs(cleanOrgs);
+
+          // Auto-select first org if none selected
+          if (!activeOrgId && cleanOrgs.length > 0) {
+            setActiveOrgId(cleanOrgs[0].id);
           }
         }
-      } catch (e) {
-        console.error("[OrgContext] load error", e);
+      } catch (err) {
+        console.error("[OrgContext] load error:", err);
       } finally {
         if (!cancelled) setLoading(false);
       }
     }
 
-    load();
-    return () => (cancelled = true);
+    loadOrgs();
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
+  const value = {
+    orgs,
+    activeOrgId,
+    setActiveOrgId,
+    loading,
+  };
+
   return (
-    <OrgContext.Provider
-      value={{
-        orgs,
-        activeOrgId,
-        setActiveOrgId,
-        loading,
-      }}
-    >
+    <OrgContext.Provider value={value}>
       {children}
     </OrgContext.Provider>
   );
 }
 
-export function useOrg() {
-  return useContext(OrgContext);
-}
-
-
+/**
+ * ✅ SINGLE export — THIS WAS THE BUG
+ */
 export function useOrg() {
   return useContext(OrgContext);
 }
