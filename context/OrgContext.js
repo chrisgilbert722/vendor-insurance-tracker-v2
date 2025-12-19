@@ -6,6 +6,7 @@ const OrgContext = createContext(null);
 export function OrgProvider({ children }) {
   const [orgs, setOrgs] = useState([]);
   const [activeOrgId, setActiveOrgId] = useState(null);
+  const [activeOrg, setActiveOrg] = useState(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -13,65 +14,53 @@ export function OrgProvider({ children }) {
 
     async function loadOrgs() {
       try {
-        setLoading(true);
-
         const { data: sessionData } = await supabase.auth.getSession();
         const user = sessionData?.session?.user;
+        if (!user) return;
 
-        if (!user) {
-          setOrgs([]);
-          setActiveOrgId(null);
-          return;
-        }
-
-        // ✅ CORRECT TABLE + JOIN
         const { data, error } = await supabase
           .from("organization_members")
-          .select(`
-            org_id,
-            organizations:org_id (
-              id,
-              name,
-              external_uuid
-            )
-          `)
+          .select("org_id, organizations:org_id (*)")
           .eq("user_id", user.id);
 
         if (error) throw error;
 
-        const resolvedOrgs = (data || [])
+        const loadedOrgs = (data || [])
           .map((r) => r.organizations)
           .filter(Boolean);
 
-        if (!cancelled) {
-          setOrgs(resolvedOrgs);
+        if (cancelled) return;
 
-          if (!activeOrgId && resolvedOrgs.length > 0) {
-            setActiveOrgId(resolvedOrgs[0].id);
-          }
+        setOrgs(loadedOrgs);
+
+        if (!activeOrgId && loadedOrgs.length > 0) {
+          setActiveOrgId(loadedOrgs[0].id);
+          setActiveOrg(loadedOrgs[0]);
         }
       } catch (err) {
         console.error("[OrgContext] load error:", err);
-        if (!cancelled) {
-          setOrgs([]);
-          setActiveOrgId(null);
-        }
       } finally {
         if (!cancelled) setLoading(false);
       }
     }
 
     loadOrgs();
-    return () => {
-      cancelled = true;
-    };
+    return () => (cancelled = true);
   }, []);
+
+  // 🔁 Keep activeOrg in sync with activeOrgId
+  useEffect(() => {
+    if (!activeOrgId || orgs.length === 0) return;
+    const found = orgs.find((o) => o.id === activeOrgId);
+    if (found) setActiveOrg(found);
+  }, [activeOrgId, orgs]);
 
   return (
     <OrgContext.Provider
       value={{
         orgs,
         activeOrgId,
+        activeOrg,
         setActiveOrgId,
         loading,
       }}
