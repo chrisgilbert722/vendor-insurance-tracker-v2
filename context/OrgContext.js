@@ -1,5 +1,3 @@
-// context/OrgContext.js — FINAL STABLE VERSION (SINGLE useOrg)
-
 import { createContext, useContext, useEffect, useState } from "react";
 import { supabase } from "../lib/supabaseClient";
 
@@ -7,6 +5,7 @@ const OrgContext = createContext(null);
 
 export function OrgProvider({ children }) {
   const [orgs, setOrgs] = useState([]);
+  const [activeOrgId, setActiveOrgId] = useState(null);
   const [activeOrg, setActiveOrg] = useState(null);
   const [loading, setLoading] = useState(true);
 
@@ -17,26 +16,47 @@ export function OrgProvider({ children }) {
       try {
         setLoading(true);
 
-        const { data: sessionData } = await supabase.auth.getSession();
-        const user = sessionData?.session?.user;
-        if (!user) return;
+        const {
+          data: { session },
+          error: sessionError,
+        } = await supabase.auth.getSession();
+
+        if (sessionError || !session?.user) {
+          if (!cancelled) setLoading(false);
+          return;
+        }
+
+        const userId = session.user.id;
 
         const { data, error } = await supabase
           .from("organization_members")
-          .select("orgs:org_id (id, name, external_uuid)")
-          .eq("user_id", user.id);
+          .select(
+            `
+            org_id,
+            role,
+            organizations:org_id (
+              id,
+              name,
+              external_uuid
+            )
+          `
+          )
+          .eq("user_id", userId);
 
         if (error) throw error;
 
-        const list = (data || [])
-          .map((r) => r.orgs)
+        const normalized = (data || [])
+          .map((r) => r.organizations)
           .filter(Boolean);
 
-        if (!cancelled) {
-          setOrgs(list);
-          if (!activeOrg && list.length > 0) {
-            setActiveOrg(list[0]); // auto-select first org
-          }
+        if (cancelled) return;
+
+        setOrgs(normalized);
+
+        // ✅ Always auto-select first org if none selected
+        if (!activeOrgId && normalized.length > 0) {
+          setActiveOrgId(normalized[0].id);
+          setActiveOrg(normalized[0]);
         }
       } catch (err) {
         console.error("[OrgContext] load error:", err);
@@ -46,24 +66,37 @@ export function OrgProvider({ children }) {
     }
 
     loadOrgs();
-    return () => (cancelled = true);
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
-  return (
-    <OrgContext.Provider
-      value={{
-        orgs,
-        activeOrg,
-        activeOrgId: activeOrg?.id || null,
-        setActiveOrg,
-        loading,
-      }}
-    >
-      {children}
-    </OrgContext.Provider>
-  );
+  // 🔁 Keep activeOrg in sync with activeOrgId
+  useEffect(() => {
+    if (!activeOrgId || orgs.length === 0) {
+      setActiveOrg(null);
+      return;
+    }
+
+    const found = orgs.find((o) => o.id === activeOrgId) || null;
+    setActiveOrg(found);
+  }, [activeOrgId, orgs]);
+
+  const value = {
+    orgs,
+    activeOrgId,
+    setActiveOrgId,
+    activeOrg,
+    loading,
+  };
+
+  return <OrgContext.Provider value={value}>{children}</OrgContext.Provider>;
 }
 
 export function useOrg() {
-  return useContext(OrgContext);
+  const ctx = useContext(OrgContext);
+  if (!ctx) {
+    throw new Error("useOrg must be used within OrgProvider");
+  }
+  return ctx;
 }
