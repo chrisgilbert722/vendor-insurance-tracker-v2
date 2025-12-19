@@ -14,28 +14,24 @@ export function OrgProvider({ children }) {
 
     async function load() {
       try {
-        const { data: sessionData } = await supabase.auth.getSession();
-        const user = sessionData?.session?.user;
+        const { data: session } = await supabase.auth.getSession();
+        const user = session?.session?.user;
         if (!user) return;
 
         const { data, error } = await supabase
           .from("organization_members")
-          .select("org:org_id (id, name, external_uuid)")
+          .select("org_id, role, organizations:org_id (id, name, external_uuid)")
           .eq("user_id", user.id);
 
         if (error) throw error;
 
         const orgList = (data || [])
-          .map((r) => r.org)
+          .map((r) => r.organizations)
           .filter(Boolean);
 
         if (!cancelled) {
           setOrgs(orgList);
-
-          // 🔑 AUTO-SELECT FIRST ORG
-          if (!activeOrg && orgList.length > 0) {
-            setActiveOrg(orgList[0]);
-          }
+          setActiveOrg(orgList[0] || null);
         }
       } catch (err) {
         console.error("[OrgContext] load error:", err);
@@ -53,7 +49,6 @@ export function OrgProvider({ children }) {
       value={{
         orgs,
         activeOrg,
-        activeOrgId: activeOrg?.id || null,
         setActiveOrg,
         loading,
       }}
