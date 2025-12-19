@@ -11,12 +11,14 @@ export default async function handler(req, res) {
     return res.status(400).json({ ok: false, error: "Invalid orgId" });
   }
 
-  const client = new Client({ connectionString: process.env.DATABASE_URL });
+  const client = new Client({
+    connectionString: process.env.DATABASE_URL,
+  });
 
   try {
     await client.connect();
 
-    const { rows } = await client.query(
+    const r = await client.query(
       `
       SELECT
         id,
@@ -34,18 +36,24 @@ export default async function handler(req, res) {
       [orgId]
     );
 
-    const org = rows[0];
+    const org = r.rows[0];
     if (!org) {
       return res.status(404).json({ ok: false, error: "Organization not found" });
     }
 
     const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || "";
-    const callbackUrl = siteUrl ? `${siteUrl}/auth/callback` : "";
+    const callbackUrl = siteUrl
+      ? `${siteUrl}/auth/callback/${org.external_uuid}`
+      : "";
 
-    res.status(200).json({ ok: true, org, callbackUrl });
+    return res.status(200).json({
+      ok: true,
+      org,
+      callbackUrl,
+    });
   } catch (err) {
-    console.error("[admin/sso/get]", err);
-    res.status(500).json({ ok: false, error: err.message });
+    console.error("[admin/sso/get] error:", err);
+    return res.status(500).json({ ok: false, error: err.message });
   } finally {
     await client.end();
   }
