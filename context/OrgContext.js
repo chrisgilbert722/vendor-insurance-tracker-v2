@@ -1,12 +1,12 @@
 // context/OrgContext.js
-import { createContext, useContext, useEffect, useMemo, useState } from "react";
+import { createContext, useContext, useEffect, useState } from "react";
 import { supabase } from "../lib/supabaseClient";
 
 const OrgContext = createContext(null);
 
 export function OrgProvider({ children }) {
   const [orgs, setOrgs] = useState([]);
-  const [activeOrgId, setActiveOrgId] = useState(null);
+  const [activeOrg, setActiveOrg] = useState(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -14,46 +14,30 @@ export function OrgProvider({ children }) {
 
     async function loadOrgs() {
       try {
-        setLoading(true);
-
         const { data: sessionData } = await supabase.auth.getSession();
         const user = sessionData?.session?.user;
         if (!user) return;
 
-        // ✅ FIX: correct relation name = organizations
         const { data, error } = await supabase
-          .from("org_members")
-          .select(
-            `
-            org_id,
-            organizations:org_id (
-              id,
-              name,
-              external_uuid
-            )
-          `
-          )
+          .from("organization_members")
+          .select("org_id, organizations:org_id (*)")
           .eq("user_id", user.id);
 
         if (error) throw error;
 
-        const uniqueOrgs = (data || [])
+        const orgList = (data || [])
           .map((r) => r.organizations)
           .filter(Boolean);
 
         if (!cancelled) {
-          setOrgs(uniqueOrgs);
+          setOrgs(orgList);
 
-          if (!activeOrgId && uniqueOrgs.length > 0) {
-            setActiveOrgId(uniqueOrgs[0].id);
+          if (!activeOrg && orgList.length > 0) {
+            setActiveOrg(orgList[0]);
           }
         }
       } catch (err) {
         console.error("[OrgContext] load error:", err);
-        if (!cancelled) {
-          setOrgs([]);
-          setActiveOrgId(null);
-        }
       } finally {
         if (!cancelled) setLoading(false);
       }
@@ -63,20 +47,18 @@ export function OrgProvider({ children }) {
     return () => (cancelled = true);
   }, []);
 
-  const activeOrg = useMemo(() => {
-    return orgs.find((o) => o.id === activeOrgId) || null;
-  }, [orgs, activeOrgId]);
-
-  const value = {
-    orgs,
-    activeOrg,
-    activeOrgId,
-    setActiveOrgId,
-    loading,
-    onboardingComplete: true,
-  };
-
-  return <OrgContext.Provider value={value}>{children}</OrgContext.Provider>;
+  return (
+    <OrgContext.Provider
+      value={{
+        orgs,
+        activeOrg,
+        setActiveOrg,
+        loading,
+      }}
+    >
+      {children}
+    </OrgContext.Provider>
+  );
 }
 
 export function useOrg() {
