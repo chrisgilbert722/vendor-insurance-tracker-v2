@@ -35,19 +35,11 @@ export default function Sidebar({ pathname }) {
       <RailLink href="/admin/renewals" label="Exec AI" icon="🏆" />
       <RailLink href="/admin/security/sso" label="SSO" icon="🔐" />
 
-      {/* ONBOARDING — ALWAYS AVAILABLE */}
-      <RailLink
-        href="/onboarding/ai-wizard"
-        label="Onboard"
-        icon="🧭"
-      />
+      {/* ONBOARDING */}
+      <RailLink href="/onboarding/ai-wizard" label="Onboard" icon="🧭" />
 
       {/* TUTORIAL */}
-      <RailLink
-        href="/dashboard?tutorial=1"
-        label="Tutorial"
-        icon="🎯"
-      />
+      <RailLink href="/dashboard?tutorial=1" label="Tutorial" icon="🎯" />
 
       {/* LOGOUT */}
       <div style={{ marginTop: "auto" }}>
@@ -57,9 +49,12 @@ export default function Sidebar({ pathname }) {
   );
 }
 
+/* ======================================================
+   RailLink — NEXT SAFE (NO REACT CRASH)
+====================================================== */
 function RailLink({ href, label, icon }) {
   return (
-    <Link href={href}>
+    <Link href={href} legacyBehavior>
       <a
         style={{
           width: "100%",
@@ -73,6 +68,7 @@ function RailLink({ href, label, icon }) {
           fontSize: 11,
           fontWeight: 700,
           textTransform: "uppercase",
+          transition: "background 0.15s ease",
         }}
       >
         <div style={{ fontSize: 20, marginBottom: 4 }}>{icon}</div>
