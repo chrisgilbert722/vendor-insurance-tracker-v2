@@ -1,54 +1,45 @@
 // pages/api/orgs/role.js
-import { createServerSupabaseClient } from "@supabase/auth-helpers-nextjs";
 import { sql } from "../../../lib/db";
+import { resolveOrg } from "../../../lib/resolveOrg";
+import { supabase } from "../../../lib/supabaseClient";
 
 export default async function handler(req, res) {
   if (req.method !== "GET") {
     return res.status(405).json({ ok: false, error: "Method not allowed" });
   }
 
-  const rawOrgId = req.query.orgId;
-  const orgId = Number(rawOrgId);
-
-  // 🚫 Invalid org → safe viewer
-  if (!Number.isInteger(orgId)) {
-    return res.status(200).json({ ok: true, role: "viewer" });
-  }
-
   try {
-    // 🔐 Supabase auth (server-side)
-    const supabase = createServerSupabaseClient({ req, res });
+    // 🔐 Resolve user from Supabase session
     const {
       data: { session },
+      error: sessionError,
     } = await supabase.auth.getSession();
 
-    // 🚫 No session → viewer (NO 401)
-    if (!session?.user?.id) {
-      return res.status(200).json({ ok: true, role: "viewer" });
+    if (sessionError || !session?.user?.id) {
+      return res.status(401).json({ ok: false, error: "Unauthorized" });
     }
 
-    const userId = session.user.id;
+    // 🔒 Resolve org (UUID → internal int)
+    const orgId = await resolveOrg(req, res);
+    if (!orgId) return; // resolveOrg already responded
 
-    // 🔎 Org-scoped role lookup
+    // 🎯 Fetch org-scoped role
     const rows = await sql`
       SELECT role
       FROM org_members
       WHERE org_id = ${orgId}
-        AND user_id = ${userId}
+        AND user_id = ${session.user.id}
       LIMIT 1;
     `;
 
-    if (!rows || rows.length === 0) {
-      return res.status(200).json({ ok: true, role: "viewer" });
-    }
+    const role = rows[0]?.role || "viewer";
 
     return res.status(200).json({
       ok: true,
-      role: rows[0].role || "viewer",
+      role,
     });
   } catch (err) {
-    console.error("[orgs/role] error:", err);
-    // 🔥 Never break UI permissions
-    return res.status(200).json({ ok: true, role: "viewer" });
+    console.error("[ORG ROLE ERROR]", err);
+    return res.status(500).json({ ok: false, error: err.message });
   }
 }
