@@ -1,5 +1,4 @@
-// context/OrgContext.js
-import { createContext, useContext, useEffect, useState } from "react";
+import { createContext, useContext, useEffect, useRef, useState } from "react";
 import { supabase } from "../lib/supabaseClient";
 
 const OrgContext = createContext(null);
@@ -9,12 +8,20 @@ export function OrgProvider({ children }) {
   const [activeOrg, setActiveOrg] = useState(null);
   const [loading, setLoading] = useState(true);
 
+  // 🔒 prevents re-running + wiping state
+  const loadedOnce = useRef(false);
+
   useEffect(() => {
-    let cancelled = false;
+    if (loadedOnce.current) return;
+    loadedOnce.current = true;
 
     async function loadOrgs() {
       try {
-        const { data: sessionData } = await supabase.auth.getSession();
+        const { data: sessionData, error: sessionErr } =
+          await supabase.auth.getSession();
+
+        if (sessionErr) throw sessionErr;
+
         const user = sessionData?.session?.user;
         if (!user) return;
 
@@ -39,22 +46,20 @@ export function OrgProvider({ children }) {
             role: r.role,
           }));
 
-        if (!cancelled) {
-          setOrgs(mapped);
+        setOrgs(mapped);
 
-          if (!activeOrg && mapped.length > 0) {
-            setActiveOrg(mapped[0]);
-          }
+        // ✅ FORCE an active org if missing
+        if (!activeOrg && mapped.length > 0) {
+          setActiveOrg(mapped[0]);
         }
       } catch (err) {
-        console.error("[OrgContext] load error:", err);
+        console.error("[OrgContext] FAILED:", err);
       } finally {
-        if (!cancelled) setLoading(false);
+        setLoading(false);
       }
     }
 
     loadOrgs();
-    return () => (cancelled = true);
   }, []);
 
   return (
