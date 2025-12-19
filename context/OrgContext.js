@@ -6,7 +6,7 @@ const OrgContext = createContext(null);
 
 export function OrgProvider({ children }) {
   const [orgs, setOrgs] = useState([]);
-  const [activeOrgId, setActiveOrgId] = useState(null);
+  const [activeOrgId, setActiveOrgId] = useState(null); // numeric (internal)
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -39,10 +39,12 @@ export function OrgProvider({ children }) {
 
         if (cancelled) return;
 
-        setOrgs(json.orgs || []);
+        const loadedOrgs = json.orgs || [];
+        setOrgs(loadedOrgs);
 
-        if (!activeOrgId && json.orgs?.length > 0) {
-          setActiveOrgId(json.orgs[0].id);
+        // Default org selection (numeric ID)
+        if (!activeOrgId && loadedOrgs.length > 0) {
+          setActiveOrgId(loadedOrgs[0].id);
         }
       } catch (err) {
         console.error("[OrgContext] load error:", err);
@@ -61,12 +63,28 @@ export function OrgProvider({ children }) {
     };
   }, []);
 
+  // 🔑 Derived canonical org (safe, no extra renders)
+  const activeOrg =
+    orgs.find((o) => o.id === activeOrgId) || null;
+
+  const activeOrgExternalId =
+    activeOrg?.external_uuid || null;
+
   return (
     <OrgContext.Provider
       value={{
+        // collections
         orgs,
-        activeOrgId,
+
+        // active org (both forms)
+        activeOrg,
+        activeOrgId,               // number (internal)
+        activeOrgExternalId,        // UUID (CANONICAL)
+
+        // setters
         setActiveOrgId,
+
+        // state
         loading,
       }}
     >
@@ -76,5 +94,9 @@ export function OrgProvider({ children }) {
 }
 
 export function useOrg() {
-  return useContext(OrgContext);
+  const ctx = useContext(OrgContext);
+  if (!ctx) {
+    throw new Error("useOrg must be used within OrgProvider");
+  }
+  return ctx;
 }
