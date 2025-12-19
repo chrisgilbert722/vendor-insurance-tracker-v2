@@ -1,4 +1,5 @@
-// components/Sidebar.js — STABLE V16
+// components/Sidebar.js — Tactical Neon Rail V17 (STABLE + ONBOARDING)
+
 import React from "react";
 import Link from "next/link";
 
@@ -17,20 +18,38 @@ export default function Sidebar({ pathname }) {
         borderRight: "1px solid rgba(56,189,248,0.25)",
       }}
     >
-      <div style={{ marginBottom: 28, fontSize: 28 }}>⚡</div>
+      {/* LOGO */}
+      <div style={{ marginBottom: 26, fontSize: 28 }}>⚡</div>
 
+      {/* CORE */}
       <RailLink href="/dashboard" label="Dashboard" icon="📊" />
       <RailLink href="/vendors" label="Vendors" icon="👥" />
       <RailLink href="/documents" label="Docs" icon="🗂️" />
       <RailLink href="/upload-coi" label="Upload" icon="📄" />
+
+      {/* ADMIN */}
       <RailLink href="/admin/alerts" label="Alerts" icon="🔔" />
       <RailLink href="/admin/audit-log" label="Audit" icon="🧾" />
       <RailLink href="/admin/organization" label="Roles" icon="👤" />
       <RailLink href="/admin/requirements-v5" label="Rules" icon="🧠" />
       <RailLink href="/admin/renewals" label="Exec AI" icon="🏆" />
       <RailLink href="/admin/security/sso" label="SSO" icon="🔐" />
-      <RailLink href="/dashboard?tutorial=1" label="Tutorial" icon="🎯" />
 
+      {/* ONBOARDING — ALWAYS AVAILABLE */}
+      <RailLink
+        href="/onboarding/ai-wizard"
+        label="Onboard"
+        icon="🧭"
+      />
+
+      {/* TUTORIAL */}
+      <RailLink
+        href="/dashboard?tutorial=1"
+        label="Tutorial"
+        icon="🎯"
+      />
+
+      {/* LOGOUT */}
       <div style={{ marginTop: "auto" }}>
         <RailLink href="/auth/login" label="Logout" icon="🚪" />
       </div>
