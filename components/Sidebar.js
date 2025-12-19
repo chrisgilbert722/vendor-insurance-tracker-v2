@@ -1,29 +1,35 @@
-// components/Sidebar.js
-import React, { useEffect, useState } from "react";
+// components/Sidebar.js — STABLE V16
+import React from "react";
 import Link from "next/link";
-import { useOrg } from "../context/OrgContext";
 
 export default function Sidebar({ pathname }) {
-  const { activeOrgId, loading } = useOrg();
-
-  // 👇 show disabled shell while org loads
-  const disabled = loading || !activeOrgId;
-
   return (
-    <div style={rail(disabled)}>
-      <div style={logo}>⚡</div>
+    <div
+      style={{
+        width: 88,
+        minHeight: "100vh",
+        display: "flex",
+        flexDirection: "column",
+        alignItems: "center",
+        padding: "22px 0",
+        background:
+          "linear-gradient(180deg, rgba(15,23,42,0.98), rgba(2,6,23,0.98))",
+        borderRight: "1px solid rgba(56,189,248,0.25)",
+      }}
+    >
+      <div style={{ marginBottom: 28, fontSize: 28 }}>⚡</div>
 
-      <RailLink href="/dashboard" label="Dashboard" icon="📊" disabled={disabled} />
-      <RailLink href="/vendors" label="Vendors" icon="👥" disabled={disabled} />
-      <RailLink href="/documents" label="Docs" icon="🗂️" disabled={disabled} />
-      <RailLink href="/upload-coi" label="Upload" icon="📄" disabled={disabled} />
-
-      <RailLink href="/admin/alerts" label="Alerts" icon="🔔" disabled={disabled} />
-      <RailLink href="/admin/audit-log" label="Audit" icon="🧾" disabled={disabled} />
-      <RailLink href="/admin/organization" label="Roles" icon="👤" disabled={disabled} />
-      <RailLink href="/admin/requirements-v5" label="Rules" icon="🧠" disabled={disabled} />
-      <RailLink href="/admin/renewals" label="Exec AI" icon="🏆" disabled={disabled} />
-      <RailLink href="/admin/security/sso" label="SSO" icon="🔐" disabled={disabled} />
+      <RailLink href="/dashboard" label="Dashboard" icon="📊" />
+      <RailLink href="/vendors" label="Vendors" icon="👥" />
+      <RailLink href="/documents" label="Docs" icon="🗂️" />
+      <RailLink href="/upload-coi" label="Upload" icon="📄" />
+      <RailLink href="/admin/alerts" label="Alerts" icon="🔔" />
+      <RailLink href="/admin/audit-log" label="Audit" icon="🧾" />
+      <RailLink href="/admin/organization" label="Roles" icon="👤" />
+      <RailLink href="/admin/requirements-v5" label="Rules" icon="🧠" />
+      <RailLink href="/admin/renewals" label="Exec AI" icon="🏆" />
+      <RailLink href="/admin/security/sso" label="SSO" icon="🔐" />
+      <RailLink href="/dashboard?tutorial=1" label="Tutorial" icon="🎯" />
 
       <div style={{ marginTop: "auto" }}>
         <RailLink href="/auth/login" label="Logout" icon="🚪" />
@@ -32,40 +38,27 @@ export default function Sidebar({ pathname }) {
   );
 }
 
-function RailLink({ href, label, icon, disabled }) {
+function RailLink({ href, label, icon }) {
   return (
-    <Link href={disabled ? "#" : href}>
+    <Link href={href}>
       <a
         style={{
+          width: "100%",
           padding: "14px 0",
-          textAlign: "center",
-          color: disabled ? "#334155" : "#e5e7eb",
-          pointerEvents: disabled ? "none" : "auto",
-          opacity: disabled ? 0.4 : 1,
+          display: "flex",
+          flexDirection: "column",
+          alignItems: "center",
           textDecoration: "none",
+          marginBottom: 6,
+          color: "#cbd5f5",
           fontSize: 11,
+          fontWeight: 700,
+          textTransform: "uppercase",
         }}
       >
-        <div style={{ fontSize: 20 }}>{icon}</div>
-        {label}
+        <div style={{ fontSize: 20, marginBottom: 4 }}>{icon}</div>
+        <span>{label}</span>
       </a>
     </Link>
   );
 }
-
-const rail = (disabled) => ({
-  width: 82,
-  minHeight: "100vh",
-  display: "flex",
-  flexDirection: "column",
-  alignItems: "center",
-  background: "rgba(15,23,42,0.98)",
-  borderRight: "1px solid rgba(56,189,248,0.25)",
-  opacity: disabled ? 0.85 : 1,
-});
-
-const logo = {
-  marginBottom: 24,
-  fontSize: 26,
-  color: "#38bdf8",
-};
