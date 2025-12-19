@@ -1,9 +1,24 @@
 // pages/api/admin/sso/get.js
 import { Client } from "pg";
+import { getUserFromRequest } from "../../../../lib/auth";
 
 export default async function handler(req, res) {
   if (req.method !== "GET") {
     return res.status(405).json({ ok: false, error: "Method not allowed" });
+  }
+
+  // 🔐 AUTH — must be logged in
+  const user = await getUserFromRequest(req);
+  if (!user) {
+    return res.status(401).json({ ok: false, error: "Unauthorized" });
+  }
+
+  // 🔒 ADMIN ONLY
+  if (user.role !== "admin") {
+    return res.status(403).json({
+      ok: false,
+      error: "Admin access required",
+    });
   }
 
   const orgId = Number(req.query.orgId);
@@ -38,7 +53,10 @@ export default async function handler(req, res) {
 
     const org = r.rows[0];
     if (!org) {
-      return res.status(404).json({ ok: false, error: "Organization not found" });
+      return res.status(404).json({
+        ok: false,
+        error: "Organization not found",
+      });
     }
 
     const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || "";
@@ -53,8 +71,13 @@ export default async function handler(req, res) {
     });
   } catch (err) {
     console.error("[SSO GET ERROR]", err);
-    return res.status(500).json({ ok: false, error: err.message });
+    return res.status(500).json({
+      ok: false,
+      error: "Internal server error",
+    });
   } finally {
-    await client.end();
+    try {
+      await client.end();
+    } catch (_) {}
   }
 }
