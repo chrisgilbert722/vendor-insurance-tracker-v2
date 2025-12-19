@@ -1,4 +1,3 @@
-// context/OrgContext.js
 import { createContext, useContext, useEffect, useState } from "react";
 import { supabase } from "../lib/supabaseClient";
 
@@ -6,7 +5,7 @@ const OrgContext = createContext(null);
 
 export function OrgProvider({ children }) {
   const [orgs, setOrgs] = useState([]);
-  const [activeOrg, setActiveOrg] = useState(null);
+  const [activeOrgId, setActiveOrgId] = useState(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -14,10 +13,18 @@ export function OrgProvider({ children }) {
 
     async function loadOrgs() {
       try {
+        setLoading(true);
+
         const { data: sessionData } = await supabase.auth.getSession();
         const user = sessionData?.session?.user;
-        if (!user) return;
 
+        if (!user) {
+          setOrgs([]);
+          setActiveOrgId(null);
+          return;
+        }
+
+        // ✅ CORRECT TABLE + JOIN
         const { data, error } = await supabase
           .from("organization_members")
           .select(`
@@ -32,35 +39,41 @@ export function OrgProvider({ children }) {
 
         if (error) throw error;
 
-        const resolved = (data || [])
-          .map(r => r.organizations)
+        const resolvedOrgs = (data || [])
+          .map((r) => r.organizations)
           .filter(Boolean);
 
         if (!cancelled) {
-          setOrgs(resolved);
+          setOrgs(resolvedOrgs);
 
-          if (!activeOrg && resolved.length > 0) {
-            setActiveOrg(resolved[0]);
+          if (!activeOrgId && resolvedOrgs.length > 0) {
+            setActiveOrgId(resolvedOrgs[0].id);
           }
         }
       } catch (err) {
         console.error("[OrgContext] load error:", err);
+        if (!cancelled) {
+          setOrgs([]);
+          setActiveOrgId(null);
+        }
       } finally {
         if (!cancelled) setLoading(false);
       }
     }
 
     loadOrgs();
-    return () => (cancelled = true);
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   return (
     <OrgContext.Provider
       value={{
         orgs,
-        activeOrg,
-        setActiveOrg,
-        loadingOrgs: loading
+        activeOrgId,
+        setActiveOrgId,
+        loading,
       }}
     >
       {children}
