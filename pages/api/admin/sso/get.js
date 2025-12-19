@@ -3,12 +3,12 @@ import { Client } from "pg";
 
 export default async function handler(req, res) {
   if (req.method !== "GET") {
-    return res.status(405).json({ ok: false, error: "Method not allowed" });
+    return res.status(405).json({ ok: false });
   }
 
-  const orgId = Number(req.query.orgId);
-  if (!orgId) {
-    return res.status(400).json({ ok: false, error: "Invalid orgId" });
+  const orgExternalId = String(req.query.orgId || "").trim();
+  if (!orgExternalId) {
+    return res.status(400).json({ ok: false, error: "Missing orgId" });
   }
 
   const client = new Client({ connectionString: process.env.DATABASE_URL });
@@ -16,37 +16,39 @@ export default async function handler(req, res) {
   try {
     await client.connect();
 
-    const r = await client.query(
+    const { rows } = await client.query(
       `
       SELECT
         id,
         name,
         external_uuid,
-        allowed_domains,
         sso_provider,
         sso_enforced,
+        allowed_domains,
         azure_tenant_id,
         azure_client_id
       FROM organizations
-      WHERE id = $1
+      WHERE external_uuid = $1
       LIMIT 1
       `,
-      [orgId]
+      [orgExternalId]
     );
 
-    const org = r.rows[0];
-    if (!org) {
-      return res.status(404).json({ ok: false, error: "Organization not found" });
+    if (!rows.length) {
+      return res.status(404).json({ ok: false, error: "Org not found" });
     }
 
-    const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || "";
-    const callbackUrl = `${siteUrl}/auth/callback`;
-
-    res.status(200).json({ ok: true, org, callbackUrl });
-  } catch (err) {
-    console.error("[admin/sso/get]", err);
-    res.status(500).json({ ok: false, error: err.message });
+    const site = process.env.NEXT_PUBLIC_SITE_URL || "";
+    return res.json({
+      ok: true,
+      org: rows[0],
+      callbackUrl: site ? `${site}/auth/callback` : ""
+    });
+  } catch (e) {
+    console.error("[sso/get]", e);
+    res.status(500).json({ ok: false, error: e.message });
   } finally {
     await client.end();
   }
 }
+
