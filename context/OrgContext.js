@@ -6,7 +6,6 @@ const OrgContext = createContext(null);
 
 export function OrgProvider({ children }) {
   const [orgs, setOrgs] = useState([]);
-  const [activeOrgId, setActiveOrgId] = useState(null);
   const [activeOrg, setActiveOrg] = useState(null);
   const [loading, setLoading] = useState(true);
 
@@ -15,13 +14,10 @@ export function OrgProvider({ children }) {
 
     async function loadOrgs() {
       try {
-        setLoading(true);
-
         const { data: sessionData } = await supabase.auth.getSession();
         const user = sessionData?.session?.user;
         if (!user) return;
 
-        // 🔑 Load org membership + org metadata
         const { data, error } = await supabase
           .from("organization_members")
           .select(`
@@ -36,18 +32,16 @@ export function OrgProvider({ children }) {
 
         if (error) throw error;
 
-        const resolvedOrgs = (data || [])
-          .map((r) => r.organizations)
+        const resolved = (data || [])
+          .map(r => r.organizations)
           .filter(Boolean);
 
-        if (cancelled) return;
+        if (!cancelled) {
+          setOrgs(resolved);
 
-        setOrgs(resolvedOrgs);
-
-        // Auto-select first org if none selected
-        if (!activeOrgId && resolvedOrgs.length > 0) {
-          setActiveOrgId(resolvedOrgs[0].id);
-          setActiveOrg(resolvedOrgs[0]);
+          if (!activeOrg && resolved.length > 0) {
+            setActiveOrg(resolved[0]);
+          }
         }
       } catch (err) {
         console.error("[OrgContext] load error:", err);
@@ -57,30 +51,16 @@ export function OrgProvider({ children }) {
     }
 
     loadOrgs();
-    return () => {
-      cancelled = true;
-    };
+    return () => (cancelled = true);
   }, []);
-
-  // Keep activeOrg in sync
-  useEffect(() => {
-    if (!activeOrgId) {
-      setActiveOrg(null);
-      return;
-    }
-
-    const found = orgs.find((o) => o.id === activeOrgId);
-    setActiveOrg(found || null);
-  }, [activeOrgId, orgs]);
 
   return (
     <OrgContext.Provider
       value={{
         orgs,
-        activeOrgId,
-        activeOrg,        // ✅ THIS FIXES EVERYTHING
-        setActiveOrgId,
-        loadingOrgs: loading,
+        activeOrg,
+        setActiveOrg,
+        loadingOrgs: loading
       }}
     >
       {children}
