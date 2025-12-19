@@ -1,4 +1,3 @@
-// context/OrgContext.js
 import { createContext, useContext, useEffect, useState } from "react";
 import { supabase } from "../lib/supabaseClient";
 
@@ -12,7 +11,7 @@ export function OrgProvider({ children }) {
   useEffect(() => {
     let cancelled = false;
 
-    async function loadOrgs() {
+    async function load() {
       try {
         setLoading(true);
 
@@ -20,37 +19,25 @@ export function OrgProvider({ children }) {
           data: { session },
         } = await supabase.auth.getSession();
 
-        const user = session?.user;
-        if (!user) {
-          if (!cancelled) setLoading(false);
+        if (!session?.access_token) {
+          setLoading(false);
           return;
         }
 
-        // ✅ CORRECT TABLE NAME
-        const { data, error } = await supabase
-          .from("organization_members")
-          .select(`
-            org_id,
-            organizations:org_id (
-              id,
-              name,
-              external_uuid
-            )
-          `)
-          .eq("user_id", user.id);
+        const res = await fetch("/api/orgs/mine", {
+          headers: {
+            Authorization: `Bearer ${session.access_token}`,
+          },
+        });
 
-        if (error) throw error;
-
-        const orgList = (data || [])
-          .map((row) => row.organizations)
-          .filter(Boolean);
+        const json = await res.json();
+        if (!json.ok) throw new Error("Failed to load orgs");
 
         if (!cancelled) {
-          setOrgs(orgList);
+          setOrgs(json.orgs);
 
-          // ✅ Auto-select first org
-          if (!activeOrgId && orgList.length > 0) {
-            setActiveOrgId(orgList[0].id);
+          if (!activeOrgId && json.orgs.length > 0) {
+            setActiveOrgId(json.orgs[0].id);
           }
         }
       } catch (err) {
@@ -60,7 +47,7 @@ export function OrgProvider({ children }) {
       }
     }
 
-    loadOrgs();
+    load();
     return () => {
       cancelled = true;
     };
