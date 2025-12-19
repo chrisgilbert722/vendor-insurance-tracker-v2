@@ -1,41 +1,27 @@
-// ============================================================
-// ENTERPRISE SSO SETTINGS (ORG-ADMIN)
-// - Client-only
-// - Uses numeric orgId (internal ID)
-// - API resolves external_uuid internally
-// ============================================================
-
 import { useEffect, useMemo, useState } from "react";
 import { useOrg } from "../../../context/OrgContext";
 import CommandShell from "../../../components/v5/CommandShell";
 import { V5 } from "../../../components/v5/v5Theme";
 
 export default function EnterpriseSSOPage() {
-  const { activeOrgId, loadingOrgs } = useOrg();
+  const { activeOrg, loading } = useOrg();
 
-  const [loading, setLoading] = useState(true);
-  const [saving, setSaving] = useState(false);
-  const [error, setError] = useState("");
-  const [okMsg, setOkMsg] = useState("");
+  const orgId = activeOrg?.id;
 
-  const [model, setModel] = useState({
-    orgName: "",
-    externalUuid: "",
-    ssoProvider: "none",
-    ssoEnforced: false,
-    allowedDomains: [],
-    azureTenantId: "",
-    azureClientId: "",
-    azureClientSecret: "",
-    callbackUrl: "",
+  const [state, setState] = useState({
+    loading: true,
+    error: "",
+    ok: "",
+    model: null,
   });
 
   useEffect(() => {
-    if (loadingOrgs) return;
-
-    if (!activeOrgId) {
-      setLoading(false);
-      setError("No organization selected.");
+    if (!orgId) {
+      setState((s) => ({
+        ...s,
+        loading: false,
+        error: "No organization selected.",
+      }));
       return;
     }
 
@@ -43,165 +29,62 @@ export default function EnterpriseSSOPage() {
 
     async function load() {
       try {
-        setLoading(true);
-        setError("");
-        setOkMsg("");
+        const res = await fetch(`/api/admin/sso/get?orgId=${orgId}`);
+        const json = await res.json();
 
-        const res = await fetch(
-          `/api/admin/sso/get?orgId=${activeOrgId}`
-        );
-
-        const json = await res.json().catch(() => ({}));
-        if (!json?.ok) {
-          throw new Error(json?.error || "Failed to load SSO settings");
-        }
+        if (!json.ok) throw new Error(json.error);
 
         if (!alive) return;
 
-        if (json.missingExternalUuid) {
-          setError("Organization is missing an external UUID.");
-        }
-
-        setModel({
-          orgName: json.org?.name || "",
-          externalUuid: json.org?.external_uuid || "",
-          ssoProvider: json.org?.sso_provider || "none",
-          ssoEnforced: !!json.org?.sso_enforced,
-          allowedDomains: Array.isArray(json.org?.allowed_domains)
-            ? json.org.allowed_domains
-            : [],
-          azureTenantId: json.org?.azure_tenant_id || "",
-          azureClientId: json.org?.azure_client_id || "",
-          azureClientSecret: "",
-          callbackUrl: json.callbackUrl || "",
+        setState({
+          loading: false,
+          error: "",
+          ok: "",
+          model: {
+            ...json.org,
+            callbackUrl: json.callbackUrl,
+          },
         });
       } catch (e) {
-        if (!alive) return;
-        setError(e?.message || "Failed to load");
-      } finally {
-        if (alive) setLoading(false);
+        if (alive) {
+          setState((s) => ({
+            ...s,
+            loading: false,
+            error: e.message,
+          }));
+        }
       }
     }
 
     load();
-    return () => {
-      alive = false;
-    };
-  }, [activeOrgId, loadingOrgs]);
+    return () => (alive = false);
+  }, [orgId]);
 
   const status = useMemo(() => {
-    if (loading) return { label: "SYNCING", color: V5.blue };
-    if (error) return { label: "DEGRADED", color: V5.red };
-    if (model.ssoEnforced) return { label: "ENFORCED", color: V5.red };
-    if (model.ssoProvider !== "none")
-      return { label: "CONFIGURED", color: V5.green };
-    return { label: "DISABLED", color: V5.soft };
-  }, [loading, error, model.ssoEnforced, model.ssoProvider]);
-
-  async function save() {
-    if (!activeOrgId) return;
-
-    setSaving(true);
-    setError("");
-    setOkMsg("");
-
-    try {
-      const res = await fetch("/api/admin/sso/update", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          orgId: activeOrgId,
-          ssoProvider: model.ssoProvider,
-          azureTenantId: model.azureTenantId,
-          azureClientId: model.azureClientId,
-          azureClientSecret: model.azureClientSecret || null,
-          allowedDomains: model.allowedDomains,
-        }),
-      });
-
-      const json = await res.json().catch(() => ({}));
-      if (!json?.ok) throw new Error(json?.error || "Save failed");
-
-      setOkMsg("Saved SSO settings.");
-      setModel((p) => ({ ...p, azureClientSecret: "" }));
-    } catch (e) {
-      setError(e?.message || "Save failed");
-    } finally {
-      setSaving(false);
-    }
-  }
-
-  async function setEnforced(next) {
-    if (!activeOrgId) return;
-
-    setSaving(true);
-    setError("");
-    setOkMsg("");
-
-    try {
-      const res = await fetch("/api/admin/sso/enforce", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          orgId: activeOrgId,
-          enforce: !!next,
-        }),
-      });
-
-      const json = await res.json().catch(() => ({}));
-      if (!json?.ok)
-        throw new Error(json?.error || "Failed to update enforcement");
-
-      setModel((p) => ({ ...p, ssoEnforced: !!next }));
-      setOkMsg(
-        next ? "SSO enforcement enabled." : "SSO enforcement disabled."
-      );
-    } catch (e) {
-      setError(e?.message || "Failed updating enforcement");
-    } finally {
-      setSaving(false);
-    }
-  }
+    if (state.loading) return { label: "SYNCING", color: V5.blue };
+    if (state.error) return { label: "DEGRADED", color: V5.red };
+    return { label: "READY", color: V5.green };
+  }, [state]);
 
   return (
     <CommandShell
       tag="ENTERPRISE • SECURITY"
       title="Enterprise SSO"
-      subtitle="Configure Azure AD / Entra ID for this organization."
+      subtitle="Azure AD / Entra ID configuration"
       status={status.label}
       statusColor={status.color}
     >
-      {loading && <div style={{ color: V5.soft }}>Loading SSO settings…</div>}
+      {state.loading && <div>Loading…</div>}
 
-      {!loading && error && (
-        <div
-          style={{
-            padding: 16,
-            borderRadius: 18,
-            background: "rgba(127,29,29,0.85)",
-            border: "1px solid rgba(248,113,113,0.9)",
-            color: "#fecaca",
-            fontSize: 14,
-            marginBottom: 12,
-          }}
-        >
-          {error}
-        </div>
+      {state.error && (
+        <div style={{ color: "#fecaca", padding: 16 }}>{state.error}</div>
       )}
 
-      {!loading && okMsg && (
-        <div
-          style={{
-            padding: 14,
-            borderRadius: 18,
-            background: "rgba(16,185,129,0.10)",
-            border: "1px solid rgba(16,185,129,0.35)",
-            color: "#bbf7d0",
-            fontSize: 14,
-            marginBottom: 12,
-          }}
-        >
-          {okMsg}
+      {state.model && (
+        <div style={{ color: "#e5e7eb" }}>
+          <div><b>Organization:</b> {state.model.name}</div>
+          <div><b>External UUID:</b> {state.model.external_uuid}</div>
+          <div><b>Callback URL:</b> {state.model.callbackUrl}</div>
         </div>
       )}
     </CommandShell>
