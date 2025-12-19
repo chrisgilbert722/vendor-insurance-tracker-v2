@@ -1,9 +1,8 @@
-// pages/api/admin/sso/get.js
 import { Client } from "pg";
 
 export default async function handler(req, res) {
   if (req.method !== "GET") {
-    return res.status(405).json({ ok: false });
+    return res.status(405).json({ ok: false, error: "Method not allowed" });
   }
 
   const orgExternalId = String(req.query.orgId || "").trim();
@@ -11,7 +10,9 @@ export default async function handler(req, res) {
     return res.status(400).json({ ok: false, error: "Missing orgId" });
   }
 
-  const client = new Client({ connectionString: process.env.DATABASE_URL });
+  const client = new Client({
+    connectionString: process.env.DATABASE_URL,
+  });
 
   try {
     await client.connect();
@@ -22,9 +23,9 @@ export default async function handler(req, res) {
         id,
         name,
         external_uuid,
+        allowed_domains,
         sso_provider,
         sso_enforced,
-        allowed_domains,
         azure_tenant_id,
         azure_client_id
       FROM organizations
@@ -35,18 +36,20 @@ export default async function handler(req, res) {
     );
 
     if (!rows.length) {
-      return res.status(404).json({ ok: false, error: "Org not found" });
+      return res.status(404).json({ ok: false, error: "Organization not found" });
     }
 
-    const site = process.env.NEXT_PUBLIC_SITE_URL || "";
-    return res.json({
+    const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || "";
+    const callbackUrl = siteUrl ? `${siteUrl}/auth/callback` : "";
+
+    return res.status(200).json({
       ok: true,
       org: rows[0],
-      callbackUrl: site ? `${site}/auth/callback` : ""
+      callbackUrl,
     });
-  } catch (e) {
-    console.error("[sso/get]", e);
-    res.status(500).json({ ok: false, error: e.message });
+  } catch (err) {
+    console.error("[SSO GET ERROR]", err);
+    return res.status(500).json({ ok: false, error: err.message });
   } finally {
     await client.end();
   }
