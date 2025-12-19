@@ -3,7 +3,7 @@ import { Client } from "pg";
 
 export default async function handler(req, res) {
   if (req.method !== "GET") {
-    return res.status(405).json({ ok: false });
+    return res.status(405).json({ ok: false, error: "Method not allowed" });
   }
 
   const orgId = Number(req.query.orgId);
@@ -11,12 +11,14 @@ export default async function handler(req, res) {
     return res.status(400).json({ ok: false, error: "Invalid orgId" });
   }
 
-  const client = new Client({ connectionString: process.env.DATABASE_URL });
+  const client = new Client({
+    connectionString: process.env.DATABASE_URL,
+  });
 
   try {
     await client.connect();
 
-    const r = await client.query(
+    const result = await client.query(
       `
       SELECT
         id,
@@ -34,26 +36,27 @@ export default async function handler(req, res) {
       [orgId]
     );
 
-    if (!r.rows[0]) {
-      return res.status(404).json({ ok: false, error: "Org not found" });
+    const org = result.rows[0];
+    if (!org) {
+      return res.status(404).json({ ok: false, error: "Organization not found" });
     }
 
     const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || "";
+    const callbackUrl = siteUrl
+      ? `${siteUrl}/auth/callback`
+      : "";
 
-    return res.json({
+    return res.status(200).json({
       ok: true,
-      org: r.rows[0],
-      callbackUrl: `${siteUrl}/auth/callback`,
+      org,
+      callbackUrl,
     });
-  } catch (e) {
-    console.error("[sso/get]", e);
-    res.status(500).json({ ok: false, error: e.message });
+  } catch (err) {
+    console.error("[admin/sso/get]", err);
+    return res.status(500).json({ ok: false, error: err.message });
   } finally {
-    await client.end();
+    try {
+      await client.end();
+    } catch (_) {}
   }
-}
-
-    org,
-    callbackUrl,
-  });
 }
