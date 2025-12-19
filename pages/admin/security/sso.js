@@ -30,12 +30,13 @@ export default function EnterpriseSSOPage() {
     callbackUrl: "",
   });
 
-  // ===============================
-  // LOAD SSO SETTINGS
-  // ===============================
+  // ============================================================
+  // LOAD SSO SETTINGS (NUMERIC ORG ID)
+  // ============================================================
   useEffect(() => {
     if (loading) return;
 
+    // 🚨 HARD GUARD — prevents sidebar + SSO race condition
     if (!activeOrgId) {
       setLoadingPage(false);
       setError("No organization selected.");
@@ -51,24 +52,28 @@ export default function EnterpriseSSOPage() {
         setOkMsg("");
 
         const res = await fetch(
-          `/api/admin/sso/get?orgId=${activeOrgId}`
+          `/api/admin/sso/get?orgId=${encodeURIComponent(activeOrgId)}`
         );
 
         const json = await res.json();
-        if (!json.ok) throw new Error(json.error || "Failed to load SSO");
+        if (!json?.ok) {
+          throw new Error(json?.error || "Failed to load SSO settings");
+        }
 
         if (!alive) return;
 
         setModel({
-          orgName: json.org.name,
-          externalUuid: json.org.external_uuid || "",
-          ssoProvider: json.org.sso_provider || "none",
-          ssoEnforced: !!json.org.sso_enforced,
-          allowedDomains: json.org.allowed_domains || [],
-          azureTenantId: json.org.azure_tenant_id || "",
-          azureClientId: json.org.azure_client_id || "",
+          orgName: json.org?.name || "",
+          externalUuid: json.org?.external_uuid || "",
+          ssoProvider: json.org?.sso_provider || "none",
+          ssoEnforced: !!json.org?.sso_enforced,
+          allowedDomains: Array.isArray(json.org?.allowed_domains)
+            ? json.org.allowed_domains
+            : [],
+          azureTenantId: json.org?.azure_tenant_id || "",
+          azureClientId: json.org?.azure_client_id || "",
           azureClientSecret: "",
-          callbackUrl: json.callbackUrl,
+          callbackUrl: json.callbackUrl || "",
         });
       } catch (e) {
         if (alive) setError(e.message);
@@ -78,9 +83,14 @@ export default function EnterpriseSSOPage() {
     }
 
     load();
-    return () => (alive = false);
+    return () => {
+      alive = false;
+    };
   }, [activeOrgId, loading]);
 
+  // ============================================================
+  // STATUS BADGE
+  // ============================================================
   const status = useMemo(() => {
     if (loadingPage) return { label: "SYNCING", color: V5.blue };
     if (error) return { label: "DEGRADED", color: V5.red };
@@ -90,10 +100,12 @@ export default function EnterpriseSSOPage() {
     return { label: "DISABLED", color: V5.soft };
   }, [loadingPage, error, model]);
 
-  // ===============================
+  // ============================================================
   // SAVE
-  // ===============================
+  // ============================================================
   async function save() {
+    if (!activeOrgId) return;
+
     setSaving(true);
     setError("");
     setOkMsg("");
@@ -113,7 +125,9 @@ export default function EnterpriseSSOPage() {
       });
 
       const json = await res.json();
-      if (!json.ok) throw new Error(json.error || "Save failed");
+      if (!json?.ok) {
+        throw new Error(json?.error || "Save failed");
+      }
 
       setOkMsg("SSO settings saved.");
       setModel((p) => ({ ...p, azureClientSecret: "" }));
@@ -124,9 +138,9 @@ export default function EnterpriseSSOPage() {
     }
   }
 
-  // ===============================
+  // ============================================================
   // UI
-  // ===============================
+  // ============================================================
   return (
     <CommandShell
       tag="ENTERPRISE • SECURITY"
@@ -135,29 +149,28 @@ export default function EnterpriseSSOPage() {
       status={status.label}
       statusColor={status.color}
     >
-      {loadingPage && <div style={{ color: V5.soft }}>Loading…</div>}
+      {loadingPage && <div style={{ color: V5.soft }}>Loading SSO settings…</div>}
 
-      {!loadingPage && error && (
-        <div style={errorBox}>{error}</div>
-      )}
+      {!loadingPage && error && <div style={errorBox}>{error}</div>}
 
-      {!loadingPage && okMsg && (
-        <div style={successBox}>{okMsg}</div>
-      )}
+      {!loadingPage && okMsg && <div style={successBox}>{okMsg}</div>}
 
       {!loadingPage && !error && (
         <div style={{ display: "grid", gap: 16 }}>
+          {/* ORG INFO */}
           <div style={panel}>
             <strong>{model.orgName}</strong>
-            <div style={{ fontSize: 12, color: V5.soft }}>
+            <div style={{ fontSize: 12, color: V5.soft, marginTop: 6 }}>
               External UUID: {model.externalUuid || "—"}
             </div>
-            <div style={{ fontSize: 12, marginTop: 8 }}>
-              Callback URL:
+
+            <div style={{ fontSize: 12, marginTop: 10, color: V5.soft }}>
+              Callback URL
             </div>
-            <div style={codeBox}>{model.callbackUrl}</div>
+            <div style={codeBox}>{model.callbackUrl || "—"}</div>
           </div>
 
+          {/* PROVIDER */}
           <div style={panel}>
             <Field label="SSO Provider">
               <select
@@ -192,18 +205,21 @@ export default function EnterpriseSSOPage() {
               />
             </Field>
 
-            <Field label="Azure Client Secret">
+            <Field label="Azure Client Secret (rotate)">
               <input
                 value={model.azureClientSecret}
                 onChange={(e) =>
-                  setModel((p) => ({ ...p, azureClientSecret: e.target.value }))
+                  setModel((p) => ({
+                    ...p,
+                    azureClientSecret: e.target.value,
+                  }))
                 }
                 style={inputStyle()}
               />
             </Field>
 
             <button onClick={save} disabled={saving} style={btnStyle()}>
-              {saving ? "Saving…" : "Save"}
+              {saving ? "Saving…" : "Save SSO Settings"}
             </button>
           </div>
         </div>
@@ -212,9 +228,9 @@ export default function EnterpriseSSOPage() {
   );
 }
 
-// ===============================
+// ============================================================
 // STYLES
-// ===============================
+// ============================================================
 const panel = {
   padding: 18,
   borderRadius: 22,
@@ -232,17 +248,18 @@ const inputStyle = () => ({
 });
 
 const btnStyle = () => ({
-  marginTop: 12,
+  marginTop: 14,
   padding: "10px 14px",
   borderRadius: 14,
   border: "1px solid rgba(56,189,248,0.35)",
   background: "rgba(2,6,23,0.55)",
   color: "#e5e7eb",
   fontWeight: 800,
+  cursor: "pointer",
 });
 
 const Field = ({ label, children }) => (
-  <div>
+  <div style={{ marginBottom: 12 }}>
     <div style={{ fontSize: 11, color: V5.soft, marginBottom: 6 }}>
       {label}
     </div>
