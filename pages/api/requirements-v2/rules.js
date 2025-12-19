@@ -1,11 +1,10 @@
+// pages/api/requirements-v2/rules.js
 import { sql } from "../../../lib/db";
 import { resolveOrg } from "../../../lib/resolveOrg";
 
 export const config = {
   api: {
-    bodyParser: {
-      sizeLimit: "1mb",
-    },
+    bodyParser: { sizeLimit: "1mb" },
   },
 };
 
@@ -13,24 +12,19 @@ export default async function handler(req, res) {
   try {
     const { method } = req;
 
-    // =========================================================
-    // 🔒 Resolve orgExternalId → internal numeric org_id
-    // =========================================================
+    // 🔒 Resolve orgExternalId -> internal numeric org_id
     const orgId = await resolveOrg(req, res);
-    if (!orgId) return;
+    if (!orgId) return; // resolveOrg already responded
 
     // =========================================================
-    // GET — list rules (optionally by group)
+    // GET — list rules (optional: groupId)
     // =========================================================
     if (method === "GET") {
-      const groupIdRaw = req.query?.groupId;
-      const groupId = groupIdRaw ? Number(groupIdRaw) : null;
+      const rawGroupId = req.query?.groupId;
+      const groupId = rawGroupId ? Number(rawGroupId) : null;
 
-      if (groupIdRaw && !Number.isInteger(groupId)) {
-        return res.status(400).json({
-          ok: false,
-          error: "Invalid groupId",
-        });
+      if (rawGroupId && !Number.isInteger(groupId)) {
+        return res.status(400).json({ ok: false, error: "Invalid groupId" });
       }
 
       const rows = await sql`
@@ -52,38 +46,27 @@ export default async function handler(req, res) {
         ORDER BY r.created_at ASC;
       `;
 
-      return res.status(200).json({
-        ok: true,
-        rules: rows || [],
-      });
+      return res.status(200).json({ ok: true, rules: rows || [] });
     }
 
     // =========================================================
     // POST — create rule
     // =========================================================
     if (method === "POST") {
-      const {
-        group_id,
-        name,
-        description,
-        severity,
-        logic,
-      } = req.body || {};
+      const body = req.body || {};
+      const groupId = Number(body.group_id);
 
-      const groupId = Number(group_id);
+      const name = body.name;
+      const description = body.description || null;
+      const severity = body.severity || "medium";
+      const logic = body.logic || {};
+      const isActive = body.is_active ?? true;
 
-      if (
-        !Number.isInteger(groupId) ||
-        !name ||
-        typeof name !== "string"
-      ) {
-        return res.status(400).json({
-          ok: false,
-          error: "Invalid rule input",
-        });
+      if (!Number.isInteger(groupId) || !name || typeof name !== "string") {
+        return res.status(400).json({ ok: false, error: "Invalid rule input" });
       }
 
-      // Ensure group belongs to org
+      // ✅ Ensure group belongs to this org
       const groupCheck = await sql`
         SELECT id
         FROM requirements_groups_v2
@@ -103,53 +86,32 @@ export default async function handler(req, res) {
         INSERT INTO requirements_rules_v2
           (group_id, name, description, severity, logic, is_active)
         VALUES
-          (
-            ${groupId},
-            ${name},
-            ${description || null},
-            ${severity || "medium"},
-            ${logic || {}},
-            TRUE
-          )
+          (${groupId}, ${name}, ${description}, ${severity}, ${logic}, ${isActive})
         RETURNING *;
       `;
 
-      return res.status(200).json({
-        ok: true,
-        rule: rows[0],
-      });
+      return res.status(200).json({ ok: true, rule: rows[0] });
     }
 
     // =========================================================
-    // PUT — update rule
+    // PUT — update rule (org-scoped)
     // =========================================================
     if (method === "PUT") {
-      const {
-        id,
-        name,
-        description,
-        severity,
-        logic,
-        is_active,
-      } = req.body || {};
-
-      const ruleId = Number(id);
+      const body = req.body || {};
+      const ruleId = Number(body.id);
 
       if (!Number.isInteger(ruleId)) {
-        return res.status(400).json({
-          ok: false,
-          error: "Invalid rule id",
-        });
+        return res.status(400).json({ ok: false, error: "Invalid rule id" });
       }
 
       const rows = await sql`
         UPDATE requirements_rules_v2 r
         SET
-          name        = COALESCE(${name}, r.name),
-          description = COALESCE(${description}, r.description),
-          severity    = COALESCE(${severity}, r.severity),
-          logic       = COALESCE(${logic}, r.logic),
-          is_active   = COALESCE(${is_active}, r.is_active),
+          name        = COALESCE(${body.name}, r.name),
+          description = COALESCE(${body.description}, r.description),
+          severity    = COALESCE(${body.severity}, r.severity),
+          logic       = COALESCE(${body.logic}, r.logic),
+          is_active   = COALESCE(${body.is_active}, r.is_active),
           updated_at  = NOW()
         FROM requirements_groups_v2 g
         WHERE r.id = ${ruleId}
@@ -158,24 +120,18 @@ export default async function handler(req, res) {
         RETURNING r.*;
       `;
 
-      return res.status(200).json({
-        ok: true,
-        rule: rows[0],
-      });
+      return res.status(200).json({ ok: true, rule: rows[0] || null });
     }
 
     // =========================================================
-    // DELETE — remove rule
+    // DELETE — remove rule (org-scoped)
     // =========================================================
     if (method === "DELETE") {
       const rawId = req.query?.id;
       const ruleId = Number(rawId);
 
       if (!Number.isInteger(ruleId)) {
-        return res.status(200).json({
-          ok: true,
-          deleted: false,
-        });
+        return res.status(200).json({ ok: true, deleted: false });
       }
 
       await sql`
@@ -186,25 +142,12 @@ export default async function handler(req, res) {
           AND g.org_id = ${orgId};
       `;
 
-      return res.status(200).json({
-        ok: true,
-        deleted: true,
-      });
+      return res.status(200).json({ ok: true, deleted: true });
     }
 
-    // =========================================================
-    // Unsupported method
-    // =========================================================
-    return res.status(405).json({
-      ok: false,
-      error: "Method not allowed",
-    });
-
+    return res.status(405).json({ ok: false, error: "Method not allowed" });
   } catch (err) {
     console.error("[requirements-v2/rules] ERROR:", err);
-    return res.status(500).json({
-      ok: false,
-      error: "Internal server error",
-    });
+    return res.status(500).json({ ok: false, error: "Internal server error" });
   }
 }
