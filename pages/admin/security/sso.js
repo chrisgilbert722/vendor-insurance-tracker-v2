@@ -1,70 +1,57 @@
-// pages/admin/security/sso.js
 import { useEffect, useState } from "react";
 import { useOrg } from "../../../context/OrgContext";
+import { useRole } from "../../../lib/useRole";
 import CommandShell from "../../../components/v5/CommandShell";
+import { V5 } from "../../../components/v5/v5Theme";
 
 export default function EnterpriseSSOPage() {
   const { activeOrgId, loading: orgLoading } = useOrg();
+  const { isAdmin, loading: roleLoading } = useRole();
 
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState("");
+  const [state, setState] = useState({
+    loading: true,
+    error: "",
+  });
 
   useEffect(() => {
-    let cancelled = false;
+    if (orgLoading || roleLoading) return;
 
-    async function loadSSO() {
-      // ⏳ Wait for org context to finish
-      if (orgLoading) return;
+    // 🔒 HARD ADMIN GATE
+    if (!isAdmin) {
+      setState({
+        loading: false,
+        error: "Admin access required to manage SSO.",
+      });
+      return;
+    }
 
-      // 🚫 No org selected
-      if (!activeOrgId) {
-        if (!cancelled) {
-          setLoading(false);
-          setError("No organization selected.");
-        }
-        return;
-      }
+    if (!activeOrgId) {
+      setState({
+        loading: false,
+        error: "No organization selected.",
+      });
+      return;
+    }
 
+    async function load() {
       try {
-        setLoading(true);
-        setError("");
-
         const res = await fetch(`/api/admin/sso/get?orgId=${activeOrgId}`);
-
-        if (!res.ok) {
-          const text = await res.text();
-          throw new Error(text || "Failed to load SSO settings");
-        }
-
         const json = await res.json();
-        if (!json?.ok) {
-          throw new Error(json?.error || "Failed to load SSO settings");
+
+        if (!json.ok) {
+          throw new Error(json.error || "Failed to load SSO settings");
         }
 
-        if (!cancelled) {
-          setLoading(false);
-          setError("");
-        }
-      } catch (err) {
-        if (!cancelled) {
-          setLoading(false);
-          setError(err.message || "SSO load failed");
-        }
+        setState({ loading: false, error: "" });
+      } catch (e) {
+        setState({ loading: false, error: e.message });
       }
     }
 
-    loadSSO();
+    load();
+  }, [activeOrgId, isAdmin, orgLoading, roleLoading]);
 
-    return () => {
-      cancelled = true;
-    };
-  }, [activeOrgId, orgLoading]);
-
-  const status = loading
-    ? "SYNCING"
-    : error
-    ? "DEGRADED"
-    : "READY";
+  const status = state.error ? "DEGRADED" : "READY";
 
   return (
     <CommandShell
@@ -72,17 +59,26 @@ export default function EnterpriseSSOPage() {
       title="Enterprise SSO"
       subtitle="Azure AD / Entra ID configuration"
       status={status}
+      statusColor={state.error ? V5.red : V5.green}
     >
-      {loading && <div>Loading SSO settings…</div>}
+      {state.loading && <div style={{ color: V5.soft }}>Loading…</div>}
 
-      {!loading && error && (
-        <div style={{ color: "#f87171", fontWeight: 600 }}>
-          {error}
+      {!state.loading && state.error && (
+        <div
+          style={{
+            padding: 16,
+            borderRadius: 16,
+            background: "rgba(127,29,29,0.85)",
+            border: "1px solid rgba(248,113,113,0.9)",
+            color: "#fecaca",
+          }}
+        >
+          {state.error}
         </div>
       )}
 
-      {!loading && !error && (
-        <div style={{ color: "#86efac", fontWeight: 600 }}>
+      {!state.loading && !state.error && (
+        <div style={{ color: "#bbf7d0", fontWeight: 700 }}>
           SSO configuration ready.
         </div>
       )}
