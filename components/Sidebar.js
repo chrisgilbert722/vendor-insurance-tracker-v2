@@ -1,24 +1,31 @@
-// components/Sidebar.js — Tactical Neon Rail V15 (ROLES FINAL)
+// components/Sidebar.js — Tactical Neon Rail V16 (ROLE-SAFE, ORG-STABLE)
 import React, { useEffect, useState } from "react";
 import Link from "next/link";
 import { useOrg } from "../context/OrgContext";
 
-export default function Sidebar({ pathname, isAdmin, isManager }) {
-  const { activeOrgId } = useOrg() || {};
+export default function Sidebar({ pathname }) {
+  const { activeOrg, loading } = useOrg() || {};
+
+  // 🔒 HARD FAILSAFE — never allow sidebar to collapse
+  const role = activeOrg?.role || "owner";
+  const isAdmin = role === "owner" || role === "admin";
+  const isManager = isAdmin || role === "manager";
+
+  const activeOrgId = activeOrg?.id || null;
 
   const [onboardingComplete, setOnboardingComplete] = useState(true);
   const [wizardProgress, setWizardProgress] = useState(0);
 
   // ================================================================
-  // FETCH ONBOARDING STATUS + PROGRESS
+  // FETCH ONBOARDING STATUS
   // ================================================================
   useEffect(() => {
-    async function fetchStatus() {
-      if (!activeOrgId) return;
+    if (!activeOrgId) return;
 
+    async function fetchStatus() {
       try {
         const res = await fetch(
-          `/api/onboarding/status?orgId=${encodeURIComponent(activeOrgId)}`
+          `/api/onboarding/status?orgId=${activeOrgId}`
         );
         const json = await res.json();
 
@@ -85,7 +92,7 @@ export default function Sidebar({ pathname, isAdmin, isManager }) {
       {/* LOGO */}
       <div style={{ marginBottom: 34, fontSize: 26, color: "#38bdf8" }}>⚡</div>
 
-      {/* CORE */}
+      {/* CORE — ALWAYS VISIBLE */}
       <RailLink
         href="/dashboard"
         label="Dashboard"
@@ -107,7 +114,7 @@ export default function Sidebar({ pathname, isAdmin, isManager }) {
         active={pathname.startsWith("/documents")}
       />
 
-      {(isAdmin || isManager) && (
+      {isManager && (
         <RailLink
           href="/upload-coi"
           label="Upload"
@@ -116,7 +123,7 @@ export default function Sidebar({ pathname, isAdmin, isManager }) {
         />
       )}
 
-      {/* ADMIN */}
+      {/* ADMIN / OWNER */}
       {isAdmin && (
         <>
           <RailLink
@@ -160,22 +167,21 @@ export default function Sidebar({ pathname, isAdmin, isManager }) {
             icon="✨"
             active={pathname.startsWith("/admin/ai-setup-center")}
           />
+
+          <RailLink
+            href="/onboarding/ai-wizard"
+            label="Onboard"
+            icon={
+              onboardingComplete
+                ? "🧭"
+                : <ProgressRing percent={wizardProgress} />
+            }
+            active={onboardingActive}
+          />
         </>
       )}
 
-      {/* ONBOARDING — ALWAYS VISIBLE FOR ADMINS */}
-      {isAdmin && (
-        <RailLink
-          href="/onboarding/ai-wizard"
-          label="Onboard"
-          icon={
-            onboardingComplete ? "🧭" : <ProgressRing percent={wizardProgress} />
-          }
-          active={onboardingActive}
-        />
-      )}
-
-      {/* TUTORIAL REPLAY */}
+      {/* TUTORIAL */}
       <RailLink
         href="/dashboard?tutorial=1"
         label="Tutorial"
