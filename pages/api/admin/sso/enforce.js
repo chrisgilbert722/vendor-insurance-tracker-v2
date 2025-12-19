@@ -6,26 +6,32 @@ export default async function handler(req, res) {
     return res.status(405).json({ ok: false, error: "Method not allowed" });
   }
 
-  const { orgId, enforce } = req.body || {};
-  const orgExternalId = String(orgId || "").trim();
+  const { orgId, enforce } = req.body;
 
-  if (!orgExternalId) {
-    return res.status(400).json({ ok: false, error: "Invalid orgId" });
+  if (!orgId || typeof enforce !== "boolean") {
+    return res.status(400).json({ ok: false, error: "Invalid request" });
   }
 
-  let client;
+  const client = new Client({
+    connectionString: process.env.DATABASE_URL,
+  });
+
   try {
-    client = new Client({ connectionString: process.env.DATABASE_URL });
     await client.connect();
 
+    // 🔒 Load org + SSO config
     const r = await client.query(
       `
-      SELECT sso_provider, azure_tenant_id, azure_client_id
+      SELECT
+        sso_provider,
+        azure_tenant_id,
+        azure_client_id,
+        azure_client_secret
       FROM organizations
-      WHERE external_uuid = $1
+      WHERE id = $1
       LIMIT 1
       `,
-      [orgExternalId]
+      [orgId]
     );
 
     const org = r.rows[0];
@@ -33,32 +39,40 @@ export default async function handler(req, res) {
       return res.status(404).json({ ok: false, error: "Organization not found" });
     }
 
+    // 🛑 HARD GUARD — prevent self-lockout
     if (enforce) {
-      if (org.sso_provider !== "azure") {
+      if (
+        org.sso_provider !== "azure" ||
+        !org.azure_tenant_id ||
+        !org.azure_client_id ||
+        !org.azure_client_secret
+      ) {
         return res.status(400).json({
           ok: false,
-          error: "Set SSO provider to Azure before enforcing.",
-        });
-      }
-
-      if (!org.azure_tenant_id || !org.azure_client_id) {
-        return res.status(400).json({
-          ok: false,
-          error: "Azure Tenant ID and Client ID are required before enforcing.",
+          error:
+            "Cannot enforce SSO until Azure Tenant ID, Client ID, and Client Secret are configured.",
         });
       }
     }
 
+    // ✅ Safe to update
     await client.query(
-      `UPDATE organizations SET sso_enforced = $2 WHERE external_uuid = $1`,
-      [orgExternalId, !!enforce]
+      `
+      UPDATE organizations
+      SET sso_enforced = $1
+      WHERE id = $2
+      `,
+      [enforce, orgId]
     );
 
-    return res.status(200).json({ ok: true });
+    return res.status(200).json({
+      ok: true,
+      enforced: enforce,
+    });
   } catch (err) {
-    console.error("[admin/sso/enforce] error:", err);
+    console.error("[SSO ENFORCE ERROR]", err);
     return res.status(500).json({ ok: false, error: err.message });
   } finally {
-    if (client) try { await client.end(); } catch (_) {}
+    await client.end();
   }
 }
