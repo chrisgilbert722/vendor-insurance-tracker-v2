@@ -1,4 +1,5 @@
-import { createContext, useContext, useEffect, useRef, useState } from "react";
+// context/OrgContext.js
+import { createContext, useContext, useEffect, useState } from "react";
 import { supabase } from "../lib/supabaseClient";
 
 const OrgContext = createContext(null);
@@ -8,20 +9,12 @@ export function OrgProvider({ children }) {
   const [activeOrg, setActiveOrg] = useState(null);
   const [loading, setLoading] = useState(true);
 
-  // 🔒 prevents re-running + wiping state
-  const loadedOnce = useRef(false);
-
   useEffect(() => {
-    if (loadedOnce.current) return;
-    loadedOnce.current = true;
+    let cancelled = false;
 
     async function loadOrgs() {
       try {
-        const { data: sessionData, error: sessionErr } =
-          await supabase.auth.getSession();
-
-        if (sessionErr) throw sessionErr;
-
+        const { data: sessionData } = await supabase.auth.getSession();
         const user = sessionData?.session?.user;
         if (!user) return;
 
@@ -39,27 +32,23 @@ export function OrgProvider({ children }) {
 
         if (error) throw error;
 
-        const mapped = (data || [])
-          .filter(r => r.organizations)
-          .map(r => ({
-            ...r.organizations,
-            role: r.role,
-          }));
+        const list = (data || [])
+          .map((r) => r.organizations)
+          .filter(Boolean);
 
-        setOrgs(mapped);
-
-        // ✅ FORCE an active org if missing
-        if (!activeOrg && mapped.length > 0) {
-          setActiveOrg(mapped[0]);
+        if (!cancelled) {
+          setOrgs(list);
+          setActiveOrg(list[0] || null);
         }
       } catch (err) {
-        console.error("[OrgContext] FAILED:", err);
+        console.error("[OrgContext] load error:", err);
       } finally {
-        setLoading(false);
+        if (!cancelled) setLoading(false);
       }
     }
 
     loadOrgs();
+    return () => (cancelled = true);
   }, []);
 
   return (
@@ -67,7 +56,7 @@ export function OrgProvider({ children }) {
       value={{
         orgs,
         activeOrg,
-        setActiveOrg,
+        activeOrgId: activeOrg?.id || null,
         loading,
       }}
     >
