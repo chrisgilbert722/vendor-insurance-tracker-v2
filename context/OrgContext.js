@@ -1,4 +1,4 @@
-// context/OrgContext.js — SINGLE SOURCE OF TRUTH (STABLE)
+// context/OrgContext.js — FINAL STABLE VERSION (SINGLE useOrg)
 
 import { createContext, useContext, useEffect, useState } from "react";
 import { supabase } from "../lib/supabaseClient";
@@ -35,7 +35,7 @@ export function OrgProvider({ children }) {
         if (!cancelled) {
           setOrgs(list);
           if (!activeOrg && list.length > 0) {
-            setActiveOrg(list[0]); // AUTO-SELECT FIRST ORG
+            setActiveOrg(list[0]); // auto-select first org
           }
         }
       } catch (err) {
@@ -63,11 +63,6 @@ export function OrgProvider({ children }) {
     </OrgContext.Provider>
   );
 }
-
-export function useOrg() {
-  return useContext(OrgContext);
-}
-
 
 export function useOrg() {
   return useContext(OrgContext);
