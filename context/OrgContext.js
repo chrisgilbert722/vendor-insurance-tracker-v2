@@ -14,20 +14,35 @@ export function OrgProvider({ children }) {
 
     async function loadOrgs() {
       try {
-        const { data: sessionData } = await supabase.auth.getSession();
-        const user = sessionData?.session?.user;
-        if (!user) return;
+        setLoading(true);
+
+        const {
+          data: { session },
+        } = await supabase.auth.getSession();
+
+        const user = session?.user;
+        if (!user) {
+          if (!cancelled) setLoading(false);
+          return;
+        }
 
         // ✅ CORRECT TABLE NAME
         const { data, error } = await supabase
           .from("organization_members")
-          .select("org_id, organizations:org_id (id, name, external_uuid)")
+          .select(`
+            org_id,
+            organizations:org_id (
+              id,
+              name,
+              external_uuid
+            )
+          `)
           .eq("user_id", user.id);
 
         if (error) throw error;
 
         const orgList = (data || [])
-          .map((r) => r.organizations)
+          .map((row) => row.organizations)
           .filter(Boolean);
 
         if (!cancelled) {
@@ -46,7 +61,9 @@ export function OrgProvider({ children }) {
     }
 
     loadOrgs();
-    return () => (cancelled = true);
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   return (
