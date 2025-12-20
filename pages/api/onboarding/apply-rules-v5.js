@@ -1,7 +1,12 @@
 // pages/api/onboarding/apply-rules-v5.js
-// Push AI-generated wizard rules into Rule Engine V5 (DB integration stub)
+// ============================================================
+// Apply AI-generated rules into Rule Engine V5
+// - UUID safe via resolveOrg
+// - Logs rules_applied activity
+// ============================================================
 
 import { sql } from "../../../lib/db";
+import { resolveOrg } from "../../../lib/resolveOrg";
 
 export const config = {
   api: {
@@ -17,37 +22,22 @@ export default async function handler(req, res) {
   }
 
   try {
-    const { orgId, groups } = req.body;
+    const { groups } = req.body;
 
-    if (!orgId) {
-      return res.status(400).json({ ok: false, error: "Missing orgId." });
-    }
     if (!Array.isArray(groups) || groups.length === 0) {
       return res
         .status(400)
         .json({ ok: false, error: "No rule groups provided." });
     }
 
-    // NOTE:
-    // This DB logic is a GENERIC EXAMPLE.
-    // You should adapt table name + columns to match your actual schema.
-    //
-    // Example table you might have or create:
-    //   engine_rules_v5(
-    //      id SERIAL PRIMARY KEY,
-    //      org_id UUID/INT,
-    //      group_label TEXT,
-    //      rule_title TEXT,
-    //      field_key TEXT,
-    //      condition TEXT,
-    //      value TEXT,
-    //      severity TEXT,
-    //      message TEXT,
-    //      metadata JSONB,
-    //      created_at TIMESTAMPTZ DEFAULT now()
-    //   )
+    // 🔑 Resolve external_uuid → INTERNAL org INT
+    const orgIdInt = await resolveOrg(req, res);
+    if (!orgIdInt) {
+      return res.status(200).json({ ok: true, skipped: true });
+    }
 
     const insertedRuleIds = [];
+    let ruleCount = 0;
 
     for (const group of groups) {
       const groupLabel = group.label || "Untitled Group";
@@ -60,8 +50,6 @@ export default async function handler(req, res) {
         const severity = rule.severity || "medium";
         const message = rule.message || rule.title || "Validation rule";
 
-        // Insert into your rules table
-        // Adjust "engine_rules_v5" + columns as needed
         const result = await sql`
           INSERT INTO engine_rules_v5 (
             org_id,
@@ -76,7 +64,7 @@ export default async function handler(req, res) {
             metadata
           )
           VALUES (
-            ${orgId},
+            ${orgIdInt},
             ${groupLabel},
             ${description},
             ${rule.title || null},
@@ -90,16 +78,32 @@ export default async function handler(req, res) {
           RETURNING id
         `;
 
-        if (result && result[0] && result[0].id) {
+        if (result?.[0]?.id) {
           insertedRuleIds.push(result[0].id);
+          ruleCount += 1;
         }
       }
     }
 
+    // ---------------- 🔥 AI ACTIVITY LOG ----------------
+    await sql`
+      INSERT INTO ai_activity_log (org_id, event_type, message, metadata)
+      VALUES (
+        ${orgIdInt},
+        'rules_applied',
+        'AI-applied compliance rules to rule engine',
+        ${JSON.stringify({
+          engine: "v5",
+          groupsApplied: groups.length,
+          rulesApplied: ruleCount,
+        })}
+      );
+    `;
+
     return res.status(200).json({
       ok: true,
       message: "Rules applied to Rule Engine V5.",
-      count: insertedRuleIds.length,
+      count: ruleCount,
       ruleIds: insertedRuleIds,
     });
   } catch (err) {
