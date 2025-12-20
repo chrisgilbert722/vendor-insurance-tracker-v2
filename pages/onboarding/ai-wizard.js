@@ -1,42 +1,35 @@
 // pages/onboarding/ai-wizard.js
-// AI Onboarding Wizard V5 — AUTOPILOT SHELL (UUID-CORRECT)
+// AI Onboarding Wizard V5 — AUTOPILOT SHELL (UUID-SAFE)
 
-import { useEffect, useState } from "react";
+import { useOrg } from "../../context/OrgContext";
 import AiWizardPanel from "../../components/onboarding/AiWizardPanel";
 
 export default function AiOnboardingWizardPage() {
-  const [orgUuid, setOrgUuid] = useState(null);
-  const [loading, setLoading] = useState(true);
+  const { activeOrgUuid, loading } = useOrg();
 
-  // 🔑 Fetch canonical org object (contains UUID)
-  useEffect(() => {
-    let mounted = true;
-
-    async function loadOrg() {
-      try {
-        const res = await fetch("/organization.json");
-        const json = await res.json();
-
-        if (mounted && json?.uuid) {
-          setOrgUuid(json.uuid);
-        }
-      } catch (_) {
-        // noop
-      } finally {
-        if (mounted) setLoading(false);
-      }
-    }
-
-    loadOrg();
-    return () => {
-      mounted = false;
-    };
-  }, []);
-
+  // Still loading org context
   if (loading) {
     return (
       <div style={{ padding: 40, color: "#9ca3af" }}>
         Loading organization…
+      </div>
+    );
+  }
+
+  // No org selected or UUID missing (should be rare now)
+  if (!activeOrgUuid) {
+    return (
+      <div
+        style={{
+          padding: 24,
+          borderRadius: 16,
+          background: "rgba(15,23,42,0.95)",
+          border: "1px solid rgba(239,68,68,0.6)",
+          color: "#fecaca",
+          margin: 40,
+        }}
+      >
+        Invalid organization context. Please re-select your organization.
       </div>
     );
   }
@@ -61,8 +54,8 @@ export default function AiOnboardingWizardPage() {
           boxShadow: "0 0 60px rgba(15,23,42,0.95)",
         }}
       >
-        {/* 🔒 AUTOPILOT WIZARD (UUID ONLY) */}
-        <AiWizardPanel orgId={orgUuid} />
+        {/* 🔒 AUTOPILOT WIZARD — UUID ONLY */}
+        <AiWizardPanel orgId={activeOrgUuid} />
       </div>
     </div>
   );
