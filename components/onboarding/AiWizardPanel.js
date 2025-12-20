@@ -3,6 +3,7 @@
 
 import { useState } from "react";
 import { useOnboardingObserver } from "./useOnboardingObserver";
+import OnboardingActivityFeed from "./OnboardingActivityFeed";
 
 import VendorsUploadStep from "./VendorsUploadStep";
 import VendorsMapStep from "./VendorsMapStep";
@@ -155,5 +156,12 @@ export default function AiWizardPanel({ orgId }) {
     }
   }
 
-  return <>{content}</>;
+  return (
+    <>
+      {content}
+
+      {/* 🔥 LIVE AI ACTIVITY FEED (Backend-driven) */}
+      <OnboardingActivityFeed />
+    </>
+  );
 }
