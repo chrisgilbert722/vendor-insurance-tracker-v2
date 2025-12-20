@@ -1,5 +1,5 @@
 // components/onboarding/AiWizardPanel.js
-// AI Onboarding Wizard V5 — TELEMETRY-ONLY AUTOPILOT (UUID-SAFE)
+// AI Onboarding Wizard V5 — TELEMETRY-ONLY AUTOPILOT (BUILD SAFE)
 
 import { useState } from "react";
 import { useOnboardingObserver } from "./useOnboardingObserver";
@@ -14,7 +14,7 @@ import CompanyProfileStep from "./CompanyProfileStep";
 import TeamBrokersStep from "./TeamBrokersStep";
 import ReviewLaunchStep from "./ReviewLaunchStep";
 
-// UUID guard (same pattern as backend)
+// UUID guard
 const UUID_RE =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
@@ -22,11 +22,11 @@ export default function AiWizardPanel({ orgId }) {
   const [starting, setStarting] = useState(false);
   const [error, setError] = useState("");
 
-  // 🔒 HARD GUARD — UI MUST USE UUID
+  // Enforce UUID-only orgId
   const orgUuid =
     typeof orgId === "string" && UUID_RE.test(orgId) ? orgId : null;
 
-  // If a numeric orgId ever leaks in, fail closed (no polling, no mutation)
+  // Fail closed if org context is invalid
   if (!orgUuid) {
     return (
       <div
@@ -43,14 +43,16 @@ export default function AiWizardPanel({ orgId }) {
     );
   }
 
-  // 🔒 TELEMETRY SOURCE OF TRUTH (UUID ONLY)
+  // Telemetry observer (UUID only)
   const { uiStep } = useOnboardingObserver({ orgId: orgUuid });
 
+  let content = null;
+
   /* ============================================================
-     STEP 1 — START (BACKEND AUTOPILOT TRIGGER ONLY)
+     STEP 1 — START (AUTOPILOT TRIGGER)
   ============================================================ */
   if (uiStep === 1) {
-    async function startAutopilot() {
+    const startAutopilot = async () => {
       if (starting) return;
 
       setStarting(true);
@@ -64,21 +66,17 @@ export default function AiWizardPanel({ orgId }) {
         });
 
         const json = await res.json();
-
         if (!json.ok) {
           throw new Error(json.error || "Failed to start onboarding");
         }
-
-        // ❗ NO UI ADVANCE
-        // Backend controls onboarding_step
       } catch (e) {
         setError(e.message || "Unable to start onboarding");
       } finally {
         setStarting(false);
       }
-    }
+    };
 
-    return (
+    content = (
       <div
         style={{
           padding: 24,
@@ -120,46 +118,42 @@ export default function AiWizardPanel({ orgId }) {
         </button>
       </div>
     );
+  } else {
+    /* ============================================================
+       STEP ROUTER — TELEMETRY ONLY
+    ============================================================ */
+    switch (uiStep) {
+      case 2:
+        content = <VendorsUploadStep orgId={orgUuid} />;
+        break;
+      case 3:
+        content = <VendorsMapStep />;
+        break;
+      case 4:
+        content = <VendorsAnalyzeStep orgId={orgUuid} />;
+        break;
+      case 5:
+        content = <ContractsUploadStep orgId={orgUuid} />;
+        break;
+      case 6:
+        content = <RulesGenerateStep orgId={orgUuid} />;
+        break;
+      case 7:
+        content = <FixPlansStep orgId={orgUuid} />;
+        break;
+      case 8:
+        content = <CompanyProfileStep orgId={orgUuid} />;
+        break;
+      case 9:
+        content = <TeamBrokersStep />;
+        break;
+      case 10:
+        content = <ReviewLaunchStep orgId={orgUuid} />;
+        break;
+      default:
+        content = null;
+    }
   }
 
-  /* ============================================================
-     STEP ROUTER — TELEMETRY-DRIVEN (NO MUTATION)
-  ============================================================ */
-
-  switch (uiStep) {
-    case 2:
-      return <VendorsUploadStep orgId={orgUuid} />;
-
-    case 3:
-      return <VendorsMapStep />;
-
-    case 4:
-      return <VendorsAnalyzeStep orgId={orgUuid} />;
-
-    case 5:
-      return <ContractsUploadStep orgId={orgUuid} />;
-
-    case 6:
-      return <RulesGenerateStep orgId={orgUuid} />;
-
-    case 7:
-      return <FixPlansStep orgId={orgUuid} />;
-
-    case 8:
-      return <CompanyProfileStep orgId={orgUuid} />;
-
-    case 9:
-      return <TeamBrokersStep />;
-
-    case 10:
-      return <ReviewLaunchStep orgId={orgUuid} />;
-
-    default:
-      return null;
-  }
-}
-
-    default:
-      return null;
-  }
+  return <>{content}</>;
 }
