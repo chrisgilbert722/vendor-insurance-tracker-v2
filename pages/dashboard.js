@@ -331,7 +331,7 @@ function summarizeEngineHealth(engineMap) {
 ============================================================ */
 function Dashboard() {
   const { isAdmin, isManager } = useRole();
-  const { activeOrgId } = useOrg();
+  const { activeOrgId, activeOrgUuid } = useOrg();
 
   // Spotlight anchors for tutorial (Option B)
   const riskRef = useRef(null);
@@ -400,11 +400,11 @@ function Dashboard() {
      ONBOARDING + TUTORIAL STATUS (COMBINED)
 ============================================================ */
   useEffect(() => {
-    if (!activeOrgId) return;
+    if (!activeOrgUuid) return;
 
     (async () => {
       try {
-        const res = await fetch(`/api/onboarding/status?orgId=${activeOrgId}`);
+        const res = await fetch(`/api/onboarding/status?orgId=${encodeURIComponent(activeOrgUuid || "")}`);
         const json = await res.json();
         if (!json?.ok) return;
 
@@ -426,7 +426,7 @@ function Dashboard() {
         console.error("[dashboard] onboarding/tutorial status error:", err);
       }
     })();
-  }, [activeOrgId]);
+  }, [activeOrgUuid]);
 
   /* ============================================================
      AUTONOMOUS ALERT GENERATION (V2)
@@ -493,6 +493,15 @@ function Dashboard() {
 
     try {
       localStorage.setItem("dashboard_tutorial_seen", "true");
+    } catch {}
+
+    // Disable server flag so tutorial does not auto-replay
+    try {
+      fetch("/api/onboarding/disable-dashboard-tutorial", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ orgId: activeOrgUuid }),
+      }).catch(() => {});
     } catch {}
   };
 
