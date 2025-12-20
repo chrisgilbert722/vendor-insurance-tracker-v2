@@ -5,6 +5,7 @@
 // - organizations.onboarding_step = UI step driver
 // - external_uuid resolved once via resolveOrg
 // - idempotent: safe to click Start multiple times
+// - rules_generated -> AI Wizard
 // ============================================================
 
 import { sql } from "../../../lib/db";
@@ -22,7 +23,7 @@ const STEPS = [
   { key: "vendors_analyzed", progress: 25 },
   { key: "contracts_extracted", progress: 40 },
   { key: "requirements_assigned", progress: 55 },
-  { key: "rules_generated", progress: 70 },
+  { key: "rules_generated", progress: 70 }, // 🔥 AI Wizard here
   { key: "rules_applied", progress: 85 },
   { key: "launch_system", progress: 95 },
   { key: "complete", progress: 100 },
@@ -89,7 +90,7 @@ async function setOrgStep(orgIdInt, stepIndex) {
 // ------------------------------------------------------------
 // STEP EXECUTION (OPTIONAL / SAFE)
 // ------------------------------------------------------------
-async function runStep({ stepKey, startedAtMs }) {
+async function runStep({ stepKey, startedAtMs, req }) {
   if (Date.now() - startedAtMs > MAX_RUNTIME_MS) {
     throw new Error("Autopilot timed out");
   }
@@ -99,24 +100,55 @@ async function runStep({ stepKey, startedAtMs }) {
       case "vendors_created":
         await import("../onboarding/create-vendors.js").catch(() => {});
         break;
+
       case "vendors_analyzed":
         await import("../onboarding-api/analyze-csv.js").catch(() => {});
         break;
+
       case "contracts_extracted":
         await import("../onboarding/ai-contract-extract.js").catch(() => {});
         break;
+
       case "requirements_assigned":
         await import("../onboarding/assign-requirements.js").catch(() => {});
         break;
-      case "rules_generated":
-        await import("../onboarding/ai-generate-rules.js").catch(() => {});
+
+      case "rules_generated": {
+        // 🔥 AI Wizard integration
+        try {
+          const mod = await import("../onboarding/ai-wizard.js");
+
+          await mod.default(
+            {
+              method: "POST",
+              body: {
+                vendorCsv: [], // optional; AI Wizard handles empty safely
+              },
+              query: {
+                // needed for resolveOrg
+                orgId: String(req.body?.orgId || req.query?.orgId || ""),
+              },
+            },
+            {
+              status: () => ({ json: () => {} }),
+              json: () => {},
+            }
+          );
+        } catch (err) {
+          console.error("[autopilot] AI Wizard failed:", err);
+          // Non-fatal — onboarding continues
+        }
         break;
+      }
+
       case "rules_applied":
         await import("../onboarding/apply-rules-v5.js").catch(() => {});
         break;
+
       case "launch_system":
         await import("../onboarding/launch-system.js").catch(() => {});
         break;
+
       default:
         break;
     }
@@ -145,8 +177,12 @@ export default async function handler(req, res) {
     await ensureStateRow(orgIdInt);
     const existing = await getState(orgIdInt);
 
-    // ✅ HARDENING: if already running or complete, do NOT re-run steps
-    if (existing?.status === "running" && existing?.current_step && existing.current_step !== "starting") {
+    // ✅ HARDENING: do not re-run
+    if (
+      existing?.status === "running" &&
+      existing?.current_step &&
+      existing.current_step !== "starting"
+    ) {
       return res.status(200).json({
         ok: true,
         skipped: true,
@@ -174,7 +210,7 @@ export default async function handler(req, res) {
     for (let i = startIndex; i < STEPS.length; i++) {
       const step = STEPS[i];
 
-      // 🔑 ADVANCE UI STEP
+      // 🔑 Advance UI
       await setOrgStep(orgIdInt, i + 2);
 
       await setState(orgIdInt, {
@@ -195,6 +231,7 @@ export default async function handler(req, res) {
       await runStep({
         stepKey: step.key,
         startedAtMs,
+        req,
       });
     }
 
