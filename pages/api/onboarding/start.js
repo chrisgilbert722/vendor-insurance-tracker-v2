@@ -7,6 +7,7 @@
 // - idempotent + resume-safe
 // - rules_generated -> AI Wizard
 // - launch_system guarded by Company Profile
+// - sets dashboard_tutorial_enabled on completion
 // ============================================================
 
 import { sql } from "../../../lib/db";
@@ -141,11 +142,22 @@ async function runStep({ stepKey, startedAtMs, req, orgIdInt }) {
         `;
 
         if (!org?.[0]?.legal_name || !org?.[0]?.contact_email) {
-          // ⛔ Stop autopilot until profile saved
           return "BLOCKED";
         }
 
         await import("../onboarding/launch-system.js").catch(() => {});
+        break;
+      }
+
+      case "complete": {
+        // 🔥 FINAL HANDOFF SIGNAL
+        await sql`
+          UPDATE organizations
+          SET
+            dashboard_tutorial_enabled = TRUE,
+            onboarding_step = ${STEPS.length + 1}
+          WHERE id = ${orgIdInt};
+        `;
         break;
       }
 
