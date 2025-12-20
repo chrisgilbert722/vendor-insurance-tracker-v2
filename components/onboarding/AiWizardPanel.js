@@ -1,7 +1,8 @@
 // components/onboarding/AiWizardPanel.js
-// AI Onboarding Wizard V5 — AUTOPILOT ENABLED
+// AI Onboarding Wizard V5 — TELEMETRY-ONLY AUTOPILOT
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
+import { useOnboardingObserver } from "./useOnboardingObserver";
 
 import VendorsUploadStep from "./VendorsUploadStep";
 import VendorsMapStep from "./VendorsMapStep";
@@ -13,23 +14,23 @@ import CompanyProfileStep from "./CompanyProfileStep";
 import TeamBrokersStep from "./TeamBrokersStep";
 import ReviewLaunchStep from "./ReviewLaunchStep";
 
-export default function AiWizardPanel({
-  orgId,
-  step,
-  stepIndex,
-  totalSteps,
-  wizardState,
-  setWizardState,
-}) {
+export default function AiWizardPanel({ orgId }) {
   const [starting, setStarting] = useState(false);
   const [error, setError] = useState("");
 
-  if (!step) return null;
+  // 🔒 TELEMETRY SOURCE OF TRUTH
+  const {
+    uiStep,
+    status,
+    loading,
+  } = useOnboardingObserver({ orgId });
+
+  if (!orgId) return null;
 
   /* ============================================================
-     STEP 1 — START (AUTOPILOT TRIGGER)
+     STEP 1 — START (BACKEND AUTOPILOT TRIGGER ONLY)
   ============================================================ */
-  if (step.id === "start") {
+  if (uiStep === 1) {
     async function startAutopilot() {
       if (!orgId || starting) return;
 
@@ -49,12 +50,8 @@ export default function AiWizardPanel({
           throw new Error(json.error || "Failed to start onboarding");
         }
 
-        // ✅ Advance wizard to next step
-        setWizardState((prev) => ({
-          ...prev,
-          startedAt: Date.now(),
-          currentStep: "vendors-upload",
-        }));
+        // ❗ DO NOT advance UI manually
+        // Backend will update onboarding_step
       } catch (e) {
         setError(e.message || "Unable to start onboarding");
       } finally {
@@ -107,35 +104,37 @@ export default function AiWizardPanel({
   }
 
   /* ============================================================
-     STEP ROUTER — REAL STEPS
+     STEP ROUTER — TELEMETRY-DRIVEN (NO MUTATION)
+     onboarding_step (DB) → uiStep (1-based)
   ============================================================ */
-  switch (step.id) {
-    case "vendors-upload":
-      return <VendorsUploadStep orgId={orgId} wizardState={wizardState} setWizardState={setWizardState} />;
 
-    case "vendors-map":
-      return <VendorsMapStep wizardState={wizardState} setWizardState={setWizardState} />;
+  switch (uiStep) {
+    case 2:
+      return <VendorsUploadStep orgId={orgId} />;
 
-    case "vendors-analyze":
-      return <VendorsAnalyzeStep orgId={orgId} wizardState={wizardState} setWizardState={setWizardState} />;
+    case 3:
+      return <VendorsMapStep />;
 
-    case "contracts-upload":
-      return <ContractsUploadStep orgId={orgId} wizardState={wizardState} setWizardState={setWizardState} />;
+    case 4:
+      return <VendorsAnalyzeStep orgId={orgId} />;
 
-    case "rules-generate":
-      return <RulesGenerateStep orgId={orgId} wizardState={wizardState} setWizardState={setWizardState} />;
+    case 5:
+      return <ContractsUploadStep orgId={orgId} />;
 
-    case "fix-plans":
-      return <FixPlansStep orgId={orgId} wizardState={wizardState} setWizardState={setWizardState} />;
+    case 6:
+      return <RulesGenerateStep orgId={orgId} />;
 
-    case "company-profile":
-      return <CompanyProfileStep orgId={orgId} wizardState={wizardState} setWizardState={setWizardState} />;
+    case 7:
+      return <FixPlansStep orgId={orgId} />;
 
-    case "team-brokers":
-      return <TeamBrokersStep wizardState={wizardState} setWizardState={setWizardState} />;
+    case 8:
+      return <CompanyProfileStep orgId={orgId} />;
 
-    case "review-launch":
-      return <ReviewLaunchStep orgId={orgId} wizardState={wizardState} setWizardState={setWizardState} />;
+    case 9:
+      return <TeamBrokersStep />;
+
+    case 10:
+      return <ReviewLaunchStep orgId={orgId} />;
 
     default:
       return null;
