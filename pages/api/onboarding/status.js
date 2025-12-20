@@ -2,16 +2,7 @@
 // UUID-safe, skip-safe onboarding status (NO 500s)
 
 import { sql } from "../../../lib/db";
-
-const UUID_RE =
-  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
-
-function cleanOrgId(v) {
-  if (!v) return null;
-  const s = String(v).trim();
-  if (!s || s === "null" || s === "undefined") return null;
-  return UUID_RE.test(s) ? s : null;
-}
+import { resolveOrg } from "../../../lib/resolveOrg";
 
 export default async function handler(req, res) {
   if (req.method !== "GET") {
@@ -19,10 +10,11 @@ export default async function handler(req, res) {
   }
 
   try {
-    const orgId = cleanOrgId(req.query.orgId);
+    // 🔑 Resolve external_uuid -> internal INT id
+    const orgIdInt = await resolveOrg(req, res);
 
-    // HARD GUARD — never 500 on bad org
-    if (!orgId) {
+    // Soft exit if org not resolvable
+    if (!orgIdInt) {
       return res.status(200).json({
         ok: false,
         skipped: true,
@@ -32,11 +24,11 @@ export default async function handler(req, res) {
     const rows = await sql`
       SELECT onboarding_step, dashboard_tutorial_enabled
       FROM organizations
-      WHERE id = ${orgId}
+      WHERE id = ${orgIdInt}
       LIMIT 1;
     `;
 
-    if (!rows.length) {
+    if (!rows || rows.length === 0) {
       return res.status(200).json({
         ok: false,
         skipped: true,
@@ -64,4 +56,3 @@ export default async function handler(req, res) {
     });
   }
 }
-
