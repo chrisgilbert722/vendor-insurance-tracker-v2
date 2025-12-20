@@ -1,10 +1,9 @@
 // pages/api/onboarding/start.js
 // ============================================================
 // ONBOARDING AUTOPILOT — START / RESUME (Observable Autopilot)
-// - Server-side orchestrator
-// - org_onboarding_state = detailed telemetry
+// - org_onboarding_state.org_id = INTERNAL org INT
 // - organizations.onboarding_step = UI step driver
-// - UUID-safe (resolveOrg)
+// - external_uuid resolved once via resolveOrg
 // ============================================================
 
 import { sql } from "../../../lib/db";
@@ -14,11 +13,9 @@ export const config = {
   api: { bodyParser: { sizeLimit: "1mb" } },
 };
 
-// ---- Tunables
 const HEARTBEAT_EVERY_MS = 1500;
 const MAX_RUNTIME_MS = 60_000;
 
-// Ordered autopilot steps
 const STEPS = [
   { key: "vendors_created", progress: 10 },
   { key: "vendors_analyzed", progress: 25 },
@@ -31,22 +28,22 @@ const STEPS = [
 ];
 
 // ------------------------------------------------------------
-// Helpers
+// STATE HELPERS (INT orgId ONLY)
 // ------------------------------------------------------------
-async function ensureStateRow(orgUuid) {
+async function ensureStateRow(orgIdInt) {
   await sql`
     INSERT INTO org_onboarding_state (
       org_id, status, current_step, progress, started_at, updated_at
     )
     VALUES (
-      ${orgUuid}, 'running', 'starting', 0,
+      ${orgIdInt}, 'running', 'starting', 0,
       NOW(), NOW()
     )
     ON CONFLICT (org_id) DO NOTHING;
   `;
 }
 
-async function setState(orgUuid, patch = {}) {
+async function setState(orgIdInt, patch = {}) {
   const fields = [];
 
   const add = (col, val) => {
@@ -66,21 +63,20 @@ async function setState(orgUuid, patch = {}) {
   await sql`
     UPDATE org_onboarding_state
     SET ${sql.join(fields, sql`, `)}
-    WHERE org_id = ${orgUuid};
+    WHERE org_id = ${orgIdInt};
   `;
 }
 
-async function getState(orgUuid) {
+async function getState(orgIdInt) {
   const rows = await sql`
     SELECT *
     FROM org_onboarding_state
-    WHERE org_id = ${orgUuid}
+    WHERE org_id = ${orgIdInt}
     LIMIT 1;
   `;
   return rows?.[0] || null;
 }
 
-// 🔑 THIS IS THE MISSING PIECE
 async function setOrgStep(orgIdInt, stepIndex) {
   await sql`
     UPDATE organizations
@@ -90,9 +86,9 @@ async function setOrgStep(orgIdInt, stepIndex) {
 }
 
 // ------------------------------------------------------------
-// Step execution (safe + optional)
+// STEP EXECUTION (OPTIONAL / SAFE)
 // ------------------------------------------------------------
-async function runStep({ stepKey, orgUuid, startedAtMs }) {
+async function runStep({ stepKey, startedAtMs }) {
   if (Date.now() - startedAtMs > MAX_RUNTIME_MS) {
     throw new Error("Autopilot timed out");
   }
@@ -124,12 +120,12 @@ async function runStep({ stepKey, orgUuid, startedAtMs }) {
         break;
     }
   } catch {
-    // Non-fatal: onboarding should continue
+    // Non-fatal
   }
 }
 
 // ------------------------------------------------------------
-// Main handler
+// MAIN HANDLER
 // ------------------------------------------------------------
 export default async function handler(req, res) {
   if (req.method !== "POST") {
@@ -139,20 +135,15 @@ export default async function handler(req, res) {
   const startedAtMs = Date.now();
 
   try {
-    // UUID → INT (server only)
+    // 🔑 Resolve external_uuid → INTERNAL INT
     const orgIdInt = await resolveOrg(req, res);
-    if (!orgIdInt) return;
-
-    const orgUuid = String(req.body?.orgId || req.query?.orgId || "").trim();
-    if (!orgUuid) {
-      return res.status(400).json({ ok: false, error: "Missing orgId" });
+    if (!orgIdInt) {
+      return res.status(200).json({ ok: true, skipped: true });
     }
 
-    await ensureStateRow(orgUuid);
+    await ensureStateRow(orgIdInt);
+    const existing = await getState(orgIdInt);
 
-    const existing = await getState(orgUuid);
-
-    // Resume support
     const startIndex = Math.max(
       0,
       STEPS.findIndex((s) => s.key === existing?.current_step)
@@ -163,10 +154,10 @@ export default async function handler(req, res) {
     for (let i = startIndex; i < STEPS.length; i++) {
       const step = STEPS[i];
 
-      // 🔑 ADVANCE WIZARD UI (THIS FIXES THE STUCK STEP)
-      await setOrgStep(orgIdInt, i + 2); // UI step mapping
+      // 🔑 ADVANCE UI STEP
+      await setOrgStep(orgIdInt, i + 2);
 
-      await setState(orgUuid, {
+      await setState(orgIdInt, {
         current_step: step.key,
         progress: step.progress,
         status: step.key === "complete" ? "complete" : "running",
@@ -183,22 +174,21 @@ export default async function handler(req, res) {
 
       await runStep({
         stepKey: step.key,
-        orgUuid,
         startedAtMs,
       });
     }
 
     return res.status(200).json({
       ok: true,
-      state: await getState(orgUuid),
+      state: await getState(orgIdInt),
     });
   } catch (err) {
     console.error("[onboarding/start]", err);
 
     try {
-      const orgUuid = String(req.body?.orgId || "").trim();
-      if (orgUuid) {
-        await setState(orgUuid, {
+      const orgIdInt = await resolveOrg(req, res);
+      if (orgIdInt) {
+        await setState(orgIdInt, {
           status: "error",
           last_error: err.message,
         });
