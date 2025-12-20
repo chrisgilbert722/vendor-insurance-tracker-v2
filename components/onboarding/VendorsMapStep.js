@@ -1,7 +1,7 @@
 // components/onboarding/VendorsMapStep.js
-// STEP 3 — Map CSV Columns (Cinematic, Enterprise)
+// STEP 3 — Map CSV Columns (Cinematic, Neon Focus)
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
 
 const TARGET_FIELDS = [
   { key: "vendorName", label: "Vendor Name", required: true },
@@ -19,15 +19,9 @@ const TARGET_FIELDS = [
 ];
 
 export default function VendorsMapStep() {
-  const [headers, setHeaders] = useState([]);
   const [mapping, setMapping] = useState({});
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
-
-  useEffect(() => {
-    // headers already exist in wizard context upstream
-    // this is visual-only here
-  }, []);
 
   function update(key, val) {
     setMapping((m) => ({ ...m, [key]: val }));
@@ -51,7 +45,6 @@ export default function VendorsMapStep() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ mapping }),
       });
-
       const json = await res.json();
       if (!json.ok) throw new Error(json.error || "Save failed");
     } catch (e) {
@@ -73,7 +66,7 @@ export default function VendorsMapStep() {
           "0 0 0 1px rgba(255,255,255,0.03), 0 30px 80px rgba(0,0,0,0.65)",
       }}
     >
-      <div style={{ marginBottom: 22 }}>
+      <div style={{ marginBottom: 24 }}>
         <div
           style={{
             fontSize: 11,
@@ -101,17 +94,15 @@ export default function VendorsMapStep() {
         </h2>
 
         <p style={{ marginTop: 6, color: "#9ca3af", fontSize: 14 }}>
-          Tell the AI how your vendor data is structured.  
-          This step unlocks automated analysis and rule generation.
+          Define how your vendor data is structured so AI can analyze and enforce compliance.
         </p>
       </div>
 
-      {/* Mapping Grid */}
       <div
         style={{
           display: "grid",
           gridTemplateColumns: "1fr 1fr",
-          gap: 16,
+          gap: 18,
         }}
       >
         {TARGET_FIELDS.map((f) => (
@@ -132,18 +123,25 @@ export default function VendorsMapStep() {
               onChange={(e) => update(f.key, e.target.value)}
               style={{
                 width: "100%",
-                padding: "10px 14px",
-                borderRadius: 12,
-                background: "rgba(2,6,23,0.85)",
+                padding: "12px 14px",
+                borderRadius: 14,
+                background: "rgba(2,6,23,0.9)",
                 border: "1px solid rgba(148,163,184,0.35)",
                 color: "#e5e7eb",
                 outline: "none",
+                transition: "all 200ms ease",
+              }}
+              onFocus={(e) => {
+                e.target.style.boxShadow =
+                  "0 0 0 2px rgba(56,189,248,0.6), 0 0 20px rgba(56,189,248,0.45)";
+                e.target.style.borderColor = "#38bdf8";
+              }}
+              onBlur={(e) => {
+                e.target.style.boxShadow = "none";
+                e.target.style.borderColor = "rgba(148,163,184,0.35)";
               }}
             >
               <option value="">Select column</option>
-              {headers.map((h) => (
-                <option key={h} value={h}>{h}</option>
-              ))}
             </select>
           </div>
         ))}
@@ -165,22 +163,22 @@ export default function VendorsMapStep() {
         </div>
       )}
 
-      <div style={{ marginTop: 26, display: "flex", justifyContent: "flex-end" }}>
+      <div style={{ marginTop: 28, display: "flex", justifyContent: "flex-end" }}>
         <button
           onClick={save}
           disabled={saving}
           style={{
-            padding: "12px 26px",
+            padding: "12px 28px",
             borderRadius: 999,
             border: "1px solid rgba(56,189,248,0.9)",
             background:
               "linear-gradient(90deg,#38bdf8,#6366f1,#a855f7)",
             color: "#020617",
-            fontWeight: 700,
+            fontWeight: 800,
             fontSize: 14,
             cursor: saving ? "not-allowed" : "pointer",
             boxShadow:
-              "0 0 22px rgba(56,189,248,0.8), 0 0 40px rgba(168,85,247,0.45)",
+              "0 0 22px rgba(56,189,248,0.9), 0 0 50px rgba(168,85,247,0.55)",
           }}
         >
           {saving ? "Saving…" : "Save Mapping"}
