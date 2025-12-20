@@ -1,5 +1,5 @@
 // components/onboarding/AiWizardPanel.js
-// AI Onboarding Wizard V5 — TELEMETRY-ONLY AUTOPILOT
+// AI Onboarding Wizard V5 — TELEMETRY-ONLY AUTOPILOT (UUID-SAFE)
 
 import { useState } from "react";
 import { useOnboardingObserver } from "./useOnboardingObserver";
@@ -14,21 +14,44 @@ import CompanyProfileStep from "./CompanyProfileStep";
 import TeamBrokersStep from "./TeamBrokersStep";
 import ReviewLaunchStep from "./ReviewLaunchStep";
 
+// UUID guard (same pattern as backend)
+const UUID_RE =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
 export default function AiWizardPanel({ orgId }) {
   const [starting, setStarting] = useState(false);
   const [error, setError] = useState("");
 
-  // 🔒 TELEMETRY SOURCE OF TRUTH
-  const { uiStep } = useOnboardingObserver({ orgId });
+  // 🔒 HARD GUARD — UI MUST USE UUID
+  const orgUuid =
+    typeof orgId === "string" && UUID_RE.test(orgId) ? orgId : null;
 
-  if (!orgId) return null;
+  // If a numeric orgId ever leaks in, fail closed (no polling, no mutation)
+  if (!orgUuid) {
+    return (
+      <div
+        style={{
+          padding: 20,
+          borderRadius: 14,
+          background: "rgba(15,23,42,0.9)",
+          border: "1px solid rgba(239,68,68,0.6)",
+          color: "#fecaca",
+        }}
+      >
+        Invalid organization context. Please refresh or re-select your organization.
+      </div>
+    );
+  }
+
+  // 🔒 TELEMETRY SOURCE OF TRUTH (UUID ONLY)
+  const { uiStep } = useOnboardingObserver({ orgId: orgUuid });
 
   /* ============================================================
      STEP 1 — START (BACKEND AUTOPILOT TRIGGER ONLY)
   ============================================================ */
   if (uiStep === 1) {
     async function startAutopilot() {
-      if (!orgId || starting) return;
+      if (starting) return;
 
       setStarting(true);
       setError("");
@@ -37,7 +60,7 @@ export default function AiWizardPanel({ orgId }) {
         const res = await fetch("/api/onboarding/start", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ orgId }),
+          body: JSON.stringify({ orgId: orgUuid }),
         });
 
         const json = await res.json();
@@ -46,8 +69,8 @@ export default function AiWizardPanel({ orgId }) {
           throw new Error(json.error || "Failed to start onboarding");
         }
 
-        // ❗ DO NOT advance UI manually
-        // Backend updates onboarding_step
+        // ❗ NO UI ADVANCE
+        // Backend controls onboarding_step
       } catch (e) {
         setError(e.message || "Unable to start onboarding");
       } finally {
@@ -101,36 +124,40 @@ export default function AiWizardPanel({ orgId }) {
 
   /* ============================================================
      STEP ROUTER — TELEMETRY-DRIVEN (NO MUTATION)
-     onboarding_step (DB) → uiStep (1-based)
   ============================================================ */
 
   switch (uiStep) {
     case 2:
-      return <VendorsUploadStep orgId={orgId} />;
+      return <VendorsUploadStep orgId={orgUuid} />;
 
     case 3:
       return <VendorsMapStep />;
 
     case 4:
-      return <VendorsAnalyzeStep orgId={orgId} />;
+      return <VendorsAnalyzeStep orgId={orgUuid} />;
 
     case 5:
-      return <ContractsUploadStep orgId={orgId} />;
+      return <ContractsUploadStep orgId={orgUuid} />;
 
     case 6:
-      return <RulesGenerateStep orgId={orgId} />;
+      return <RulesGenerateStep orgId={orgUuid} />;
 
     case 7:
-      return <FixPlansStep orgId={orgId} />;
+      return <FixPlansStep orgId={orgUuid} />;
 
     case 8:
-      return <CompanyProfileStep orgId={orgId} />;
+      return <CompanyProfileStep orgId={orgUuid} />;
 
     case 9:
       return <TeamBrokersStep />;
 
     case 10:
-      return <ReviewLaunchStep orgId={orgId} />;
+      return <ReviewLaunchStep orgId={orgUuid} />;
+
+    default:
+      return null;
+  }
+}
 
     default:
       return null;
