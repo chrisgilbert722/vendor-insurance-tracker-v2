@@ -4,6 +4,7 @@
 // - org_onboarding_state.org_id = INTERNAL org INT
 // - organizations.onboarding_step = UI step driver
 // - external_uuid resolved once via resolveOrg
+// - idempotent: safe to click Start multiple times
 // ============================================================
 
 import { sql } from "../../../lib/db";
@@ -143,6 +144,25 @@ export default async function handler(req, res) {
 
     await ensureStateRow(orgIdInt);
     const existing = await getState(orgIdInt);
+
+    // ✅ HARDENING: if already running or complete, do NOT re-run steps
+    if (existing?.status === "running" && existing?.current_step && existing.current_step !== "starting") {
+      return res.status(200).json({
+        ok: true,
+        skipped: true,
+        state: existing,
+        message: "Onboarding already in progress",
+      });
+    }
+
+    if (existing?.status === "complete") {
+      return res.status(200).json({
+        ok: true,
+        skipped: true,
+        state: existing,
+        message: "Onboarding already complete",
+      });
+    }
 
     const startIndex = Math.max(
       0,
