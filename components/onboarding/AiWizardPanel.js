@@ -19,11 +19,7 @@ export default function AiWizardPanel({ orgId }) {
   const [error, setError] = useState("");
 
   // 🔒 TELEMETRY SOURCE OF TRUTH
-  const {
-    uiStep,
-    status,
-    loading,
-  } = useOnboardingObserver({ orgId });
+  const { uiStep } = useOnboardingObserver({ orgId });
 
   if (!orgId) return null;
 
@@ -38,7 +34,7 @@ export default function AiWizardPanel({ orgId }) {
       setError("");
 
       try {
-        const res = await fetch("/api/onboarding/ai-wizard", {
+        const res = await fetch("/api/onboarding/start", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ orgId }),
@@ -51,7 +47,7 @@ export default function AiWizardPanel({ orgId }) {
         }
 
         // ❗ DO NOT advance UI manually
-        // Backend will update onboarding_step
+        // Backend updates onboarding_step
       } catch (e) {
         setError(e.message || "Unable to start onboarding");
       } finally {
