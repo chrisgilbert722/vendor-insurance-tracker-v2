@@ -1,7 +1,13 @@
 // pages/api/onboarding/analyze-csv.js
-// API entrypoint for AI Onboarding Wizard CSV analysis
+// ============================================================
+// AI ONBOARDING — VENDOR CSV ANALYSIS
+// - Logs vendors_analyzed activity
+// - Safe for autopilot + resume
+// ============================================================
 
 import { analyzeVendorCsv } from "../../../lib/onboardingAiBrain";
+import { sql } from "../../../lib/db";
+import { resolveOrg } from "../../../lib/resolveOrg";
 
 export default async function handler(req, res) {
   if (req.method !== "POST") {
@@ -9,7 +15,7 @@ export default async function handler(req, res) {
   }
 
   try {
-    const { orgId, csvText } = req.body;
+    const { csvText } = req.body;
 
     if (!csvText) {
       return res
@@ -17,8 +23,36 @@ export default async function handler(req, res) {
         .json({ ok: false, error: "Missing csvText in body" });
     }
 
-    // orgId is optional for now (we'll use it in DB seeding later)
-    const result = await analyzeVendorCsv({ orgId: orgId || null, csvText });
+    // 🔑 Resolve external_uuid -> INTERNAL org INT (optional but preferred)
+    const orgIdInt = await resolveOrg(req, res);
+
+    // Run analysis (unchanged behavior)
+    const result = await analyzeVendorCsv({
+      orgId: orgIdInt || null,
+      csvText,
+    });
+
+    // Count CSV rows (best-effort)
+    const rowCount =
+      typeof csvText === "string"
+        ? Math.max(csvText.split("\n").length - 1, 0)
+        : null;
+
+    // ---------------- 🔥 AI ACTIVITY LOG ----------------
+    if (orgIdInt) {
+      await sql`
+        INSERT INTO ai_activity_log (org_id, event_type, message, metadata)
+        VALUES (
+          ${orgIdInt},
+          'vendors_analyzed',
+          'AI analyzed vendor CSV',
+          ${JSON.stringify({
+            rowCount,
+            hasOrgContext: true,
+          })}
+        );
+      `;
+    }
 
     return res.status(200).json(result);
   } catch (err) {
