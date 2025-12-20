@@ -1,5 +1,4 @@
 // components/onboarding/OnboardingLayout.js
-import { useRouter } from "next/router";
 import OnboardingProgress, {
   ONBOARDING_STEPS,
 } from "./OnboardingProgress";
@@ -10,28 +9,10 @@ export default function OnboardingLayout({
   subtitle,
   children,
 }) {
-  const router = useRouter();
-
+  // We still compute index for display/progress only
   const currentIndex = ONBOARDING_STEPS.findIndex(
     (step) => step.key === currentKey
   );
-
-  const isStartStep = currentKey === "start";
-
-  const goNext = () => {
-    if (currentIndex < ONBOARDING_STEPS.length - 1) {
-      router.push(ONBOARDING_STEPS[currentIndex + 1].href);
-    }
-  };
-
-  const goBack = () => {
-    if (currentIndex > 0) {
-      router.push(ONBOARDING_STEPS[currentIndex - 1].href);
-    }
-  };
-
-  const canGoBack = currentIndex > 0;
-  const canGoNext = currentIndex < ONBOARDING_STEPS.length - 1;
 
   return (
     <div
@@ -63,6 +44,7 @@ export default function OnboardingLayout({
       />
 
       <div style={{ position: "relative", zIndex: 1, width: "100%" }}>
+        {/* Progress (display-only, backend-driven) */}
         <OnboardingProgress currentKey={currentKey} />
 
         {/* Header */}
@@ -119,8 +101,8 @@ export default function OnboardingLayout({
         >
           {children}
 
-          {/* Actions — DISABLED FOR AUTOPILOT START */}
-          {!isStartStep && (
+          {/* Actions — HARD DISABLED (Observable Autopilot controls progression) */}
+          {false && (
             <div
               style={{
                 marginTop: 22,
@@ -128,59 +110,7 @@ export default function OnboardingLayout({
                 justifyContent: "space-between",
                 gap: 12,
               }}
-            >
-              <button
-                type="button"
-                onClick={goBack}
-                disabled={!canGoBack}
-                style={{
-                  padding: "9px 16px",
-                  borderRadius: 999,
-                  border: "1px solid rgba(148,163,184,0.6)",
-                  background: "rgba(15,23,42,0.96)",
-                  color: canGoBack ? "#e5e7eb" : "#6b7280",
-                  fontSize: 13,
-                  cursor: canGoBack ? "pointer" : "not-allowed",
-                  opacity: canGoBack ? 1 : 0.5,
-                }}
-              >
-                ← Back
-              </button>
-
-              {canGoNext && (
-                <button
-                  type="button"
-                  onClick={goNext}
-                  style={{
-                    padding: "9px 20px",
-                    borderRadius: 999,
-                    border: "1px solid rgba(56,189,248,0.9)",
-                    background:
-                      "linear-gradient(90deg,#38bdf8,#1d4ed8,#0f172a)",
-                    color: "#e5f2ff",
-                    fontSize: 13,
-                    fontWeight: 500,
-                    cursor: "pointer",
-                    boxShadow:
-                      "0 0 22px rgba(56,189,248,0.75), 0 0 40px rgba(56,189,248,0.35)",
-                  }}
-                >
-                  Next →
-                </button>
-              )}
-
-              {!canGoNext && (
-                <div
-                  style={{
-                    fontSize: 13,
-                    color: "#22c55e",
-                    marginLeft: "auto",
-                  }}
-                >
-                  All steps complete 🎉
-                </div>
-              )}
-            </div>
+            />
           )}
         </div>
       </div>
