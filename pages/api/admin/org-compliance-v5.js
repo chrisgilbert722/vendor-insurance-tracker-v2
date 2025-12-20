@@ -1,11 +1,10 @@
-// pages/api/admin/org-compliance-v5.js
 // ============================================================
-// ORG-LEVEL COMPLIANCE INTELLIGENCE ENGINE — V5 (FINAL)
-// UUID-safe • Schema-correct • Build-safe • Non-blocking
+// ORG-LEVEL COMPLIANCE INTELLIGENCE ENGINE — V5 (FIXED)
+// UUID-safe • INT-safe • Schema-correct • Non-blocking
 // ============================================================
 
 import { sql } from "../../../lib/db";
-import { cleanUUID } from "../../../lib/uuid";
+import { resolveOrg } from "../../../lib/resolveOrg";
 import { openai } from "../../../lib/openaiClient";
 
 export default async function handler(req, res) {
@@ -14,23 +13,16 @@ export default async function handler(req, res) {
   }
 
   try {
-    const orgId = cleanUUID(req.query.orgId);
-
-    // HARD GUARD — UI safe
-    if (!orgId) {
-      return res.status(200).json({
-        ok: false,
-        skipped: true,
-        error: "Invalid orgId",
-      });
-    }
+    // 🔒 Canonical org resolution (UUID → INT)
+    const orgId = await resolveOrg(req, res);
+    if (!orgId) return;
 
     /* ============================================================
-       1) ORG LOOKUP (CORRECT TABLE)
+       1) ORG LOOKUP (INT ID — CORRECT)
     ============================================================ */
     const orgRows = await sql`
       SELECT id, name
-      FROM orgs
+      FROM organizations
       WHERE id = ${orgId}
       LIMIT 1;
     `;
@@ -127,7 +119,7 @@ Overall tier: ${tier}`,
 
       narrative = completion.choices?.[0]?.message?.content || "";
     } catch {
-      // AI failure must NEVER break UI
+      // 🔇 AI failure must NEVER break UI
       narrative = "";
     }
 
