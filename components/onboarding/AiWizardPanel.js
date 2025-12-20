@@ -1,5 +1,6 @@
 // components/onboarding/AiWizardPanel.js
 // AI Onboarding Wizard V5 — TELEMETRY-ONLY AUTOPILOT (BUILD SAFE)
+// Property Management copy pass (Day 3)
 
 import { useState } from "react";
 import { useOnboardingObserver } from "./useOnboardingObserver";
@@ -39,7 +40,8 @@ export default function AiWizardPanel({ orgId }) {
           color: "#fecaca",
         }}
       >
-        Invalid organization context. Please refresh or re-select your organization.
+        We couldn’t load your property portfolio.  
+        Please refresh or re-select your organization.
       </div>
     );
   }
@@ -71,7 +73,10 @@ export default function AiWizardPanel({ orgId }) {
           throw new Error(json.error || "Failed to start onboarding");
         }
       } catch (e) {
-        setError(e.message || "Unable to start onboarding");
+        setError(
+          e.message ||
+            "We couldn’t start your compliance setup. Please try again."
+        );
       } finally {
         setStarting(false);
       }
@@ -88,12 +93,17 @@ export default function AiWizardPanel({ orgId }) {
         }}
       >
         <h2 style={{ fontSize: 22, marginBottom: 10 }}>
-          Welcome to AI Onboarding
+          Set Up Vendor Insurance Compliance
         </h2>
 
         <p style={{ color: "#9ca3af", marginBottom: 20 }}>
-          We’ll configure your entire compliance engine automatically.
-          Vendors, contracts, rules, alerts, and enforcement — hands-off.
+          We’ll automatically analyze your vendors, contracts, and insurance
+          requirements across your properties — then prepare fix plans,
+          renewal reminders, and audit-ready reports.
+        </p>
+
+        <p style={{ color: "#9ca3af", marginBottom: 20 }}>
+          You can safely leave this page while setup runs in the background.
         </p>
 
         {error && (
@@ -115,7 +125,9 @@ export default function AiWizardPanel({ orgId }) {
             cursor: starting ? "not-allowed" : "pointer",
           }}
         >
-          {starting ? "Initializing AI…" : "Start AI Onboarding →"}
+          {starting
+            ? "Analyzing your vendor compliance…"
+            : "Start Compliance Setup →"}
         </button>
       </div>
     );
