@@ -1,12 +1,12 @@
 // context/OrgContext.js
-import { createContext, useContext, useEffect, useState } from "react";
+import { createContext, useContext, useEffect, useState, useMemo } from "react";
 import { supabase } from "../lib/supabaseClient";
 
 const OrgContext = createContext(null);
 
 export function OrgProvider({ children }) {
   const [orgs, setOrgs] = useState([]);
-  const [activeOrgId, setActiveOrgId] = useState(null); // numeric (internal)
+  const [activeOrgId, setActiveOrgId] = useState(null); // INT (internal)
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -42,7 +42,7 @@ export function OrgProvider({ children }) {
         const loadedOrgs = json.orgs || [];
         setOrgs(loadedOrgs);
 
-        // Default org selection (numeric ID)
+        // Default org selection (INT)
         if (!activeOrgId && loadedOrgs.length > 0) {
           setActiveOrgId(loadedOrgs[0].id);
         }
@@ -63,12 +63,14 @@ export function OrgProvider({ children }) {
     };
   }, []);
 
-  // 🔑 Derived canonical org (safe, no extra renders)
-  const activeOrg =
-    orgs.find((o) => o.id === activeOrgId) || null;
+  // 🔑 Canonical active org object
+  const activeOrg = useMemo(
+    () => orgs.find((o) => o.id === activeOrgId) || null,
+    [orgs, activeOrgId]
+  );
 
-  const activeOrgExternalId =
-    activeOrg?.external_uuid || null;
+  // 🔑 Canonical UUID (PUBLIC ID)
+  const activeOrgUuid = activeOrg?.external_uuid || null;
 
   return (
     <OrgContext.Provider
@@ -76,10 +78,10 @@ export function OrgProvider({ children }) {
         // collections
         orgs,
 
-        // active org (both forms)
-        activeOrg,
-        activeOrgId,               // number (internal)
-        activeOrgExternalId,        // UUID (CANONICAL)
+        // active org
+        activeOrg,          // full object
+        activeOrgId,        // INT (internal)
+        activeOrgUuid,      // UUID (public / canonical)
 
         // setters
         setActiveOrgId,
