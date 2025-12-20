@@ -1,6 +1,7 @@
 // pages/dashboard.js — Dashboard V5 (Cinematic Intelligence Cockpit)
 
 import React, { useEffect, useState, useRef } from "react";
+import PropertyManagementRiskPreview from "../components/dashboard/PropertyManagementRiskPreview";
 import VendorDrawer from "../components/VendorDrawer";
 import { useRole } from "../lib/useRole";
 import { useOrg } from "../context/OrgContext";
@@ -879,6 +880,16 @@ function Dashboard() {
     <div
       style={{
         minHeight: "100vh",
+      {/* PROPERTY MANAGEMENT RISK PREVIEW (READ-ONLY) */}
+      <PropertyManagementRiskPreview
+        complianceScore={Number(avgScore || 0)}
+        nonCompliantVendors={Number(engineHealth?.fails || 0)}
+        expiringSoon={Number(dashboard?.alerts?.critical30d || 0)}
+        missingEndorsements={Number(engineHealth?.critical || 0)}
+        vendorsTotal={Number(totalVendors || 0)}
+        locked={true}
+      />
+
         background:
           "radial-gradient(circle at top left,#020617 0,#020617 45%,#000000 100%)",
         padding: "32px 40px 40px",
