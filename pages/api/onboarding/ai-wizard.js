@@ -4,6 +4,7 @@
 // - Uses resolveOrg (external_uuid -> INT)
 // - Safe for autopilot + resume
 // - vendorCsv optional (can be stubbed)
+// - Logs AI activity for audit / timeline
 // ============================================================
 
 import { openai } from "../../../lib/openaiClient";
@@ -147,6 +148,7 @@ ${vendorText || "(no vendors provided yet)"}
 
     // ---------------- PERSIST RULE GROUPS ----------------
     const savedGroups = [];
+    let totalRules = 0;
 
     for (const g of ruleGroups) {
       const groupLabel = g.label || "AI Rule Group";
@@ -178,10 +180,11 @@ ${vendorText || "(no vendors provided yet)"}
             ${r.severity || "medium"},
             TRUE
           )
-          RETURNING id, type, field, condition, value, message, severity;
+          RETURNING id;
         `;
 
         savedRules.push(insertedRule[0]);
+        totalRules += 1;
       }
 
       savedGroups.push({
@@ -189,6 +192,21 @@ ${vendorText || "(no vendors provided yet)"}
         rules: savedRules,
       });
     }
+
+    // ---------------- 🔥 AI ACTIVITY LOG ----------------
+    await sql`
+      INSERT INTO ai_activity_log (org_id, event_type, message, metadata)
+      VALUES (
+        ${orgIdInt},
+        'rules_generated',
+        'AI generated compliance rules',
+        ${JSON.stringify({
+          industries: detectedIndustries,
+          ruleGroups: ruleGroups.length,
+          totalRules,
+        })}
+      );
+    `;
 
     return res.status(200).json({
       ok: true,
