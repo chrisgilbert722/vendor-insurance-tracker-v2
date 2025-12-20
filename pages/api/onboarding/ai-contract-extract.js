@@ -1,8 +1,14 @@
 // pages/api/onboarding/ai-contract-extract.js
-// AI Contract Requirement Extraction — Step 5 of Wizard
+// ============================================================
+// AI Contract Requirement Extraction — Wizard Step
+// - Extracts insurance requirements from contracts
+// - Logs contracts_extracted AI activity
+// ============================================================
 
 import { supabase } from "../../../lib/supabaseClient";
 import OpenAI from "openai";
+import { sql } from "../../../lib/db";
+import { resolveOrg } from "../../../lib/resolveOrg";
 
 export const config = {
   api: {
@@ -32,13 +38,8 @@ export default async function handler(req, res) {
   }
 
   try {
-    const { orgId, documents } = req.body;
+    const { documents } = req.body;
 
-    if (!orgId) {
-      return res
-        .status(400)
-        .json({ ok: false, error: "Missing orgId in request." });
-    }
     if (!documents || !Array.isArray(documents) || documents.length === 0) {
       return res.status(400).json({
         ok: false,
@@ -46,10 +47,14 @@ export default async function handler(req, res) {
       });
     }
 
+    // 🔑 Resolve external_uuid → INTERNAL org INT
+    const orgIdInt = await resolveOrg(req, res);
+
     const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
     let combinedRequirements = [];
     let contractSummaries = [];
+    let processedFiles = [];
 
     // Process each contract PDF
     for (const doc of documents) {
@@ -60,9 +65,13 @@ export default async function handler(req, res) {
         continue;
       }
 
+      processedFiles.push(name || path);
+
       // 1. Download PDF bytes from Supabase
       const pdfBytes = await downloadPdf(bucket, path);
-      const pdfBase64 = Buffer.from(await pdfBytes.arrayBuffer()).toString("base64");
+      const pdfBase64 = Buffer.from(
+        await pdfBytes.arrayBuffer()
+      ).toString("base64");
 
       // 2. Ask OpenAI to extract requirements
       const prompt = `
@@ -104,9 +113,12 @@ If no requirements exist, return: { "summary": "", "requirements": [] }
         max_tokens: 1500,
       });
 
-      const extracted = safeJson(response.choices?.[0]?.message?.content);
+      const extracted = safeJson(
+        response.choices?.[0]?.message?.content
+      );
 
-      const summary = extracted.summary || `Extracted requirements from ${name}`;
+      const summary =
+        extracted.summary || `Extracted requirements from ${name}`;
       const reqs = extracted.requirements || [];
 
       contractSummaries.push({
@@ -116,6 +128,23 @@ If no requirements exist, return: { "summary": "", "requirements": [] }
       });
 
       combinedRequirements = [...combinedRequirements, ...reqs];
+    }
+
+    // ---------------- 🔥 AI ACTIVITY LOG ----------------
+    if (orgIdInt) {
+      await sql`
+        INSERT INTO ai_activity_log (org_id, event_type, message, metadata)
+        VALUES (
+          ${orgIdInt},
+          'contracts_extracted',
+          'AI extracted insurance requirements from contracts',
+          ${JSON.stringify({
+            documentsProcessed: processedFiles.length,
+            files: processedFiles,
+            requirementsExtracted: combinedRequirements.length,
+          })}
+        );
+      `;
     }
 
     return res.status(200).json({
