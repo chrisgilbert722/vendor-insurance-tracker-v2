@@ -1,5 +1,6 @@
+// pages/api/admin/org-compliance-v5.js
 // ============================================================
-// ORG-LEVEL COMPLIANCE INTELLIGENCE ENGINE — V5 (FIXED)
+// ORG-LEVEL COMPLIANCE INTELLIGENCE ENGINE — V5 (FINAL)
 // UUID-safe • INT-safe • Schema-correct • Non-blocking
 // ============================================================
 
@@ -9,16 +10,16 @@ import { openai } from "../../../lib/openaiClient";
 
 export default async function handler(req, res) {
   if (req.method !== "GET") {
-    return res.status(200).json({ ok: false, error: "GET only" });
+    return res.status(200).json({ ok: false, skipped: true });
   }
 
   try {
-    // 🔒 Canonical org resolution (UUID → INT)
+    // 🔒 Resolve external UUID → internal INT org_id
     const orgId = await resolveOrg(req, res);
     if (!orgId) return;
 
     /* ============================================================
-       1) ORG LOOKUP (INT ID — CORRECT)
+       1) ORG LOOKUP (CORRECT TABLE + INT ID)
     ============================================================ */
     const orgRows = await sql`
       SELECT id, name
@@ -119,7 +120,6 @@ Overall tier: ${tier}`,
 
       narrative = completion.choices?.[0]?.message?.content || "";
     } catch {
-      // 🔇 AI failure must NEVER break UI
       narrative = "";
     }
 
