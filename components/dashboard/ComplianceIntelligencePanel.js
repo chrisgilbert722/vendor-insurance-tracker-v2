@@ -1,6 +1,6 @@
 // components/dashboard/ComplianceIntelligencePanel.js
 // Phase 1A — Compliance Intelligence (Read-Only Overview)
-// Visual dominance only. No interactions yet.
+// Visual dominance only. System is prepared; automation activates later.
 
 export default function ComplianceIntelligencePanel({
   policies = [],
@@ -76,10 +76,22 @@ export default function ComplianceIntelligencePanel({
           textTransform: "uppercase",
           letterSpacing: "0.18em",
           color: "rgba(148,163,184,0.85)",
-          marginBottom: 14,
+          marginBottom: 10,
         }}
       >
         Compliance Intelligence
+      </div>
+
+      {/* SYSTEM STATUS LINE (NEW — DAY 11) */}
+      <div
+        style={{
+          fontSize: 13,
+          color: "#cbd5f5",
+          marginBottom: 18,
+        }}
+      >
+        Compliance monitoring is active. Automated actions are prepared and will
+        begin running once automation is activated.
       </div>
 
       {/* GRID */}
@@ -140,6 +152,19 @@ export default function ComplianceIntelligencePanel({
           </div>
         ))}
       </div>
+
+      {/* FOOTER SYSTEM NOTE (NEW — DAY 11) */}
+      <div
+        style={{
+          marginTop: 18,
+          paddingTop: 14,
+          borderTop: "1px solid rgba(148,163,184,0.18)",
+          fontSize: 13,
+          color: "#9ca3af",
+        }}
+      >
+        Automation is standing by. No additional configuration is required.
+      </div>
     </div>
   );
 }
@@ -159,9 +184,9 @@ function statusText(status, count) {
     case "attention":
       return `${count} issues detected`;
     case "missing":
-      return "No documents uploaded";
+      return "No documents uploaded yet";
     default:
-      return "Tracked by system";
+      return "Monitored by system";
   }
 }
 
