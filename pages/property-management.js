@@ -11,9 +11,7 @@ export default function PropertyManagementLanding() {
   return (
     <>
       <Head>
-        <title>
-          Vendor Insurance Compliance for Property Managers
-        </title>
+        <title>Vendor Insurance Compliance for Property Managers</title>
         <meta
           name="description"
           content="See vendor insurance risk across your properties in minutes. Automate reminders, renewals, and enforcement without chasing vendors."
@@ -65,38 +63,19 @@ export default function PropertyManagementLanding() {
                 marginBottom: 28,
               }}
             >
-              See vendor risk across your properties in minutes.
-              Automate reminders, renewals, and enforcement — without
-              chasing vendors or spreadsheets.
+              See vendor risk across your properties in minutes. Automate
+              reminders, renewals, and enforcement — without chasing vendors or
+              spreadsheets.
             </p>
 
             <Link
               href="/signup?industry=property_management"
-              style={{
-                display: "inline-block",
-                padding: "14px 28px",
-                borderRadius: 999,
-                background:
-                  "linear-gradient(90deg,#38bdf8,#1d4ed8,#0f172a)",
-                border: "1px solid rgba(56,189,248,0.9)",
-                color: "#e5f2ff",
-                fontSize: 16,
-                fontWeight: 600,
-                textDecoration: "none",
-                boxShadow:
-                  "0 0 28px rgba(56,189,248,0.65)",
-              }}
+              style={primaryCta}
             >
               Start 14-Day Free Trial
             </Link>
 
-            <div
-              style={{
-                marginTop: 12,
-                fontSize: 13,
-                color: "#9ca3af",
-              }}
-            >
+            <div style={ctaSubtext}>
               No sales calls · No setup headaches · Cancel anytime
             </div>
           </section>
@@ -105,34 +84,20 @@ export default function PropertyManagementLanding() {
               PAIN
           ===================================================== */}
           <section>
-            <h2
-              style={{
-                fontSize: 30,
-                fontWeight: 600,
-                marginBottom: 16,
-              }}
-            >
+            <h2 style={h2}>
               Vendor insurance is silently putting owners at risk.
             </h2>
 
-            <ul
-              style={{
-                fontSize: 18,
-                color: "#cbd5f5",
-                lineHeight: 1.6,
-                paddingLeft: 20,
-                marginBottom: 16,
-              }}
-            >
+            <ul style={bullets}>
               <li>Vendors ignore COI requests</li>
               <li>Expired coverage goes unnoticed</li>
               <li>Owner audits trigger last-minute panic</li>
               <li>Renewals slip through the cracks</li>
             </ul>
 
-            <p style={{ color: "#9ca3af", fontSize: 15 }}>
-              Most property managers don’t realize the risk until an
-              audit, claim, or vendor incident happens.
+            <p style={softText}>
+              Most property managers don’t realize the risk until an audit,
+              claim, or vendor incident happens.
             </p>
           </section>
 
@@ -140,37 +105,18 @@ export default function PropertyManagementLanding() {
               SYSTEM
           ===================================================== */}
           <section>
-            <h2
-              style={{
-                fontSize: 30,
-                fontWeight: 600,
-                marginBottom: 16,
-              }}
-            >
+            <h2 style={h2}>
               A system that monitors vendor compliance for you.
             </h2>
 
-            <ul
-              style={{
-                fontSize: 18,
-                color: "#cbd5f5",
-                lineHeight: 1.6,
-                paddingLeft: 20,
-                marginBottom: 16,
-              }}
-            >
+            <ul style={bullets}>
               <li>Instantly see non-compliant vendors</li>
               <li>Automatically prepare vendor reminders</li>
               <li>Track renewals continuously in the background</li>
               <li>Enforce insurance requirements without follow-ups</li>
             </ul>
 
-            <p
-              style={{
-                fontSize: 16,
-                color: "#9ca3af",
-              }}
-            >
+            <p style={softText}>
               You see the risk first. Automation handles the rest.
             </p>
           </section>
@@ -179,57 +125,88 @@ export default function PropertyManagementLanding() {
               TRUST
           ===================================================== */}
           <section>
-            <h2
-              style={{
-                fontSize: 30,
-                fontWeight: 600,
-                marginBottom: 16,
-              }}
-            >
+            <h2 style={h2}>
               See exactly what will happen — before anything is sent.
             </h2>
 
-            <ul
-              style={{
-                fontSize: 18,
-                color: "#cbd5f5",
-                lineHeight: 1.6,
-                paddingLeft: 20,
-                marginBottom: 16,
-              }}
-            >
+            <ul style={bullets}>
               <li>Risk Intelligence dashboard shows real exposure</li>
               <li>Preview all reminder emails and renewals</li>
               <li>Nothing runs until you activate automation</li>
             </ul>
 
-            <p style={{ fontSize: 15, color: "#9ca3af" }}>
-              Full control. No surprises.
+            <p style={softText}>Full control. No surprises.</p>
+          </section>
+
+          {/* =====================================================
+              BEFORE vs AFTER AUTOMATION (NEW)
+          ===================================================== */}
+          <section>
+            <h2 style={h2}>Before vs After Automation</h2>
+
+            <p style={{ ...softText, maxWidth: 640, marginBottom: 36 }}>
+              The difference between reacting to compliance issues — and never
+              letting them happen.
             </p>
+
+            <div
+              style={{
+                display: "grid",
+                gridTemplateColumns: "1fr 1fr",
+                gap: 24,
+              }}
+            >
+              {/* BEFORE */}
+              <div style={comparePanel}>
+                <h3 style={panelTitle}>Before Automation</h3>
+                <p style={panelStatus}>Manual · Reactive · Risk-Prone</p>
+
+                <ul style={compareList}>
+                  <li>Vendors ignore COI requests</li>
+                  <li>Expired policies go unnoticed</li>
+                  <li>Missing endorsements found too late</li>
+                  <li>Renewals tracked in spreadsheets</li>
+                  <li>Owner audits trigger panic</li>
+                </ul>
+
+                <p style={panelFooter}>
+                  Risk stays hidden until an audit, claim, or incident exposes
+                  it.
+                </p>
+              </div>
+
+              {/* AFTER */}
+              <div
+                style={{
+                  ...comparePanel,
+                  borderColor: "rgba(34,197,94,0.45)",
+                }}
+              >
+                <h3 style={panelTitle}>After Automation</h3>
+                <p style={panelStatus}>Automated · Continuous · Owner-Safe</p>
+
+                <ul style={compareList}>
+                  <li>Automatic vendor reminders</li>
+                  <li>Continuous COI monitoring</li>
+                  <li>Endorsements validated on upload</li>
+                  <li>Renewals escalate before expiration</li>
+                  <li>Owners protected proactively</li>
+                </ul>
+
+                <p style={panelFooter}>
+                  You see the risk first. Automation enforces compliance quietly.
+                </p>
+              </div>
+            </div>
           </section>
 
           {/* =====================================================
               HOW IT WORKS
           ===================================================== */}
           <section>
-            <h2
-              style={{
-                fontSize: 30,
-                fontWeight: 600,
-                marginBottom: 24,
-              }}
-            >
-              How it works
-            </h2>
+            <h2 style={h2}>How it works</h2>
 
-            <div
-              style={{
-                display: "grid",
-                gridTemplateColumns:
-                  "repeat(auto-fit, minmax(260px, 1fr))",
-                gap: 24,
-              }}
-            >
+            <div style={stepsGrid}>
               <Step
                 title="Connect your vendors"
                 text="Upload a vendor list or COIs. AI analyzes coverage and requirements."
@@ -251,31 +228,12 @@ export default function PropertyManagementLanding() {
           <section style={{ textAlign: "center" }}>
             <Link
               href="/signup?industry=property_management"
-              style={{
-                display: "inline-block",
-                padding: "16px 32px",
-                borderRadius: 999,
-                background:
-                  "linear-gradient(90deg,#38bdf8,#1d4ed8,#0f172a)",
-                border: "1px solid rgba(56,189,248,0.9)",
-                color: "#e5f2ff",
-                fontSize: 18,
-                fontWeight: 600,
-                textDecoration: "none",
-                boxShadow:
-                  "0 0 32px rgba(56,189,248,0.65)",
-              }}
+              style={{ ...primaryCta, fontSize: 18, padding: "16px 32px" }}
             >
               Start 14-Day Free Trial
             </Link>
 
-            <div
-              style={{
-                marginTop: 12,
-                fontSize: 13,
-                color: "#9ca3af",
-              }}
-            >
+            <div style={ctaSubtext}>
               See your risk first. Activate automation when you’re ready.
             </div>
           </section>
@@ -284,6 +242,88 @@ export default function PropertyManagementLanding() {
     </>
   );
 }
+
+/* ============================================================
+   STYLES
+============================================================ */
+
+const h2 = {
+  fontSize: 30,
+  fontWeight: 600,
+  marginBottom: 16,
+};
+
+const bullets = {
+  fontSize: 18,
+  color: "#cbd5f5",
+  lineHeight: 1.6,
+  paddingLeft: 20,
+  marginBottom: 16,
+};
+
+const softText = {
+  fontSize: 15,
+  color: "#9ca3af",
+};
+
+const primaryCta = {
+  display: "inline-block",
+  padding: "14px 28px",
+  borderRadius: 999,
+  background: "linear-gradient(90deg,#38bdf8,#1d4ed8,#0f172a)",
+  border: "1px solid rgba(56,189,248,0.9)",
+  color: "#e5f2ff",
+  fontSize: 16,
+  fontWeight: 600,
+  textDecoration: "none",
+  boxShadow: "0 0 28px rgba(56,189,248,0.65)",
+};
+
+const ctaSubtext = {
+  marginTop: 12,
+  fontSize: 13,
+  color: "#9ca3af",
+};
+
+const comparePanel = {
+  padding: 24,
+  borderRadius: 20,
+  border: "1px solid rgba(148,163,184,0.35)",
+  background:
+    "radial-gradient(circle at top left, rgba(15,23,42,0.92), rgba(2,6,23,0.96))",
+  boxShadow: "0 0 28px rgba(0,0,0,0.6)",
+};
+
+const panelTitle = {
+  fontSize: 20,
+  fontWeight: 600,
+  marginBottom: 6,
+};
+
+const panelStatus = {
+  fontSize: 13,
+  color: "#9ca3af",
+  marginBottom: 16,
+};
+
+const compareList = {
+  fontSize: 15,
+  lineHeight: 1.6,
+  color: "#cbd5f5",
+  paddingLeft: 18,
+  marginBottom: 16,
+};
+
+const panelFooter = {
+  fontSize: 14,
+  color: "#9ca3af",
+};
+
+const stepsGrid = {
+  display: "grid",
+  gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))",
+  gap: 24,
+};
 
 /* ============================================================
    STEP COMPONENT
@@ -301,24 +341,10 @@ function Step({ title, text }) {
         boxShadow: "0 0 24px rgba(0,0,0,0.6)",
       }}
     >
-      <div
-        style={{
-          fontSize: 18,
-          fontWeight: 600,
-          marginBottom: 8,
-        }}
-      >
+      <div style={{ fontSize: 18, fontWeight: 600, marginBottom: 8 }}>
         {title}
       </div>
-
-      <div
-        style={{
-          fontSize: 15,
-          color: "#cbd5f5",
-        }}
-      >
-        {text}
-      </div>
+      <div style={{ fontSize: 15, color: "#cbd5f5" }}>{text}</div>
     </div>
   );
 }
