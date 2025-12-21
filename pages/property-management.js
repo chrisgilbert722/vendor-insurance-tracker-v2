@@ -198,3 +198,216 @@ const logoStub = {
   background: "#f1f5f9",
   color: "#334155",
 };
+        {/* =====================================================
+            THE PROBLEM — MARKET TRUTH
+        ===================================================== */}
+        <section
+          style={{
+            maxWidth: 1200,
+            margin: "0 auto",
+            padding: "120px 24px 96px",
+          }}
+        >
+          <div style={{ maxWidth: 820 }}>
+            <h2
+              style={{
+                fontSize: 42,
+                fontWeight: 800,
+                letterSpacing: "-0.02em",
+                marginBottom: 24,
+              }}
+            >
+              Vendor insurance risk doesn’t fail loudly.
+            </h2>
+
+            <p
+              style={{
+                fontSize: 20,
+                lineHeight: 1.65,
+                color: "#334155",
+                marginBottom: 32,
+                maxWidth: 720,
+              }}
+            >
+              It fails quietly — accumulating in the background until an audit,
+              a claim, or an owner question exposes it all at once.
+            </p>
+
+            <p
+              style={{
+                fontSize: 18,
+                lineHeight: 1.65,
+                color: "#475569",
+                maxWidth: 720,
+                marginBottom: 32,
+              }}
+            >
+              COIs expire without notice. Vendors delay renewals. Endorsements
+              get missed. Spreadsheets drift out of date.
+            </p>
+
+            <ul
+              style={{
+                fontSize: 18,
+                lineHeight: 1.8,
+                color: "#475569",
+                paddingLeft: 22,
+              }}
+            >
+              <li>Coverage gaps go unnoticed</li>
+              <li>Non-compliance compounds silently</li>
+              <li>Risk only becomes visible when it’s already a problem</li>
+            </ul>
+
+            <p
+              style={{
+                marginTop: 28,
+                fontSize: 17,
+                color: "#64748b",
+                maxWidth: 700,
+              }}
+            >
+              Most property managers don’t discover insurance issues because
+              they weren’t diligent — they discover them because the systems
+              they rely on never showed the full truth.
+            </p>
+          </div>
+        </section>
+
+        {/* =====================================================
+            DIFFERENTIATION — CATEGORY KILL SHOT
+        ===================================================== */}
+        <section
+          style={{
+            background:
+              "linear-gradient(180deg,#f8fafc 0%, #eef2ff 100%)",
+            borderTop: "1px solid #e5e7eb",
+            borderBottom: "1px solid #e5e7eb",
+          }}
+        >
+          <div
+            style={{
+              maxWidth: 1200,
+              margin: "0 auto",
+              padding: "120px 24px",
+            }}
+          >
+            <div style={{ maxWidth: 880 }}>
+              <h2
+                style={{
+                  fontSize: 44,
+                  fontWeight: 800,
+                  letterSpacing: "-0.02em",
+                  marginBottom: 28,
+                }}
+              >
+                Most platforms automate first.
+                <br />
+                We show you the truth first.
+              </h2>
+
+              <p
+                style={{
+                  fontSize: 20,
+                  lineHeight: 1.65,
+                  color: "#334155",
+                  maxWidth: 760,
+                  marginBottom: 40,
+                }}
+              >
+                Instead of immediately sending emails, chasing vendors, or
+                enforcing rules blindly, this platform gives you something
+                no other system leads with:
+                <strong> real visibility.</strong>
+              </p>
+
+              <ul
+                style={{
+                  fontSize: 18,
+                  lineHeight: 1.9,
+                  color: "#475569",
+                  paddingLeft: 22,
+                  maxWidth: 760,
+                }}
+              >
+                <li>See actual insurance exposure instantly</li>
+                <li>Understand exactly which vendors are non-compliant — and why</li>
+                <li>Identify expiring coverage before it becomes urgent</li>
+                <li>Preview every action before anything runs</li>
+              </ul>
+
+              <p
+                style={{
+                  marginTop: 36,
+                  fontSize: 18,
+                  color: "#475569",
+                  maxWidth: 720,
+                }}
+              >
+                You stay in control.
+                <br />
+                Automation only starts when <strong>you</strong> decide.
+              </p>
+            </div>
+          </div>
+        </section>
+
+        {/* =====================================================
+            AUTONOMOUS SETUP — NO SALES / NO ONBOARDING
+        ===================================================== */}
+        <section
+          style={{
+            maxWidth: 1200,
+            margin: "0 auto",
+            padding: "120px 24px",
+          }}
+        >
+          <div style={{ maxWidth: 860 }}>
+            <h3
+              style={{
+                fontSize: 36,
+                fontWeight: 800,
+                letterSpacing: "-0.02em",
+                marginBottom: 20,
+              }}
+            >
+              Built for autonomous setup — not sales cycles
+            </h3>
+
+            <p
+              style={{
+                fontSize: 20,
+                lineHeight: 1.65,
+                color: "#334155",
+                maxWidth: 760,
+                marginBottom: 28,
+              }}
+            >
+              This platform doesn’t require demos, onboarding calls, or
+              implementation projects.
+            </p>
+
+            <p
+              style={{
+                fontSize: 18,
+                lineHeight: 1.65,
+                color: "#475569",
+                maxWidth: 760,
+                marginBottom: 28,
+              }}
+            >
+              You connect your vendors, see real risk, and decide what happens
+              next — all on your own timeline.
+            </p>
+
+            <p
+              style={{
+                fontSize: 18,
+                fontWeight: 600,
+                color: "#4f46e5",
+              }}
+            >
+              Most teams are operational in minutes — not weeks.
+            </p>
+          </div>
+        </section>
