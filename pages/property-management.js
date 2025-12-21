@@ -29,143 +29,191 @@ export default function PropertyManagementLanding() {
       >
         <div
           style={{
-            maxWidth: 920,
+            maxWidth: 1040,
             margin: "0 auto",
             display: "flex",
             flexDirection: "column",
-            gap: 80,
+            gap: 96,
           }}
         >
           {/* =====================================================
-              HERO
-          ===================================================== */}
-          <section>
-            <h1
-              style={{
-                fontSize: 48,
-                lineHeight: 1.1,
-                fontWeight: 700,
-                marginBottom: 18,
-                background:
-                  "linear-gradient(90deg,#38bdf8,#a855f7,#22c55e)",
-                WebkitBackgroundClip: "text",
-                color: "transparent",
-              }}
-            >
-              Vendor Insurance Compliance for Property Managers
-            </h1>
-
-            <p
-              style={{
-                fontSize: 20,
-                color: "#cbd5f5",
-                maxWidth: 680,
-                marginBottom: 28,
-              }}
-            >
-              See vendor risk across your properties in minutes. Automate
-              reminders, renewals, and enforcement — without chasing vendors or
-              spreadsheets.
-            </p>
-
-            <Link
-              href="/signup?industry=property_management"
-              style={primaryCta}
-            >
-              Start 14-Day Free Trial
-            </Link>
-
-            <div style={ctaSubtext}>
-              No sales calls · No setup headaches · Cancel anytime
-            </div>
-          </section>
-
-          {/* =====================================================
-              RISK SNAPSHOT — HERO VISUAL (NEW)
+              SINGLE PORTFOLIO RISK HERO (PRIMARY CONVERSION DRIVER)
           ===================================================== */}
           <section
             style={{
-              padding: 28,
-              borderRadius: 24,
+              padding: "60px 36px",
+              borderRadius: 28,
               border: "1px solid rgba(148,163,184,0.35)",
               background:
-                "radial-gradient(circle at top left, rgba(15,23,42,0.98), rgba(2,6,23,0.98))",
+                "radial-gradient(circle at top left, rgba(15,23,42,0.98), rgba(2,6,23,1))",
               boxShadow:
-                "0 0 50px rgba(56,189,248,0.25), inset 0 0 28px rgba(0,0,0,0.7)",
+                "0 0 70px rgba(56,189,248,0.28), inset 0 0 40px rgba(0,0,0,0.85)",
             }}
           >
-            <div style={{ marginBottom: 18 }}>
+            {/* Header */}
+            <div style={{ maxWidth: 760, marginBottom: 40 }}>
               <div
                 style={{
                   fontSize: 12,
                   letterSpacing: "0.18em",
                   textTransform: "uppercase",
                   color: "#60a5fa",
-                  marginBottom: 6,
+                  marginBottom: 12,
                 }}
               >
-                Portfolio Risk Snapshot
+                Portfolio Risk Command View
               </div>
 
-              <h3
+              <h1
                 style={{
-                  fontSize: 24,
-                  fontWeight: 600,
-                  margin: 0,
+                  fontSize: 44,
+                  lineHeight: 1.1,
+                  fontWeight: 700,
+                  marginBottom: 18,
+                  background:
+                    "linear-gradient(90deg,#38bdf8,#a855f7,#22c55e)",
+                  WebkitBackgroundClip: "text",
+                  color: "transparent",
                 }}
               >
-                Typical Property Management Exposure
-              </h3>
+                See Hidden Vendor Insurance Risk <br />
+                Before It Becomes an Owner Problem
+              </h1>
 
-              <p style={{ marginTop: 6, fontSize: 14, color: "#9ca3af" }}>
-                Example snapshot based on a 120–200 property portfolio.
+              <p
+                style={{
+                  fontSize: 18,
+                  color: "#cbd5f5",
+                  maxWidth: 640,
+                }}
+              >
+                Live insurance compliance visibility for a single property
+                portfolio. No spreadsheets. No chasing vendors. No automation
+                until you approve.
               </p>
             </div>
 
+            {/* Main Grid */}
             <div
               style={{
                 display: "grid",
-                gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
-                gap: 18,
+                gridTemplateColumns: "2fr 3fr",
+                gap: 28,
+                alignItems: "stretch",
               }}
             >
-              <RiskMetric
-                label="Non-Compliant Vendors"
-                value="14"
-                color="#fb7185"
-                note="Coverage gaps detected"
-              />
-              <RiskMetric
-                label="COIs Expiring ≤30 Days"
-                value="7"
-                color="#facc15"
-                note="Renewals approaching"
-              />
-              <RiskMetric
-                label="Missing Endorsements"
-                value="5"
-                color="#facc15"
-                note="Additional Insured / Waivers"
-              />
-              <RiskMetric
-                label="Owner Exposure Risk"
-                value="High"
-                color="#fb7185"
-                note="Audit / claim vulnerability"
-              />
+              {/* Property Context */}
+              <div
+                style={{
+                  padding: 28,
+                  borderRadius: 22,
+                  background: "rgba(15,23,42,0.92)",
+                  border: "1px solid rgba(148,163,184,0.25)",
+                  boxShadow: "0 0 30px rgba(0,0,0,0.7)",
+                }}
+              >
+                <div style={{ fontSize: 13, color: "#9ca3af", marginBottom: 12 }}>
+                  Example Property Portfolio
+                </div>
+
+                <div
+                  style={{
+                    fontSize: 26,
+                    fontWeight: 700,
+                    color: "#e5e7eb",
+                    marginBottom: 14,
+                  }}
+                >
+                  150-Unit Residential Property
+                </div>
+
+                <ul
+                  style={{
+                    listStyle: "none",
+                    padding: 0,
+                    margin: 0,
+                    fontSize: 15,
+                    color: "#cbd5f5",
+                    lineHeight: 1.7,
+                  }}
+                >
+                  <li>• 42 Active Vendors</li>
+                  <li>• 7 Service Categories</li>
+                  <li>• 1 Ownership Group</li>
+                  <li>• Continuous COI Monitoring</li>
+                </ul>
+
+                <div
+                  style={{
+                    marginTop: 20,
+                    paddingTop: 14,
+                    borderTop: "1px solid rgba(148,163,184,0.18)",
+                    fontSize: 13,
+                    color: "#93c5fd",
+                  }}
+                >
+                  Risk updates automatically as vendor documents change.
+                </div>
+              </div>
+
+              {/* Risk Metrics */}
+              <div
+                style={{
+                  display: "grid",
+                  gridTemplateColumns:
+                    "repeat(auto-fit, minmax(200px, 1fr))",
+                  gap: 18,
+                }}
+              >
+                <RiskMetric
+                  label="Non-Compliant Vendors"
+                  value="12"
+                  color="#fb7185"
+                  note="Coverage gaps detected"
+                />
+                <RiskMetric
+                  label="COIs Expiring ≤30 Days"
+                  value="7"
+                  color="#facc15"
+                  note="Renewals approaching"
+                />
+                <RiskMetric
+                  label="Missing Endorsements"
+                  value="4"
+                  color="#facc15"
+                  note="AI / Waivers required"
+                />
+                <RiskMetric
+                  label="Owner Exposure"
+                  value="HIGH"
+                  color="#fb7185"
+                  note="Audit & claim risk"
+                />
+              </div>
             </div>
 
+            {/* CTA Strip */}
             <div
               style={{
-                marginTop: 22,
-                paddingTop: 14,
-                borderTop: "1px solid rgba(148,163,184,0.18)",
-                fontSize: 14,
-                color: "#cbd5f5",
+                marginTop: 40,
+                display: "flex",
+                justifyContent: "space-between",
+                alignItems: "center",
+                flexWrap: "wrap",
+                gap: 16,
               }}
             >
-              These risks update continuously as vendor documents or policies
-              change.
+              <div style={{ fontSize: 14, color: "#9ca3af" }}>
+                Nothing is sent automatically. You review everything before
+                activation.
+              </div>
+
+              <Link
+                href="/signup?industry=property_management"
+                style={primaryCta}
+              >
+                View My Property’s Risk
+              </Link>
             </div>
           </section>
 
@@ -301,7 +349,8 @@ export default function PropertyManagementLanding() {
             <div
               style={{
                 display: "grid",
-                gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))",
+                gridTemplateColumns:
+                  "repeat(auto-fit, minmax(260px, 1fr))",
                 gap: 24,
               }}
             >
@@ -383,11 +432,11 @@ function RiskMetric({ label, value, color, note }) {
   return (
     <div
       style={{
-        padding: 20,
+        padding: 22,
         borderRadius: 18,
         border: `1px solid ${color}55`,
         background: "rgba(15,23,42,0.92)",
-        boxShadow: `0 0 18px ${color}33`,
+        boxShadow: `0 0 20px ${color}33`,
       }}
     >
       <div
@@ -404,7 +453,7 @@ function RiskMetric({ label, value, color, note }) {
 
       <div
         style={{
-          fontSize: 34,
+          fontSize: 36,
           fontWeight: 700,
           color,
           marginBottom: 6,
@@ -518,39 +567,4 @@ const ctaSubtext = {
 const comparePanel = {
   padding: 24,
   borderRadius: 20,
-  border: "1px solid rgba(148,163,184,0.35)",
-  background:
-    "radial-gradient(circle at top left, rgba(15,23,42,0.92), rgba(2,6,23,0.96))",
-  boxShadow: "0 0 28px rgba(0,0,0,0.6)",
-};
-
-const panelTitle = {
-  fontSize: 20,
-  fontWeight: 600,
-  marginBottom: 6,
-};
-
-const panelStatus = {
-  fontSize: 13,
-  color: "#9ca3af",
-  marginBottom: 16,
-};
-
-const compareList = {
-  fontSize: 15,
-  lineHeight: 1.6,
-  color: "#cbd5f5",
-  paddingLeft: 18,
-  marginBottom: 16,
-};
-
-const panelFooter = {
-  fontSize: 14,
-  color: "#9ca3af",
-};
-
-const stepsGrid = {
-  display: "grid",
-  gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))",
-  gap: 24,
-};
+  border: "1px solid rgba(148,
