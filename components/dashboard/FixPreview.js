@@ -1,9 +1,9 @@
 // components/dashboard/FixPreview.js
 // ============================================================
-// Automation Fix Preview (LOCKED)
+// Automation Fix Preview (LOCKED — Day 12)
 // - Cockpit-aligned
 // - Read-only preview of automation power
-// - Designed to sell activation without forcing checkout
+// - Establishes clear activation semantics (NO STRIPE YET)
 // ============================================================
 
 export default function FixPreview({ locked = true }) {
@@ -46,8 +46,8 @@ export default function FixPreview({ locked = true }) {
         </h3>
 
         <p style={{ marginTop: 6, fontSize: 13, color: "#9ca3af" }}>
-          These actions are preconfigured and will activate automatically once
-          automation is enabled.
+          Vendor reminders, broker requests, and renewal enforcement are fully
+          configured. No actions will run until automation is activated.
         </p>
       </div>
 
@@ -56,57 +56,70 @@ export default function FixPreview({ locked = true }) {
         <PreviewRow
           title="Vendor Reminder Emails"
           description="Automatically notify vendors with expiring or missing COIs."
-          meta="Scheduled intelligently based on expiration risk"
+          meta="Triggered based on expiration risk and compliance rules"
         />
 
         <PreviewRow
           title="Broker Requests"
           description="Request updated certificates directly from assigned brokers."
-          meta="Triggered when coverage gaps are detected"
+          meta="Sent automatically when coverage gaps are detected"
         />
 
         <PreviewRow
           title="Renewal Escalation Schedule"
           description="30 → 15 → 5 day escalation cadence before expiration."
-          meta="Runs continuously in the background"
+          meta="Runs continuously once automation is active"
         />
       </div>
 
-      {/* FOOTER STATUS */}
+      {/* FOOTER STATUS + ACTIVATE CTA */}
       <div
         style={{
-          marginTop: 18,
+          marginTop: 20,
           paddingTop: 14,
           display: "flex",
           justifyContent: "space-between",
           alignItems: "center",
-          borderTop: "1px solid rgba(148,163,184,0.15)",
+          borderTop: "1px solid rgba(148,163,184,0.18)",
           fontSize: 13,
         }}
       >
-        <div style={{ color: "#9ca3af" }}>
-          Automation status:{" "}
-          <span style={{ color: "#facc15", fontWeight: 500 }}>
-            Paused
-          </span>
+        <div style={{ color: "#9ca3af", lineHeight: 1.4 }}>
+          <div>
+            Automation Status:{" "}
+            <span style={{ color: "#38bdf8", fontWeight: 600 }}>
+              Standing By
+            </span>
+          </div>
+          <div style={{ fontSize: 12, marginTop: 4 }}>
+            The system is monitoring and ready. No vendors will be contacted
+            until automation is activated.
+          </div>
         </div>
 
-        <button
-          type="button"
-          disabled={locked}
-          style={{
-            padding: "8px 18px",
-            borderRadius: 999,
-            border: "1px solid rgba(56,189,248,0.6)",
-            background: "rgba(15,23,42,0.85)",
-            color: "#9ca3af",
-            fontSize: 13,
-            cursor: "not-allowed",
-            boxShadow: "0 0 18px rgba(56,189,248,0.25)",
-          }}
-        >
-          Activate Automation
-        </button>
+        <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+          <button
+            type="button"
+            disabled={locked}
+            style={{
+              padding: "10px 22px",
+              borderRadius: 999,
+              border: "1px solid rgba(56,189,248,0.6)",
+              background: "rgba(15,23,42,0.85)",
+              color: "#9ca3af",
+              fontSize: 13,
+              fontWeight: 600,
+              cursor: "not-allowed",
+              boxShadow: "0 0 18px rgba(56,189,248,0.25)",
+            }}
+          >
+            Activate Automation
+          </button>
+
+          <div style={{ fontSize: 11, color: "#64748b", textAlign: "center" }}>
+            No actions will run until activation
+          </div>
+        </div>
       </div>
     </div>
   );
