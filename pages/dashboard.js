@@ -1221,15 +1221,6 @@ function Dashboard() {
         </div>
       </div>
 
-      {/* PROPERTY MANAGEMENT RISK PREVIEW (READ-ONLY) */}
-      <PropertyManagementRiskPreview
-        complianceScore={Number(avgScore || 0)}
-        nonCompliantVendors={Number(engineHealth?.fails || 0)}
-        expiringSoon={Number(dashboard?.alerts?.critical30d || 0)}
-        missingEndorsements={Number(engineHealth?.critical || 0)}
-        vendorsTotal={Number(totalVendors || 0)}
-        locked={true}
-      />
 
 
       {/* POST-TUTORIAL STEP 5 ACTION BOX */}
