@@ -411,3 +411,273 @@ const logoStub = {
             </p>
           </div>
         </section>
+        {/* =====================================================
+            PRODUCT PROOF — EXECUTIVE RISK OVERVIEW
+        ===================================================== */}
+        <section
+          style={{
+            background: "#ffffff",
+            padding: "120px 24px",
+          }}
+        >
+          <div
+            style={{
+              maxWidth: 1200,
+              margin: "0 auto",
+            }}
+          >
+            <div style={{ maxWidth: 900, marginBottom: 64 }}>
+              <h2
+                style={{
+                  fontSize: 44,
+                  fontWeight: 800,
+                  letterSpacing: "-0.02em",
+                  marginBottom: 24,
+                }}
+              >
+                See your entire portfolio the way owners expect you to.
+              </h2>
+
+              <p
+                style={{
+                  fontSize: 20,
+                  lineHeight: 1.65,
+                  color: "#334155",
+                  maxWidth: 760,
+                }}
+              >
+                In one view, you can understand where real insurance risk exists
+                today — not where you hope it doesn’t.
+              </p>
+            </div>
+
+            {/* Executive Metrics */}
+            <div
+              style={{
+                display: "grid",
+                gridTemplateColumns:
+                  "repeat(auto-fit, minmax(220px, 1fr))",
+                gap: 28,
+              }}
+            >
+              <MetricCard
+                label="Non-Compliant Vendors"
+                value="12"
+                note="Coverage gaps detected"
+              />
+              <MetricCard
+                label="Policies Expiring Soon"
+                value="7"
+                note="Renewals approaching"
+              />
+              <MetricCard
+                label="Missing Endorsements"
+                value="4"
+                note="Additional insured / waivers"
+              />
+              <MetricCard
+                label="Owner Exposure Level"
+                value="High"
+                note="Audit & claim risk"
+              />
+            </div>
+          </div>
+        </section>
+
+        {/* =====================================================
+            BEFORE vs AFTER — OPERATING POSTURE
+        ===================================================== */}
+        <section
+          style={{
+            background:
+              "linear-gradient(180deg,#f8fafc 0%, #eef2ff 100%)",
+            padding: "120px 24px",
+          }}
+        >
+          <div
+            style={{
+              maxWidth: 1200,
+              margin: "0 auto",
+            }}
+          >
+            <h2
+              style={{
+                fontSize: 42,
+                fontWeight: 800,
+                letterSpacing: "-0.02em",
+                marginBottom: 56,
+              }}
+            >
+              Before vs After visibility and controlled automation
+            </h2>
+
+            <div
+              style={{
+                display: "grid",
+                gridTemplateColumns: "1fr 1fr",
+                gap: 40,
+              }}
+            >
+              {/* BEFORE */}
+              <div
+                style={{
+                  padding: 40,
+                  borderRadius: 20,
+                  background: "#ffffff",
+                  border: "1px solid #e5e7eb",
+                }}
+              >
+                <h3
+                  style={{
+                    fontSize: 24,
+                    fontWeight: 700,
+                    marginBottom: 12,
+                  }}
+                >
+                  Before
+                </h3>
+
+                <p
+                  style={{
+                    fontSize: 15,
+                    fontWeight: 600,
+                    color: "#ef4444",
+                    marginBottom: 24,
+                  }}
+                >
+                  Manual · Reactive · Risk-Prone
+                </p>
+
+                <ul
+                  style={{
+                    fontSize: 17,
+                    lineHeight: 1.8,
+                    color: "#475569",
+                    paddingLeft: 22,
+                  }}
+                >
+                  <li>COIs tracked manually</li>
+                  <li>Expired coverage discovered too late</li>
+                  <li>Missing endorsements overlooked</li>
+                  <li>Spreadsheets drift out of date</li>
+                  <li>Audits trigger last-minute panic</li>
+                </ul>
+              </div>
+
+              {/* AFTER */}
+              <div
+                style={{
+                  padding: 40,
+                  borderRadius: 20,
+                  background: "#ffffff",
+                  border: "2px solid #4f46e5",
+                }}
+              >
+                <h3
+                  style={{
+                    fontSize: 24,
+                    fontWeight: 700,
+                    marginBottom: 12,
+                  }}
+                >
+                  After
+                </h3>
+
+                <p
+                  style={{
+                    fontSize: 15,
+                    fontWeight: 600,
+                    color: "#22c55e",
+                    marginBottom: 24,
+                  }}
+                >
+                  Continuous · Calm · Owner-Safe
+                </p>
+
+                <ul
+                  style={{
+                    fontSize: 17,
+                    lineHeight: 1.8,
+                    color: "#475569",
+                    paddingLeft: 22,
+                  }}
+                >
+                  <li>Continuous vendor monitoring</li>
+                  <li>Expiring coverage flagged early</li>
+                  <li>Requirements validated on upload</li>
+                  <li>Renewals escalated before deadlines</li>
+                  <li>Owners protected proactively</li>
+                </ul>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        {/* =====================================================
+            FIRST 48 HOURS — NO FRICTION
+        ===================================================== */}
+        <section
+          style={{
+            background: "#ffffff",
+            padding: "120px 24px",
+          }}
+        >
+          <div
+            style={{
+              maxWidth: 1200,
+              margin: "0 auto",
+            }}
+          >
+            <div style={{ maxWidth: 900, marginBottom: 56 }}>
+              <h2
+                style={{
+                  fontSize: 42,
+                  fontWeight: 800,
+                  letterSpacing: "-0.02em",
+                  marginBottom: 20,
+                }}
+              >
+                What happens in your first 48 hours
+              </h2>
+
+              <p
+                style={{
+                  fontSize: 20,
+                  color: "#334155",
+                }}
+              >
+                No meetings. No onboarding. No waiting.
+              </p>
+            </div>
+
+            <div
+              style={{
+                display: "grid",
+                gridTemplateColumns:
+                  "repeat(auto-fit, minmax(260px, 1fr))",
+                gap: 32,
+              }}
+            >
+              <TimelineCard
+                time="Hour 0–1"
+                title="Connect vendors"
+                text="Upload a vendor list or COIs. No vendor logins required."
+              />
+              <TimelineCard
+                time="Hour 1–12"
+                title="Risk becomes visible"
+                text="Non-compliance, expiring policies, and owner exposure are surfaced."
+              />
+              <TimelineCard
+                time="Hour 12–24"
+                title="Automation previewed"
+                text="Reminders and renewals are generated — nothing is sent."
+              />
+              <TimelineCard
+                time="Hour 24–48"
+                title="You decide"
+                text="Activate automation when ready — or walk away with zero impact."
+              />
+            </div>
+          </div>
+        </section>
