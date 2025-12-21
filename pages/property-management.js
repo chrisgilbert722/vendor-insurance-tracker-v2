@@ -81,6 +81,95 @@ export default function PropertyManagementLanding() {
           </section>
 
           {/* =====================================================
+              RISK SNAPSHOT — HERO VISUAL (NEW)
+          ===================================================== */}
+          <section
+            style={{
+              padding: 28,
+              borderRadius: 24,
+              border: "1px solid rgba(148,163,184,0.35)",
+              background:
+                "radial-gradient(circle at top left, rgba(15,23,42,0.98), rgba(2,6,23,0.98))",
+              boxShadow:
+                "0 0 50px rgba(56,189,248,0.25), inset 0 0 28px rgba(0,0,0,0.7)",
+            }}
+          >
+            <div style={{ marginBottom: 18 }}>
+              <div
+                style={{
+                  fontSize: 12,
+                  letterSpacing: "0.18em",
+                  textTransform: "uppercase",
+                  color: "#60a5fa",
+                  marginBottom: 6,
+                }}
+              >
+                Portfolio Risk Snapshot
+              </div>
+
+              <h3
+                style={{
+                  fontSize: 24,
+                  fontWeight: 600,
+                  margin: 0,
+                }}
+              >
+                Typical Property Management Exposure
+              </h3>
+
+              <p style={{ marginTop: 6, fontSize: 14, color: "#9ca3af" }}>
+                Example snapshot based on a 120–200 property portfolio.
+              </p>
+            </div>
+
+            <div
+              style={{
+                display: "grid",
+                gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
+                gap: 18,
+              }}
+            >
+              <RiskMetric
+                label="Non-Compliant Vendors"
+                value="14"
+                color="#fb7185"
+                note="Coverage gaps detected"
+              />
+              <RiskMetric
+                label="COIs Expiring ≤30 Days"
+                value="7"
+                color="#facc15"
+                note="Renewals approaching"
+              />
+              <RiskMetric
+                label="Missing Endorsements"
+                value="5"
+                color="#facc15"
+                note="Additional Insured / Waivers"
+              />
+              <RiskMetric
+                label="Owner Exposure Risk"
+                value="High"
+                color="#fb7185"
+                note="Audit / claim vulnerability"
+              />
+            </div>
+
+            <div
+              style={{
+                marginTop: 22,
+                paddingTop: 14,
+                borderTop: "1px solid rgba(148,163,184,0.18)",
+                fontSize: 14,
+                color: "#cbd5f5",
+              }}
+            >
+              These risks update continuously as vendor documents or policies
+              change.
+            </div>
+          </section>
+
+          {/* =====================================================
               PAIN
           ===================================================== */}
           <section>
@@ -199,7 +288,7 @@ export default function PropertyManagementLanding() {
           </section>
 
           {/* =====================================================
-              FIRST 48 HOURS (NEW)
+              FIRST 48 HOURS
           ===================================================== */}
           <section>
             <h2 style={h2}>What happens in your first 48 hours</h2>
@@ -221,19 +310,16 @@ export default function PropertyManagementLanding() {
                 title="Connect vendors"
                 text="Upload a vendor list or COIs. AI scans coverage, limits, and endorsements automatically — no vendor logins required."
               />
-
               <TimelineStep
                 time="Hour 1–12"
                 title="Risk becomes visible"
                 text="Non-compliant vendors, expiring COIs, and owner exposure are flagged across your portfolio."
               />
-
               <TimelineStep
                 time="Hour 12–24"
                 title="Automation previewed"
                 text="Reminder emails, renewal schedules, and broker requests are generated — but nothing is sent."
               />
-
               <TimelineStep
                 time="Hour 24–48"
                 title="You decide"
@@ -241,13 +327,7 @@ export default function PropertyManagementLanding() {
               />
             </div>
 
-            <div
-              style={{
-                marginTop: 24,
-                fontSize: 14,
-                color: "#93c5fd",
-              }}
-            >
+            <div style={{ marginTop: 24, fontSize: 14, color: "#93c5fd" }}>
               Automation never runs without your approval.
             </div>
           </section>
@@ -296,7 +376,105 @@ export default function PropertyManagementLanding() {
 }
 
 /* ============================================================
-   STYLES
+   HELPERS
+============================================================ */
+
+function RiskMetric({ label, value, color, note }) {
+  return (
+    <div
+      style={{
+        padding: 20,
+        borderRadius: 18,
+        border: `1px solid ${color}55`,
+        background: "rgba(15,23,42,0.92)",
+        boxShadow: `0 0 18px ${color}33`,
+      }}
+    >
+      <div
+        style={{
+          fontSize: 12,
+          letterSpacing: "0.14em",
+          textTransform: "uppercase",
+          color: "#9ca3af",
+          marginBottom: 8,
+        }}
+      >
+        {label}
+      </div>
+
+      <div
+        style={{
+          fontSize: 34,
+          fontWeight: 700,
+          color,
+          marginBottom: 6,
+        }}
+      >
+        {value}
+      </div>
+
+      <div style={{ fontSize: 13, color: "#cbd5f5" }}>{note}</div>
+    </div>
+  );
+}
+
+function TimelineStep({ time, title, text }) {
+  return (
+    <div
+      style={{
+        padding: 22,
+        borderRadius: 18,
+        border: "1px solid rgba(148,163,184,0.35)",
+        background:
+          "radial-gradient(circle at top left, rgba(15,23,42,0.9), rgba(2,6,23,0.95))",
+        boxShadow: "0 0 24px rgba(0,0,0,0.6)",
+      }}
+    >
+      <div
+        style={{
+          fontSize: 12,
+          letterSpacing: "0.14em",
+          textTransform: "uppercase",
+          color: "#60a5fa",
+          marginBottom: 6,
+        }}
+      >
+        {time}
+      </div>
+
+      <div style={{ fontSize: 18, fontWeight: 600, marginBottom: 8 }}>
+        {title}
+      </div>
+
+      <div style={{ fontSize: 15, color: "#cbd5f5", lineHeight: 1.5 }}>
+        {text}
+      </div>
+    </div>
+  );
+}
+
+function Step({ title, text }) {
+  return (
+    <div
+      style={{
+        padding: 20,
+        borderRadius: 18,
+        border: "1px solid rgba(148,163,184,0.35)",
+        background:
+          "radial-gradient(circle at top left, rgba(15,23,42,0.9), rgba(2,6,23,0.95))",
+        boxShadow: "0 0 24px rgba(0,0,0,0.6)",
+      }}
+    >
+      <div style={{ fontSize: 18, fontWeight: 600, marginBottom: 8 }}>
+        {title}
+      </div>
+      <div style={{ fontSize: 15, color: "#cbd5f5" }}>{text}</div>
+    </div>
+  );
+}
+
+/* ============================================================
+   SHARED STYLES
 ============================================================ */
 
 const h2 = {
@@ -376,68 +554,3 @@ const stepsGrid = {
   gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))",
   gap: 24,
 };
-
-/* ============================================================
-   STEP COMPONENT
-============================================================ */
-
-function Step({ title, text }) {
-  return (
-    <div
-      style={{
-        padding: 20,
-        borderRadius: 18,
-        border: "1px solid rgba(148,163,184,0.35)",
-        background:
-          "radial-gradient(circle at top left, rgba(15,23,42,0.9), rgba(2,6,23,0.95))",
-        boxShadow: "0 0 24px rgba(0,0,0,0.6)",
-      }}
-    >
-      <div style={{ fontSize: 18, fontWeight: 600, marginBottom: 8 }}>
-        {title}
-      </div>
-      <div style={{ fontSize: 15, color: "#cbd5f5" }}>{text}</div>
-    </div>
-  );
-}
-
-function TimelineStep({ time, title, text }) {
-  return (
-    <div
-      style={{
-        padding: 22,
-        borderRadius: 18,
-        border: "1px solid rgba(148,163,184,0.35)",
-        background:
-          "radial-gradient(circle at top left, rgba(15,23,42,0.9), rgba(2,6,23,0.95))",
-        boxShadow: "0 0 24px rgba(0,0,0,0.6)",
-      }}
-    >
-      <div
-        style={{
-          fontSize: 12,
-          letterSpacing: "0.14em",
-          textTransform: "uppercase",
-          color: "#60a5fa",
-          marginBottom: 6,
-        }}
-      >
-        {time}
-      </div>
-
-      <div style={{ fontSize: 18, fontWeight: 600, marginBottom: 8 }}>
-        {title}
-      </div>
-
-      <div
-        style={{
-          fontSize: 15,
-          color: "#cbd5f5",
-          lineHeight: 1.5,
-        }}
-      >
-        {text}
-      </div>
-    </div>
-  );
-}
