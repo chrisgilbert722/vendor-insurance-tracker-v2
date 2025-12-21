@@ -886,37 +886,7 @@ function Dashboard() {
         color: GP.text,
       }}
     >
-        {/* PROPERTY MANAGEMENT RISK PREVIEW (READ-ONLY) */}
-        <PropertyManagementRiskPreview
-          complianceScore={Number(avgScore || 0)}
-          nonCompliantVendors={Number(engineHealth?.fails || 0)}
-          expiringSoon={Number(dashboard?.alerts?.critical30d || 0)}
-          missingEndorsements={Number(engineHealth?.critical || 0)}
-          vendorsTotal={Number(totalVendors || 0)}
-          locked={true}
-        />
-
-      {/* ONBOARDING COCKPIT LAYER */}
-      {!onboardingComplete && (
-        <>
-          {showHero && (
-            <div style={{ marginBottom: 32 }}>
-              <OnboardingHeroCard onStart={handleStartOnboarding} />
-            </div>
-          )}
-
-          {!showHero && !bannerDismissed && (
-            <div style={{ marginBottom: 22 }}>
-              <OnboardingBanner
-                onStart={handleStartOnboarding}
-                onDismiss={handleDismissBanner}
-              />
-            </div>
-          )}
-        </>
-      )}
-
-      {/* HERO COMMAND PANEL */}
+{/* HERO COMMAND PANEL */}
       <div
         className="cockpit-hero cockpit-pulse"
         style={{
@@ -1220,10 +1190,7 @@ function Dashboard() {
           </div>
         </div>
       </div>
-
-
-
-      {/* POST-TUTORIAL STEP 5 ACTION BOX */}
+{/* POST-TUTORIAL STEP 5 ACTION BOX */}
       {showPostTutorialActions && (
         <div
           style={{
@@ -1289,7 +1256,18 @@ function Dashboard() {
         </div>
       )}
 
-      {/* RULE ENGINE V5 HEALTH WIDGET */}
+      
+      {/* PROPERTY MANAGEMENT RISK PREVIEW (READ-ONLY) */}
+      <PropertyManagementRiskPreview
+        complianceScore={Number(avgScore || 0)}
+        nonCompliantVendors={Number(engineHealth?.fails || 0)}
+        expiringSoon={Number(dashboard?.alerts?.critical30d || 0)}
+        missingEndorsements={Number(engineHealth?.critical || 0)}
+        vendorsTotal={Number(totalVendors || 0)}
+        locked={true}
+      />
+
+{/* RULE ENGINE V5 HEALTH WIDGET */}
       <div
         style={{
           marginBottom: 24,
