@@ -31,12 +31,20 @@ export default function PropertyManagementLanding() {
         ===================================================== */}
         <section
           style={{
-            padding: "120px 24px 96px",
+            padding: "160px 24px 120px",
             maxWidth: 1200,
             margin: "0 auto",
           }}
         >
-          <div style={{ maxWidth: 860, marginBottom: 48 }}>
+          <div
+            style={{
+              display: "grid",
+              gridTemplateColumns: "1.2fr 0.8fr",
+              gap: 64,
+              alignItems: "center",
+            }}
+          >
+            <div style={{ maxWidth: 860 }}>
             <div
               style={{
                 fontSize: 13,
@@ -53,11 +61,12 @@ export default function PropertyManagementLanding() {
             <h1
               style={{
                 fontSize: 56,
-                lineHeight: 1.05,
-                fontWeight: 800,
+                lineHeight: 1.1,
+                fontWeight: 900,
                 marginBottom: 24,
                 letterSpacing: "-0.02em",
-              }}
+                  color: "#020617",
+                }}
             >
               Real-Time Vendor Risk Intelligence
               <br />
@@ -69,7 +78,7 @@ export default function PropertyManagementLanding() {
                 fontSize: 20,
                 lineHeight: 1.6,
                 color: "#334155",
-                maxWidth: 720,
+                maxWidth: 640,
                 marginBottom: 40,
               }}
             >
@@ -95,7 +104,8 @@ export default function PropertyManagementLanding() {
                   fontSize: 17,
                   fontWeight: 700,
                   textDecoration: "none",
-                  boxShadow: "0 20px 40px rgba(79,70,229,0.25)",
+                  letterSpacing: "-0.01em",
+                  boxShadow: "0 24px 60px rgba(79,70,229,0.35)",
                 }}
               >
                 View My Portfolio Risk
@@ -112,6 +122,45 @@ export default function PropertyManagementLanding() {
               >
                 See how it works →
               </Link>
+            </div>
+
+            </div>
+
+            {/* Right-side visual anchor */}
+            <div
+              style={{
+                background:
+                  "linear-gradient(180deg, #f8fafc 0%, #eef2ff 100%)",
+                borderRadius: 24,
+                padding: 32,
+                border: "1px solid #e5e7eb",
+                boxShadow: "0 40px 80px rgba(15,23,42,0.08)",
+              }}
+            >
+              <div
+                style={{
+                  fontSize: 12,
+                  fontWeight: 700,
+                  letterSpacing: "0.12em",
+                  textTransform: "uppercase",
+                  color: "#4f46e5",
+                  marginBottom: 16,
+                }}
+              >
+                Portfolio Risk Snapshot
+              </div>
+
+              <div style={{ display: "grid", gap: 16 }}>
+                <div style={miniCard}>
+                  <strong>12</strong> non-compliant vendors
+                </div>
+                <div style={miniCard}>
+                  <strong>7</strong> policies expiring soon
+                </div>
+                <div style={miniCard}>
+                  <strong>High</strong> owner exposure
+                </div>
+              </div>
             </div>
           </div>
         </section>
@@ -138,7 +187,7 @@ export default function PropertyManagementLanding() {
               style={{
                 fontSize: 15,
                 fontWeight: 600,
-                color: "#64748b",
+                color: "#94a3b8",
                 marginBottom: 28,
               }}
             >
@@ -174,15 +223,16 @@ export default function PropertyManagementLanding() {
           style={{
             maxWidth: 1200,
             margin: "0 auto",
-            padding: "120px 24px 96px",
+            padding: "160px 24px 120px",
           }}
         >
           <div style={{ maxWidth: 820 }}>
             <h2
               style={{
                 fontSize: 42,
-                fontWeight: 800,
+                fontWeight: 900,
                 letterSpacing: "-0.02em",
+                color: "#020617",
                 marginBottom: 24,
               }}
             >
@@ -253,13 +303,14 @@ export default function PropertyManagementLanding() {
             borderBottom: "1px solid #e5e7eb",
           }}
         >
-          <div style={{ maxWidth: 1200, margin: "0 auto", padding: "120px 24px" }}>
+          <div style={{ maxWidth: 1200, margin: "0 auto", padding: "160px 24px" }}>
             <div style={{ maxWidth: 880 }}>
               <h2
                 style={{
                   fontSize: 44,
-                  fontWeight: 800,
+                  fontWeight: 900,
                   letterSpacing: "-0.02em",
+                  color: "#020617",
                   marginBottom: 28,
                 }}
               >
@@ -322,8 +373,9 @@ export default function PropertyManagementLanding() {
             <h3
               style={{
                 fontSize: 36,
-                fontWeight: 800,
+                fontWeight: 900,
                 letterSpacing: "-0.02em",
+                color: "#020617",
                 marginBottom: 20,
               }}
             >
@@ -370,7 +422,8 @@ export default function PropertyManagementLanding() {
           id="how-it-works"
           style={{
             background: "#ffffff",
-            padding: "120px 24px",
+            padding: "160px 24px",
+            marginBottom: "0",
           }}
         >
           <div style={{ maxWidth: 1200, margin: "0 auto" }}>
@@ -378,8 +431,9 @@ export default function PropertyManagementLanding() {
               <h2
                 style={{
                   fontSize: 44,
-                  fontWeight: 800,
+                  fontWeight: 900,
                   letterSpacing: "-0.02em",
+                  color: "#020617",
                   marginBottom: 24,
                 }}
               >
@@ -438,14 +492,16 @@ export default function PropertyManagementLanding() {
           style={{
             background: "linear-gradient(180deg,#f8fafc 0%, #eef2ff 100%)",
             padding: "120px 24px",
+            marginTop: "0",
           }}
         >
           <div style={{ maxWidth: 1200, margin: "0 auto" }}>
             <h2
               style={{
                 fontSize: 42,
-                fontWeight: 800,
+                fontWeight: 900,
                 letterSpacing: "-0.02em",
+                color: "#020617",
                 marginBottom: 56,
               }}
             >
@@ -545,14 +601,15 @@ export default function PropertyManagementLanding() {
         {/* =====================================================
             FIRST 48 HOURS — NO FRICTION
         ===================================================== */}
-        <section style={{ background: "#ffffff", padding: "120px 24px" }}>
+        <section style={{ background: "#ffffff", padding: "120px 24px 80px" }}>
           <div style={{ maxWidth: 1200, margin: "0 auto" }}>
             <div style={{ maxWidth: 900, marginBottom: 56 }}>
               <h2
                 style={{
                   fontSize: 42,
-                  fontWeight: 800,
+                  fontWeight: 900,
                   letterSpacing: "-0.02em",
+                  color: "#020617",
                   marginBottom: 20,
                 }}
               >
@@ -601,7 +658,7 @@ export default function PropertyManagementLanding() {
         <section
           style={{
             background: "linear-gradient(180deg,#f8fafc 0%, #ffffff 100%)",
-            padding: "120px 24px",
+            padding: "160px 24px",
             borderTop: "1px solid #e5e7eb",
           }}
         >
@@ -609,8 +666,9 @@ export default function PropertyManagementLanding() {
             <h2
               style={{
                 fontSize: 42,
-                fontWeight: 800,
+                fontWeight: 900,
                 letterSpacing: "-0.02em",
+                color: "#020617",
                 marginBottom: 24,
               }}
             >
@@ -675,6 +733,16 @@ const logoStub = {
   color: "#334155",
 };
 
+const miniCard = {
+  background: "#ffffff",
+  padding: "14px 16px",
+  borderRadius: 12,
+  fontSize: 15,
+  color: "#0f172a",
+  border: "1px solid #e5e7eb",
+};
+
+
 /* ============================================================
    HELPER COMPONENTS
 ============================================================ */
@@ -687,6 +755,7 @@ function MetricCard({ label, value, note }) {
         borderRadius: 20,
         background: "#ffffff",
         border: "1px solid #e5e7eb",
+        boxShadow: "0 12px 32px rgba(15,23,42,0.08)",
       }}
     >
       <div
