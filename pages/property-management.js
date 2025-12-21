@@ -1,7 +1,7 @@
 // pages/property-management.js
 // ============================================================
-// Property Management Funnel — Executive Self-Serve Entry
-// Goal: Convert PMs & owners WITHOUT demos or sales calls
+// Property Management Funnel — Self-Serve Entry Point
+// Purpose: Qualify PMs and hand off to the product to close
 // ============================================================
 
 import Head from "next/head";
@@ -14,7 +14,7 @@ export default function PropertyManagementLanding() {
         <title>Vendor Insurance Compliance for Property Managers</title>
         <meta
           name="description"
-          content="See hidden vendor insurance risk across your property portfolio. Identify non-compliance, expiring COIs, and owner exposure before it becomes a problem."
+          content="See vendor insurance risk across your properties in minutes. Automate reminders, renewals, and enforcement without chasing vendors."
         />
       </Head>
 
@@ -22,152 +22,56 @@ export default function PropertyManagementLanding() {
         style={{
           minHeight: "100vh",
           background:
-            "radial-gradient(circle at top left, #020617 0%, #020617 45%, #000 100%)",
+            "radial-gradient(circle at top left,#020617 0,#020617 40%,#000 100%)",
           color: "#e5e7eb",
-          padding: "96px 20px",
+          padding: "80px 20px",
         }}
       >
         <div
           style={{
-            maxWidth: 1140,
+            maxWidth: 1040,
             margin: "0 auto",
             display: "flex",
             flexDirection: "column",
-            gap: 120,
+            gap: 96,
           }}
         >
+          {/* HERO */}
+          <section style={heroCard}>
+            <div style={{ maxWidth: 760, marginBottom: 40 }}>
+              <div style={eyebrow}>Portfolio Risk Command View</div>
 
-          {/* =====================================================
-              EXECUTIVE HERO — SINGLE PORTFOLIO RISK VIEW
-          ===================================================== */}
-          <section
-            style={{
-              padding: "72px 48px",
-              borderRadius: 32,
-              border: "1px solid rgba(148,163,184,0.35)",
-              background:
-                "radial-gradient(circle at top left, rgba(15,23,42,0.98), rgba(2,6,23,1))",
-              boxShadow:
-                "0 0 90px rgba(56,189,248,0.28), inset 0 0 48px rgba(0,0,0,0.85)",
-            }}
-          >
-            {/* Header */}
-            <div style={{ maxWidth: 820, marginBottom: 48 }}>
-              <div
-                style={{
-                  fontSize: 12,
-                  letterSpacing: "0.18em",
-                  textTransform: "uppercase",
-                  color: "#60a5fa",
-                  marginBottom: 14,
-                }}
-              >
-                Portfolio Risk Command View
-              </div>
-
-              <h1
-                style={{
-                  fontSize: 52,
-                  lineHeight: 1.1,
-                  fontWeight: 700,
-                  marginBottom: 22,
-                  background:
-                    "linear-gradient(90deg,#38bdf8,#a855f7,#22c55e)",
-                  WebkitBackgroundClip: "text",
-                  color: "transparent",
-                }}
-              >
+              <h1 style={heroTitle}>
                 See Hidden Vendor Insurance Risk
                 <br />
-                <span style={{ opacity: 0.9 }}>
-                  Before It Becomes an Owner Problem
-                </span>
+                Before It Becomes an Owner Problem
               </h1>
 
-              <p
-                style={{
-                  fontSize: 19,
-                  color: "#cbd5f5",
-                  maxWidth: 700,
-                }}
-              >
+              <p style={heroSub}>
                 Live insurance compliance visibility for a single property
                 portfolio. No spreadsheets. No chasing vendors. No automation
-                until <strong>you</strong> approve.
+                until you approve.
               </p>
             </div>
 
-            {/* Main Grid */}
-            <div
-              style={{
-                display: "grid",
-                gridTemplateColumns: "2fr 3fr",
-                gap: 32,
-                alignItems: "stretch",
-              }}
-            >
-              {/* Portfolio Context */}
-              <div
-                style={{
-                  padding: 32,
-                  borderRadius: 24,
-                  background: "rgba(15,23,42,0.92)",
-                  border: "1px solid rgba(148,163,184,0.25)",
-                  boxShadow: "0 0 40px rgba(0,0,0,0.75)",
-                }}
-              >
-                <div style={{ fontSize: 13, color: "#9ca3af", marginBottom: 14 }}>
-                  Example Property Portfolio
-                </div>
+            <div style={heroGrid}>
+              <div style={propertyCard}>
+                <div style={smallLabel}>Example Property Portfolio</div>
+                <div style={propertyTitle}>150-Unit Residential Property</div>
 
-                <div
-                  style={{
-                    fontSize: 28,
-                    fontWeight: 700,
-                    marginBottom: 16,
-                  }}
-                >
-                  150-Unit Residential Property
-                </div>
-
-                <ul
-                  style={{
-                    listStyle: "none",
-                    padding: 0,
-                    margin: 0,
-                    fontSize: 15,
-                    lineHeight: 1.8,
-                    color: "#cbd5f5",
-                  }}
-                >
+                <ul style={propertyList}>
                   <li>• 42 Active Vendors</li>
                   <li>• 7 Service Categories</li>
                   <li>• 1 Ownership Group</li>
                   <li>• Continuous COI Monitoring</li>
                 </ul>
 
-                <div
-                  style={{
-                    marginTop: 24,
-                    paddingTop: 14,
-                    borderTop: "1px solid rgba(148,163,184,0.18)",
-                    fontSize: 13,
-                    color: "#93c5fd",
-                  }}
-                >
+                <div style={propertyNote}>
                   Risk updates automatically as vendor documents change.
                 </div>
               </div>
 
-              {/* Risk Metrics */}
-              <div
-                style={{
-                  display: "grid",
-                  gridTemplateColumns:
-                    "repeat(auto-fit, minmax(220px, 1fr))",
-                  gap: 20,
-                }}
-              >
+              <div style={metricsGrid}>
                 <RiskMetric
                   label="Non-Compliant Vendors"
                   value="12"
@@ -195,18 +99,8 @@ export default function PropertyManagementLanding() {
               </div>
             </div>
 
-            {/* CTA */}
-            <div
-              style={{
-                marginTop: 48,
-                display: "flex",
-                justifyContent: "space-between",
-                alignItems: "center",
-                flexWrap: "wrap",
-                gap: 18,
-              }}
-            >
-              <div style={{ fontSize: 14, color: "#9ca3af" }}>
+            <div style={ctaStrip}>
+              <div style={ctaNote}>
                 Nothing is sent automatically. You review everything before
                 activation.
               </div>
@@ -220,71 +114,138 @@ export default function PropertyManagementLanding() {
             </div>
           </section>
 
-          {/* =====================================================
-              PAIN — OWNER RISK
-          ===================================================== */}
-          <Section
-            title="Vendor insurance is silently putting owners at risk."
-            bullets={[
-              "Vendors ignore COI requests",
-              "Expired coverage goes unnoticed",
-              "Missing endorsements surface too late",
-              "Owner audits trigger last-minute panic",
-              "Renewals slip through the cracks",
-            ]}
-            footer="Most property managers don’t realize the exposure until an audit, claim, or vendor incident happens."
-          />
+          {/* PAIN */}
+          <section>
+            <h2 style={h2}>
+              Vendor insurance is silently putting owners at risk.
+            </h2>
 
-          {/* =====================================================
-              SYSTEM — WHY THIS IS DIFFERENT
-          ===================================================== */}
-          <Section
-            title="A system that monitors vendor compliance for you."
-            bullets={[
-              "Instantly see non-compliant vendors across properties",
-              "Continuous COI and endorsement validation",
-              "Renewals tracked automatically in the background",
-              "No chasing vendors or brokers manually",
-            ]}
-            footer="You see the risk first. Automation handles the enforcement."
-          />
+            <ul style={bullets}>
+              <li>Vendors ignore COI requests</li>
+              <li>Expired coverage goes unnoticed</li>
+              <li>Owner audits trigger last-minute panic</li>
+              <li>Renewals slip through the cracks</li>
+            </ul>
 
-          {/* =====================================================
-              TRUST — CONTROL
-          ===================================================== */}
-          <Section
-            title="See exactly what will happen — before anything is sent."
-            bullets={[
-              "Preview reminder emails and renewal schedules",
-              "Understand enforcement rules before activation",
-              "Nothing runs until you explicitly approve automation",
-            ]}
-            footer="Full control. No surprises. Ever."
-          />
+            <p style={softText}>
+              Most property managers don’t realize the risk until an audit,
+              claim, or vendor incident happens.
+            </p>
+          </section>
 
-          {/* =====================================================
-              BEFORE / AFTER
-          ===================================================== */}
-          <CompareSection />
+          {/* SYSTEM */}
+          <section>
+            <h2 style={h2}>
+              A system that monitors vendor compliance for you.
+            </h2>
 
-          {/* =====================================================
-              FIRST 48 HOURS
-          ===================================================== */}
-          <TimelineSection />
+            <ul style={bullets}>
+              <li>Instantly see non-compliant vendors</li>
+              <li>Automatically prepare vendor reminders</li>
+              <li>Track renewals continuously in the background</li>
+              <li>Enforce insurance requirements without follow-ups</li>
+            </ul>
 
-          {/* =====================================================
-              FINAL CTA
-          ===================================================== */}
+            <p style={softText}>
+              You see the risk first. Automation handles the rest.
+            </p>
+          </section>
+
+          {/* TRUST */}
+          <section>
+            <h2 style={h2}>
+              See exactly what will happen — before anything is sent.
+            </h2>
+
+            <ul style={bullets}>
+              <li>Risk Intelligence dashboard shows real exposure</li>
+              <li>Preview all reminder emails and renewals</li>
+              <li>Nothing runs until you activate automation</li>
+            </ul>
+
+            <p style={softText}>Full control. No surprises.</p>
+          </section>
+
+          {/* BEFORE / AFTER */}
+          <section>
+            <h2 style={h2}>Before vs After Automation</h2>
+
+            <div style={compareGrid}>
+              <div style={comparePanel}>
+                <h3 style={panelTitle}>Before Automation</h3>
+                <p style={panelStatus}>Manual · Reactive · Risk-Prone</p>
+                <ul style={compareList}>
+                  <li>Vendors ignore COI requests</li>
+                  <li>Expired policies go unnoticed</li>
+                  <li>Missing endorsements found too late</li>
+                  <li>Renewals tracked in spreadsheets</li>
+                  <li>Owner audits trigger panic</li>
+                </ul>
+                <p style={panelFooter}>
+                  Risk stays hidden until an incident exposes it.
+                </p>
+              </div>
+
+              <div
+                style={{
+                  ...comparePanel,
+                  borderColor: "rgba(34,197,94,0.45)",
+                }}
+              >
+                <h3 style={panelTitle}>After Automation</h3>
+                <p style={panelStatus}>Automated · Continuous · Owner-Safe</p>
+                <ul style={compareList}>
+                  <li>Automatic vendor reminders</li>
+                  <li>Continuous COI monitoring</li>
+                  <li>Endorsements validated instantly</li>
+                  <li>Renewals escalated before expiry</li>
+                  <li>Owners protected proactively</li>
+                </ul>
+                <p style={panelFooter}>
+                  You see risk first. Automation enforces quietly.
+                </p>
+              </div>
+            </div>
+          </section>
+
+          {/* FIRST 48 HOURS */}
+          <section>
+            <h2 style={h2}>What happens in your first 48 hours</h2>
+
+            <div style={timelineGrid}>
+              <TimelineStep
+                time="Hour 0–1"
+                title="Connect vendors"
+                text="Upload vendors or COIs. AI scans coverage instantly."
+              />
+              <TimelineStep
+                time="Hour 1–12"
+                title="Risk becomes visible"
+                text="Non-compliance and owner exposure are flagged."
+              />
+              <TimelineStep
+                time="Hour 12–24"
+                title="Automation previewed"
+                text="Reminders and renewals generated — nothing sent."
+              />
+              <TimelineStep
+                time="Hour 24–48"
+                title="You decide"
+                text="Activate automation or walk away."
+              />
+            </div>
+          </section>
+
+          {/* FINAL CTA */}
           <section style={{ textAlign: "center" }}>
             <Link
               href="/signup?industry=property_management"
-              style={{ ...primaryCta, fontSize: 20, padding: "18px 36px" }}
+              style={{ ...primaryCta, fontSize: 18, padding: "16px 32px" }}
             >
               Start 14-Day Free Trial
             </Link>
-
             <div style={ctaSubtext}>
-              See your risk first. Activate automation when you’re ready.
+              See risk first. Activate automation when ready.
             </div>
           </section>
         </div>
@@ -299,215 +260,143 @@ export default function PropertyManagementLanding() {
 
 function RiskMetric({ label, value, color, note }) {
   return (
-    <div
-      style={{
-        padding: 24,
-        borderRadius: 20,
-        border: `1px solid ${color}55`,
-        background: "rgba(15,23,42,0.92)",
-        boxShadow: `0 0 24px ${color}33`,
-      }}
-    >
-      <div
-        style={{
-          fontSize: 12,
-          letterSpacing: "0.14em",
-          textTransform: "uppercase",
-          color: "#9ca3af",
-          marginBottom: 10,
-        }}
-      >
-        {label}
-      </div>
-
-      <div
-        style={{
-          fontSize: 38,
-          fontWeight: 700,
-          color,
-          marginBottom: 6,
-        }}
-      >
-        {value}
-      </div>
-
-      <div style={{ fontSize: 14, color: "#cbd5f5" }}>{note}</div>
+    <div style={{ ...metricCard, borderColor: `${color}55` }}>
+      <div style={metricLabel}>{label}</div>
+      <div style={{ ...metricValue, color }}>{value}</div>
+      <div style={metricNote}>{note}</div>
     </div>
-  );
-}
-
-function Section({ title, bullets, footer }) {
-  return (
-    <section>
-      <h2 style={h2}>{title}</h2>
-      <ul style={bulletsStyle}>
-        {bullets.map((b) => (
-          <li key={b}>{b}</li>
-        ))}
-      </ul>
-      <p style={softText}>{footer}</p>
-    </section>
-  );
-}
-
-function CompareSection() {
-  return (
-    <section>
-      <h2 style={h2}>Before vs After Automation</h2>
-
-      <div
-        style={{
-          display: "grid",
-          gridTemplateColumns: "1fr 1fr",
-          gap: 28,
-        }}
-      >
-        <CompareCard
-          title="Before Automation"
-          status="Manual · Reactive · Risk-Prone"
-          items={[
-            "Vendors ignore requests",
-            "Expired policies unnoticed",
-            "Endorsements missed",
-            "Spreadsheets & email chasing",
-            "Owner panic during audits",
-          ]}
-          footer="Risk stays hidden until something breaks."
-        />
-
-        <CompareCard
-          title="After Automation"
-          status="Automated · Continuous · Owner-Safe"
-          items={[
-            "Automatic vendor reminders",
-            "Continuous COI monitoring",
-            "Endorsements validated instantly",
-            "Renewals escalated early",
-            "Owners protected proactively",
-          ]}
-          footer="You see the risk first. Automation enforces compliance quietly."
-          positive
-        />
-      </div>
-    </section>
-  );
-}
-
-function CompareCard({ title, status, items, footer, positive }) {
-  return (
-    <div
-      style={{
-        padding: 28,
-        borderRadius: 24,
-        border: `1px solid ${
-          positive ? "rgba(34,197,94,0.45)" : "rgba(148,163,184,0.35)"
-        }`,
-        background:
-          "radial-gradient(circle at top left, rgba(15,23,42,0.92), rgba(2,6,23,0.96))",
-      }}
-    >
-      <h3 style={{ fontSize: 22, marginBottom: 6 }}>{title}</h3>
-      <div style={{ fontSize: 13, color: "#9ca3af", marginBottom: 16 }}>
-        {status}
-      </div>
-      <ul style={compareList}>
-        {items.map((i) => (
-          <li key={i}>{i}</li>
-        ))}
-      </ul>
-      <div style={{ fontSize: 14, color: "#9ca3af" }}>{footer}</div>
-    </div>
-  );
-}
-
-function TimelineSection() {
-  return (
-    <section>
-      <h2 style={h2}>What happens in your first 48 hours</h2>
-
-      <div
-        style={{
-          display: "grid",
-          gridTemplateColumns:
-            "repeat(auto-fit, minmax(260px, 1fr))",
-          gap: 24,
-        }}
-      >
-        <TimelineStep
-          time="Hour 0–1"
-          title="Connect vendors"
-          text="Upload a vendor list or COIs. AI analyzes coverage automatically."
-        />
-        <TimelineStep
-          time="Hour 1–12"
-          title="Risk becomes visible"
-          text="Non-compliance and owner exposure are surfaced."
-        />
-        <TimelineStep
-          time="Hour 12–24"
-          title="Automation previewed"
-          text="Emails and renewals generated — nothing sent."
-        />
-        <TimelineStep
-          time="Hour 24–48"
-          title="You decide"
-          text="Activate automation or walk away with zero impact."
-        />
-      </div>
-
-      <div style={{ marginTop: 20, fontSize: 14, color: "#93c5fd" }}>
-        Automation never runs without your approval.
-      </div>
-    </section>
   );
 }
 
 function TimelineStep({ time, title, text }) {
   return (
-    <div
-      style={{
-        padding: 24,
-        borderRadius: 20,
-        border: "1px solid rgba(148,163,184,0.35)",
-        background:
-          "radial-gradient(circle at top left, rgba(15,23,42,0.9), rgba(2,6,23,0.95))",
-      }}
-    >
-      <div
-        style={{
-          fontSize: 12,
-          letterSpacing: "0.14em",
-          textTransform: "uppercase",
-          color: "#60a5fa",
-          marginBottom: 6,
-        }}
-      >
-        {time}
-      </div>
-      <div style={{ fontSize: 18, fontWeight: 600, marginBottom: 8 }}>
-        {title}
-      </div>
-      <div style={{ fontSize: 15, color: "#cbd5f5" }}>{text}</div>
+    <div style={timelineCard}>
+      <div style={timelineTime}>{time}</div>
+      <div style={timelineTitle}>{title}</div>
+      <div style={timelineText}>{text}</div>
     </div>
   );
 }
-
 /* ============================================================
    STYLES
 ============================================================ */
 
-const h2 = {
-  fontSize: 34,
-  fontWeight: 600,
-  marginBottom: 18,
+const heroCard = {
+  padding: "60px 36px",
+  borderRadius: 28,
+  border: "1px solid rgba(148,163,184,0.35)",
+  background:
+    "radial-gradient(circle at top left, rgba(15,23,42,0.98), rgba(2,6,23,1))",
 };
 
-const bulletsStyle = {
+const eyebrow = {
+  fontSize: 12,
+  letterSpacing: "0.18em",
+  textTransform: "uppercase",
+  color: "#60a5fa",
+  marginBottom: 12,
+};
+
+const heroTitle = {
+  fontSize: 44,
+  fontWeight: 700,
+  lineHeight: 1.1,
+  background: "linear-gradient(90deg,#38bdf8,#a855f7,#22c55e)",
+  WebkitBackgroundClip: "text",
+  color: "transparent",
+};
+
+const heroSub = {
   fontSize: 18,
-  lineHeight: 1.7,
-  paddingLeft: 22,
   color: "#cbd5f5",
+};
+
+const heroGrid = {
+  display: "grid",
+  gridTemplateColumns: "2fr 3fr",
+  gap: 28,
+};
+
+const propertyCard = {
+  padding: 28,
+  borderRadius: 22,
+  background: "rgba(15,23,42,0.92)",
+};
+
+const propertyTitle = {
+  fontSize: 26,
+  fontWeight: 700,
   marginBottom: 14,
+};
+
+const propertyList = {
+  listStyle: "none",
+  padding: 0,
+  margin: 0,
+  fontSize: 15,
+  color: "#cbd5f5",
+  lineHeight: 1.7,
+};
+
+const propertyNote = {
+  marginTop: 18,
+  fontSize: 13,
+  color: "#93c5fd",
+};
+
+const metricsGrid = {
+  display: "grid",
+  gridTemplateColumns: "repeat(auto-fit, minmax(200px,1fr))",
+  gap: 18,
+};
+
+const metricCard = {
+  padding: 22,
+  borderRadius: 18,
+  border: "1px solid",
+  background: "rgba(15,23,42,0.92)",
+};
+
+const metricLabel = {
+  fontSize: 12,
+  letterSpacing: "0.14em",
+  textTransform: "uppercase",
+  color: "#9ca3af",
+};
+
+const metricValue = {
+  fontSize: 36,
+  fontWeight: 700,
+};
+
+const metricNote = {
+  fontSize: 13,
+  color: "#cbd5f5",
+};
+
+const ctaStrip = {
+  marginTop: 40,
+  display: "flex",
+  justifyContent: "space-between",
+  flexWrap: "wrap",
+};
+
+const ctaNote = {
+  fontSize: 14,
+  color: "#9ca3af",
+};
+
+const h2 = {
+  fontSize: 30,
+  fontWeight: 600,
+  marginBottom: 16,
+};
+
+const bullets = {
+  fontSize: 18,
+  color: "#cbd5f5",
+  lineHeight: 1.6,
+  paddingLeft: 20,
 };
 
 const softText = {
@@ -515,28 +404,82 @@ const softText = {
   color: "#9ca3af",
 };
 
-const primaryCta = {
-  display: "inline-block",
-  padding: "16px 34px",
-  borderRadius: 999,
-  background: "linear-gradient(90deg,#38bdf8,#1d4ed8,#0f172a)",
-  border: "1px solid rgba(56,189,248,0.9)",
-  color: "#e5f2ff",
-  fontSize: 18,
-  fontWeight: 600,
-  textDecoration: "none",
-  boxShadow: "0 0 36px rgba(56,189,248,0.7)",
+const compareGrid = {
+  display: "grid",
+  gridTemplateColumns: "1fr 1fr",
+  gap: 24,
 };
 
-const ctaSubtext = {
-  marginTop: 14,
+const comparePanel = {
+  padding: 24,
+  borderRadius: 20,
+  border: "1px solid rgba(148,163,184,0.35)",
+};
+
+const panelTitle = {
+  fontSize: 20,
+  fontWeight: 600,
+};
+
+const panelStatus = {
   fontSize: 13,
-  color: "#9ca3af",
+  color: "#93c5fd",
 };
 
 const compareList = {
   fontSize: 15,
-  lineHeight: 1.6,
   color: "#cbd5f5",
   paddingLeft: 18,
+};
+
+const panelFooter = {
+  fontSize: 13,
+  color: "#9ca3af",
+};
+
+const timelineGrid = {
+  display: "grid",
+  gridTemplateColumns: "repeat(auto-fit, minmax(260px,1fr))",
+  gap: 24,
+};
+
+const timelineCard = {
+  padding: 22,
+  borderRadius: 18,
+  border: "1px solid rgba(148,163,184,0.35)",
+};
+
+const timelineTime = {
+  fontSize: 12,
+  color: "#60a5fa",
+};
+
+const timelineTitle = {
+  fontSize: 18,
+  fontWeight: 600,
+};
+
+const timelineText = {
+  fontSize: 15,
+  color: "#cbd5f5",
+};
+
+const primaryCta = {
+  padding: "14px 28px",
+  borderRadius: 999,
+  background: "linear-gradient(90deg,#38bdf8,#1d4ed8)",
+  color: "#e5f2ff",
+  fontWeight: 600,
+  textDecoration: "none",
+};
+
+const ctaSubtext = {
+  marginTop: 12,
+  fontSize: 13,
+  color: "#9ca3af",
+};
+
+const smallLabel = {
+  fontSize: 13,
+  color: "#9ca3af",
 };
