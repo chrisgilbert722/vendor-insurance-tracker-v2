@@ -139,7 +139,7 @@ export default function PropertyManagementLanding() {
           </section>
 
           {/* =====================================================
-              BEFORE vs AFTER AUTOMATION (NEW)
+              BEFORE vs AFTER AUTOMATION
           ===================================================== */}
           <section>
             <h2 style={h2}>Before vs After Automation</h2>
@@ -156,7 +156,6 @@ export default function PropertyManagementLanding() {
                 gap: 24,
               }}
             >
-              {/* BEFORE */}
               <div style={comparePanel}>
                 <h3 style={panelTitle}>Before Automation</h3>
                 <p style={panelStatus}>Manual · Reactive · Risk-Prone</p>
@@ -175,7 +174,6 @@ export default function PropertyManagementLanding() {
                 </p>
               </div>
 
-              {/* AFTER */}
               <div
                 style={{
                   ...comparePanel,
@@ -197,6 +195,60 @@ export default function PropertyManagementLanding() {
                   You see the risk first. Automation enforces compliance quietly.
                 </p>
               </div>
+            </div>
+          </section>
+
+          {/* =====================================================
+              FIRST 48 HOURS (NEW)
+          ===================================================== */}
+          <section>
+            <h2 style={h2}>What happens in your first 48 hours</h2>
+
+            <p style={{ ...softText, maxWidth: 680, marginBottom: 36 }}>
+              No meetings. No waiting. No surprises. You’ll see real risk
+              immediately — automation stays paused until you’re ready.
+            </p>
+
+            <div
+              style={{
+                display: "grid",
+                gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))",
+                gap: 24,
+              }}
+            >
+              <TimelineStep
+                time="Hour 0–1"
+                title="Connect vendors"
+                text="Upload a vendor list or COIs. AI scans coverage, limits, and endorsements automatically — no vendor logins required."
+              />
+
+              <TimelineStep
+                time="Hour 1–12"
+                title="Risk becomes visible"
+                text="Non-compliant vendors, expiring COIs, and owner exposure are flagged across your portfolio."
+              />
+
+              <TimelineStep
+                time="Hour 12–24"
+                title="Automation previewed"
+                text="Reminder emails, renewal schedules, and broker requests are generated — but nothing is sent."
+              />
+
+              <TimelineStep
+                time="Hour 24–48"
+                title="You decide"
+                text="Review everything in the dashboard. Activate automation when comfortable — or walk away with zero impact."
+              />
+            </div>
+
+            <div
+              style={{
+                marginTop: 24,
+                fontSize: 14,
+                color: "#93c5fd",
+              }}
+            >
+              Automation never runs without your approval.
             </div>
           </section>
 
@@ -345,6 +397,47 @@ function Step({ title, text }) {
         {title}
       </div>
       <div style={{ fontSize: 15, color: "#cbd5f5" }}>{text}</div>
+    </div>
+  );
+}
+
+function TimelineStep({ time, title, text }) {
+  return (
+    <div
+      style={{
+        padding: 22,
+        borderRadius: 18,
+        border: "1px solid rgba(148,163,184,0.35)",
+        background:
+          "radial-gradient(circle at top left, rgba(15,23,42,0.9), rgba(2,6,23,0.95))",
+        boxShadow: "0 0 24px rgba(0,0,0,0.6)",
+      }}
+    >
+      <div
+        style={{
+          fontSize: 12,
+          letterSpacing: "0.14em",
+          textTransform: "uppercase",
+          color: "#60a5fa",
+          marginBottom: 6,
+        }}
+      >
+        {time}
+      </div>
+
+      <div style={{ fontSize: 18, fontWeight: 600, marginBottom: 8 }}>
+        {title}
+      </div>
+
+      <div
+        style={{
+          fontSize: 15,
+          color: "#cbd5f5",
+          lineHeight: 1.5,
+        }}
+      >
+        {text}
+      </div>
     </div>
   );
 }
