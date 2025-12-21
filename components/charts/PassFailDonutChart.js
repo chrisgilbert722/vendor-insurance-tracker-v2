@@ -1,72 +1,25 @@
 // components/charts/PassFailDonutChart.js
-import React from "react";
-import {
-  PieChart,
-  Pie,
-  Cell,
-  Tooltip,
-  ResponsiveContainer,
-} from "recharts";
+import React, { useEffect, useState } from "react";
+import { PieChart, Pie, Cell, ResponsiveContainer } from "recharts";
 
 /* ===========================
-   CINEMATIC V3 THEME (LOCKED)
+   GLOBAL SCORE–ALIGNED THEME
 =========================== */
 const GP = {
-  bgPanel: "rgba(15,23,42,0.98)",
-  border: "rgba(51,65,85,0.9)",
-  text: "#e5e7eb",
-  textSoft: "#9ca3af",
+  bg: "rgba(2,6,23,0.98)",
+  ringBg: "#020617",
 
   pass: "#22c55e",
   warn: "#facc15",
   fail: "#fb7185",
 
-  glowPass: "rgba(34,197,94,0.35)",
-  glowWarn: "rgba(250,204,21,0.35)",
-  glowFail: "rgba(251,113,133,0.35)",
+  text: "#e5e7eb",
+  textSoft: "#9ca3af",
 };
 
-/* Tooltip (Cinematic) */
-function DonutTooltip({ active, payload }) {
-  if (!active || !payload?.length) return null;
-  const { name, value, percent } = payload[0];
-
-  return (
-    <div
-      style={{
-        background: "rgba(2,6,23,0.95)",
-        border: "1px solid rgba(168,85,247,0.35)",
-        boxShadow: "0 0 18px rgba(168,85,247,0.55)",
-        color: GP.text,
-        padding: "10px 14px",
-        borderRadius: 12,
-        fontSize: 12,
-      }}
-    >
-      <div
-        style={{
-          fontWeight: 600,
-          marginBottom: 4,
-          color:
-            name === "Pass"
-              ? GP.pass
-              : name === "Warn"
-              ? GP.warn
-              : GP.fail,
-        }}
-      >
-        {name}
-      </div>
-      <div>
-        Vendors: <strong>{value}</strong>
-      </div>
-      <div style={{ color: GP.textSoft }}>
-        {(percent * 100).toFixed(1)}% of evaluated
-      </div>
-    </div>
-  );
-}
-
+/* ===========================
+   MAIN COMPONENT
+=========================== */
 export default function PassFailDonutChart({ data }) {
   const d =
     data || [
@@ -75,33 +28,58 @@ export default function PassFailDonutChart({ data }) {
       { name: "Fail", value: 1 },
     ];
 
-  const total = d.reduce((sum, x) => sum + x.value, 0);
+  const total = d.reduce((s, x) => s + x.value, 0);
   const pass = d.find((x) => x.name === "Pass")?.value ?? 0;
   const passPercent = total ? Math.round((pass / total) * 100) : 0;
+
+  /* ---------------------------
+     Micro animation trigger
+  --------------------------- */
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => {
+    const t = setTimeout(() => setMounted(true), 20);
+    return () => clearTimeout(t);
+  }, []);
+
+  /* ---------------------------
+     Glow intensity scaling
+  --------------------------- */
+  const glowStrength =
+    passPercent >= 90
+      ? 0.9
+      : passPercent >= 70
+      ? 0.6
+      : passPercent >= 50
+      ? 0.4
+      : 0.25;
 
   const COLORS = [GP.pass, GP.warn, GP.fail];
 
   return (
     <div
       style={{
-        borderRadius: 24,
-        padding: 22,
-        border: `1px solid ${GP.border}`,
-        background:
-          "radial-gradient(circle at top left,rgba(15,23,42,0.98),rgba(15,23,42,0.94))",
-        boxShadow:
-          "0 0 40px rgba(0,0,0,0.7), inset 0 0 25px rgba(0,0,0,0.45)",
+        position: "relative",
         height: "100%",
-        display: "flex",
-        flexDirection: "column",
+        borderRadius: 22,
+        padding: 22,
+        background:
+          "radial-gradient(circle at top, rgba(15,23,42,0.98), rgba(2,6,23,0.98))",
+        border: "1px solid rgba(148,163,184,0.35)",
+        boxShadow: `
+          0 0 40px rgba(56,189,248,0.12),
+          inset 0 0 28px rgba(0,0,0,0.65)
+        `,
+        transform: mounted ? "scale(1)" : "scale(0.96)",
+        opacity: mounted ? 1 : 0,
+        transition: "all 220ms ease-out",
       }}
     >
       {/* HEADER */}
-      <div style={{ marginBottom: 14 }}>
+      <div style={{ marginBottom: 12 }}>
         <div
           style={{
             fontSize: 12,
-            letterSpacing: 1.6,
+            letterSpacing: "0.18em",
             textTransform: "uppercase",
             color: GP.textSoft,
             marginBottom: 6,
@@ -115,7 +93,7 @@ export default function PassFailDonutChart({ data }) {
             fontSize: 22,
             fontWeight: 700,
             background:
-              "linear-gradient(90deg,#38bdf8,#a855f7,#22c55e,#facc15)",
+              "linear-gradient(90deg,#38bdf8,#a855f7,#22c55e)",
             WebkitBackgroundClip: "text",
             color: "transparent",
           }}
@@ -128,8 +106,8 @@ export default function PassFailDonutChart({ data }) {
         </div>
       </div>
 
-      {/* CHART */}
-      <div style={{ position: "relative", flex: 1, minHeight: 240 }}>
+      {/* RING */}
+      <div style={{ position: "relative", height: 260 }}>
         <ResponsiveContainer width="100%" height="100%">
           <PieChart>
             <Pie
@@ -137,83 +115,117 @@ export default function PassFailDonutChart({ data }) {
               dataKey="value"
               cx="50%"
               cy="50%"
-              innerRadius={62}
-              outerRadius={96}
+              innerRadius={78}
+              outerRadius={108}
               strokeWidth={0}
-              paddingAngle={4}
+              paddingAngle={3}
             >
-              {d.map((entry, i) => (
+              {d.map((_, i) => (
                 <Cell
-                  key={`cell-${i}`}
+                  key={i}
                   fill={COLORS[i]}
                   style={{
                     filter:
                       i === 0
-                        ? `drop-shadow(0 0 14px ${GP.glowPass})`
+                        ? `drop-shadow(0 0 ${
+                            28 * glowStrength
+                          }px rgba(34,197,94,${
+                            glowStrength
+                          }))`
                         : i === 1
-                        ? `drop-shadow(0 0 14px ${GP.glowWarn})`
-                        : `drop-shadow(0 0 14px ${GP.glowFail})`,
+                        ? "drop-shadow(0 0 10px rgba(250,204,21,0.35))"
+                        : "drop-shadow(0 0 10px rgba(251,113,133,0.35))",
                   }}
                 />
               ))}
             </Pie>
-
-            <Tooltip content={<DonutTooltip />} />
           </PieChart>
         </ResponsiveContainer>
 
-        {/* PERFECT CENTER LABEL (OPTICAL) */}
+        {/* CENTER CORE — GLOBAL SCORE STYLE */}
         <div
           style={{
             position: "absolute",
-            top: "50%",
-            left: "50%",
-            transform: "translate(-50%, -52%)", // 👈 optical centering fix
-            textAlign: "center",
+            inset: 0,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
             pointerEvents: "none",
           }}
         >
           <div
             style={{
-              fontSize: 30,
-              fontWeight: 800,
-              color: "#e5e7eb",
-              lineHeight: 1,
+              width: 140,
+              height: 140,
+              borderRadius: "50%",
+              background:
+                "radial-gradient(circle at top, #020617, #000)",
+              boxShadow: `
+                inset 0 0 30px rgba(0,0,0,0.9),
+                0 0 ${30 * glowStrength}px rgba(34,197,94,${
+                glowStrength * 0.9
+              })
+              `,
+              display: "flex",
+              flexDirection: "column",
+              alignItems: "center",
+              justifyContent: "center",
             }}
           >
-            {passPercent}%
-          </div>
-          <div
-            style={{
-              marginTop: 4,
-              fontSize: 12,
-              color: GP.textSoft,
-              letterSpacing: 0.4,
-            }}
-          >
-            Overall Pass
+            <div
+              style={{
+                fontSize: 36,
+                fontWeight: 800,
+                color: GP.text,
+                lineHeight: 1,
+              }}
+            >
+              {passPercent}
+            </div>
+            <div
+              style={{
+                fontSize: 12,
+                color: GP.textSoft,
+                marginTop: 2,
+              }}
+            >
+              /100
+            </div>
+            <div
+              style={{
+                fontSize: 11,
+                color: GP.textSoft,
+                letterSpacing: "0.12em",
+                marginTop: 6,
+              }}
+            >
+              OVERALL PASS
+            </div>
           </div>
         </div>
       </div>
 
-      {/* LEGEND (LOCKED + CENTERED) */}
+      {/* LEGEND */}
       <div
         style={{
           display: "flex",
           justifyContent: "center",
           gap: 18,
-          marginTop: 10,
+          marginTop: 12,
         }}
       >
-        <LegendItem label="Fail" color={GP.fail} />
-        <LegendItem label="Pass" color={GP.pass} />
-        <LegendItem label="Warn" color={GP.warn} />
+        <Legend label="Fail" color={GP.fail} />
+        <Legend label="Pass" color={GP.pass} />
+        <Legend label="Warn" color={GP.warn} />
       </div>
     </div>
   );
 }
 
-function LegendItem({ label, color }) {
+/* ===========================
+   LEGEND ITEM
+=========================== */
+function Legend({ label, color }) {
   return (
     <div
       style={{
@@ -221,7 +233,7 @@ function LegendItem({ label, color }) {
         alignItems: "center",
         gap: 6,
         fontSize: 12,
-        color: color,
+        color,
       }}
     >
       <div
@@ -230,7 +242,7 @@ function LegendItem({ label, color }) {
           height: 10,
           borderRadius: "50%",
           background: color,
-          boxShadow: `0 0 10px ${color}99`,
+          boxShadow: `0 0 12px ${color}`,
         }}
       />
       {label}
