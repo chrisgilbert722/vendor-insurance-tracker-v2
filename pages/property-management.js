@@ -1,7 +1,7 @@
 // pages/property-management.js
 // ============================================================
-// CATEGORY LEADER HOMEPAGE — PROPERTY MANAGEMENT (BLOCK 1)
-// Focus: Hero + Authority + Visual System
+// CATEGORY LEADER HOMEPAGE — PROPERTY MANAGEMENT
+// Goal: Premium category leader funnel (self-serve, no sales calls)
 // ============================================================
 
 import Head from "next/head";
@@ -36,12 +36,7 @@ export default function PropertyManagementLanding() {
             margin: "0 auto",
           }}
         >
-          <div
-            style={{
-              maxWidth: 860,
-              marginBottom: 48,
-            }}
-          >
+          <div style={{ maxWidth: 860, marginBottom: 48 }}>
             <div
               style={{
                 fontSize: 13,
@@ -95,14 +90,12 @@ export default function PropertyManagementLanding() {
                 style={{
                   padding: "16px 34px",
                   borderRadius: 999,
-                  background:
-                    "linear-gradient(135deg,#4f46e5,#6366f1)",
+                  background: "linear-gradient(135deg,#4f46e5,#6366f1)",
                   color: "#ffffff",
                   fontSize: 17,
                   fontWeight: 700,
                   textDecoration: "none",
-                  boxShadow:
-                    "0 20px 40px rgba(79,70,229,0.25)",
+                  boxShadow: "0 20px 40px rgba(79,70,229,0.25)",
                 }}
               >
                 View My Portfolio Risk
@@ -168,36 +161,12 @@ export default function PropertyManagementLanding() {
               <div style={logoStub}>Portfolio Services</div>
             </div>
 
-            <p
-              style={{
-                marginTop: 32,
-                fontSize: 14,
-                color: "#64748b",
-              }}
-            >
+            <p style={{ marginTop: 32, fontSize: 14, color: "#64748b" }}>
               Built for operators who can’t afford blind spots.
             </p>
           </div>
         </section>
-      </main>
-    </>
-  );
-}
 
-/* ============================================================
-   VISUAL PRIMITIVES (BLOCK 1)
-============================================================ */
-
-const logoStub = {
-  fontSize: 14,
-  fontWeight: 700,
-  letterSpacing: "0.04em",
-  textTransform: "uppercase",
-  padding: "12px 18px",
-  borderRadius: 8,
-  background: "#f1f5f9",
-  color: "#334155",
-};
         {/* =====================================================
             THE PROBLEM — MARKET TRUTH
         ===================================================== */}
@@ -279,19 +248,12 @@ const logoStub = {
         ===================================================== */}
         <section
           style={{
-            background:
-              "linear-gradient(180deg,#f8fafc 0%, #eef2ff 100%)",
+            background: "linear-gradient(180deg,#f8fafc 0%, #eef2ff 100%)",
             borderTop: "1px solid #e5e7eb",
             borderBottom: "1px solid #e5e7eb",
           }}
         >
-          <div
-            style={{
-              maxWidth: 1200,
-              margin: "0 auto",
-              padding: "120px 24px",
-            }}
-          >
+          <div style={{ maxWidth: 1200, margin: "0 auto", padding: "120px 24px" }}>
             <div style={{ maxWidth: 880 }}>
               <h2
                 style={{
@@ -316,8 +278,8 @@ const logoStub = {
                 }}
               >
                 Instead of immediately sending emails, chasing vendors, or
-                enforcing rules blindly, this platform gives you something
-                no other system leads with:
+                enforcing rules blindly, this platform gives you something no
+                other system leads with:
                 <strong> real visibility.</strong>
               </p>
 
@@ -355,13 +317,7 @@ const logoStub = {
         {/* =====================================================
             AUTONOMOUS SETUP — NO SALES / NO ONBOARDING
         ===================================================== */}
-        <section
-          style={{
-            maxWidth: 1200,
-            margin: "0 auto",
-            padding: "120px 24px",
-          }}
-        >
+        <section style={{ maxWidth: 1200, margin: "0 auto", padding: "120px 24px" }}>
           <div style={{ maxWidth: 860 }}>
             <h3
               style={{
@@ -400,32 +356,24 @@ const logoStub = {
               next — all on your own timeline.
             </p>
 
-            <p
-              style={{
-                fontSize: 18,
-                fontWeight: 600,
-                color: "#4f46e5",
-              }}
-            >
+            <p style={{ fontSize: 18, fontWeight: 600, color: "#4f46e5" }}>
               Most teams are operational in minutes — not weeks.
             </p>
           </div>
         </section>
+
         {/* =====================================================
             PRODUCT PROOF — EXECUTIVE RISK OVERVIEW
+            (Anchor for "See how it works")
         ===================================================== */}
         <section
+          id="how-it-works"
           style={{
             background: "#ffffff",
             padding: "120px 24px",
           }}
         >
-          <div
-            style={{
-              maxWidth: 1200,
-              margin: "0 auto",
-            }}
-          >
+          <div style={{ maxWidth: 1200, margin: "0 auto" }}>
             <div style={{ maxWidth: 900, marginBottom: 64 }}>
               <h2
                 style={{
@@ -455,8 +403,7 @@ const logoStub = {
             <div
               style={{
                 display: "grid",
-                gridTemplateColumns:
-                  "repeat(auto-fit, minmax(220px, 1fr))",
+                gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
                 gap: 28,
               }}
             >
@@ -489,17 +436,11 @@ const logoStub = {
         ===================================================== */}
         <section
           style={{
-            background:
-              "linear-gradient(180deg,#f8fafc 0%, #eef2ff 100%)",
+            background: "linear-gradient(180deg,#f8fafc 0%, #eef2ff 100%)",
             padding: "120px 24px",
           }}
         >
-          <div
-            style={{
-              maxWidth: 1200,
-              margin: "0 auto",
-            }}
-          >
+          <div style={{ maxWidth: 1200, margin: "0 auto" }}>
             <h2
               style={{
                 fontSize: 42,
@@ -527,13 +468,7 @@ const logoStub = {
                   border: "1px solid #e5e7eb",
                 }}
               >
-                <h3
-                  style={{
-                    fontSize: 24,
-                    fontWeight: 700,
-                    marginBottom: 12,
-                  }}
-                >
+                <h3 style={{ fontSize: 24, fontWeight: 700, marginBottom: 12 }}>
                   Before
                 </h3>
 
@@ -573,13 +508,7 @@ const logoStub = {
                   border: "2px solid #4f46e5",
                 }}
               >
-                <h3
-                  style={{
-                    fontSize: 24,
-                    fontWeight: 700,
-                    marginBottom: 12,
-                  }}
-                >
+                <h3 style={{ fontSize: 24, fontWeight: 700, marginBottom: 12 }}>
                   After
                 </h3>
 
@@ -616,18 +545,8 @@ const logoStub = {
         {/* =====================================================
             FIRST 48 HOURS — NO FRICTION
         ===================================================== */}
-        <section
-          style={{
-            background: "#ffffff",
-            padding: "120px 24px",
-          }}
-        >
-          <div
-            style={{
-              maxWidth: 1200,
-              margin: "0 auto",
-            }}
-          >
+        <section style={{ background: "#ffffff", padding: "120px 24px" }}>
+          <div style={{ maxWidth: 1200, margin: "0 auto" }}>
             <div style={{ maxWidth: 900, marginBottom: 56 }}>
               <h2
                 style={{
@@ -640,12 +559,7 @@ const logoStub = {
                 What happens in your first 48 hours
               </h2>
 
-              <p
-                style={{
-                  fontSize: 20,
-                  color: "#334155",
-                }}
-              >
+              <p style={{ fontSize: 20, color: "#334155" }}>
                 No meetings. No onboarding. No waiting.
               </p>
             </div>
@@ -653,8 +567,7 @@ const logoStub = {
             <div
               style={{
                 display: "grid",
-                gridTemplateColumns:
-                  "repeat(auto-fit, minmax(260px, 1fr))",
+                gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))",
                 gap: 32,
               }}
             >
@@ -681,24 +594,18 @@ const logoStub = {
             </div>
           </div>
         </section>
+
         {/* =====================================================
             CONTROL & GOVERNANCE — FINAL TRUST REINFORCEMENT
         ===================================================== */}
         <section
           style={{
-            background:
-              "linear-gradient(180deg,#f8fafc 0%, #ffffff 100%)",
+            background: "linear-gradient(180deg,#f8fafc 0%, #ffffff 100%)",
             padding: "120px 24px",
             borderTop: "1px solid #e5e7eb",
           }}
         >
-          <div
-            style={{
-              maxWidth: 1000,
-              margin: "0 auto",
-              textAlign: "center",
-            }}
-          >
+          <div style={{ maxWidth: 1000, margin: "0 auto", textAlign: "center" }}>
             <h2
               style={{
                 fontSize: 42,
@@ -723,13 +630,7 @@ const logoStub = {
               escalation is visible before it runs.
             </p>
 
-            <p
-              style={{
-                fontSize: 18,
-                color: "#475569",
-                marginBottom: 64,
-              }}
-            >
+            <p style={{ fontSize: 18, color: "#475569", marginBottom: 64 }}>
               You decide when automation starts — or if it starts at all.
             </p>
 
@@ -738,26 +639,18 @@ const logoStub = {
               style={{
                 padding: "18px 42px",
                 borderRadius: 999,
-                background:
-                  "linear-gradient(135deg,#4f46e5,#6366f1)",
+                background: "linear-gradient(135deg,#4f46e5,#6366f1)",
                 color: "#ffffff",
                 fontSize: 18,
                 fontWeight: 800,
                 textDecoration: "none",
-                boxShadow:
-                  "0 24px 48px rgba(79,70,229,0.35)",
+                boxShadow: "0 24px 48px rgba(79,70,229,0.35)",
               }}
             >
               View My Portfolio Risk
             </Link>
 
-            <p
-              style={{
-                marginTop: 18,
-                fontSize: 14,
-                color: "#64748b",
-              }}
-            >
+            <p style={{ marginTop: 18, fontSize: 14, color: "#64748b" }}>
               See risk first. Activate automation when you’re ready.
             </p>
           </div>
@@ -766,6 +659,21 @@ const logoStub = {
     </>
   );
 }
+
+/* ============================================================
+   VISUAL PRIMITIVES
+============================================================ */
+
+const logoStub = {
+  fontSize: 14,
+  fontWeight: 700,
+  letterSpacing: "0.04em",
+  textTransform: "uppercase",
+  padding: "12px 18px",
+  borderRadius: 8,
+  background: "#f1f5f9",
+  color: "#334155",
+};
 
 /* ============================================================
    HELPER COMPONENTS
@@ -804,14 +712,7 @@ function MetricCard({ label, value, note }) {
         {value}
       </div>
 
-      <div
-        style={{
-          fontSize: 15,
-          color: "#475569",
-        }}
-      >
-        {note}
-      </div>
+      <div style={{ fontSize: 15, color: "#475569" }}>{note}</div>
     </div>
   );
 }
@@ -838,23 +739,11 @@ function TimelineCard({ time, title, text }) {
         {time}
       </div>
 
-      <div
-        style={{
-          fontSize: 20,
-          fontWeight: 700,
-          marginBottom: 12,
-        }}
-      >
+      <div style={{ fontSize: 20, fontWeight: 700, marginBottom: 12 }}>
         {title}
       </div>
 
-      <div
-        style={{
-          fontSize: 16,
-          color: "#475569",
-          lineHeight: 1.6,
-        }}
-      >
+      <div style={{ fontSize: 16, color: "#475569", lineHeight: 1.6 }}>
         {text}
       </div>
     </div>
