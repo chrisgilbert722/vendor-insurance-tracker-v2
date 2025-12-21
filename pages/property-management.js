@@ -681,3 +681,182 @@ const logoStub = {
             </div>
           </div>
         </section>
+        {/* =====================================================
+            CONTROL & GOVERNANCE — FINAL TRUST REINFORCEMENT
+        ===================================================== */}
+        <section
+          style={{
+            background:
+              "linear-gradient(180deg,#f8fafc 0%, #ffffff 100%)",
+            padding: "120px 24px",
+            borderTop: "1px solid #e5e7eb",
+          }}
+        >
+          <div
+            style={{
+              maxWidth: 1000,
+              margin: "0 auto",
+              textAlign: "center",
+            }}
+          >
+            <h2
+              style={{
+                fontSize: 42,
+                fontWeight: 800,
+                letterSpacing: "-0.02em",
+                marginBottom: 24,
+              }}
+            >
+              Full visibility. Full control. Always.
+            </h2>
+
+            <p
+              style={{
+                fontSize: 20,
+                lineHeight: 1.65,
+                color: "#334155",
+                maxWidth: 760,
+                margin: "0 auto 40px",
+              }}
+            >
+              Nothing is sent automatically. Every reminder, renewal, and
+              escalation is visible before it runs.
+            </p>
+
+            <p
+              style={{
+                fontSize: 18,
+                color: "#475569",
+                marginBottom: 64,
+              }}
+            >
+              You decide when automation starts — or if it starts at all.
+            </p>
+
+            <Link
+              href="/signup?industry=property_management"
+              style={{
+                padding: "18px 42px",
+                borderRadius: 999,
+                background:
+                  "linear-gradient(135deg,#4f46e5,#6366f1)",
+                color: "#ffffff",
+                fontSize: 18,
+                fontWeight: 800,
+                textDecoration: "none",
+                boxShadow:
+                  "0 24px 48px rgba(79,70,229,0.35)",
+              }}
+            >
+              View My Portfolio Risk
+            </Link>
+
+            <p
+              style={{
+                marginTop: 18,
+                fontSize: 14,
+                color: "#64748b",
+              }}
+            >
+              See risk first. Activate automation when you’re ready.
+            </p>
+          </div>
+        </section>
+      </main>
+    </>
+  );
+}
+
+/* ============================================================
+   HELPER COMPONENTS
+============================================================ */
+
+function MetricCard({ label, value, note }) {
+  return (
+    <div
+      style={{
+        padding: 28,
+        borderRadius: 20,
+        background: "#ffffff",
+        border: "1px solid #e5e7eb",
+      }}
+    >
+      <div
+        style={{
+          fontSize: 13,
+          fontWeight: 700,
+          textTransform: "uppercase",
+          color: "#64748b",
+          marginBottom: 12,
+        }}
+      >
+        {label}
+      </div>
+
+      <div
+        style={{
+          fontSize: 40,
+          fontWeight: 800,
+          color: "#0f172a",
+          marginBottom: 8,
+        }}
+      >
+        {value}
+      </div>
+
+      <div
+        style={{
+          fontSize: 15,
+          color: "#475569",
+        }}
+      >
+        {note}
+      </div>
+    </div>
+  );
+}
+
+function TimelineCard({ time, title, text }) {
+  return (
+    <div
+      style={{
+        padding: 28,
+        borderRadius: 20,
+        background: "#ffffff",
+        border: "1px solid #e5e7eb",
+      }}
+    >
+      <div
+        style={{
+          fontSize: 13,
+          fontWeight: 700,
+          color: "#4f46e5",
+          textTransform: "uppercase",
+          marginBottom: 8,
+        }}
+      >
+        {time}
+      </div>
+
+      <div
+        style={{
+          fontSize: 20,
+          fontWeight: 700,
+          marginBottom: 12,
+        }}
+      >
+        {title}
+      </div>
+
+      <div
+        style={{
+          fontSize: 16,
+          color: "#475569",
+          lineHeight: 1.6,
+        }}
+      >
+        {text}
+      </div>
+    </div>
+  );
+}
