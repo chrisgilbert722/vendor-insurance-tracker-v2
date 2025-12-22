@@ -36,6 +36,17 @@ export default function PropertyManagementLanding() {
           dangerouslySetInnerHTML={ { __html: "{\"@context\": \"https://schema.org\", \"@type\": \"SoftwareApplication\", \"name\": \"Vendor Risk Intelligence Platform\", \"applicationCategory\": \"BusinessApplication\", \"applicationSubCategory\": \"Vendor Risk Management Software\", \"operatingSystem\": \"Web\", \"description\": \"Vendor risk management and insurance compliance software for property managers to track COIs, monitor expiring coverage, and reduce owner exposure.\", \"offers\": {\"@type\": \"Offer\", \"price\": \"0\", \"priceCurrency\": \"USD\", \"availability\": \"https://schema.org/OnlineOnly\"}, \"featureList\": [\"Vendor risk management\", \"COI tracking\", \"Insurance compliance monitoring\", \"Expiration alerts\", \"Owner exposure visibility\", \"Control-first automation\"]}" } }
         />
 
+      
+        <script
+          type="application/ld+json"
+          dangerouslySetInnerHTML={ { __html: "{\"@context\": \"https://schema.org\", \"@type\": \"BreadcrumbList\", \"itemListElement\": [{\"@type\": \"ListItem\", \"position\": 1, \"name\": \"Home\", \"item\": \"https://vendor-insurance-tracker-v2.vercel.app/\"}, {\"@type\": \"ListItem\", \"position\": 2, \"name\": \"Property Management\", \"item\": \"https://vendor-insurance-tracker-v2.vercel.app/property-management\"}]}" } }
+        />
+
+        <script
+          type="application/ld+json"
+          dangerouslySetInnerHTML={ { __html: "{\"@context\": \"https://schema.org\", \"@type\": \"Offer\", \"name\": \"Vendor Risk Intelligence Platform \\u2013 Free Trial\", \"price\": \"0\", \"priceCurrency\": \"USD\", \"availability\": \"https://schema.org/InStock\", \"url\": \"https://vendor-insurance-tracker-v2.vercel.app/signup\", \"description\": \"Start with a free trial. View vendor risk and activate automation when ready.\"}" } }
+        />
+
       </Head>
 
       <main
