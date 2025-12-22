@@ -217,6 +217,22 @@ export default function PropertyManagementLanding() {
         </section>
 
         {/* =====================================================
+            WHO THIS IS FOR
+        ===================================================== */}
+        <section style={{ maxWidth: 1200, margin: "0 auto", padding: "64px 24px" }}>
+          <div style={{ maxWidth: 900 }}>
+            <h3 style={{ fontSize: 22, fontWeight: 700, marginBottom: 16, color: "#020617" }}>
+              Built for teams that can’t afford blind spots
+            </h3>
+            <ul style={{ fontSize: 17, color: "#475569", lineHeight: 1.8, paddingLeft: 22 }}>
+              <li>Property managers overseeing multiple vendors</li>
+              <li>Operations teams responsible for owner risk</li>
+              <li>Firms preparing for audits, claims, or portfolio growth</li>
+            </ul>
+          </div>
+        </section>
+
+        {/* =====================================================
             THE PROBLEM — MARKET TRUTH
         ===================================================== */}
         <section
@@ -361,6 +377,30 @@ export default function PropertyManagementLanding() {
                 <br />
                 Automation only starts when <strong>you</strong> decide.
               </p>
+            </div>
+
+            {/* Mid-page CTA */}
+            <div style={{ marginTop: 48 }}>
+              <Link
+                href="/signup?industry=property_management"
+                style={{
+                  display: "inline-block",
+                  padding: "16px 34px",
+                  borderRadius: 999,
+                  background: "linear-gradient(135deg,#4f46e5,#6366f1)",
+                  color: "#ffffff",
+                  fontSize: 17,
+                  fontWeight: 700,
+                  letterSpacing: "-0.01em",
+                  textDecoration: "none",
+                  boxShadow: "0 24px 60px rgba(79,70,229,0.35)",
+                }}
+              >
+                View My Portfolio Risk
+              </Link>
+              <div style={{ marginTop: 10, fontSize: 13, color: "#475569" }}>
+                No demos. No sales calls. Operational in minutes.
+              </div>
             </div>
           </div>
         </section>
