@@ -2,11 +2,17 @@
 // ============================================================
 // PROPERTY MANAGEMENT FUNNEL — CLONED FROM /pages/index.js
 // CRANK PASS A+B: Micro-motion polish + Owner/Ops toggle (still SEO + schema compliant)
+// Additions:
+// C) Trust authority band
+// D) Owner report preview modal
+// Fixes:
+// - Gauge bug (ring now reflects score + stable across mode changes)
+// - Owner/Ops toggle rendering (mobile-safe, accessible, non-janky)
 // ============================================================
 
 import Head from "next/head";
 import { useRouter } from "next/router";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 export default function PropertyManagement() {
   const router = useRouter();
@@ -62,7 +68,7 @@ export default function PropertyManagement() {
         name: "Does automation run automatically?",
         acceptedAnswer: {
           "@type": "Answer",
-          text: "No. Nothing is sent until you approve. You preview reminders, renewals, and escalations before anything runs.",
+          text: "No. Nothing is sent until you approve. You preview reminders, renewals, and escalations before anything is sent.",
         },
       },
     ],
@@ -122,6 +128,9 @@ export default function PropertyManagement() {
   // --- (B) Owner/Ops Toggle
   const [viewMode, setViewMode] = useState("ops"); // "ops" | "owner"
 
+  // --- (D) Owner Report Preview modal
+  const [ownerReportOpen, setOwnerReportOpen] = useState(false);
+
   const cockpit = useMemo(() => {
     if (viewMode === "owner") {
       return {
@@ -153,6 +162,26 @@ export default function PropertyManagement() {
     const t = setTimeout(() => setAnimate(true), 120);
     return () => clearTimeout(t);
   }, []);
+
+  // Prevent “toggle feels broken” on tiny screens: keep scroll stable when toggling
+  const cockpitRef = useRef(null);
+  const lastModeRef = useRef(viewMode);
+  useEffect(() => {
+    if (lastModeRef.current === viewMode) return;
+    lastModeRef.current = viewMode;
+    const el = cockpitRef.current;
+    if (!el) return;
+    const r = el.getBoundingClientRect();
+    const topCut = r.top < 60;
+    const bottomCut = r.bottom > window.innerHeight - 60;
+    if (topCut || bottomCut) {
+      try {
+        el.scrollIntoView({ behavior: "smooth", block: "center" });
+      } catch {
+        // no-op
+      }
+    }
+  }, [viewMode]);
 
   return (
     <>
@@ -223,6 +252,53 @@ export default function PropertyManagement() {
             0%{ transform: rotate(18deg) translateX(-140%); }
             100%{ transform: rotate(18deg) translateX(140%); }
           }
+
+          /* Toggle polish: prevent layout shift + improves tap targets */
+          .pm-toggle {
+            display:flex;
+            gap:8px;
+            flex-wrap:wrap;
+            justify-content:flex-end;
+          }
+          .pm-toggle button{
+            min-width: 98px;
+            touch-action: manipulation;
+            -webkit-tap-highlight-color: transparent;
+          }
+
+          /* Modal */
+          .pm-modalOverlay{
+            position:fixed;
+            inset:0;
+            background: rgba(2,6,23,0.72);
+            backdrop-filter: blur(10px);
+            z-index: 80;
+            display:flex;
+            align-items:center;
+            justify-content:center;
+            padding: 18px;
+          }
+          .pm-modal{
+            width: min(940px, 100%);
+            border-radius: 22px;
+            border: 1px solid rgba(148,163,184,0.28);
+            background: radial-gradient(circle at top, rgba(15,23,42,0.98), rgba(2,6,23,0.92));
+            box-shadow: 0 30px 90px rgba(0,0,0,0.6), 0 0 55px rgba(56,189,248,0.18);
+            overflow:hidden;
+          }
+          .pm-modalHeader{
+            display:flex;
+            align-items:center;
+            justify-content:space-between;
+            gap: 12px;
+            padding: 14px 16px;
+            border-bottom: 1px solid rgba(148,163,184,0.16);
+            background: linear-gradient(180deg, rgba(15,23,42,0.92), rgba(15,23,42,0.72));
+          }
+          .pm-modalBody{
+            padding: 16px;
+          }
+
           @media (prefers-reduced-motion: reduce){
             .pm-card, .pm-cta{ transition:none !important; }
             .pm-cta::after{ animation:none !important; }
@@ -448,6 +524,7 @@ export default function PropertyManagement() {
                 >
                   View My Portfolio Risk →
                 </button>
+
                 <button
                   onClick={goToPricing}
                   style={{
@@ -472,6 +549,7 @@ export default function PropertyManagement() {
             </div>
 
             <div
+              ref={cockpitRef}
               className="pm-card"
               style={{
                 borderRadius: 24,
@@ -499,12 +577,16 @@ export default function PropertyManagement() {
                     letterSpacing: "0.14em",
                   }}
                 >
-                  Live {viewMode === "owner" ? "Owner Exposure" : "Compliance"} Snapshot
+                  Live{" "}
+                  {viewMode === "owner" ? "Owner Exposure" : "Compliance"} Snapshot
                 </div>
 
-                <div style={{ display: "flex", gap: 8 }}>
+                <div className="pm-toggle" role="tablist" aria-label="View mode">
                   <button
+                    type="button"
                     onClick={() => setViewMode("ops")}
+                    role="tab"
+                    aria-selected={viewMode === "ops"}
                     style={{
                       borderRadius: 999,
                       padding: "6px 10px",
@@ -526,8 +608,12 @@ export default function PropertyManagement() {
                   >
                     Ops view
                   </button>
+
                   <button
+                    type="button"
                     onClick={() => setViewMode("owner")}
+                    role="tab"
+                    aria-selected={viewMode === "owner"}
                     style={{
                       borderRadius: 999,
                       padding: "6px 10px",
@@ -561,62 +647,14 @@ export default function PropertyManagement() {
                   alignItems: "center",
                 }}
               >
-                <div
-                  style={{
-                    position: "relative",
-                    width: "160px",
-                    height: "160px",
-                    borderRadius: "999px",
-                    background:
-                      "conic-gradient(from 220deg,#22c55e,#facc15,#fb7185,#0f172a 70%)",
-                    padding: 10,
-                    boxShadow:
-                      "0 0 40px rgba(34,197,94,0.4),0 0 40px rgba(248,113,113,0.25)",
-                    margin: "0 auto",
-                  }}
-                >
-                  <div
-                    style={{
-                      position: "absolute",
-                      inset: 16,
-                      borderRadius: "999px",
-                      background:
-                        "radial-gradient(circle at 30% 0,#0f172a,#020617 70%,#000)",
-                      display: "flex",
-                      flexDirection: "column",
-                      alignItems: "center",
-                      justifyContent: "center",
-                    }}
-                  >
-                    <div
-                      style={{
-                        fontSize: 10,
-                        textTransform: "uppercase",
-                        color: "#9ca3af",
-                        letterSpacing: "0.16em",
-                        marginBottom: 6,
-                      }}
-                    >
-                      {cockpit.label}
-                    </div>
-                    <div
-                      style={{
-                        fontSize: 30,
-                        fontWeight: 600,
-                        background:
-                          viewMode === "owner"
-                            ? "linear-gradient(120deg,#fb7185,#f97316)"
-                            : "linear-gradient(120deg,#22c55e,#a3e635)",
-                        WebkitBackgroundClip: "text",
-                        color: "transparent",
-                      }}
-                    >
-                      <CountUp to={cockpit.scoreValue} play={animate} />
-                    </div>
-                    <div style={{ fontSize: 11, color: "#9ca3af" }}>
-                      {cockpit.scoreLabel}
-                    </div>
-                  </div>
+                <div style={{ margin: "0 auto" }}>
+                  <GaugeRing
+                    score={cockpit.scoreValue}
+                    mode={viewMode}
+                    label={cockpit.label}
+                    scoreLabel={cockpit.scoreLabel}
+                    animate={animate}
+                  />
                 </div>
 
                 <div>
@@ -638,6 +676,34 @@ export default function PropertyManagement() {
                     />
                   </div>
                   <p style={{ fontSize: 12, color: "#9ca3af" }}>{cockpit.note}</p>
+
+                  {viewMode === "owner" && (
+                    <div style={{ marginTop: 10 }}>
+                      <button
+                        type="button"
+                        onClick={() => setOwnerReportOpen(true)}
+                        style={{
+                          width: "100%",
+                          borderRadius: 14,
+                          padding: "10px 12px",
+                          border: "1px solid rgba(251,113,133,0.40)",
+                          background:
+                            "linear-gradient(180deg,rgba(251,113,133,0.12),rgba(15,23,42,0.85))",
+                          color: "#ffe4e6",
+                          fontSize: 12,
+                          fontWeight: 700,
+                          letterSpacing: "0.08em",
+                          textTransform: "uppercase",
+                          cursor: "pointer",
+                        }}
+                      >
+                        Preview Owner Report
+                      </button>
+                      <div style={{ fontSize: 11, color: "#9ca3af", marginTop: 6 }}>
+                        Shows what owners/auditors see—summary, exposures, and proof pack.
+                      </div>
+                    </div>
+                  )}
                 </div>
               </div>
 
@@ -661,7 +727,13 @@ export default function PropertyManagement() {
                 >
                   Resolve Flow (Preview-First)
                 </div>
-                <div style={{ display: "grid", gridTemplateColumns: "repeat(4,1fr)", gap: 8 }}>
+                <div
+                  style={{
+                    display: "grid",
+                    gridTemplateColumns: "repeat(4,1fr)",
+                    gap: 8,
+                  }}
+                >
                   <MiniStep title="Detect" body="Gap found" active />
                   <MiniStep title="Preview" body="Drafted" />
                   <MiniStep title="Escalate" body="Queued" />
@@ -671,11 +743,21 @@ export default function PropertyManagement() {
             </div>
           </section>
 
+          {/* (C) Trust authority band */}
+          <TrustAuthorityBand />
+
           <section style={{ maxWidth: 1180, margin: "60px auto 30px auto" }}>
             <h2 style={{ fontSize: 26, marginBottom: 14 }}>
               Built for property teams drowning in vendors.
             </h2>
-            <p style={{ fontSize: 14, color: "#9ca3af", maxWidth: 720, marginBottom: 28 }}>
+            <p
+              style={{
+                fontSize: 14,
+                color: "#9ca3af",
+                maxWidth: 720,
+                marginBottom: 28,
+              }}
+            >
               Stop chasing COIs. Stop last-minute audit scrambles. Stop risking owner trust.
               This cockpit shows exposure first — then enforces quietly after approval.
             </p>
@@ -724,17 +806,35 @@ export default function PropertyManagement() {
             }}
           >
             <div>
-              <h2 style={{ fontSize: 24, marginBottom: 10 }}>
-                How it works (no demos)
-              </h2>
-              <p style={{ fontSize: 14, color: "#9ca3af", marginBottom: 18, maxWidth: 520 }}>
+              <h2 style={{ fontSize: 24, marginBottom: 10 }}>How it works (no demos)</h2>
+              <p
+                style={{
+                  fontSize: 14,
+                  color: "#9ca3af",
+                  marginBottom: 18,
+                  maxWidth: 520,
+                }}
+              >
                 Get portfolio visibility first. Preview enforcement. Activate automation when ready.
               </p>
 
-              <ol style={{ paddingLeft: 20, margin: 0, fontSize: 14, color: "#cbd5f5", lineHeight: 1.6 }}>
+              <ol
+                style={{
+                  paddingLeft: 20,
+                  margin: 0,
+                  fontSize: 14,
+                  color: "#cbd5f5",
+                  lineHeight: 1.6,
+                }}
+              >
                 <li>Start your trial and connect your organization.</li>
-                <li>Upload a vendor list or COIs — or invite vendors via secure upload links.</li>
-                <li>See exposure instantly. Preview reminders. Activate automation only when comfortable.</li>
+                <li>
+                  Upload a vendor list or COIs — or invite vendors via secure upload links.
+                </li>
+                <li>
+                  See exposure instantly. Preview reminders. Activate automation only when
+                  comfortable.
+                </li>
               </ol>
             </div>
 
@@ -823,8 +923,122 @@ export default function PropertyManagement() {
             </div>
           </footer>
         </main>
+
+        {/* (D) Owner report preview modal */}
+        <OwnerReportPreviewModal
+          open={ownerReportOpen}
+          onClose={() => setOwnerReportOpen(false)}
+          onStartTrial={goToSignup}
+        />
       </div>
     </>
+  );
+}
+
+/* ============================================================
+   Gauge Ring (Fixes the “gauge bug”)
+============================================================ */
+function GaugeRing({ score, mode, label, scoreLabel, animate }) {
+  const [val, setVal] = useState(0);
+
+  useEffect(() => {
+    if (!animate) return;
+    const target = clamp(score, 0, 100);
+    let raf = 0;
+    const start = performance.now();
+    const dur = 720;
+
+    const loop = (now) => {
+      const p = Math.min(1, (now - start) / dur);
+      const eased = 1 - Math.pow(1 - p, 3);
+      setVal(Math.round(eased * target));
+      if (p < 1) raf = requestAnimationFrame(loop);
+    };
+
+    raf = requestAnimationFrame(loop);
+    return () => cancelAnimationFrame(raf);
+  }, [score, animate]);
+
+  const sweep = 260;
+  const deg = Math.round((clamp(val, 0, 100) / 100) * sweep);
+
+  const fillA = mode === "owner" ? "rgba(251,113,133,1)" : "rgba(34,197,94,1)";
+  const fillB = mode === "owner" ? "rgba(249,115,22,1)" : "rgba(163,230,53,1)";
+
+  const ringBg = `conic-gradient(
+    from 220deg,
+    ${fillA} 0deg,
+    ${fillB} ${Math.max(1, deg)}deg,
+    rgba(51,65,85,0.45) ${Math.max(1, deg)}deg,
+    rgba(51,65,85,0.45) ${sweep}deg,
+    rgba(15,23,42,0) ${sweep}deg 360deg
+  )`;
+
+  return (
+    <div
+      style={{
+        position: "relative",
+        width: 160,
+        height: 160,
+        borderRadius: 999,
+        background: ringBg,
+        padding: 10,
+        boxShadow:
+          mode === "owner"
+            ? "0 0 40px rgba(251,113,133,0.25), 0 0 38px rgba(249,115,22,0.18)"
+            : "0 0 40px rgba(34,197,94,0.26), 0 0 40px rgba(56,189,248,0.16)",
+        margin: "0 auto",
+      }}
+      aria-label={`${label} ${val} ${scoreLabel}`}
+    >
+      <div
+        style={{
+          position: "absolute",
+          inset: 16,
+          borderRadius: 999,
+          background:
+            "radial-gradient(circle at 30% 0,#0f172a,#020617 70%,#000)",
+          display: "flex",
+          flexDirection: "column",
+          alignItems: "center",
+          justifyContent: "center",
+          textAlign: "center",
+        }}
+      >
+        <div
+          style={{
+            fontSize: 10,
+            textTransform: "uppercase",
+            color: "#9ca3af",
+            letterSpacing: "0.16em",
+            marginBottom: 6,
+            maxWidth: 120,
+          }}
+        >
+          {label}
+        </div>
+
+        <div
+          style={{
+            fontSize: 30,
+            fontWeight: 700,
+            background:
+              mode === "owner"
+                ? "linear-gradient(120deg,#fb7185,#f97316)"
+                : "linear-gradient(120deg,#22c55e,#a3e635)",
+            WebkitBackgroundClip: "text",
+            color: "transparent",
+            lineHeight: 1,
+          }}
+        >
+          {val}
+        </div>
+
+        <div style={{ fontSize: 11, color: "#9ca3af", marginTop: 4 }}>
+          {scoreLabel}
+        </div>
+      </div>
+    </div>
   );
 }
 
@@ -919,6 +1133,355 @@ function FeatureCard({ title, body }) {
       <p style={{ fontSize: 13, color: "#9ca3af", margin: 0 }}>{body}</p>
     </div>
   );
+}
+
+/* ============================================================
+   (C) Trust Authority Band
+============================================================ */
+function TrustAuthorityBand() {
+  return (
+    <section
+      style={{
+        maxWidth: 1180,
+        margin: "26px auto 0 auto",
+        padding: "14px 14px",
+        borderRadius: 22,
+        border: "1px solid rgba(148,163,184,0.22)",
+        background:
+          "linear-gradient(180deg,rgba(15,23,42,0.88),rgba(2,6,23,0.55))",
+        boxShadow: "0 18px 50px rgba(0,0,0,0.35)",
+      }}
+      aria-label="Trust and authority"
+    >
+      <div
+        style={{
+          display: "grid",
+          gridTemplateColumns: "minmax(0,1.1fr) minmax(0,1.3fr)",
+          gap: 14,
+          alignItems: "center",
+        }}
+      >
+        <div>
+          <div
+            style={{
+              fontSize: 11,
+              letterSpacing: "0.16em",
+              textTransform: "uppercase",
+              color: "#9ca3af",
+              marginBottom: 8,
+            }}
+          >
+            Trusted operating posture
+          </div>
+
+          <div style={{ fontSize: 18, fontWeight: 650, marginBottom: 6 }}>
+            Built to survive owner audits and claims scrutiny.
+          </div>
+
+          <div style={{ fontSize: 13, color: "#9ca3af", lineHeight: 1.6 }}>
+            Encryption in transit + at rest. Permissioned access. Downloadable proof packs.
+            Preview-first enforcement so nothing goes out without your approval.
+          </div>
+        </div>
+
+        <div
+          style={{
+            display: "grid",
+            gridTemplateColumns: "repeat(3,minmax(0,1fr))",
+            gap: 10,
+          }}
+        >
+          <TrustBadge title="Secure" subtitle="Encryption" icon="🔒" />
+          <TrustBadge title="Payments" subtitle="Stripe-ready" icon="💳" />
+          <TrustBadge title="Infrastructure" subtitle="Cloud hardened" icon="☁️" />
+          <TrustBadge title="Exports" subtitle="Owner pack" icon="📦" />
+          <TrustBadge title="Controls" subtitle="Approval first" icon="✅" />
+          <TrustBadge title="Support" subtitle="Fast response" icon="⚡" />
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function TrustBadge({ title, subtitle, icon }) {
+  return (
+    <div
+      className="pm-card"
+      style={{
+        borderRadius: 16,
+        padding: 12,
+        border: "1px solid rgba(148,163,184,0.22)",
+        background: "rgba(15,23,42,0.82)",
+        display: "flex",
+        gap: 10,
+        alignItems: "center",
+      }}
+    >
+      <div
+        style={{
+          width: 34,
+          height: 34,
+          borderRadius: 12,
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          background:
+            "radial-gradient(circle at top, rgba(56,189,248,0.16), rgba(15,23,42,0.9))",
+          border: "1px solid rgba(56,189,248,0.22)",
+        }}
+        aria-hidden="true"
+      >
+        <span style={{ fontSize: 18 }}>{icon}</span>
+      </div>
+      <div>
+        <div style={{ fontSize: 12, fontWeight: 700, color: "#e5e7eb" }}>
+          {title}
+        </div>
+        <div style={{ fontSize: 11, color: "#9ca3af" }}>{subtitle}</div>
+      </div>
+    </div>
+  );
+}
+
+/* ============================================================
+   (D) Owner Report Preview Modal
+============================================================ */
+function OwnerReportPreviewModal({ open, onClose, onStartTrial }) {
+  useEffect(() => {
+    if (!open) return;
+
+    const onKey = (e) => {
+      if (e.key === "Escape") onClose?.();
+    };
+
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [open, onClose]);
+
+  if (!open) return null;
+
+  return (
+    <div
+      className="pm-modalOverlay"
+      role="dialog"
+      aria-modal="true"
+      aria-label="Owner Report Preview"
+      onMouseDown={(e) => {
+        if (e.target === e.currentTarget) onClose?.();
+      }}
+    >
+      <div className="pm-modal">
+        <div className="pm-modalHeader">
+          <div>
+            <div
+              style={{
+                fontSize: 11,
+                letterSpacing: "0.16em",
+                textTransform: "uppercase",
+                color: "#9ca3af",
+              }}
+            >
+              Owner Report Preview
+            </div>
+            <div style={{ fontSize: 18, fontWeight: 700 }}>
+              Portfolio Exposure Summary (sample)
+            </div>
+          </div>
+
+          <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
+            <button
+              type="button"
+              onClick={onStartTrial}
+              className="pm-cta"
+              style={{
+                borderRadius: 999,
+                padding: "9px 14px",
+                border: "1px solid rgba(59,130,246,0.9)",
+                background:
+                  "radial-gradient(circle at top left,#3b82f6,#1d4ed8,#0f172a)",
+                color: "#e0f2fe",
+                fontSize: 13,
+                fontWeight: 700,
+                cursor: "pointer",
+                position: "relative",
+              }}
+            >
+              Start Free Trial
+            </button>
+
+            <button
+              type="button"
+              onClick={onClose}
+              style={{
+                borderRadius: 999,
+                padding: "9px 12px",
+                border: "1px solid rgba(148,163,184,0.35)",
+                background: "rgba(15,23,42,0.65)",
+                color: "#cbd5f5",
+                fontSize: 13,
+                cursor: "pointer",
+              }}
+            >
+              Close
+            </button>
+          </div>
+        </div>
+
+        <div className="pm-modalBody">
+          <div
+            style={{
+              display: "grid",
+              gridTemplateColumns: "minmax(0,1fr) minmax(0,1fr)",
+              gap: 14,
+              alignItems: "start",
+            }}
+          >
+            <div
+              style={{
+                borderRadius: 18,
+                border: "1px solid rgba(251,113,133,0.22)",
+                background:
+                  "linear-gradient(180deg, rgba(251,113,133,0.10), rgba(2,6,23,0.55))",
+                padding: 14,
+              }}
+            >
+              <div
+                style={{
+                  fontSize: 11,
+                  letterSpacing: "0.16em",
+                  textTransform: "uppercase",
+                  color: "#fecdd3",
+                  marginBottom: 8,
+                  fontWeight: 700,
+                }}
+              >
+                Owner Exposure Summary
+              </div>
+
+              <KVRow k="Exposure level" v="Moderate — trending down" />
+              <KVRow k="High exposure items" v="14" />
+              <KVRow k="Expiring in ≤ 30 days" v="9" />
+              <KVRow k="Open compliance gaps" v="3" />
+              <KVRow k="Audit posture" v="Owner-ready (proof pack available)" />
+
+              <div style={{ fontSize: 12, color: "#9ca3af", marginTop: 10 }}>
+                This is what owners care about: clear exposure counts, proof, and a defensible
+                audit trail.
+              </div>
+            </div>
+
+            <div
+              style={{
+                borderRadius: 18,
+                border: "1px solid rgba(148,163,184,0.18)",
+                background: "rgba(15,23,42,0.72)",
+                padding: 14,
+              }}
+            >
+              <div
+                style={{
+                  fontSize: 11,
+                  letterSpacing: "0.16em",
+                  textTransform: "uppercase",
+                  color: "#cbd5f5",
+                  marginBottom: 8,
+                  fontWeight: 700,
+                }}
+              >
+                Proof Pack (Preview)
+              </div>
+
+              <ul
+                style={{
+                  margin: 0,
+                  paddingLeft: 18,
+                  color: "#cbd5f5",
+                  fontSize: 13,
+                  lineHeight: 1.7,
+                }}
+              >
+                <li>Vendor roster + compliance status</li>
+                <li>COI uploads (latest versions)</li>
+                <li>Expirations + endorsements checks</li>
+                <li>Action log (previewed + approved)</li>
+                <li>Exportable audit trail</li>
+              </ul>
+
+              <div
+                style={{
+                  marginTop: 12,
+                  borderRadius: 14,
+                  border: "1px dashed rgba(56,189,248,0.35)",
+                  background: "rgba(2,6,23,0.45)",
+                  padding: 12,
+                }}
+              >
+                <div style={{ fontSize: 12, color: "#9ca3af" }}>
+                  Nothing sends automatically. Approvals are recorded so owners see control and
+                  governance.
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div
+            style={{
+              marginTop: 14,
+              display: "flex",
+              justifyContent: "space-between",
+              gap: 12,
+              flexWrap: "wrap",
+            }}
+          >
+            <div style={{ fontSize: 12, color: "#9ca3af" }}>
+              Tip: In-product, this becomes a downloadable PDF for owners, auditors, and insurers.
+            </div>
+            <button
+              type="button"
+              onClick={onClose}
+              style={{
+                borderRadius: 999,
+                padding: "8px 12px",
+                border: "1px solid rgba(148,163,184,0.22)",
+                background: "rgba(15,23,42,0.65)",
+                color: "#cbd5f5",
+                cursor: "pointer",
+                fontSize: 12,
+              }}
+            >
+              Back to funnel
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function KVRow({ k, v }) {
+  return (
+    <div
+      style={{
+        display: "flex",
+        justifyContent: "space-between",
+        gap: 10,
+        padding: "8px 10px",
+        borderRadius: 14,
+        border: "1px solid rgba(148,163,184,0.14)",
+        background: "rgba(2,6,23,0.35)",
+        marginBottom: 8,
+      }}
+    >
+      <div style={{ fontSize: 12, color: "#9ca3af" }}>{k}</div>
+      <div style={{ fontSize: 12, color: "#e5e7eb", fontWeight: 700 }}>{v}</div>
+    </div>
+  );
+}
+
+function clamp(n, min, max) {
+  const x = Number(n);
+  if (Number.isNaN(x)) return min;
+  return Math.min(max, Math.max(min, x));
 }
 
 const linkBtn = {
