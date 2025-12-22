@@ -17,55 +17,18 @@ export default function PropertyManagementLanding() {
           content="Vendor risk management and insurance compliance for property managers. Instantly see COI gaps, expiring coverage, and owner exposure across your portfolio — before audits, claims, or automation."
         />
       
-        <script type="application/ld+json">
-{
-  "@context": "https://schema.org",
-  "@type": "Organization",
-  "name": "Vendor Risk Intelligence Platform",
-  "url": "https://example.com/property-management",
-  "description": "Vendor risk management and insurance compliance platform for property managers.",
-  "industry": "Property Management Software",
-  "offers": {
-    "@type": "Offer",
-    "category": "SaaS",
-    "price": "0",
-    "priceCurrency": "USD",
-    "availability": "https://schema.org/OnlineOnly"
-  }
-}
-        </script>
-        <script type="application/ld+json">
-{
-  "@context": "https://schema.org",
-  "@type": "FAQPage",
-  "mainEntity": [
-    {
-      "@type": "Question",
-      "name": "What is vendor risk management for property managers?",
-      "acceptedAnswer": {
-        "@type": "Answer",
-        "text": "Vendor risk management helps property managers identify insurance gaps, expired COIs, missing endorsements, and owner exposure across their vendor portfolio."
-      }
-    },
-    {
-      "@type": "Question",
-      "name": "Does this platform require sales calls or onboarding?",
-      "acceptedAnswer": {
-        "@type": "Answer",
-        "text": "No. The platform is fully self-serve. Property managers can connect vendors and see risk in minutes without demos, sales calls, or onboarding."
-      }
-    },
-    {
-      "@type": "Question",
-      "name": "How does COI tracking work?",
-      "acceptedAnswer": {
-        "@type": "Answer",
-        "text": "The system continuously monitors certificates of insurance, expiration dates, limits, and endorsements, alerting teams before compliance issues occur."
-      }
-    }
-  ]
-}
-        </script>
+        
+        
+
+      
+        <script
+          type="application/ld+json"
+          dangerouslySetInnerHTML={ __html: "{\"@context\": \"https://schema.org\", \"@type\": \"Organization\", \"name\": \"Vendor Risk Intelligence Platform\", \"url\": \"https://vendor-insurance-tracker-v2.vercel.app/property-management\", \"description\": \"Vendor risk management and insurance compliance platform for property managers.\", \"industry\": \"Property Management Software\"}" }
+        />
+        <script
+          type="application/ld+json"
+          dangerouslySetInnerHTML={ __html: "{\"@context\": \"https://schema.org\", \"@type\": \"FAQPage\", \"mainEntity\": [{\"@type\": \"Question\", \"name\": \"What is vendor risk management for property managers?\", \"acceptedAnswer\": {\"@type\": \"Answer\", \"text\": \"Vendor risk management helps property managers identify insurance gaps, expired COIs, missing endorsements, and owner exposure across their vendor portfolio.\"}}, {\"@type\": \"Question\", \"name\": \"Does this platform require sales calls or onboarding?\", \"acceptedAnswer\": {\"@type\": \"Answer\", \"text\": \"No. The platform is fully self-serve. Property managers can connect vendors and see risk in minutes without demos, sales calls, or onboarding.\"}}, {\"@type\": \"Question\", \"name\": \"How does COI tracking work?\", \"acceptedAnswer\": {\"@type\": \"Answer\", \"text\": \"The system continuously monitors certificates of insurance, expiration dates, limits, and endorsements, alerting teams before compliance issues occur.\"}}]}" }
+        />
 
       </Head>
 
