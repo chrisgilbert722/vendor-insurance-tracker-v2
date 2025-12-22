@@ -29,6 +29,50 @@ export default function PropertyManagementLanding() {
     ] },
   ]), []);
   const activeTab = tabs.find((t) => t.key === heroTab) || tabs[0];
+  const [activeStep, setActiveStep] = useState("scan");
+  const narrative = useMemo(
+    () => ({
+      scan: {
+        kicker: "Step 1 · Ingest",
+        title: "Scan COIs + vendor list",
+        rows: [
+          { k: "COIs scanned", v: "42" },
+          { k: "Requirements matched", v: "117" },
+          { k: "Exceptions flagged", v: "9" },
+        ],
+      },
+      expose: {
+        kicker: "Step 2 · Expose",
+        title: "Surface owner exposure",
+        rows: [
+          { k: "Non-compliant vendors", v: "12" },
+          { k: "Expiring ≤ 30 days", v: "7" },
+          { k: "Exposure level", v: "High" },
+        ],
+      },
+      preview: {
+        kicker: "Step 3 · Preview",
+        title: "Preview enforcement actions",
+        rows: [
+          { k: "Reminder drafts", v: "19" },
+          { k: "Escalations queued", v: "6" },
+          { k: "Nothing sent", v: "0" },
+        ],
+      },
+      activate: {
+        kicker: "Step 4 · Activate",
+        title: "Turn on automation when ready",
+        rows: [
+          { k: "Approval required", v: "Yes" },
+          { k: "Run cadence", v: "Daily" },
+          { k: "Audit-ready state", v: "On" },
+        ],
+      },
+    }),
+    []
+  );
+  const activeNarrative = narrative[activeStep] || narrative.scan;
+
 
   useEffect(() => {
     const els = Array.from(document.querySelectorAll("[data-reveal]"));
@@ -44,7 +88,23 @@ export default function PropertyManagementLanding() {
       { threshold: 0.18 }
     );
     els.forEach((el) => io.observe(el));
-    return () => io.disconnect();
+        // Sticky narrative step tracker
+    const stepEls = Array.from(document.querySelectorAll('[data-step]'));
+    const io2 = new IntersectionObserver(
+      (entries) => {
+        // pick the most visible intersecting step
+        const vis = entries
+          .filter((e) => e.isIntersecting)
+          .sort((a, b) => (b.intersectionRatio || 0) - (a.intersectionRatio || 0));
+        if (vis[0]) setActiveStep(vis[0].target.getAttribute('data-step'));
+      },
+      { rootMargin: '-25% 0px -55% 0px', threshold: [0.12, 0.25, 0.5, 0.75] }
+    );
+    stepEls.forEach((el) => io2.observe(el));
+    return () => {
+      io.disconnect();
+      io2.disconnect();
+    };
   }, []);
 
   return (
@@ -227,6 +287,133 @@ export default function PropertyManagementLanding() {
             .reveal { transition: none !important; transform: none !important; opacity: 1 !important; }
             .cta::after { animation: none !important; }
             .blob { animation: none !important; }
+          }
+
+        
+          /* Nuclear pass: power band + sticky narrative + comparison slice */
+          .powerBand{
+            margin-top: 34px;
+            border-radius: calc(var(--r) + 10px);
+            border: 1px solid rgba(15,23,42,0.10);
+            background:
+              radial-gradient(900px 520px at 15% 10%, rgba(79,70,229,0.18), rgba(255,255,255,0) 62%),
+              radial-gradient(700px 420px at 85% 25%, rgba(56,189,248,0.16), rgba(255,255,255,0) 58%),
+              linear-gradient(180deg, rgba(11,18,32,0.98) 0%, rgba(15,23,42,0.98) 100%);
+            box-shadow: 0 30px 90px rgba(15,23,42,0.35);
+            overflow: hidden;
+            position: relative;
+          }
+          .powerGlow{
+            position:absolute; inset:-240px auto auto -240px;
+            width:520px; height:520px; border-radius:999px;
+            background: radial-gradient(circle at 30% 30%, rgba(99,102,241,0.42), rgba(56,189,248,0.18) 52%, rgba(255,255,255,0) 70%);
+            filter: blur(6px);
+            pointer-events:none;
+          }
+          .powerKicker{
+            font-size:12px; font-weight:900; letter-spacing:.14em; text-transform:uppercase;
+            color: rgba(191,219,254,0.9);
+          }
+          .powerTitle{
+            font-size:46px; font-weight:950; letter-spacing:-0.03em;
+            margin: 10px 0 12px;
+            color: #fff;
+          }
+          .powerSub{
+            color: rgba(226,232,240,0.86);
+            font-size:16px; line-height:1.75; max-width: 920px;
+          }
+          .ticker{
+            display:grid; gap:12px;
+            margin-top: 22px;
+          }
+          .tick{
+            background: rgba(255,255,255,0.06);
+            border: 1px solid rgba(255,255,255,0.10);
+            border-radius: 16px;
+            padding: 14px 14px;
+            display:flex; align-items:center; justify-content:space-between; gap:14px;
+            box-shadow: 0 12px 30px rgba(0,0,0,0.25);
+            transform: translateY(0);
+          }
+          .tick b{ color:#fff; }
+          .tick span{ color: rgba(226,232,240,0.78); font-size: 13px; }
+          @keyframes popIn{
+            0%{ opacity:0; transform: translateY(10px); }
+            100%{ opacity:1; transform: translateY(0px); }
+          }
+          .tick{ opacity:0; animation: popIn 700ms cubic-bezier(.2,.8,.2,1) forwards; }
+          .tick:nth-child(1){ animation-delay: 60ms; }
+          .tick:nth-child(2){ animation-delay: 180ms; }
+          .tick:nth-child(3){ animation-delay: 300ms; }
+          .tick:nth-child(4){ animation-delay: 420ms; }
+
+          .stickyGrid{
+            display:grid;
+            grid-template-columns: 0.95fr 1.05fr;
+            gap: 22px;
+            align-items:start;
+          }
+          @media (max-width: 980px){
+            .stickyGrid{ grid-template-columns: 1fr; }
+          }
+          .stickyCard{
+            position: sticky;
+            top: 88px;
+          }
+          .stepItem{
+            border-radius: 22px;
+            border: 1px solid rgba(15,23,42,0.10);
+            background: rgba(255,255,255,0.92);
+            box-shadow: var(--shadow2);
+            padding: 22px;
+          }
+          .stepItem + .stepItem{ margin-top: 14px; }
+          .stepPill{
+            display:inline-flex;
+            align-items:center;
+            gap: 10px;
+            padding: 8px 12px;
+            border-radius: 999px;
+            border: 1px solid rgba(79,70,229,0.18);
+            background: rgba(79,70,229,0.08);
+            color: rgba(79,70,229,1);
+            font-weight: 900;
+            font-size: 12px;
+            letter-spacing: .10em;
+            text-transform: uppercase;
+          }
+          .compTable{
+            border-radius: calc(var(--r) + 6px);
+            border: 1px solid rgba(15,23,42,0.10);
+            background: rgba(255,255,255,0.92);
+            box-shadow: var(--shadow2);
+            overflow: hidden;
+          }
+          .compRow{
+            display:grid;
+            grid-template-columns: 1.1fr 0.9fr;
+            gap: 12px;
+            padding: 14px 18px;
+            border-top: 1px solid rgba(15,23,42,0.08);
+            align-items:center;
+          }
+          .compRow:first-child{ border-top:none; }
+          .compL{ color: rgba(15,23,42,0.70); font-weight: 700; }
+          .compR{
+            justify-self:end;
+            padding: 8px 12px;
+            border-radius: 999px;
+            font-weight: 900;
+            font-size: 12px;
+            letter-spacing: .10em;
+            text-transform: uppercase;
+          }
+          .yes{ background: rgba(34,197,94,0.12); color: rgba(21,128,61,1); border: 1px solid rgba(34,197,94,0.22); }
+          .no{ background: rgba(239,68,68,0.10); color: rgba(185,28,28,1); border: 1px solid rgba(239,68,68,0.20); }
+
+          @media (prefers-reduced-motion: reduce){
+            .tick{ animation: none !important; opacity:1 !important; }
           }
 
         `}</style>
@@ -416,6 +603,169 @@ export default function PropertyManagementLanding() {
                 <div style={{ marginTop: 10, fontSize: 13, color: "var(--muted2)" }}>
                   No demos. No sales calls. Operational in minutes.
                 </div>
+              </div>
+            </div>
+          </section>
+
+
+          {/* ================= POWER MOMENT ================= */}
+          <section className="powerBand" style={{ padding: "56px 34px", marginTop: 26 }}>
+            <div className="powerGlow" />
+            <div style={{ position: "relative" }}>
+              <div className="powerKicker">Owner-safe compliance · live exposure</div>
+              <div className="powerTitle">You don’t discover risk during an audit.</div>
+              <div className="powerSub">
+                You see it in advance — with the exact vendor, the exact gap, and the exact exposure — before anything is sent, enforced, or escalated.
+              </div>
+
+              <div className="ticker">
+                <div className="tick">
+                  <div><b>ALERT</b> · Vendor missing Additional Insured endorsement</div>
+                  <span>Action previewed · not sent</span>
+                </div>
+                <div className="tick">
+                  <div><b>EXPIRING</b> · COI expires in 17 days (HVAC contractor)</div>
+                  <span>Renewal request ready</span>
+                </div>
+                <div className="tick">
+                  <div><b>LIMIT GAP</b> · Coverage below contract requirement</div>
+                  <span>Broker escalation drafted</span>
+                </div>
+                <div className="tick">
+                  <div><b>OWNER EXPOSURE</b> · High exposure detected across portfolio</div>
+                  <span>Executive summary updated</span>
+                </div>
+              </div>
+
+              <div style={{ marginTop: 22 }}>
+                <Link href="/signup?industry=property_management" className="cta">
+                  View My Portfolio Risk
+                </Link>
+                <div style={{ marginTop: 10, fontSize: 13, color: "rgba(226,232,240,0.80)" }}>
+                  No demos. No sales calls. Operational in minutes.
+                </div>
+              </div>
+            </div>
+          </section>
+
+          {/* ================= STICKY PRODUCT NARRATIVE ================= */}
+          <section className="reveal" data-reveal style={{ padding: "78px 8px 54px" }}>
+            <div style={{ marginBottom: 14, fontSize: 13, fontWeight: 900, letterSpacing: ".14em", textTransform: "uppercase", color: "rgba(79,70,229,1)" }}>
+              How it works (feels like the product)
+            </div>
+            <div style={{ fontSize: 42, fontWeight: 950, letterSpacing: "-0.03em", marginBottom: 14 }}>
+              A risk command view — without a sales cycle
+            </div>
+            <div style={{ color: "var(--muted2)", lineHeight: 1.75, maxWidth: 920, marginBottom: 22 }}>
+              As you scroll, the system progresses from ingest → exposure → preview → activation. It’s fully self-serve, and nothing runs without approval.
+            </div>
+
+            <div className="stickyGrid">
+              <div className="stickyCard">
+                <div className="card lift" style={{ padding: 26, borderRadius: 24 }}>
+                  <div className="stepPill">{activeNarrative.kicker}</div>
+                  <div style={{ fontSize: 22, fontWeight: 950, letterSpacing: "-0.02em", marginTop: 12 }}>
+                    {activeNarrative.title}
+                  </div>
+
+                  <div style={{ marginTop: 16, display: "grid", gap: 12 }}>
+                    {activeNarrative.rows.map((r) => (
+                      <div key={r.k} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "12px 12px", borderRadius: 14, background: "rgba(15,23,42,0.03)", border: "1px solid rgba(15,23,42,0.06)" }}>
+                        <div style={{ color: "rgba(15,23,42,0.70)", fontWeight: 700 }}>{r.k}</div>
+                        <div style={{ fontWeight: 950, letterSpacing: "-0.01em" }}>{r.v}</div>
+                      </div>
+                    ))}
+                  </div>
+
+                  <div style={{ marginTop: 18, paddingTop: 14, borderTop: "1px solid rgba(15,23,42,0.08)", color: "rgba(15,23,42,0.60)", fontSize: 13, lineHeight: 1.6 }}>
+                    No meetings. No onboarding. Preview everything. Activate when ready.
+                  </div>
+                </div>
+
+                <div style={{ marginTop: 14 }}>
+                  <Link href="/signup?industry=property_management" className="cta">
+                    View My Portfolio Risk
+                  </Link>
+                </div>
+              </div>
+
+              <div>
+                <div className="stepItem" data-step="scan">
+                  <div className="stepPill">Step 1 · Ingest</div>
+                  <div style={{ fontSize: 22, fontWeight: 950, letterSpacing: "-0.02em", marginTop: 10 }}>
+                    Connect vendors or upload COIs
+                  </div>
+                  <div style={{ color: "var(--muted2)", lineHeight: 1.75, marginTop: 10 }}>
+                    Upload a vendor list or COIs. The system extracts limits, endorsements, and requirements mapping — without vendor logins.
+                  </div>
+                </div>
+
+                <div className="stepItem" data-step="expose">
+                  <div className="stepPill">Step 2 · Expose</div>
+                  <div style={{ fontSize: 22, fontWeight: 950, letterSpacing: "-0.02em", marginTop: 10 }}>
+                    See risk the way owners see it
+                  </div>
+                  <div style={{ color: "var(--muted2)", lineHeight: 1.75, marginTop: 10 }}>
+                    Non-compliance, expirations, and exposure become visible across your portfolio in one executive view.
+                  </div>
+                </div>
+
+                <div className="stepItem" data-step="preview">
+                  <div className="stepPill">Step 3 · Preview</div>
+                  <div style={{ fontSize: 22, fontWeight: 950, letterSpacing: "-0.02em", marginTop: 10 }}>
+                    Preview enforcement before anything runs
+                  </div>
+                  <div style={{ color: "var(--muted2)", lineHeight: 1.75, marginTop: 10 }}>
+                    Reminder drafts, broker escalations, and renewal workflows are generated — but nothing is sent automatically.
+                  </div>
+                </div>
+
+                <div className="stepItem" data-step="activate">
+                  <div className="stepPill">Step 4 · Activate</div>
+                  <div style={{ fontSize: 22, fontWeight: 950, letterSpacing: "-0.02em", marginTop: 10 }}>
+                    Activate automation when you’re comfortable
+                  </div>
+                  <div style={{ color: "var(--muted2)", lineHeight: 1.75, marginTop: 10 }}>
+                    You decide when automation starts — or if it starts at all. Your portfolio stays owner-safe by default.
+                  </div>
+                </div>
+              </div>
+            </div>
+          </section>
+
+          {/* ================= COMPARISON SLICE ================= */}
+          <section className="reveal" data-reveal style={{ padding: "10px 8px 64px" }}>
+            <div style={{ fontSize: 13, fontWeight: 900, letterSpacing: ".14em", textTransform: "uppercase", color: "rgba(79,70,229,1)" }}>
+              Why this wins
+            </div>
+            <div style={{ fontSize: 40, fontWeight: 950, letterSpacing: "-0.03em", margin: "10px 0 14px" }}>
+              Built for property managers — not demo cycles
+            </div>
+            <div style={{ color: "var(--muted2)", lineHeight: 1.75, maxWidth: 920, marginBottom: 18 }}>
+              Traditional platforms automate first and explain later. This platform shows the truth first — then enforces quietly after approval.
+            </div>
+
+            <div className="compTable">
+              <div className="compRow" style={{ background: "rgba(15,23,42,0.03)" }}>
+                <div style={{ fontWeight: 950, color: "rgba(15,23,42,0.75)" }}>Decision criteria</div>
+                <div style={{ justifySelf: "end", fontWeight: 950, color: "rgba(15,23,42,0.75)" }}>This platform</div>
+              </div>
+
+              <div className="compRow">
+                <div className="compL">See owner exposure before enforcement</div>
+                <div className="compR yes">Yes</div>
+              </div>
+              <div className="compRow">
+                <div className="compL">Preview reminders / escalations before sending</div>
+                <div className="compR yes">Yes</div>
+              </div>
+              <div className="compRow">
+                <div className="compL">Requires demos / sales-assisted onboarding</div>
+                <div className="compR no">No</div>
+              </div>
+              <div className="compRow">
+                <div className="compL">Automation runs without approval</div>
+                <div className="compR no">No</div>
               </div>
             </div>
           </section>
