@@ -6,9 +6,30 @@
 
 import Head from "next/head";
 import Link from "next/link";
-import { useEffect } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 export default function PropertyManagementLanding() {
+  const [heroTab, setHeroTab] = useState("risk");
+  const [parallax, setParallax] = useState({ x: 0, y: 0 });
+  const tabs = useMemo(() => ([
+    { key: "risk", label: "Risk", rows: [
+      { label: "Non-compliant vendors", value: "12", tone: "danger" },
+      { label: "Policies expiring soon", value: "7", tone: "warn" },
+      { label: "Owner exposure", value: "High", tone: "danger" },
+    ] },
+    { key: "expiring", label: "Expiring", rows: [
+      { label: "≤ 30 days", value: "7", tone: "warn" },
+      { label: "≤ 60 days", value: "13", tone: "warn" },
+      { label: "Missing renewals", value: "4", tone: "danger" },
+    ] },
+    { key: "coverage", label: "Coverage", rows: [
+      { label: "Missing endorsements", value: "4", tone: "warn" },
+      { label: "Limit gaps", value: "3", tone: "danger" },
+      { label: "Pending broker items", value: "6", tone: "ok" },
+    ] },
+  ]), []);
+  const activeTab = tabs.find((t) => t.key === heroTab) || tabs[0];
+
   useEffect(() => {
     const els = Array.from(document.querySelectorAll("[data-reveal]"));
     const io = new IntersectionObserver(
@@ -185,18 +206,53 @@ export default function PropertyManagementLanding() {
             font-weight: 900; letter-spacing: .06em; text-transform: uppercase; font-size: 12px;
             color: rgba(15,23,42,0.55);
           }
+
+          .gradText {
+            background: linear-gradient(90deg, rgba(79,70,229,1), rgba(99,102,241,1), rgba(56,189,248,1));
+            -webkit-background-clip: text;
+            background-clip: text;
+            color: transparent;
+          }
+          .bgGrid {
+            position: absolute;
+            inset: 0;
+            background-image:
+              linear-gradient(to right, rgba(15,23,42,0.05) 1px, transparent 1px),
+              linear-gradient(to bottom, rgba(15,23,42,0.05) 1px, transparent 1px);
+            background-size: 80px 80px;
+            mask-image: radial-gradient(circle at 30% 20%, rgba(0,0,0,0.25), rgba(0,0,0,0) 60%);
+            pointer-events: none;
+          }
+          @media (prefers-reduced-motion: reduce) {
+            .reveal { transition: none !important; transform: none !important; opacity: 1 !important; }
+            .cta::after { animation: none !important; }
+            .blob { animation: none !important; }
+          }
+
         `}</style>
       </Head>
 
       <main style={{ minHeight: "100vh", background: "linear-gradient(180deg,#ffffff 0%, #f8fafc 38%, #eef2ff 100%)", color: "var(--ink)", padding: "28px 18px 120px" }}>
         <div style={{ maxWidth: 1180, margin: "0 auto" }}>
-          <section id="vendor-risk-management" className="heroWrap" style={{ padding: "78px 54px" }}>
-            <div className="blob" />
+          <section
+            id="vendor-risk-management"
+            className="heroWrap"
+            style={{ padding: "78px 54px" }}
+            onMouseMove={(e) => {
+              const r = e.currentTarget.getBoundingClientRect();
+              const x = (e.clientX - r.left) / r.width - 0.5;
+              const y = (e.clientY - r.top) / r.height - 0.5;
+              setParallax({ x, y });
+            }}
+            onMouseLeave={() => setParallax({ x: 0, y: 0 })}
+          >
+            <div className="blob" style={{ transform: `translate3d(${parallax.x * 18}px, ${parallax.y * -14}px, 0)` }} />
+            <div className="bgGrid" />
             <div className="grid2">
               <div className="reveal in" data-reveal>
                 <div className="pill">Vendor Risk Intelligence Platform</div>
                 <h1 style={{ marginTop: 18, fontSize: 62, lineHeight: 1.04, fontWeight: 950, letterSpacing: "-0.03em", color: "var(--ink)", marginBottom: 18 }}>
-                  Real-Time Vendor Risk<br/>Intelligence for Property<br/>Portfolios
+                  <span className="gradText">Real-Time Vendor Risk</span><br/>Intelligence for Property<br/>Portfolios
                 </h1>
                 <p style={{ fontSize: 20, lineHeight: 1.7, color: "var(--muted)", maxWidth: 640, marginBottom: 26 }}>
                   Instantly see insurance exposure, non-compliance, and owner risk — before audits, claims, or automation.
@@ -216,9 +272,61 @@ export default function PropertyManagementLanding() {
                     Portfolio Risk Snapshot
                   </div>
                   <div style={{ display: "grid", gap: 14 }}>
-                    <MiniRow label="Non-compliant vendors" value="12" tone="danger" />
-                    <MiniRow label="Policies expiring soon" value="7" tone="warn" />
-                    <MiniRow label="Owner exposure" value="High" tone="danger" />
+                    <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginBottom: 12 }}>
+                    {tabs.map((t) => (
+                      <button
+                        key={t.key}
+                        onClick={() => setHeroTab(t.key)}
+                        style={{
+                          cursor: "pointer",
+                          border: "1px solid rgba(15,23,42,0.10)",
+                          background: heroTab === t.key ? "rgba(79,70,229,0.10)" : "rgba(255,255,255,0.70)",
+                          color: heroTab === t.key ? "rgba(79,70,229,1)" : "rgba(15,23,42,0.70)",
+                          padding: "8px 12px",
+                          borderRadius: 999,
+                          fontWeight: 900,
+                          fontSize: 12,
+                          letterSpacing: "0.08em",
+                          textTransform: "uppercase",
+                          boxShadow: heroTab === t.key ? "0 10px 30px rgba(79,70,229,0.10)" : "none",
+                          transition: "transform 180ms ease, box-shadow 180ms ease",
+                        }}
+                      >
+                        {t.label}
+                      </button>
+                    ))}
+                    </div>
+                    <div style={{ display: "grid", gap: 14 }}>
+                      {activeTab.rows.map((r) => (
+                        <MiniRow key={r.label} label={r.label} value={r.value} tone={r.tone} />
+                      ))}
+                    </div>
+                    <div style={{ marginTop: 14, display: "grid", gap: 10 }}>
+                      {activeTab.rows.map((r, idx) => (
+                        <div key={r.label + idx} style={{ display: "grid", gridTemplateColumns: "110px 1fr", gap: 10, alignItems: "center" }}>
+                          <div style={{ fontSize: 12, color: "rgba(15,23,42,0.55)", fontWeight: 800 }}>
+                            {r.label.length > 14 ? r.label.slice(0, 14) + "…" : r.label}
+                          </div>
+                          <div style={{ height: 10, borderRadius: 999, background: "rgba(15,23,42,0.06)", overflow: "hidden", border: "1px solid rgba(15,23,42,0.06)" }}>
+                            <div
+                              style={{
+                                height: "100%",
+                                width: `${Math.min(100, 18 + idx * 22 + (heroTab === "risk" ? 8 : 0))}%`,
+                                borderRadius: 999,
+                                background:
+                                  r.tone === "danger"
+                                    ? "linear-gradient(90deg, rgba(239,68,68,0.55), rgba(239,68,68,0.20))"
+                                    : r.tone === "warn"
+                                    ? "linear-gradient(90deg, rgba(245,158,11,0.55), rgba(245,158,11,0.18))"
+                                    : "linear-gradient(90deg, rgba(34,197,94,0.55), rgba(34,197,94,0.18))",
+                                transition: "width 520ms cubic-bezier(.2,.8,.2,1)",
+                              }}
+                            />
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+
                   </div>
                   <div style={{ marginTop: 18, paddingTop: 16, borderTop: "1px solid rgba(15,23,42,0.08)", fontSize: 13, color: "rgba(15,23,42,0.60)", lineHeight: 1.5 }}>
                     Visibility first. Automation only when you approve.
@@ -446,10 +554,12 @@ export default function PropertyManagementLanding() {
 function MiniRow({ label, value, tone }) {
   const toneColor =
     tone === "danger" ? "rgba(239,68,68,1)" : tone === "warn" ? "rgba(245,158,11,1)" : "rgba(34,197,94,1)";
+  const toneBg =
+    tone === "danger" ? "rgba(239,68,68,0.08)" : tone === "warn" ? "rgba(245,158,11,0.08)" : "rgba(34,197,94,0.08)";
   return (
     <div style={{ display: "grid", gridTemplateColumns: "1fr auto", alignItems: "center", gap: 14, padding: "14px 14px", borderRadius: 16, border: "1px solid rgba(15,23,42,0.10)", background: "rgba(255,255,255,0.85)" }}>
       <div style={{ fontSize: 15, color: "rgba(15,23,42,0.72)" }}>{label}</div>
-      <div style={{ fontSize: 15, fontWeight: 900, color: toneColor, padding: "6px 10px", borderRadius: 999, background: "rgba(15,23,42,0.03)", border: "1px solid rgba(15,23,42,0.06)" }}>
+      <div style={{ fontSize: 15, fontWeight: 900, color: toneColor, padding: "6px 10px", borderRadius: 999, background: toneBg, border: "1px solid rgba(15,23,42,0.06)" }}>
         {value}
       </div>
     </div>
