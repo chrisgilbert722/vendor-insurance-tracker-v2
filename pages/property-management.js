@@ -1,7 +1,7 @@
 // pages/property-management.js
 // ============================================================
-// PROPERTY MANAGEMENT FUNNEL — SHOWSTOPPER EDITION (Light + Premium)
-// Goal: Stripe-level polish (motion + hierarchy) while keeping ALL sales logic
+// PROPERTY MANAGEMENT FUNNEL — V5 IRON MAN (Dashboard-first simulated cockpit)
+// Goal: Close immediately. Cinematic, animated, product-led, still a funnel.
 // ============================================================
 
 import Head from "next/head";
@@ -9,70 +9,62 @@ import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 
 export default function PropertyManagementLanding() {
-  const [heroTab, setHeroTab] = useState("risk");
+  const [tick, setTick] = useState(0);
   const [parallax, setParallax] = useState({ x: 0, y: 0 });
-  const tabs = useMemo(() => ([
-    { key: "risk", label: "Risk", rows: [
-      { label: "Non-compliant vendors", value: "12", tone: "danger" },
-      { label: "Policies expiring soon", value: "7", tone: "warn" },
-      { label: "Owner exposure", value: "High", tone: "danger" },
-    ] },
-    { key: "expiring", label: "Expiring", rows: [
-      { label: "≤ 30 days", value: "7", tone: "warn" },
-      { label: "≤ 60 days", value: "13", tone: "warn" },
-      { label: "Missing renewals", value: "4", tone: "danger" },
-    ] },
-    { key: "coverage", label: "Coverage", rows: [
-      { label: "Missing endorsements", value: "4", tone: "warn" },
-      { label: "Limit gaps", value: "3", tone: "danger" },
-      { label: "Pending broker items", value: "6", tone: "ok" },
-    ] },
-  ]), []);
-  const activeTab = tabs.find((t) => t.key === heroTab) || tabs[0];
-  const [activeStep, setActiveStep] = useState("scan");
-  const narrative = useMemo(
-    () => ({
-      scan: {
-        kicker: "Step 1 · Ingest",
-        title: "Scan COIs + vendor list",
-        rows: [
-          { k: "COIs scanned", v: "42" },
-          { k: "Requirements matched", v: "117" },
-          { k: "Exceptions flagged", v: "9" },
-        ],
-      },
-      expose: {
-        kicker: "Step 2 · Expose",
-        title: "Surface owner exposure",
-        rows: [
-          { k: "Non-compliant vendors", v: "12" },
-          { k: "Expiring ≤ 30 days", v: "7" },
-          { k: "Exposure level", v: "High" },
-        ],
-      },
-      preview: {
-        kicker: "Step 3 · Preview",
-        title: "Preview enforcement actions",
-        rows: [
-          { k: "Reminder drafts", v: "19" },
-          { k: "Escalations queued", v: "6" },
-          { k: "Nothing sent", v: "0" },
-        ],
-      },
-      activate: {
-        kicker: "Step 4 · Activate",
-        title: "Turn on automation when ready",
-        rows: [
-          { k: "Approval required", v: "Yes" },
-          { k: "Run cadence", v: "Daily" },
-          { k: "Audit-ready state", v: "On" },
-        ],
-      },
-    }),
-    []
-  );
-  const activeNarrative = narrative[activeStep] || narrative.scan;
 
+  const cockpit = useMemo(() => {
+    const t = tick;
+
+    const score = Math.max(0, Math.min(100, Math.round(86 + 6 * Math.sin(t / 7))));
+    const nonCompliant = 10 + Math.round(3 * (0.5 + 0.5 * Math.sin(t / 5)));
+    const exp30 = 6 + Math.round(2 * (0.5 + 0.5 * Math.cos(t / 6)));
+    const missingEnd = 3 + Math.round(2 * (0.5 + 0.5 * Math.sin(t / 9)));
+    const exposure = score >= 90 ? "Moderate" : "High";
+
+    const feed = [
+      {
+        type: "OWNER EXPOSURE",
+        tone: "danger",
+        msg: "High owner exposure detected across portfolio",
+        sub: "Executive summary updated",
+      },
+      {
+        type: "EXPIRING",
+        tone: "warn",
+        msg: "COI expires in 17 days (HVAC contractor)",
+        sub: "Renewal request drafted (not sent)",
+      },
+      {
+        type: "MISSING AI",
+        tone: "warn",
+        msg: "Additional Insured endorsement missing (Plumbing)",
+        sub: "Endorsement request prepared",
+      },
+      {
+        type: "LIMIT GAP",
+        tone: "danger",
+        msg: "Coverage below contract requirement (Roofing)",
+        sub: "Broker escalation previewed",
+      },
+    ];
+
+    const rot = t % feed.length;
+    const rotated = feed.slice(rot).concat(feed.slice(0, rot));
+
+    return {
+      score,
+      nonCompliant,
+      exp30,
+      missingEnd,
+      exposure,
+      feed: rotated,
+    };
+  }, [tick]);
+
+  useEffect(() => {
+    const id = setInterval(() => setTick((v) => v + 1), 900);
+    return () => clearInterval(id);
+  }, []);
 
   useEffect(() => {
     const els = Array.from(document.querySelectorAll("[data-reveal]"));
@@ -85,27 +77,18 @@ export default function PropertyManagementLanding() {
           }
         }
       },
-      { threshold: 0.18 }
+      { threshold: 0.14 }
     );
     els.forEach((el) => io.observe(el));
-        // Sticky narrative step tracker
-    const stepEls = Array.from(document.querySelectorAll('[data-step]'));
-    const io2 = new IntersectionObserver(
-      (entries) => {
-        // pick the most visible intersecting step
-        const vis = entries
-          .filter((e) => e.isIntersecting)
-          .sort((a, b) => (b.intersectionRatio || 0) - (a.intersectionRatio || 0));
-        if (vis[0]) setActiveStep(vis[0].target.getAttribute('data-step'));
-      },
-      { rootMargin: '-25% 0px -55% 0px', threshold: [0.12, 0.25, 0.5, 0.75] }
-    );
-    stepEls.forEach((el) => io2.observe(el));
-    return () => {
-      io.disconnect();
-      io2.disconnect();
-    };
+    return () => io.disconnect();
   }, []);
+
+  const onMouseMove = (e) => {
+    const r = e.currentTarget.getBoundingClientRect();
+    const x = (e.clientX - r.left) / r.width - 0.5;
+    const y = (e.clientY - r.top) / r.height - 0.5;
+    setParallax({ x, y });
+  };
 
   return (
     <>
@@ -124,16 +107,20 @@ export default function PropertyManagementLanding() {
 
         <style>{`
           :root {
-            --ink: #0b1220;
-            --muted: #334155;
-            --muted2: #475569;
-            --line: rgba(15, 23, 42, 0.10);
-            --card2: rgba(255,255,255,0.92);
-            --blue: #4f46e5;
-            --blue2: #6366f1;
-            --shadow: 0 22px 70px rgba(15, 23, 42, 0.12);
-            --shadow2: 0 12px 32px rgba(15, 23, 42, 0.10);
-            --r: 22px;
+            --bg0: #030712;
+            --bg1: #071124;
+            --ink: #e5e7eb;
+            --muted: rgba(226,232,240,0.78);
+            --muted2: rgba(226,232,240,0.62);
+            --line: rgba(148,163,184,0.18);
+            --cyan: #38bdf8;
+            --vio: #a855f7;
+            --good: #22c55e;
+            --warn: #f59e0b;
+            --bad: #ef4444;
+            --shadow: 0 28px 110px rgba(0,0,0,0.55);
+            --shadow2: 0 14px 50px rgba(0,0,0,0.40);
+            --r: 24px;
           }
 
           html { scroll-behavior: smooth; }
@@ -142,48 +129,24 @@ export default function PropertyManagementLanding() {
           .reveal {
             opacity: 0;
             transform: translateY(14px);
-            transition: opacity 700ms cubic-bezier(.2,.8,.2,1), transform 700ms cubic-bezier(.2,.8,.2,1);
-            will-change: opacity, transform;
+            transition: opacity 720ms cubic-bezier(.2,.8,.2,1), transform 720ms cubic-bezier(.2,.8,.2,1);
           }
           .reveal.in { opacity: 1; transform: translateY(0); }
 
-          @keyframes floaty {
-            0% { transform: translateY(0px); }
-            50% { transform: translateY(-10px); }
-            100% { transform: translateY(0px); }
-          }
-          @keyframes shimmer {
-            0% { transform: translateX(-140%); }
-            100% { transform: translateX(140%); }
-          }
-          @keyframes blob {
-            0% { transform: translate3d(0,0,0) scale(1); }
-            50% { transform: translate3d(18px,-16px,0) scale(1.08); }
-            100% { transform: translate3d(0,0,0) scale(1); }
-          }
+          @keyframes shimmer { 0% { transform: translateX(-140%); } 100% { transform: translateX(140%); } }
+          @keyframes pulse { 0% { transform: scale(1); opacity: .65; } 50% { transform: scale(1.03); opacity: .9; } 100% { transform: scale(1); opacity: .65; } }
+          @keyframes floaty { 0% { transform: translateY(0px); } 50% { transform: translateY(-10px); } 100% { transform: translateY(0px); } }
 
-          .heroWrap {
-            position: relative;
-            overflow: hidden;
-            border-radius: calc(var(--r) + 10px);
+          .wrap {
+            min-height: 100vh;
             background:
-              radial-gradient(1200px 600px at 15% -5%, rgba(79,70,229,0.14), rgba(255,255,255,0) 60%),
-              radial-gradient(900px 520px at 90% 10%, rgba(56,189,248,0.10), rgba(255,255,255,0) 55%),
-              linear-gradient(180deg, #ffffff 0%, #fbfcff 40%, #f7f9ff 100%);
-            border: 1px solid var(--line);
-            box-shadow: var(--shadow);
+              radial-gradient(900px 540px at 15% 10%, rgba(56,189,248,0.18), rgba(0,0,0,0) 55%),
+              radial-gradient(760px 460px at 85% 15%, rgba(168,85,247,0.16), rgba(0,0,0,0) 55%),
+              linear-gradient(180deg, var(--bg0) 0%, var(--bg1) 45%, #050816 100%);
+            color: var(--ink);
+            padding: 36px 18px 140px;
           }
-
-          .blob {
-            position: absolute;
-            inset: -220px -220px auto auto;
-            width: 560px;
-            height: 560px;
-            border-radius: 999px;
-            background: radial-gradient(circle at 30% 30%, rgba(79,70,229,0.25), rgba(99,102,241,0.10) 45%, rgba(56,189,248,0.08) 70%, rgba(255,255,255,0) 72%);
-            animation: blob 8.5s ease-in-out infinite;
-            pointer-events: none;
-          }
+          .container { max-width: 1180px; margin: 0 auto; }
 
           .pill {
             display: inline-flex;
@@ -191,15 +154,15 @@ export default function PropertyManagementLanding() {
             gap: 10px;
             padding: 10px 14px;
             border-radius: 999px;
-            background: rgba(255,255,255,0.70);
-            border: 1px solid rgba(79,70,229,0.22);
-            box-shadow: 0 10px 30px rgba(15,23,42,0.06);
-            font-weight: 800;
+            background: rgba(255,255,255,0.06);
+            border: 1px solid rgba(56,189,248,0.22);
+            box-shadow: 0 12px 40px rgba(0,0,0,0.35);
+            font-weight: 900;
             font-size: 12px;
-            letter-spacing: .12em;
+            letter-spacing: .14em;
             text-transform: uppercase;
-            color: var(--blue);
-            backdrop-filter: blur(10px);
+            color: var(--cyan);
+            backdrop-filter: blur(12px);
           }
 
           .cta {
@@ -210,21 +173,18 @@ export default function PropertyManagementLanding() {
             gap: 10px;
             padding: 16px 34px;
             border-radius: 999px;
-            background: linear-gradient(135deg, var(--blue), var(--blue2));
-            color: #fff;
+            background: linear-gradient(135deg, var(--cyan), #2563eb, #0b1020);
+            border: 1px solid rgba(56,189,248,0.55);
+            color: #ecfeff;
             font-size: 17px;
-            font-weight: 900;
+            font-weight: 950;
             letter-spacing: -0.01em;
             text-decoration: none;
-            box-shadow: 0 24px 60px rgba(79,70,229,0.35);
+            box-shadow: 0 26px 70px rgba(56,189,248,0.22);
             transition: transform 220ms ease, box-shadow 220ms ease, filter 220ms ease;
             overflow: hidden;
           }
-          .cta:hover {
-            transform: translateY(-2px);
-            filter: saturate(1.05);
-            box-shadow: 0 28px 70px rgba(79,70,229,0.42);
-          }
+          .cta:hover { transform: translateY(-2px); filter: saturate(1.08); box-shadow: 0 30px 80px rgba(56,189,248,0.28); }
           .cta::after {
             content: "";
             position: absolute;
@@ -232,665 +192,293 @@ export default function PropertyManagementLanding() {
             left: -60%;
             width: 60%;
             height: 220%;
-            background: linear-gradient(90deg, rgba(255,255,255,0), rgba(255,255,255,0.35), rgba(255,255,255,0));
+            background: linear-gradient(90deg, rgba(255,255,255,0), rgba(255,255,255,0.25), rgba(255,255,255,0));
             transform: rotate(18deg) translateX(-140%);
-            animation: shimmer 2.9s ease-in-out infinite;
+            animation: shimmer 2.6s ease-in-out infinite;
           }
 
-          .link { color: var(--blue); font-weight: 800; text-decoration: none; }
+          .link { color: rgba(191,219,254,0.95); font-weight: 800; text-decoration: none; }
           .link:hover { text-decoration: underline; }
 
-          .card {
-            background: var(--card2);
-            border: 1px solid rgba(15,23,42,0.10);
-            border-radius: var(--r);
-            box-shadow: var(--shadow2);
-            backdrop-filter: blur(10px);
-          }
-          .lift { transition: transform 220ms ease, box-shadow 220ms ease, border-color 220ms ease; }
-          .lift:hover { transform: translateY(-4px); box-shadow: 0 22px 70px rgba(15,23,42,0.14); border-color: rgba(79,70,229,0.22); }
-
-          .grid2 { display: grid; grid-template-columns: 1.15fr 0.85fr; gap: 48px; align-items: center; }
-          @media (max-width: 980px) { .grid2 { grid-template-columns: 1fr; gap: 28px; } }
-
-          .softBand {
-            background: linear-gradient(180deg, rgba(79,70,229,0.06) 0%, rgba(99,102,241,0.04) 45%, rgba(255,255,255,0) 100%);
-            border-top: 1px solid var(--line);
-            border-bottom: 1px solid var(--line);
+          .hero {
+            position: relative;
+            overflow: hidden;
+            border-radius: calc(var(--r) + 10px);
+            border: 1px solid rgba(148,163,184,0.20);
+            background:
+              radial-gradient(1200px 700px at 20% -5%, rgba(56,189,248,0.22), rgba(0,0,0,0) 60%),
+              radial-gradient(1000px 620px at 90% 10%, rgba(168,85,247,0.20), rgba(0,0,0,0) 58%),
+              linear-gradient(180deg, rgba(2,6,23,0.96), rgba(2,6,23,0.96));
+            box-shadow: var(--shadow);
           }
 
-          .logos { display: flex; justify-content: center; gap: 18px; flex-wrap: wrap; opacity: 0.85; }
-          .logoStub {
-            padding: 12px 18px; border-radius: 999px;
-            background: rgba(15,23,42,0.04); border: 1px solid rgba(15,23,42,0.08);
-            font-weight: 900; letter-spacing: .06em; text-transform: uppercase; font-size: 12px;
-            color: rgba(15,23,42,0.55);
-          }
+          .heroGrid { display: grid; grid-template-columns: 1.08fr 0.92fr; gap: 26px; align-items: center; }
+          @media (max-width: 980px) { .heroGrid { grid-template-columns: 1fr; } }
 
-          .gradText {
-            background: linear-gradient(90deg, rgba(79,70,229,1), rgba(99,102,241,1), rgba(56,189,248,1));
-            -webkit-background-clip: text;
-            background-clip: text;
-            color: transparent;
+          .blob {
+            position: absolute;
+            inset: -260px -260px auto auto;
+            width: 640px;
+            height: 640px;
+            border-radius: 999px;
+            background: radial-gradient(circle at 30% 30%, rgba(56,189,248,0.36), rgba(168,85,247,0.20) 55%, rgba(255,255,255,0) 72%);
+            filter: blur(6px);
+            animation: pulse 5.8s ease-in-out infinite;
+            pointer-events: none;
           }
-          .bgGrid {
+          .gridFX {
             position: absolute;
             inset: 0;
             background-image:
-              linear-gradient(to right, rgba(15,23,42,0.05) 1px, transparent 1px),
-              linear-gradient(to bottom, rgba(15,23,42,0.05) 1px, transparent 1px);
-            background-size: 80px 80px;
-            mask-image: radial-gradient(circle at 30% 20%, rgba(0,0,0,0.25), rgba(0,0,0,0) 60%);
+              linear-gradient(to right, rgba(148,163,184,0.08) 1px, transparent 1px),
+              linear-gradient(to bottom, rgba(148,163,184,0.08) 1px, transparent 1px);
+            background-size: 86px 86px;
+            mask-image: radial-gradient(circle at 30% 15%, rgba(0,0,0,0.30), rgba(0,0,0,0) 62%);
             pointer-events: none;
           }
-          @media (prefers-reduced-motion: reduce) {
-            .reveal { transition: none !important; transform: none !important; opacity: 1 !important; }
-            .cta::after { animation: none !important; }
-            .blob { animation: none !important; }
-          }
 
-        
-          /* Nuclear pass: power band + sticky narrative + comparison slice */
-          .powerBand{
-            margin-top: 34px;
-            border-radius: calc(var(--r) + 10px);
-            border: 1px solid rgba(15,23,42,0.10);
-            background:
-              radial-gradient(900px 520px at 15% 10%, rgba(79,70,229,0.18), rgba(255,255,255,0) 62%),
-              radial-gradient(700px 420px at 85% 25%, rgba(56,189,248,0.16), rgba(255,255,255,0) 58%),
-              linear-gradient(180deg, rgba(11,18,32,0.98) 0%, rgba(15,23,42,0.98) 100%);
-            box-shadow: 0 30px 90px rgba(15,23,42,0.35);
+          .h1 { margin: 18px 0 14px; font-size: 62px; line-height: 1.03; font-weight: 950; letter-spacing: -0.03em; }
+          @media (max-width: 980px) { .h1 { font-size: 46px; } }
+          .grad { background: linear-gradient(90deg, var(--cyan), #60a5fa, var(--vio)); -webkit-background-clip: text; background-clip: text; color: transparent; }
+          .sub { font-size: 18px; line-height: 1.75; color: var(--muted); max-width: 720px; }
+          .micro { margin-top: 12px; font-size: 13px; color: var(--muted2); }
+
+          .cockpit {
+            padding: 18px;
+            border-radius: 26px;
+            background: linear-gradient(180deg, rgba(255,255,255,0.06), rgba(255,255,255,0.04));
+            border: 1px solid rgba(148,163,184,0.18);
+            box-shadow: 0 26px 80px rgba(0,0,0,0.45);
+          }
+          .cockpitTop { display: grid; grid-template-columns: 0.9fr 1.1fr; gap: 14px; }
+          @media (max-width: 980px) { .cockpitTop { grid-template-columns: 1fr; } }
+
+          .dial {
+            position: relative;
+            border-radius: 22px;
+            border: 1px solid rgba(148,163,184,0.18);
+            background: rgba(2,6,23,0.55);
+            padding: 18px;
             overflow: hidden;
+          }
+          .ring {
+            width: 160px;
+            height: 160px;
+            border-radius: 999px;
+            background: conic-gradient(var(--good) 0%, var(--warn) 35%, var(--bad) 72%, rgba(148,163,184,0.14) 100%);
+            filter: drop-shadow(0 0 22px rgba(56,189,248,0.18));
             position: relative;
           }
-          .powerGlow{
-            position:absolute; inset:-240px auto auto -240px;
-            width:520px; height:520px; border-radius:999px;
-            background: radial-gradient(circle at 30% 30%, rgba(99,102,241,0.42), rgba(56,189,248,0.18) 52%, rgba(255,255,255,0) 70%);
-            filter: blur(6px);
-            pointer-events:none;
-          }
-          .powerKicker{
-            font-size:12px; font-weight:900; letter-spacing:.14em; text-transform:uppercase;
-            color: rgba(191,219,254,0.9);
-          }
-          .powerTitle{
-            font-size:46px; font-weight:950; letter-spacing:-0.03em;
-            margin: 10px 0 12px;
-            color: #fff;
-          }
-          .powerSub{
-            color: rgba(226,232,240,0.86);
-            font-size:16px; line-height:1.75; max-width: 920px;
-          }
-          .ticker{
-            display:grid; gap:12px;
-            margin-top: 22px;
-          }
-          .tick{
-            background: rgba(255,255,255,0.06);
-            border: 1px solid rgba(255,255,255,0.10);
-            border-radius: 16px;
-            padding: 14px 14px;
-            display:flex; align-items:center; justify-content:space-between; gap:14px;
-            box-shadow: 0 12px 30px rgba(0,0,0,0.25);
-            transform: translateY(0);
-          }
-          .tick b{ color:#fff; }
-          .tick span{ color: rgba(226,232,240,0.78); font-size: 13px; }
-          @keyframes popIn{
-            0%{ opacity:0; transform: translateY(10px); }
-            100%{ opacity:1; transform: translateY(0px); }
-          }
-          .tick{ opacity:0; animation: popIn 700ms cubic-bezier(.2,.8,.2,1) forwards; }
-          .tick:nth-child(1){ animation-delay: 60ms; }
-          .tick:nth-child(2){ animation-delay: 180ms; }
-          .tick:nth-child(3){ animation-delay: 300ms; }
-          .tick:nth-child(4){ animation-delay: 420ms; }
-
-          .stickyGrid{
-            display:grid;
-            grid-template-columns: 0.95fr 1.05fr;
-            gap: 22px;
-            align-items:start;
-          }
-          @media (max-width: 980px){
-            .stickyGrid{ grid-template-columns: 1fr; }
-          }
-          .stickyCard{
-            position: sticky;
-            top: 88px;
-          }
-          .stepItem{
-            border-radius: 22px;
-            border: 1px solid rgba(15,23,42,0.10);
-            background: rgba(255,255,255,0.92);
-            box-shadow: var(--shadow2);
-            padding: 22px;
-          }
-          .stepItem + .stepItem{ margin-top: 14px; }
-          .stepPill{
-            display:inline-flex;
-            align-items:center;
-            gap: 10px;
-            padding: 8px 12px;
+          .ring::after {
+            content: "";
+            position: absolute;
+            inset: 14px;
             border-radius: 999px;
-            border: 1px solid rgba(79,70,229,0.18);
-            background: rgba(79,70,229,0.08);
-            color: rgba(79,70,229,1);
-            font-weight: 900;
-            font-size: 12px;
-            letter-spacing: .10em;
-            text-transform: uppercase;
+            background: rgba(2,6,23,0.92);
+            border: 1px solid rgba(148,163,184,0.14);
           }
-          .compTable{
-            border-radius: calc(var(--r) + 6px);
-            border: 1px solid rgba(15,23,42,0.10);
-            background: rgba(255,255,255,0.92);
-            box-shadow: var(--shadow2);
-            overflow: hidden;
-          }
-          .compRow{
-            display:grid;
-            grid-template-columns: 1.1fr 0.9fr;
-            gap: 12px;
-            padding: 14px 18px;
-            border-top: 1px solid rgba(15,23,42,0.08);
-            align-items:center;
-          }
-          .compRow:first-child{ border-top:none; }
-          .compL{ color: rgba(15,23,42,0.70); font-weight: 700; }
-          .compR{
-            justify-self:end;
-            padding: 8px 12px;
-            border-radius: 999px;
-            font-weight: 900;
-            font-size: 12px;
-            letter-spacing: .10em;
-            text-transform: uppercase;
-          }
-          .yes{ background: rgba(34,197,94,0.12); color: rgba(21,128,61,1); border: 1px solid rgba(34,197,94,0.22); }
-          .no{ background: rgba(239,68,68,0.10); color: rgba(185,28,28,1); border: 1px solid rgba(239,68,68,0.20); }
+          .score { position: absolute; inset: 0; display: grid; place-items: center; text-align: center; }
+          .score b { font-size: 38px; letter-spacing: -0.02em; }
+          .score div { font-size: 12px; letter-spacing: .16em; text-transform: uppercase; color: rgba(226,232,240,0.62); margin-top: 2px; }
 
-          @media (prefers-reduced-motion: reduce){
-            .tick{ animation: none !important; opacity:1 !important; }
-          }
+          .stat { border-radius: 16px; border: 1px solid rgba(148,163,184,0.16); background: rgba(2,6,23,0.55); padding: 14px; display: grid; gap: 10px; }
+          .row { display: flex; justify-content: space-between; align-items: center; gap: 14px; padding: 10px 10px; border-radius: 14px; background: rgba(255,255,255,0.04); border: 1px solid rgba(148,163,184,0.10); }
+          .row span { color: rgba(226,232,240,0.78); font-size: 14px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+          .badge { min-width: 48px; text-align: center; padding: 6px 10px; border-radius: 999px; font-weight: 950; font-size: 12px; letter-spacing: .10em; text-transform: uppercase; border: 1px solid rgba(148,163,184,0.16); }
+          .bad { background: rgba(239,68,68,0.14); color: rgba(254,202,202,0.95); border-color: rgba(239,68,68,0.26); }
+          .warn { background: rgba(245,158,11,0.14); color: rgba(254,243,199,0.95); border-color: rgba(245,158,11,0.26); }
 
+          .feed { margin-top: 14px; display: grid; gap: 10px; }
+          .event { border-radius: 16px; border: 1px solid rgba(148,163,184,0.14); background: rgba(2,6,23,0.55); padding: 12px; display: grid; gap: 6px; box-shadow: 0 12px 36px rgba(0,0,0,0.35); transition: transform 220ms ease, border-color 220ms ease; }
+          .event:hover { transform: translateY(-2px); border-color: rgba(56,189,248,0.22); }
+          .etype { font-size: 11px; letter-spacing: .14em; text-transform: uppercase; font-weight: 950; }
+          .emsg { color: rgba(226,232,240,0.90); font-size: 14px; line-height: 1.5; }
+          .esub { color: rgba(226,232,240,0.62); font-size: 12px; }
+
+          .band { margin-top: 26px; padding: 26px; border-radius: calc(var(--r) + 10px); border: 1px solid rgba(148,163,184,0.16); background: linear-gradient(180deg, rgba(255,255,255,0.05), rgba(255,255,255,0.03)); box-shadow: 0 22px 70px rgba(0,0,0,0.42); }
+
+          .sectionTitle { font-size: 42px; font-weight: 950; letter-spacing: -0.03em; margin: 0 0 12px; }
+          .sectionSub { color: var(--muted); line-height: 1.8; font-size: 16px; margin: 0; max-width: 940px; }
         `}</style>
       </Head>
 
-      <main style={{ minHeight: "100vh", background: "linear-gradient(180deg,#ffffff 0%, #f8fafc 38%, #eef2ff 100%)", color: "var(--ink)", padding: "28px 18px 120px" }}>
-        <div style={{ maxWidth: 1180, margin: "0 auto" }}>
+      <main className="wrap">
+        <div className="container">
           <section
             id="vendor-risk-management"
-            className="heroWrap"
-            style={{ padding: "78px 54px" }}
-            onMouseMove={(e) => {
-              const r = e.currentTarget.getBoundingClientRect();
-              const x = (e.clientX - r.left) / r.width - 0.5;
-              const y = (e.clientY - r.top) / r.height - 0.5;
-              setParallax({ x, y });
-            }}
+            className="hero reveal in"
+            data-reveal
+            onMouseMove={onMouseMove}
             onMouseLeave={() => setParallax({ x: 0, y: 0 })}
+            style={{ padding: "72px 54px" }}
           >
-            <div className="blob" style={{ transform: `translate3d(${parallax.x * 18}px, ${parallax.y * -14}px, 0)` }} />
-            <div className="bgGrid" />
-            <div className="grid2">
-              <div className="reveal in" data-reveal>
-                <div className="pill">Vendor Risk Intelligence Platform</div>
-                <h1 style={{ marginTop: 18, fontSize: 62, lineHeight: 1.04, fontWeight: 950, letterSpacing: "-0.03em", color: "var(--ink)", marginBottom: 18 }}>
-                  <span className="gradText">Real-Time Vendor Risk</span><br/>Intelligence for Property<br/>Portfolios
+            <div className="blob" style={{ transform: `translate3d(${parallax.x * 22}px, ${parallax.y * -16}px, 0)` }} />
+            <div className="gridFX" />
+
+            <div className="heroGrid">
+              <div>
+                <div className="pill">Property Management · Owner-Safe Compliance</div>
+
+                <h1 className="h1">
+                  <span className="grad">Vendor Risk Cockpit</span>
+                  <br />
+                  built for property portfolios.
                 </h1>
-                <p style={{ fontSize: 20, lineHeight: 1.7, color: "var(--muted)", maxWidth: 640, marginBottom: 26 }}>
+
+                <p className="sub">
                   Instantly see insurance exposure, non-compliance, and owner risk — before audits, claims, or automation.
+                  Nothing runs until you approve.
                 </p>
-                <div style={{ display: "flex", gap: 18, flexWrap: "wrap", alignItems: "center" }}>
-                  <Link href="/signup?industry=property_management" className="cta">View My Portfolio Risk</Link>
-                  <Link href="#how-it-works" className="link">See how it works →</Link>
+
+                <div style={{ display: "flex", gap: 18, flexWrap: "wrap", alignItems: "center", marginTop: 22 }}>
+                  <Link href="/signup?industry=property_management" className="cta">
+                    Enter the Risk Cockpit
+                  </Link>
+                  <Link href="#how-it-works" className="link">
+                    See how it works →
+                  </Link>
                 </div>
-                <div style={{ marginTop: 12, fontSize: 13, color: "var(--muted2)" }}>
-                  No demos. No sales calls. Operational in minutes.
+
+                <div className="micro">
+                  No demos. No sales calls. Operational in minutes. Preview everything before it runs.
                 </div>
               </div>
 
-              <div className="reveal in" data-reveal style={{ animation: "floaty 5.2s ease-in-out infinite" }}>
-                <div className="card lift" style={{ padding: 26, borderRadius: 26 }}>
-                  <div style={{ fontSize: 12, fontWeight: 900, letterSpacing: "0.14em", textTransform: "uppercase", color: "var(--blue)", marginBottom: 16 }}>
-                    Portfolio Risk Snapshot
+              <div style={{ animation: "floaty 5.1s ease-in-out infinite" }}>
+                <div className="cockpit">
+                  <div style={{ fontSize: 12, fontWeight: 950, letterSpacing: ".14em", textTransform: "uppercase", color: "rgba(191,219,254,0.9)", marginBottom: 12 }}>
+                    Live Compliance Snapshot
                   </div>
-                  <div style={{ display: "grid", gap: 14 }}>
-                    <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginBottom: 12 }}>
-                    {tabs.map((t) => (
-                      <button
-                        key={t.key}
-                        onClick={() => setHeroTab(t.key)}
-                        style={{
-                          cursor: "pointer",
-                          border: "1px solid rgba(15,23,42,0.10)",
-                          background: heroTab === t.key ? "rgba(79,70,229,0.10)" : "rgba(255,255,255,0.70)",
-                          color: heroTab === t.key ? "rgba(79,70,229,1)" : "rgba(15,23,42,0.70)",
-                          padding: "8px 12px",
-                          borderRadius: 999,
-                          fontWeight: 900,
-                          fontSize: 12,
-                          letterSpacing: "0.08em",
-                          textTransform: "uppercase",
-                          boxShadow: heroTab === t.key ? "0 10px 30px rgba(79,70,229,0.10)" : "none",
-                          transition: "transform 180ms ease, box-shadow 180ms ease",
-                        }}
-                      >
-                        {t.label}
-                      </button>
-                    ))}
-                    </div>
-                    <div style={{ display: "grid", gap: 14 }}>
-                      {activeTab.rows.map((r) => (
-                        <MiniRow key={r.label} label={r.label} value={r.value} tone={r.tone} />
-                      ))}
-                    </div>
-                    <div style={{ marginTop: 14, display: "grid", gap: 10 }}>
-                      {activeTab.rows.map((r, idx) => (
-                        <div key={r.label + idx} style={{ display: "grid", gridTemplateColumns: "110px 1fr", gap: 10, alignItems: "center" }}>
-                          <div style={{ fontSize: 12, color: "rgba(15,23,42,0.55)", fontWeight: 800 }}>
-                            {r.label.length > 14 ? r.label.slice(0, 14) + "…" : r.label}
-                          </div>
-                          <div style={{ height: 10, borderRadius: 999, background: "rgba(15,23,42,0.06)", overflow: "hidden", border: "1px solid rgba(15,23,42,0.06)" }}>
-                            <div
-                              style={{
-                                height: "100%",
-                                width: `${Math.min(100, 18 + idx * 22 + (heroTab === "risk" ? 8 : 0))}%`,
-                                borderRadius: 999,
-                                background:
-                                  r.tone === "danger"
-                                    ? "linear-gradient(90deg, rgba(239,68,68,0.55), rgba(239,68,68,0.20))"
-                                    : r.tone === "warn"
-                                    ? "linear-gradient(90deg, rgba(245,158,11,0.55), rgba(245,158,11,0.18))"
-                                    : "linear-gradient(90deg, rgba(34,197,94,0.55), rgba(34,197,94,0.18))",
-                                transition: "width 520ms cubic-bezier(.2,.8,.2,1)",
-                              }}
-                            />
+
+                  <div className="cockpitTop">
+                    <div className="dial">
+                      <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
+                        <div style={{ position: "relative" }}>
+                          <div className="ring" />
+                          <div className="score">
+                            <div>
+                              <b>{cockpit.score}</b>
+                              <div>Overall score</div>
+                            </div>
                           </div>
                         </div>
-                      ))}
+
+                        <div>
+                          <div style={{ fontSize: 12, letterSpacing: ".14em", textTransform: "uppercase", fontWeight: 950, color: "rgba(226,232,240,0.72)" }}>
+                            Owner exposure
+                          </div>
+                          <div style={{ fontSize: 26, fontWeight: 950, letterSpacing: "-0.02em", marginTop: 8 }}>
+                            {cockpit.exposure}
+                          </div>
+                          <div style={{ marginTop: 10, color: "rgba(226,232,240,0.62)", fontSize: 13, lineHeight: 1.5 }}>
+                            Updates continuously as vendors upload COIs.
+                          </div>
+                        </div>
+                      </div>
                     </div>
 
-                  </div>
-                  <div style={{ marginTop: 18, paddingTop: 16, borderTop: "1px solid rgba(15,23,42,0.08)", fontSize: 13, color: "rgba(15,23,42,0.60)", lineHeight: 1.5 }}>
-                    Visibility first. Automation only when you approve.
-                  </div>
-                </div>
-              </div>
-            </div>
-          </section>
+                    <div className="stat">
+                      <div className="row">
+                        <span>Non-compliant vendors</span>
+                        <div className="badge bad">{cockpit.nonCompliant}</div>
+                      </div>
+                      <div className="row">
+                        <span>Expiring in 30 days</span>
+                        <div className="badge warn">{cockpit.exp30}</div>
+                      </div>
+                      <div className="row">
+                        <span>Missing endorsements</span>
+                        <div className="badge warn">{cockpit.missingEnd}</div>
+                      </div>
 
-          <section className="reveal" data-reveal style={{ padding: "56px 8px 6px", textAlign: "center" }}>
-            <div style={{ fontSize: 14, fontWeight: 800, color: "rgba(15,23,42,0.55)" }}>
-              Trusted by property teams responsible for thousands of units
-            </div>
-            <div className="logos" style={{ marginTop: 18, marginBottom: 14 }}>
-              <div className="logoStub">Property Group</div>
-              <div className="logoStub">Asset Management</div>
-              <div className="logoStub">Multifamily Ops</div>
-              <div className="logoStub">Portfolio Services</div>
-            </div>
-            <div style={{ fontSize: 13, color: "rgba(15,23,42,0.55)" }}>Built for operators who can’t afford blind spots.</div>
-          </section>
-
-          <section className="reveal" data-reveal style={{ padding: "22px 8px 44px" }}>
-            <div className="card" style={{ padding: 26, borderRadius: 22 }}>
-              <p style={{ margin: 0, fontSize: 16, color: "var(--muted2)", lineHeight: 1.75 }}>
-                This platform is built for vendor risk management and insurance compliance in property management.
-                It helps property managers track certificates of insurance (COIs), monitor expiring policies,
-                validate additional insured and waiver requirements, and reduce owner exposure across multi-property portfolios.
-              </p>
-            </div>
-          </section>
-
-          <section className="reveal" data-reveal style={{ padding: "18px 8px 54px" }}>
-            <div className="card" style={{ padding: 30 }}>
-              <h3 style={{ fontSize: 22, fontWeight: 950, margin: "0 0 14px", letterSpacing: "-0.01em" }}>
-                Built for teams that can’t afford blind spots
-              </h3>
-              <ul style={{ margin: 0, paddingLeft: 18, color: "var(--muted2)", lineHeight: 1.95, fontSize: 16 }}>
-                <li>Property managers overseeing multiple vendors</li>
-                <li>Operations teams responsible for owner risk</li>
-                <li>Firms preparing for audits, claims, or portfolio growth</li>
-              </ul>
-            </div>
-          </section>
-
-          <section id="vendor-insurance-risk" className="reveal" data-reveal style={{ padding: "24px 8px 44px" }}>
-            <h2 style={{ fontSize: 44, fontWeight: 950, letterSpacing: "-0.03em", margin: "0 0 12px" }}>
-              Vendor insurance risk doesn’t fail loudly.
-            </h2>
-            <p style={{ fontSize: 18, color: "var(--muted2)", lineHeight: 1.8, margin: "0 0 18px", maxWidth: 820 }}>
-              It fails quietly — accumulating in the background until an audit, a claim, or an owner question exposes it all at once.
-            </p>
-            <div className="card" style={{ padding: 26, borderRadius: 22 }}>
-              <p style={{ margin: 0, fontSize: 16, color: "var(--muted2)", lineHeight: 1.75 }}>
-                COIs expire without notice. Vendors delay renewals. Endorsements get missed. Spreadsheets drift out of date.
-              </p>
-              <ul style={{ marginTop: 14, paddingLeft: 18, color: "var(--muted2)", lineHeight: 1.9, fontSize: 16 }}>
-                <li>Coverage gaps go unnoticed</li>
-                <li>Non-compliance compounds silently</li>
-                <li>Risk only becomes visible when it’s already a problem</li>
-              </ul>
-              <p style={{ marginTop: 14, marginBottom: 0, fontSize: 14, color: "rgba(15,23,42,0.55)", lineHeight: 1.6 }}>
-                Most property managers don’t discover insurance issues because they weren’t diligent — they discover them because the systems they rely on never showed the full truth.
-              </p>
-            </div>
-          </section>
-
-          <section id="control-first-automation" className="softBand" style={{ marginTop: 34, padding: "72px 8px" }}>
-            <div className="reveal" data-reveal>
-              <h2 style={{ fontSize: 46, fontWeight: 950, letterSpacing: "-0.03em", margin: "0 0 14px" }}>
-                Most platforms automate first.<br/>We show you the truth first.
-              </h2>
-              <p style={{ fontSize: 18, color: "var(--muted2)", lineHeight: 1.8, maxWidth: 900, marginTop: 0 }}>
-                Instead of immediately sending emails, chasing vendors, or enforcing rules blindly, this platform gives you something no other system leads with: <strong>real visibility.</strong>
-              </p>
-              <div style={{ display: "grid", gridTemplateColumns: "repeat(2,minmax(0,1fr))", gap: 16, marginTop: 18 }}>
-                <FeatureCard title="Exposure, instantly" text="See actual insurance exposure across your vendor portfolio in one view." />
-                <FeatureCard title="Know exactly why" text="Understand which vendors are non-compliant — and the specific gap." />
-                <FeatureCard title="Prevent urgency" text="Identify expiring coverage before it becomes a scramble." />
-                <FeatureCard title="Preview before action" text="Review every reminder and escalation before anything runs." />
-              </div>
-              <div style={{ marginTop: 22, fontSize: 16, color: "var(--muted2)" }}>
-                You stay in control. Automation only starts when <strong>you</strong> decide.
-              </div>
-              <div style={{ marginTop: 22 }}>
-                <Link href="/signup?industry=property_management" className="cta">View My Portfolio Risk</Link>
-                <div style={{ marginTop: 10, fontSize: 13, color: "var(--muted2)" }}>
-                  No demos. No sales calls. Operational in minutes.
-                </div>
-              </div>
-            </div>
-          </section>
-
-
-          {/* ================= POWER MOMENT ================= */}
-          <section className="powerBand" style={{ padding: "56px 34px", marginTop: 26 }}>
-            <div className="powerGlow" />
-            <div style={{ position: "relative" }}>
-              <div className="powerKicker">Owner-safe compliance · live exposure</div>
-              <div className="powerTitle">You don’t discover risk during an audit.</div>
-              <div className="powerSub">
-                You see it in advance — with the exact vendor, the exact gap, and the exact exposure — before anything is sent, enforced, or escalated.
-              </div>
-
-              <div className="ticker">
-                <div className="tick">
-                  <div><b>ALERT</b> · Vendor missing Additional Insured endorsement</div>
-                  <span>Action previewed · not sent</span>
-                </div>
-                <div className="tick">
-                  <div><b>EXPIRING</b> · COI expires in 17 days (HVAC contractor)</div>
-                  <span>Renewal request ready</span>
-                </div>
-                <div className="tick">
-                  <div><b>LIMIT GAP</b> · Coverage below contract requirement</div>
-                  <span>Broker escalation drafted</span>
-                </div>
-                <div className="tick">
-                  <div><b>OWNER EXPOSURE</b> · High exposure detected across portfolio</div>
-                  <span>Executive summary updated</span>
-                </div>
-              </div>
-
-              <div style={{ marginTop: 22 }}>
-                <Link href="/signup?industry=property_management" className="cta">
-                  View My Portfolio Risk
-                </Link>
-                <div style={{ marginTop: 10, fontSize: 13, color: "rgba(226,232,240,0.80)" }}>
-                  No demos. No sales calls. Operational in minutes.
-                </div>
-              </div>
-            </div>
-          </section>
-
-          {/* ================= STICKY PRODUCT NARRATIVE ================= */}
-          <section className="reveal" data-reveal style={{ padding: "78px 8px 54px" }}>
-            <div style={{ marginBottom: 14, fontSize: 13, fontWeight: 900, letterSpacing: ".14em", textTransform: "uppercase", color: "rgba(79,70,229,1)" }}>
-              How it works (feels like the product)
-            </div>
-            <div style={{ fontSize: 42, fontWeight: 950, letterSpacing: "-0.03em", marginBottom: 14 }}>
-              A risk command view — without a sales cycle
-            </div>
-            <div style={{ color: "var(--muted2)", lineHeight: 1.75, maxWidth: 920, marginBottom: 22 }}>
-              As you scroll, the system progresses from ingest → exposure → preview → activation. It’s fully self-serve, and nothing runs without approval.
-            </div>
-
-            <div className="stickyGrid">
-              <div className="stickyCard">
-                <div className="card lift" style={{ padding: 26, borderRadius: 24 }}>
-                  <div className="stepPill">{activeNarrative.kicker}</div>
-                  <div style={{ fontSize: 22, fontWeight: 950, letterSpacing: "-0.02em", marginTop: 12 }}>
-                    {activeNarrative.title}
+                      <div style={{ marginTop: 2, fontSize: 12, color: "rgba(226,232,240,0.62)" }}>
+                        Visibility first. Automation only when you approve.
+                      </div>
+                    </div>
                   </div>
 
-                  <div style={{ marginTop: 16, display: "grid", gap: 12 }}>
-                    {activeNarrative.rows.map((r) => (
-                      <div key={r.k} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "12px 12px", borderRadius: 14, background: "rgba(15,23,42,0.03)", border: "1px solid rgba(15,23,42,0.06)" }}>
-                        <div style={{ color: "rgba(15,23,42,0.70)", fontWeight: 700 }}>{r.k}</div>
-                        <div style={{ fontWeight: 950, letterSpacing: "-0.01em" }}>{r.v}</div>
+                  <div className="feed">
+                    {cockpit.feed.map((e, i) => (
+                      <div key={e.type + i} className="event">
+                        <div className="etype" style={{ color: e.tone === "danger" ? "rgba(254,202,202,0.95)" : "rgba(254,243,199,0.95)" }}>
+                          {e.type}
+                        </div>
+                        <div className="emsg">{e.msg}</div>
+                        <div className="esub">{e.sub}</div>
                       </div>
                     ))}
                   </div>
-
-                  <div style={{ marginTop: 18, paddingTop: 14, borderTop: "1px solid rgba(15,23,42,0.08)", color: "rgba(15,23,42,0.60)", fontSize: 13, lineHeight: 1.6 }}>
-                    No meetings. No onboarding. Preview everything. Activate when ready.
-                  </div>
-                </div>
-
-                <div style={{ marginTop: 14 }}>
-                  <Link href="/signup?industry=property_management" className="cta">
-                    View My Portfolio Risk
-                  </Link>
-                </div>
-              </div>
-
-              <div>
-                <div className="stepItem" data-step="scan">
-                  <div className="stepPill">Step 1 · Ingest</div>
-                  <div style={{ fontSize: 22, fontWeight: 950, letterSpacing: "-0.02em", marginTop: 10 }}>
-                    Connect vendors or upload COIs
-                  </div>
-                  <div style={{ color: "var(--muted2)", lineHeight: 1.75, marginTop: 10 }}>
-                    Upload a vendor list or COIs. The system extracts limits, endorsements, and requirements mapping — without vendor logins.
-                  </div>
-                </div>
-
-                <div className="stepItem" data-step="expose">
-                  <div className="stepPill">Step 2 · Expose</div>
-                  <div style={{ fontSize: 22, fontWeight: 950, letterSpacing: "-0.02em", marginTop: 10 }}>
-                    See risk the way owners see it
-                  </div>
-                  <div style={{ color: "var(--muted2)", lineHeight: 1.75, marginTop: 10 }}>
-                    Non-compliance, expirations, and exposure become visible across your portfolio in one executive view.
-                  </div>
-                </div>
-
-                <div className="stepItem" data-step="preview">
-                  <div className="stepPill">Step 3 · Preview</div>
-                  <div style={{ fontSize: 22, fontWeight: 950, letterSpacing: "-0.02em", marginTop: 10 }}>
-                    Preview enforcement before anything runs
-                  </div>
-                  <div style={{ color: "var(--muted2)", lineHeight: 1.75, marginTop: 10 }}>
-                    Reminder drafts, broker escalations, and renewal workflows are generated — but nothing is sent automatically.
-                  </div>
-                </div>
-
-                <div className="stepItem" data-step="activate">
-                  <div className="stepPill">Step 4 · Activate</div>
-                  <div style={{ fontSize: 22, fontWeight: 950, letterSpacing: "-0.02em", marginTop: 10 }}>
-                    Activate automation when you’re comfortable
-                  </div>
-                  <div style={{ color: "var(--muted2)", lineHeight: 1.75, marginTop: 10 }}>
-                    You decide when automation starts — or if it starts at all. Your portfolio stays owner-safe by default.
-                  </div>
                 </div>
               </div>
             </div>
           </section>
 
-          {/* ================= COMPARISON SLICE ================= */}
-          <section className="reveal" data-reveal style={{ padding: "10px 8px 64px" }}>
-            <div style={{ fontSize: 13, fontWeight: 900, letterSpacing: ".14em", textTransform: "uppercase", color: "rgba(79,70,229,1)" }}>
-              Why this wins
-            </div>
-            <div style={{ fontSize: 40, fontWeight: 950, letterSpacing: "-0.03em", margin: "10px 0 14px" }}>
-              Built for property managers — not demo cycles
-            </div>
-            <div style={{ color: "var(--muted2)", lineHeight: 1.75, maxWidth: 920, marginBottom: 18 }}>
-              Traditional platforms automate first and explain later. This platform shows the truth first — then enforces quietly after approval.
-            </div>
-
-            <div className="compTable">
-              <div className="compRow" style={{ background: "rgba(15,23,42,0.03)" }}>
-                <div style={{ fontWeight: 950, color: "rgba(15,23,42,0.75)" }}>Decision criteria</div>
-                <div style={{ justifySelf: "end", fontWeight: 950, color: "rgba(15,23,42,0.75)" }}>This platform</div>
+          <section className="reveal" data-reveal style={{ padding: "26px 8px 0" }}>
+            <div className="band">
+              <div style={{ fontSize: 14, fontWeight: 900, color: "rgba(226,232,240,0.82)" }}>
+                Built for operators accountable to owners, boards, and audits.
               </div>
-
-              <div className="compRow">
-                <div className="compL">See owner exposure before enforcement</div>
-                <div className="compR yes">Yes</div>
-              </div>
-              <div className="compRow">
-                <div className="compL">Preview reminders / escalations before sending</div>
-                <div className="compR yes">Yes</div>
-              </div>
-              <div className="compRow">
-                <div className="compL">Requires demos / sales-assisted onboarding</div>
-                <div className="compR no">No</div>
-              </div>
-              <div className="compRow">
-                <div className="compL">Automation runs without approval</div>
-                <div className="compR no">No</div>
+              <div style={{ marginTop: 8, color: "rgba(226,232,240,0.62)", lineHeight: 1.7 }}>
+                This is not “COI tracking.” It’s owner-visible risk intelligence — with control-first automation.
               </div>
             </div>
           </section>
 
-          <section className="reveal" data-reveal style={{ padding: "78px 8px 24px" }}>
-            <div className="card" style={{ padding: 34 }}>
-              <h2 style={{ fontSize: 40, fontWeight: 950, letterSpacing: "-0.03em", margin: "0 0 10px" }}>
-                Built for autonomous setup — not sales cycles
-              </h2>
-              <p style={{ fontSize: 16, color: "var(--muted2)", lineHeight: 1.8, margin: "0 0 12px", maxWidth: 920 }}>
-                This platform doesn’t require demos, onboarding calls, or implementation projects.
-              </p>
-              <p style={{ fontSize: 16, color: "var(--muted2)", lineHeight: 1.8, margin: "0 0 12px", maxWidth: 920 }}>
-                You connect your vendors, see real risk, and decide what happens next — all on your own timeline.
-              </p>
-              <div style={{ marginTop: 8, fontSize: 16, fontWeight: 900, color: "var(--blue)" }}>
-                Most teams are operational in minutes — not weeks.
-              </div>
-            </div>
-          </section>
-
-          <section className="reveal" data-reveal style={{ padding: "18px 8px 54px" }}>
-            <div className="card" style={{ padding: 26 }}>
-              <p style={{ margin: 0, fontSize: 16, color: "var(--muted2)", lineHeight: 1.75 }}>
-                Property management teams use this system for COI tracking, vendor insurance monitoring,
-                and proactive compliance enforcement. By continuously evaluating coverage limits,
-                endorsements, and renewal timelines, teams can identify compliance gaps before audits,
-                claims, or owner reviews occur.
-              </p>
-            </div>
-          </section>
-
-          <section id="how-it-works" className="reveal" data-reveal style={{ padding: "18px 8px 64px" }}>
-            <h2 style={{ fontSize: 44, fontWeight: 950, letterSpacing: "-0.03em", margin: "0 0 12px" }}>
-              See your entire portfolio the way owners expect you to.
-            </h2>
-            <p style={{ fontSize: 18, color: "var(--muted2)", lineHeight: 1.8, maxWidth: 900, marginTop: 0 }}>
-              In one view, you can understand where real insurance risk exists today — not where you hope it doesn’t.
+          <section id="vendor-insurance-risk" className="reveal" data-reveal style={{ padding: "58px 8px 0" }}>
+            <h2 className="sectionTitle">Vendor insurance risk doesn’t fail loudly.</h2>
+            <p className="sectionSub">
+              It fails quietly — until an audit, a claim, or an owner question exposes it all at once.
+              COIs expire. Vendors delay renewals. Endorsements get missed. Spreadsheets drift.
             </p>
-
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(4,minmax(0,1fr))", gap: 16, marginTop: 20 }}>
-              <Metric title="Non-compliant vendors" value="12" sub="Coverage gaps detected" />
-              <Metric title="Policies expiring soon" value="7" sub="Renewals approaching" />
-              <Metric title="Missing endorsements" value="4" sub="Additional insured / waivers" />
-              <Metric title="Owner exposure level" value="High" sub="Audit & claim risk" />
-            </div>
           </section>
 
-          <section className="softBand" style={{ padding: "78px 8px" }}>
-            <div className="reveal" data-reveal>
-              <h2 style={{ fontSize: 42, fontWeight: 950, letterSpacing: "-0.03em", margin: "0 0 18px" }}>
-                Before vs After visibility and controlled automation
-              </h2>
-
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 18 }}>
-                <CompareCard title="Before" subtitle="Manual · Reactive · Risk-Prone" tone="bad" items={[
-                  "COIs tracked manually",
-                  "Expired coverage discovered too late",
-                  "Missing endorsements overlooked",
-                  "Spreadsheets drift out of date",
-                  "Audits trigger last-minute panic",
-                ]} />
-                <CompareCard title="After" subtitle="Continuous · Calm · Owner-Safe" tone="good" items={[
-                  "Continuous vendor monitoring",
-                  "Expiring coverage flagged early",
-                  "Requirements validated on upload",
-                  "Renewals escalated before deadlines",
-                  "Owners protected proactively",
-                ]} />
+          <section id="control-first-automation" className="reveal" data-reveal style={{ padding: "22px 8px 0" }}>
+            <div className="band">
+              <div style={{ fontSize: 46, fontWeight: 950, letterSpacing: "-0.03em", marginBottom: 10 }}>
+                Most platforms automate first.<br/>We show you the truth first.
               </div>
-            </div>
-          </section>
 
-          <section id="implementation-timeline" className="reveal" data-reveal style={{ padding: "78px 8px 64px" }}>
-            <h2 style={{ fontSize: 42, fontWeight: 950, letterSpacing: "-0.03em", margin: "0 0 8px" }}>
-              What happens in your first 48 hours
-            </h2>
-            <div style={{ color: "var(--muted2)", marginBottom: 20 }}>
-              No meetings. No onboarding. No waiting.
-            </div>
-
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(4,minmax(0,1fr))", gap: 16 }}>
-              <StepCard time="Hour 0–1" title="Connect vendors" text="Upload a vendor list or COIs. No vendor logins required." />
-              <StepCard time="Hour 1–12" title="Risk becomes visible" text="Non-compliance, expiring policies, and owner exposure are surfaced." />
-              <StepCard time="Hour 12–24" title="Automation previewed" text="Reminders and renewals are generated — nothing is sent." />
-              <StepCard time="Hour 24–48" title="You decide" text="Activate automation when ready — or walk away with zero impact." />
-            </div>
-          </section>
-
-          <section className="reveal" data-reveal style={{ padding: "10px 8px 52px" }}>
-            <div className="card" style={{ padding: 30 }}>
-              <h3 style={{ fontSize: 26, fontWeight: 950, letterSpacing: "-0.02em", margin: "0 0 12px" }}>
-                Learn how property managers reduce vendor insurance risk
-              </h3>
-
-              <p style={{ fontSize: 16, color: "var(--muted2)", lineHeight: 1.75, marginTop: 0 }}>
-                These guides walk through the most common compliance failures we see across property portfolios —
-                and how teams prevent them before audits, claims, or owner reviews.
+              <p style={{ color: "rgba(226,232,240,0.72)", lineHeight: 1.8, margin: 0, maxWidth: 980 }}>
+                Instead of blind enforcement, you get instant exposure, exact gaps, and previewed actions — then you decide when automation starts.
               </p>
 
-              <div style={{ display: "grid", gap: 10, marginTop: 12 }}>
-                <a className="link" href="/blog/coi-tracking-property-management">COI tracking for property managers: what breaks and how to fix it →</a>
-                <a className="link" href="/blog/vendor-insurance-expirations">How expired vendor insurance creates owner exposure →</a>
-                <a className="link" href="/blog/vendor-risk-management-best-practices">Vendor risk management best practices for multi-property portfolios →</a>
+              <div style={{ marginTop: 18 }}>
+                <Link href="/signup?industry=property_management" className="cta">
+                  View My Portfolio Risk
+                </Link>
+                <div className="micro">
+                  No demos. No sales calls. Nothing runs without approval.
+                </div>
               </div>
             </div>
+          </section>
+
+          <section id="how-it-works" className="reveal" data-reveal style={{ padding: "64px 8px 0" }}>
+            <h2 className="sectionTitle">A cockpit, not a spreadsheet.</h2>
+            <p className="sectionSub">
+              Upload vendors or COIs → see exposure across the portfolio → preview reminders and escalations → activate automation when comfortable.
+            </p>
           </section>
 
           <section id="insurance-compliance-governance" className="reveal" data-reveal style={{ padding: "78px 8px 0" }}>
-            <div className="card" style={{ padding: "56px 34px", textAlign: "center" }}>
-              <h2 style={{ fontSize: 42, fontWeight: 950, letterSpacing: "-0.03em", margin: "0 0 10px" }}>
+            <div className="band" style={{ textAlign: "center" }}>
+              <div style={{ fontSize: 42, fontWeight: 950, letterSpacing: "-0.03em", marginBottom: 10 }}>
                 Full visibility. Full control. Always.
-              </h2>
+              </div>
 
-              <p style={{ fontSize: 16, color: "var(--muted2)", lineHeight: 1.75, margin: "0 auto 16px", maxWidth: 820 }}>
+              <p style={{ margin: "0 auto 16px", maxWidth: 860, color: "rgba(226,232,240,0.72)", lineHeight: 1.75 }}>
                 Nothing is sent automatically. Every reminder, renewal, and escalation is visible before it runs.
               </p>
 
-              <p style={{ fontSize: 16, color: "var(--muted2)", margin: "0 0 26px" }}>
+              <p style={{ margin: "0 0 26px", color: "rgba(226,232,240,0.72)" }}>
                 You decide when automation starts — or if it starts at all.
               </p>
 
-              <Link href="/signup?industry=property_management" className="cta">View My Portfolio Risk</Link>
+              <Link href="/signup?industry=property_management" className="cta">
+                Enter the Risk Cockpit
+              </Link>
 
-              <div style={{ marginTop: 12, fontSize: 13, color: "rgba(15,23,42,0.55)" }}>
+              <div className="micro" style={{ marginTop: 12 }}>
                 See risk first. Activate automation when you’re ready.
               </div>
             </div>
@@ -898,71 +486,5 @@ export default function PropertyManagementLanding() {
         </div>
       </main>
     </>
-  );
-}
-
-function MiniRow({ label, value, tone }) {
-  const toneColor =
-    tone === "danger" ? "rgba(239,68,68,1)" : tone === "warn" ? "rgba(245,158,11,1)" : "rgba(34,197,94,1)";
-  const toneBg =
-    tone === "danger" ? "rgba(239,68,68,0.08)" : tone === "warn" ? "rgba(245,158,11,0.08)" : "rgba(34,197,94,0.08)";
-  return (
-    <div style={{ display: "grid", gridTemplateColumns: "1fr auto", alignItems: "center", gap: 14, padding: "14px 14px", borderRadius: 16, border: "1px solid rgba(15,23,42,0.10)", background: "rgba(255,255,255,0.85)" }}>
-      <div style={{ fontSize: 15, color: "rgba(15,23,42,0.72)" }}>{label}</div>
-      <div style={{ fontSize: 15, fontWeight: 900, color: toneColor, padding: "6px 10px", borderRadius: 999, background: toneBg, border: "1px solid rgba(15,23,42,0.06)" }}>
-        {value}
-      </div>
-    </div>
-  );
-}
-
-function FeatureCard({ title, text }) {
-  return (
-    <div className="card lift" style={{ padding: 18 }}>
-      <div style={{ fontWeight: 950, letterSpacing: "-0.01em", marginBottom: 6 }}>{title}</div>
-      <div style={{ color: "var(--muted2)", lineHeight: 1.6, fontSize: 15 }}>{text}</div>
-    </div>
-  );
-}
-
-function Metric({ title, value, sub }) {
-  return (
-    <div className="card lift" style={{ padding: 18 }}>
-      <div style={{ fontSize: 12, fontWeight: 950, letterSpacing: ".12em", textTransform: "uppercase", color: "rgba(15,23,42,0.55)" }}>
-        {title}
-      </div>
-      <div style={{ fontSize: 44, fontWeight: 950, letterSpacing: "-0.02em", marginTop: 10 }}>{value}</div>
-      <div style={{ color: "rgba(15,23,42,0.60)", marginTop: 4, fontSize: 14 }}>{sub}</div>
-    </div>
-  );
-}
-
-function CompareCard({ title, subtitle, items, tone }) {
-  const border = tone === "good" ? "2px solid rgba(79,70,229,0.55)" : "1px solid rgba(15,23,42,0.12)";
-  const badge = tone === "good" ? "rgba(34,197,94,1)" : "rgba(239,68,68,1)";
-  return (
-    <div className="card" style={{ padding: 26, border, borderRadius: 22 }}>
-      <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: 10 }}>
-        <div style={{ fontSize: 22, fontWeight: 950, letterSpacing: "-0.02em" }}>{title}</div>
-        <div style={{ color: badge, fontWeight: 950, fontSize: 13 }}>{subtitle}</div>
-      </div>
-      <ul style={{ marginTop: 14, paddingLeft: 18, color: "var(--muted2)", lineHeight: 1.95, fontSize: 15 }}>
-        {items.map((it) => (
-          <li key={it}>{it}</li>
-        ))}
-      </ul>
-    </div>
-  );
-}
-
-function StepCard({ time, title, text }) {
-  return (
-    <div className="card lift" style={{ padding: 18 }}>
-      <div style={{ fontSize: 12, fontWeight: 950, letterSpacing: ".12em", textTransform: "uppercase", color: "var(--blue)" }}>
-        {time}
-      </div>
-      <div style={{ fontSize: 18, fontWeight: 950, letterSpacing: "-0.01em", marginTop: 8 }}>{title}</div>
-      <div style={{ color: "var(--muted2)", lineHeight: 1.6, marginTop: 8, fontSize: 15 }}>{text}</div>
-    </div>
   );
 }
