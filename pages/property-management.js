@@ -11,10 +11,10 @@ export default function PropertyManagementLanding() {
   return (
     <>
       <Head>
-        <title>Real-Time Vendor Risk Intelligence for Property Portfolios</title>
+        <title>Vendor Risk Management & Insurance Compliance for Property Managers</title>
         <meta
           name="description"
-          content="Instantly see vendor insurance exposure, non-compliance, and owner risk across your property portfolio — before audits, claims, or automation."
+          content="Vendor risk management and insurance compliance for property managers. Instantly see COI gaps, expiring coverage, and owner exposure across your portfolio — before audits, claims, or automation."
         />
       </Head>
 
@@ -29,7 +29,7 @@ export default function PropertyManagementLanding() {
         {/* =====================================================
             HERO — CATEGORY OWNERSHIP
         ===================================================== */}
-        <section
+        <section id="vendor-risk-management"
           style={{
             padding: "160px 24px 120px",
             maxWidth: 1200,
@@ -219,6 +219,19 @@ export default function PropertyManagementLanding() {
         {/* =====================================================
             WHO THIS IS FOR
         ===================================================== */}
+        {/* =====================================================
+            SEO AUTHORITY — VENDOR RISK & COMPLIANCE
+        ===================================================== */}
+        <section style={{ maxWidth: 1200, margin: "0 auto", padding: "24px 24px 64px" }}>
+          <div style={{ maxWidth: 900 }}>
+            <p style={{ fontSize: 16, color: "#475569", lineHeight: 1.7 }}>
+              This platform is built for vendor risk management and insurance compliance in property management.
+              It helps property managers track certificates of insurance (COIs), monitor expiring policies,
+              validate additional insured and waiver requirements, and reduce owner exposure across multi-property portfolios.
+            </p>
+          </div>
+        </section>
+
         <section style={{ maxWidth: 1200, margin: "0 auto", padding: "64px 24px" }}>
           <div style={{ maxWidth: 900 }}>
             <h3 style={{ fontSize: 22, fontWeight: 700, marginBottom: 16, color: "#020617" }}>
@@ -235,7 +248,7 @@ export default function PropertyManagementLanding() {
         {/* =====================================================
             THE PROBLEM — MARKET TRUTH
         ===================================================== */}
-        <section
+        <section id="vendor-insurance-risk"
           style={{
             maxWidth: 1200,
             margin: "0 auto",
@@ -312,7 +325,7 @@ export default function PropertyManagementLanding() {
         {/* =====================================================
             DIFFERENTIATION — CATEGORY KILL SHOT
         ===================================================== */}
-        <section
+        <section id="control-first-automation"
           style={{
             background: "linear-gradient(180deg,#f8fafc 0%, #eef2ff 100%)",
             borderTop: "1px solid #e5e7eb",
@@ -454,7 +467,21 @@ export default function PropertyManagementLanding() {
           </div>
         </section>
 
+        
         {/* =====================================================
+            SEO AUTHORITY — COI TRACKING FOR PROPERTY MANAGERS
+        ===================================================== */}
+        <section style={{ maxWidth: 1200, margin: "0 auto", padding: "24px 24px 64px" }}>
+          <div style={{ maxWidth: 900 }}>
+            <p style={{ fontSize: 16, color: "#475569", lineHeight: 1.7 }}>
+              Property management teams use this system for COI tracking, vendor insurance monitoring,
+              and proactive compliance enforcement. By continuously evaluating coverage limits,
+              endorsements, and renewal timelines, teams can identify compliance gaps before audits,
+              claims, or owner reviews occur.
+            </p>
+          </div>
+        </section>
+{/* =====================================================
             PRODUCT PROOF — EXECUTIVE RISK OVERVIEW
             (Anchor for "See how it works")
         ===================================================== */}
@@ -641,7 +668,7 @@ export default function PropertyManagementLanding() {
         {/* =====================================================
             FIRST 48 HOURS — NO FRICTION
         ===================================================== */}
-        <section style={{ background: "#ffffff", padding: "120px 24px 80px" }}>
+        <section id="implementation-timeline" style={{ background: "#ffffff", padding: "120px 24px 80px" }}>
           <div style={{ maxWidth: 1200, margin: "0 auto" }}>
             <div style={{ maxWidth: 900, marginBottom: 56 }}>
               <h2
@@ -695,7 +722,7 @@ export default function PropertyManagementLanding() {
         {/* =====================================================
             CONTROL & GOVERNANCE — FINAL TRUST REINFORCEMENT
         ===================================================== */}
-        <section
+        <section id="insurance-compliance-governance"
           style={{
             background: "linear-gradient(180deg,#f8fafc 0%, #ffffff 100%)",
             padding: "160px 24px",
