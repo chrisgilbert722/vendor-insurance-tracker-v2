@@ -750,7 +750,42 @@ export default function PropertyManagementLanding() {
           </div>
         </section>
 
+        
         {/* =====================================================
+            FROM OUR GUIDES — VENDOR RISK & COMPLIANCE
+        ===================================================== */}
+        <section style={{ maxWidth: 1200, margin: "0 auto", padding: "96px 24px" }}>
+          <div style={{ maxWidth: 900 }}>
+            <h3 style={{ fontSize: 28, fontWeight: 800, marginBottom: 20, color: "#020617" }}>
+              Learn how property managers reduce vendor insurance risk
+            </h3>
+
+            <p style={{ fontSize: 17, color: "#475569", lineHeight: 1.7, marginBottom: 24 }}>
+              These guides walk through the most common compliance failures we see across property portfolios —
+              and how teams prevent them before audits, claims, or owner reviews.
+            </p>
+
+            <ul style={{ fontSize: 17, color: "#4f46e5", lineHeight: 1.9, paddingLeft: 22 }}>
+              <li>
+                <a href="/blog/coi-tracking-property-management" style={{ color: "#4f46e5", textDecoration: "none", fontWeight: 600 }}>
+                  COI tracking for property managers: what breaks and how to fix it
+                </a>
+              </li>
+              <li>
+                <a href="/blog/vendor-insurance-expirations" style={{ color: "#4f46e5", textDecoration: "none", fontWeight: 600 }}>
+                  How expired vendor insurance creates owner exposure
+                </a>
+              </li>
+              <li>
+                <a href="/blog/vendor-risk-management-best-practices" style={{ color: "#4f46e5", textDecoration: "none", fontWeight: 600 }}>
+                  Vendor risk management best practices for multi-property portfolios
+                </a>
+              </li>
+            </ul>
+          </div>
+        </section>
+
+{/* =====================================================
             CONTROL & GOVERNANCE — FINAL TRUST REINFORCEMENT
         ===================================================== */}
         <section id="insurance-compliance-governance"
