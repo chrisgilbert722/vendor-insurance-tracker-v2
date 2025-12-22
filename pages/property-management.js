@@ -938,6 +938,12 @@ export default function PropertyManagement() {
 /* ============================================================
    Gauge Ring (Fixes the “gauge bug”)
 ============================================================ */
+/* ============================================================
+   Gauge Ring (Fixes the “gauge bug” WITHOUT making it ugly)
+   - Keeps the original “premium” look (soft neon ring + open gap)
+   - The arc is now actually driven by the score (0–100)
+   - Center number uses solid color (no more “gradient square” bug)
+============================================================ */
 function GaugeRing({ score, mode, label, scoreLabel, animate }) {
   const [val, setVal] = useState(0);
 
@@ -959,20 +965,34 @@ function GaugeRing({ score, mode, label, scoreLabel, animate }) {
     return () => cancelAnimationFrame(raf);
   }, [score, animate]);
 
-  const sweep = 260;
+  // “Gauge” sweep with an open gap at the bottom-right
+  const sweep = 260; // degrees
   const deg = Math.round((clamp(val, 0, 100) / 100) * sweep);
 
-  const fillA = mode === "owner" ? "rgba(251,113,133,1)" : "rgba(34,197,94,1)";
-  const fillB = mode === "owner" ? "rgba(249,115,22,1)" : "rgba(163,230,53,1)";
-
-  const ringBg = `conic-gradient(
+  // Track (always visible) + Fill (score-driven)
+  const track = `conic-gradient(
     from 220deg,
-    ${fillA} 0deg,
-    ${fillB} ${Math.max(1, deg)}deg,
-    rgba(51,65,85,0.45) ${Math.max(1, deg)}deg,
+    rgba(51,65,85,0.45) 0deg,
     rgba(51,65,85,0.45) ${sweep}deg,
     rgba(15,23,42,0) ${sweep}deg 360deg
   )`;
+
+  // Premium fill gradients (mode-specific)
+  const fillGradient =
+    mode === "owner"
+      ? "linear-gradient(90deg,#fb7185,#f97316)"
+      : "linear-gradient(90deg,#22c55e,#a3e635)";
+
+  // Conic fill uses two stops so it “cuts off” cleanly at `deg`
+  const fill = `conic-gradient(
+    from 220deg,
+    ${mode === "owner" ? "#fb7185" : "#22c55e"} 0deg,
+    ${mode === "owner" ? "#f97316" : "#a3e635"} ${Math.max(1, deg)}deg,
+    rgba(0,0,0,0) ${Math.max(1, deg)}deg,
+    rgba(0,0,0,0) 360deg
+  )`;
+
+  const numberColor = mode === "owner" ? "#fb7185" : "#22c55e";
 
   return (
     <div
@@ -981,16 +1001,28 @@ function GaugeRing({ score, mode, label, scoreLabel, animate }) {
         width: 160,
         height: 160,
         borderRadius: 999,
-        background: ringBg,
+        background: track,
         padding: 10,
+        margin: "0 auto",
         boxShadow:
           mode === "owner"
-            ? "0 0 40px rgba(251,113,133,0.25), 0 0 38px rgba(249,115,22,0.18)"
-            : "0 0 40px rgba(34,197,94,0.26), 0 0 40px rgba(56,189,248,0.16)",
-        margin: "0 auto",
+            ? "0 0 40px rgba(251,113,133,0.22), 0 0 38px rgba(249,115,22,0.16)"
+            : "0 0 40px rgba(34,197,94,0.22), 0 0 40px rgba(56,189,248,0.14)",
       }}
       aria-label={`${label} ${val} ${scoreLabel}`}
     >
+      {/* Score-driven arc overlay */}
+      <div
+        style={{
+          position: "absolute",
+          inset: 10,
+          borderRadius: 999,
+          background: fill,
+          filter: "drop-shadow(0 0 16px rgba(56,189,248,0.10))",
+        }}
+      />
+
+      {/* Inner cutout */}
       <div
         style={{
           position: "absolute",
@@ -1018,17 +1050,17 @@ function GaugeRing({ score, mode, label, scoreLabel, animate }) {
           {label}
         </div>
 
+        {/* Solid color number to avoid the “gradient square” rendering bug */}
         <div
           style={{
             fontSize: 30,
-            fontWeight: 700,
-            background:
-              mode === "owner"
-                ? "linear-gradient(120deg,#fb7185,#f97316)"
-                : "linear-gradient(120deg,#22c55e,#a3e635)",
-            WebkitBackgroundClip: "text",
-            color: "transparent",
+            fontWeight: 800,
+            color: numberColor,
             lineHeight: 1,
+            textShadow:
+              mode === "owner"
+                ? "0 0 14px rgba(251,113,133,0.25)"
+                : "0 0 14px rgba(34,197,94,0.25)",
           }}
         >
           {val}
