@@ -1,12 +1,12 @@
 // pages/property-management.js
 // ============================================================
 // PROPERTY MANAGEMENT FUNNEL — CLONED FROM /pages/index.js
-// Same visual system. PM-specific copy + cockpit data.
-// Includes full SEO + schema stack.
+// CRANK PASS A+B: Micro-motion polish + Owner/Ops toggle (still SEO + schema compliant)
 // ============================================================
 
 import Head from "next/head";
 import { useRouter } from "next/router";
+import { useEffect, useMemo, useState } from "react";
 
 export default function PropertyManagement() {
   const router = useRouter();
@@ -26,11 +26,133 @@ export default function PropertyManagement() {
 
   const siteUrl = "https://vendor-insurance-tracker-v2.vercel.app";
 
-  const orgJsonLd = {"@context": "https://schema.org", "@type": "Organization", "name": "Vendor Insurance Tracker", "url": "https://vendor-insurance-tracker-v2.vercel.app", "description": "AI-powered certificate of insurance tracking and vendor compliance automation.", "logo": "https://vendor-insurance-tracker-v2.vercel.app/logo.png"};
-  const faqJsonLd = {"@context": "https://schema.org", "@type": "FAQPage", "mainEntity": [{"@type": "Question", "name": "Does this require sales calls or onboarding?", "acceptedAnswer": {"@type": "Answer", "text": "No. It\u2019s self-serve. Connect vendors, see risk, and activate automation when you\u2019re ready\u2014no demos or onboarding calls required."}}, {"@type": "Question", "name": "What does the Property Management cockpit show?", "acceptedAnswer": {"@type": "Answer", "text": "A live portfolio snapshot including non-compliant vendors, expiring COIs, missing endorsements, and owner exposure\u2014before audits, claims, or automation."}}, {"@type": "Question", "name": "Does automation run automatically?", "acceptedAnswer": {"@type": "Answer", "text": "No. Nothing is sent until you approve. You preview reminders, renewals, and escalations before anything runs."}}]};
-  const softwareJsonLd = {"@context": "https://schema.org", "@type": "SoftwareApplication", "name": "Vendor Insurance Tracker", "applicationCategory": "BusinessApplication", "applicationSubCategory": "COI Tracking & Vendor Compliance", "operatingSystem": "Web", "description": "Vendor risk management and insurance compliance software for property managers to track COIs, monitor expirations, and reduce owner exposure.", "offers": {"@type": "Offer", "price": "0", "priceCurrency": "USD", "availability": "https://schema.org/OnlineOnly"}, "featureList": ["COI tracking", "Vendor compliance automation", "Expiring COI alerts", "Additional insured & endorsement checks", "Owner exposure visibility", "Vendor upload links"]};
-  const breadcrumbJsonLd = {"@context": "https://schema.org", "@type": "BreadcrumbList", "itemListElement": [{"@type": "ListItem", "position": 1, "name": "Home", "item": "https://vendor-insurance-tracker-v2.vercel.app/"}, {"@type": "ListItem", "position": 2, "name": "Property Management", "item": "https://vendor-insurance-tracker-v2.vercel.app/property-management"}]};
-  const offerJsonLd = {"@context": "https://schema.org", "@type": "Offer", "name": "Property Management \u2014 14-Day Free Trial", "price": "0", "priceCurrency": "USD", "availability": "https://schema.org/InStock", "url": "https://vendor-insurance-tracker-v2.vercel.app/auth/signup?industry=property_management", "description": "Start a 14-day free trial. View portfolio risk and activate automation when ready."};
+  // --- SEO + Schema (kept)
+  const orgJsonLd = {
+    "@context": "https://schema.org",
+    "@type": "Organization",
+    name: "Vendor Insurance Tracker",
+    url: siteUrl,
+    description:
+      "AI-powered certificate of insurance tracking and vendor compliance automation.",
+    logo: `${siteUrl}/logo.png`,
+  };
+
+  const faqJsonLd = {
+    "@context": "https://schema.org",
+    "@type": "FAQPage",
+    mainEntity: [
+      {
+        "@type": "Question",
+        name: "Does this require sales calls or onboarding?",
+        acceptedAnswer: {
+          "@type": "Answer",
+          text: "No. It’s self-serve. Connect vendors, see risk, and activate automation when you’re ready—no demos or onboarding calls required.",
+        },
+      },
+      {
+        "@type": "Question",
+        name: "What does the Property Management cockpit show?",
+        acceptedAnswer: {
+          "@type": "Answer",
+          text: "A live portfolio snapshot including non-compliant vendors, expiring COIs, missing endorsements, and owner exposure—before audits, claims, or automation.",
+        },
+      },
+      {
+        "@type": "Question",
+        name: "Does automation run automatically?",
+        acceptedAnswer: {
+          "@type": "Answer",
+          text: "No. Nothing is sent until you approve. You preview reminders, renewals, and escalations before anything runs.",
+        },
+      },
+    ],
+  };
+
+  const softwareJsonLd = {
+    "@context": "https://schema.org",
+    "@type": "SoftwareApplication",
+    name: "Vendor Insurance Tracker",
+    applicationCategory: "BusinessApplication",
+    applicationSubCategory: "COI Tracking & Vendor Compliance",
+    operatingSystem: "Web",
+    description:
+      "Vendor risk management and insurance compliance software for property managers to track COIs, monitor expirations, and reduce owner exposure.",
+    offers: {
+      "@type": "Offer",
+      price: "0",
+      priceCurrency: "USD",
+      availability: "https://schema.org/OnlineOnly",
+    },
+    featureList: [
+      "COI tracking",
+      "Vendor compliance automation",
+      "Expiring COI alerts",
+      "Additional insured & endorsement checks",
+      "Owner exposure visibility",
+      "Vendor upload links",
+    ],
+  };
+
+  const breadcrumbJsonLd = {
+    "@context": "https://schema.org",
+    "@type": "BreadcrumbList",
+    itemListElement: [
+      { "@type": "ListItem", position: 1, name: "Home", item: `${siteUrl}/` },
+      {
+        "@type": "ListItem",
+        position: 2,
+        name: "Property Management",
+        item: `${siteUrl}/property-management`,
+      },
+    ],
+  };
+
+  const offerJsonLd = {
+    "@context": "https://schema.org",
+    "@type": "Offer",
+    name: "Property Management — 14-Day Free Trial",
+    price: "0",
+    priceCurrency: "USD",
+    availability: "https://schema.org/InStock",
+    url: `${siteUrl}/auth/signup?industry=property_management`,
+    description:
+      "Start a 14-day free trial. View portfolio risk and activate automation when ready.",
+  };
+
+  // --- (B) Owner/Ops Toggle
+  const [viewMode, setViewMode] = useState("ops"); // "ops" | "owner"
+
+  const cockpit = useMemo(() => {
+    if (viewMode === "owner") {
+      return {
+        label: "Owner Exposure",
+        scoreLabel: "Overall risk",
+        scoreValue: 82,
+        stat1: { label: "High exposure items", value: 14, color: "#fb7185" },
+        stat2: { label: "Expiring ≤ 30 days", value: 9, color: "#facc15" },
+        stat3: { label: "Open compliance gaps", value: 3, color: "#fb7185" },
+        note:
+          "Owner view summarizes exposure and audit posture. Actions are previewed before anything is sent.",
+      };
+    }
+    return {
+      label: "Portfolio Compliance",
+      scoreLabel: "Overall score",
+      scoreValue: 92,
+      stat1: { label: "Compliant vendors", value: 82, color: "#22c55e" },
+      stat2: { label: "Expiring in 30 days", value: 9, color: "#facc15" },
+      stat3: { label: "Non-compliant", value: 3, color: "#fb7185" },
+      note:
+        "Ops view tracks COIs, expirations, and endorsements. Visibility first, automation after approval.",
+    };
+  }, [viewMode]);
+
+  // --- (A) Micro-motion: one-time count-up on load
+  const [animate, setAnimate] = useState(false);
+  useEffect(() => {
+    const t = setTimeout(() => setAnimate(true), 120);
+    return () => clearTimeout(t);
+  }, []);
 
   return (
     <>
@@ -69,6 +191,43 @@ export default function PropertyManagement() {
           type="application/ld+json"
           dangerouslySetInnerHTML={{ __html: JSON.stringify(offerJsonLd) }}
         />
+
+        <style>{`
+          .pm-card {
+            transition: transform 180ms ease, box-shadow 180ms ease, border-color 180ms ease;
+          }
+          .pm-card:hover{
+            transform: translateY(-3px);
+            border-color: rgba(56,189,248,0.45) !important;
+            box-shadow: 0 28px 70px rgba(15,23,42,0.98), 0 0 55px rgba(56,189,248,0.22) !important;
+          }
+          .pm-cta {
+            position: relative;
+            overflow: hidden;
+            transition: transform 160ms ease, filter 160ms ease;
+          }
+          .pm-cta:hover{ transform: translateY(-2px); filter: saturate(1.05); }
+          .pm-cta::after{
+            content:"";
+            position:absolute;
+            top:-60%;
+            left:-60%;
+            width:60%;
+            height:220%;
+            background: linear-gradient(90deg, rgba(255,255,255,0), rgba(255,255,255,0.25), rgba(255,255,255,0));
+            transform: rotate(18deg) translateX(-140%);
+            animation: pmShimmer 2.8s ease-in-out infinite;
+            pointer-events:none;
+          }
+          @keyframes pmShimmer{
+            0%{ transform: rotate(18deg) translateX(-140%); }
+            100%{ transform: rotate(18deg) translateX(140%); }
+          }
+          @media (prefers-reduced-motion: reduce){
+            .pm-card, .pm-cta{ transition:none !important; }
+            .pm-cta::after{ animation:none !important; }
+          }
+        `}</style>
       </Head>
 
       <div
@@ -82,7 +241,6 @@ export default function PropertyManagement() {
           overflowX: "hidden",
         }}
       >
-        {/* Ambient aura */}
         <div
           style={{
             position: "absolute",
@@ -95,7 +253,6 @@ export default function PropertyManagement() {
           }}
         />
 
-        {/* NAV (same as index) */}
         <header
           style={{
             maxWidth: 1180,
@@ -108,7 +265,12 @@ export default function PropertyManagement() {
           }}
         >
           <div
-            style={{ display: "flex", alignItems: "center", gap: 10, cursor: "pointer" }}
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: 10,
+              cursor: "pointer",
+            }}
             onClick={() => router.push("/")}
           >
             <div
@@ -160,6 +322,7 @@ export default function PropertyManagement() {
             </button>
             <button
               onClick={goToSignup}
+              className="pm-cta"
               style={{
                 fontSize: 14,
                 borderRadius: 999,
@@ -177,7 +340,6 @@ export default function PropertyManagement() {
           </div>
         </header>
 
-        {/* HERO */}
         <main style={{ position: "relative", zIndex: 2 }}>
           <section
             style={{
@@ -189,7 +351,6 @@ export default function PropertyManagement() {
               alignItems: "center",
             }}
           >
-            {/* Left: PM-specific sales copy */}
             <div>
               <div
                 style={{
@@ -261,9 +422,17 @@ export default function PropertyManagement() {
                 approve.
               </p>
 
-              <div style={{ display: "flex", gap: 12, flexWrap: "wrap", marginBottom: 18 }}>
+              <div
+                style={{
+                  display: "flex",
+                  gap: 12,
+                  flexWrap: "wrap",
+                  marginBottom: 18,
+                }}
+              >
                 <button
                   onClick={goToSignup}
+                  className="pm-cta"
                   style={{
                     borderRadius: 999,
                     padding: "10px 18px",
@@ -274,6 +443,7 @@ export default function PropertyManagement() {
                     fontSize: 15,
                     fontWeight: 500,
                     cursor: "pointer",
+                    position: "relative",
                   }}
                 >
                   View My Portfolio Risk →
@@ -301,8 +471,8 @@ export default function PropertyManagement() {
               </div>
             </div>
 
-            {/* Right: Cockpit preview — same style as index, PM metrics */}
             <div
+              className="pm-card"
               style={{
                 borderRadius: 24,
                 padding: 18,
@@ -315,25 +485,82 @@ export default function PropertyManagement() {
             >
               <div
                 style={{
-                  fontSize: 12,
-                  color: "#9ca3af",
-                  marginBottom: 8,
-                  textTransform: "uppercase",
-                  letterSpacing: "0.14em",
+                  display: "flex",
+                  justifyContent: "space-between",
+                  gap: 12,
+                  alignItems: "center",
                 }}
               >
-                Live Portfolio Compliance Snapshot
+                <div
+                  style={{
+                    fontSize: 12,
+                    color: "#9ca3af",
+                    textTransform: "uppercase",
+                    letterSpacing: "0.14em",
+                  }}
+                >
+                  Live {viewMode === "owner" ? "Owner Exposure" : "Compliance"} Snapshot
+                </div>
+
+                <div style={{ display: "flex", gap: 8 }}>
+                  <button
+                    onClick={() => setViewMode("ops")}
+                    style={{
+                      borderRadius: 999,
+                      padding: "6px 10px",
+                      border:
+                        viewMode === "ops"
+                          ? "1px solid rgba(56,189,248,0.75)"
+                          : "1px solid rgba(148,163,184,0.35)",
+                      background:
+                        viewMode === "ops"
+                          ? "rgba(56,189,248,0.10)"
+                          : "rgba(15,23,42,0.80)",
+                      color: viewMode === "ops" ? "#38bdf8" : "#cbd5f5",
+                      fontSize: 11,
+                      cursor: "pointer",
+                      fontWeight: 600,
+                      letterSpacing: "0.12em",
+                      textTransform: "uppercase",
+                    }}
+                  >
+                    Ops view
+                  </button>
+                  <button
+                    onClick={() => setViewMode("owner")}
+                    style={{
+                      borderRadius: 999,
+                      padding: "6px 10px",
+                      border:
+                        viewMode === "owner"
+                          ? "1px solid rgba(251,113,133,0.85)"
+                          : "1px solid rgba(148,163,184,0.35)",
+                      background:
+                        viewMode === "owner"
+                          ? "rgba(251,113,133,0.10)"
+                          : "rgba(15,23,42,0.80)",
+                      color: viewMode === "owner" ? "#fb7185" : "#cbd5f5",
+                      fontSize: 11,
+                      cursor: "pointer",
+                      fontWeight: 600,
+                      letterSpacing: "0.12em",
+                      textTransform: "uppercase",
+                    }}
+                  >
+                    Owner view
+                  </button>
+                </div>
               </div>
 
               <div
                 style={{
+                  marginTop: 10,
                   display: "grid",
                   gridTemplateColumns: "1.1fr 1.2fr",
                   gap: 12,
                   alignItems: "center",
                 }}
               >
-                {/* Gauge */}
                 <div
                   style={{
                     position: "relative",
@@ -370,38 +597,47 @@ export default function PropertyManagement() {
                         marginBottom: 6,
                       }}
                     >
-                      Owner Risk
+                      {cockpit.label}
                     </div>
                     <div
                       style={{
                         fontSize: 30,
                         fontWeight: 600,
                         background:
-                          "linear-gradient(120deg,#fb7185,#f97316)",
+                          viewMode === "owner"
+                            ? "linear-gradient(120deg,#fb7185,#f97316)"
+                            : "linear-gradient(120deg,#22c55e,#a3e635)",
                         WebkitBackgroundClip: "text",
                         color: "transparent",
                       }}
                     >
-                      82
+                      <CountUp to={cockpit.scoreValue} play={animate} />
                     </div>
                     <div style={{ fontSize: 11, color: "#9ca3af" }}>
-                      Overall score
+                      {cockpit.scoreLabel}
                     </div>
                   </div>
                 </div>
 
-                {/* Stats */}
                 <div>
                   <div style={{ display: "grid", gap: 8, marginBottom: 10 }}>
-                    <SmallStat label="Non-compliant vendors" value="14" color="#fb7185" />
-                    <SmallStat label="Expiring in 30 days" value="9" color="#facc15" />
-                    <SmallStat label="Missing endorsements" value="3" color="#facc15" />
+                    <SmallStat
+                      label={cockpit.stat1.label}
+                      value={<CountUp to={cockpit.stat1.value} play={animate} />}
+                      color={cockpit.stat1.color}
+                    />
+                    <SmallStat
+                      label={cockpit.stat2.label}
+                      value={<CountUp to={cockpit.stat2.value} play={animate} />}
+                      color={cockpit.stat2.color}
+                    />
+                    <SmallStat
+                      label={cockpit.stat3.label}
+                      value={<CountUp to={cockpit.stat3.value} play={animate} />}
+                      color={cockpit.stat3.color}
+                    />
                   </div>
-
-                  <p style={{ fontSize: 12, color: "#9ca3af" }}>
-                    Visibility first. Automation only when you approve. No chasing emails,
-                    no spreadsheets, no panic audits.
-                  </p>
+                  <p style={{ fontSize: 12, color: "#9ca3af" }}>{cockpit.note}</p>
                 </div>
               </div>
 
@@ -435,7 +671,6 @@ export default function PropertyManagement() {
             </div>
           </section>
 
-          {/* FEATURE GRID */}
           <section style={{ maxWidth: 1180, margin: "60px auto 30px auto" }}>
             <h2 style={{ fontSize: 26, marginBottom: 14 }}>
               Built for property teams drowning in vendors.
@@ -479,7 +714,6 @@ export default function PropertyManagement() {
             </div>
           </section>
 
-          {/* HOW IT WORKS */}
           <section
             style={{
               maxWidth: 1180,
@@ -505,6 +739,7 @@ export default function PropertyManagement() {
             </div>
 
             <div
+              className="pm-card"
               style={{
                 borderRadius: 22,
                 padding: 20,
@@ -536,6 +771,7 @@ export default function PropertyManagement() {
 
               <button
                 onClick={goToSignup}
+                className="pm-cta"
                 style={{
                   borderRadius: 999,
                   padding: "9px 14px",
@@ -547,6 +783,7 @@ export default function PropertyManagement() {
                   fontWeight: 500,
                   cursor: "pointer",
                   marginBottom: 10,
+                  position: "relative",
                 }}
               >
                 View My Portfolio Risk →
@@ -574,15 +811,44 @@ export default function PropertyManagement() {
           >
             <div>© {new Date().getFullYear()} Vendor Insurance Tracker</div>
             <div style={{ display: "flex", gap: 16 }}>
-              <button onClick={() => router.push("/terms")} style={linkBtn}>Terms</button>
-              <button onClick={() => router.push("/privacy")} style={linkBtn}>Privacy</button>
-              <button onClick={goToPricing} style={linkBtn}>Pricing</button>
+              <button onClick={() => router.push("/terms")} style={linkBtn}>
+                Terms
+              </button>
+              <button onClick={() => router.push("/privacy")} style={linkBtn}>
+                Privacy
+              </button>
+              <button onClick={goToPricing} style={linkBtn}>
+                Pricing
+              </button>
             </div>
           </footer>
         </main>
       </div>
     </>
   );
+}
+
+function CountUp({ to, play }) {
+  const [val, setVal] = useState(0);
+
+  useEffect(() => {
+    if (!play) return;
+    let raf = 0;
+    const start = performance.now();
+    const dur = 850;
+
+    const loop = (now) => {
+      const p = Math.min(1, (now - start) / dur);
+      const eased = 1 - Math.pow(1 - p, 3);
+      setVal(Math.round(eased * to));
+      if (p < 1) raf = requestAnimationFrame(loop);
+    };
+
+    raf = requestAnimationFrame(loop);
+    return () => cancelAnimationFrame(raf);
+  }, [to, play]);
+
+  return <>{val}</>;
 }
 
 function SmallStat({ label, value, color }) {
@@ -638,6 +904,7 @@ function MiniStep({ title, body, active }) {
 function FeatureCard({ title, body }) {
   return (
     <div
+      className="pm-card"
       style={{
         borderRadius: 18,
         padding: 16,
@@ -646,7 +913,9 @@ function FeatureCard({ title, body }) {
         boxShadow: "0 12px 35px rgba(15,23,42,0.85)",
       }}
     >
-      <div style={{ fontSize: 16, fontWeight: 500, marginBottom: 6 }}>{title}</div>
+      <div style={{ fontSize: 16, fontWeight: 500, marginBottom: 6 }}>
+        {title}
+      </div>
       <p style={{ fontSize: 13, color: "#9ca3af", margin: 0 }}>{body}</p>
     </div>
   );
