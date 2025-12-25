@@ -13,7 +13,7 @@ export default function Home() {
     router.push("/pricing");
   }
 
-  const title = "AI-Powered COI Tracking & Vendor Compliance | Vendor Insurance Tracker";
+  const title = "verivo — AI-Powered COI Tracking & Vendor Compliance";
   const description =
     "Automate certificates of insurance, vendor uploads, and compliance alerts with an AI-powered COI tracking cockpit. No vendor logins. 14-day free trial.";
 
@@ -22,11 +22,11 @@ export default function Home() {
   const orgJsonLd = {
     "@context": "https://schema.org",
     "@type": "Organization",
-    name: "Vendor Insurance Tracker",
+    name: "verivo",
     url: siteUrl,
     description:
       "AI-powered certificate of insurance tracking and vendor compliance automation.",
-    logo: `${siteUrl}/logo.png`,
+    logo: `${siteUrl}/brand/verivo-dark.png`,
   };
 
   return (
@@ -110,7 +110,7 @@ export default function Home() {
                 letterSpacing: 0.4,
               }}
             >
-              Vendor Insurance Tracker
+              verivo
             </span>
           </div>
 
@@ -435,7 +435,7 @@ export default function Home() {
                 marginBottom: 28,
               }}
             >
-              Vendor Insurance Tracker automates the ugly parts of COI
+              verivo automates the ugly parts of COI
               management so your risk, operations, and property teams can focus
               on approvals — not paperwork.
             </p>
@@ -605,7 +605,7 @@ export default function Home() {
               flexWrap: "wrap",
             }}
           >
-            <div>© {new Date().getFullYear()} Vendor Insurance Tracker</div>
+            <div>© {new Date().getFullYear()} verivo</div>
             <div style={{ display: "flex", gap: 16 }}>
               <button
                 onClick={() => router.push("/terms")}
@@ -678,5 +678,4 @@ const linkBtn = {
   cursor: "pointer",
   fontSize: 12,
 };
- 
  
