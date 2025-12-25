@@ -1,4 +1,4 @@
-// components/Header.js — HUD Strip V5
+// components/Header.js — HUD Strip V5 (Verivo Branded)
 import { useState } from "react";
 import { supabase } from "../lib/supabaseClient";
 import { CaretDown } from "@phosphor-icons/react";
@@ -42,91 +42,111 @@ export default function Header() {
         `,
       }}
     >
-      {/* LEFT — ORG SWITCHER */}
-      <div style={{ position: "relative" }}>
-        <button
-          onClick={() => {
-            if (!loading) setOpen((s) => !s);
-          }}
+      {/* LEFT — LOGO + ORG SWITCHER */}
+      <div
+        style={{
+          display: "flex",
+          alignItems: "center",
+          gap: 18,
+        }}
+      >
+        {/* Verivo Logo */}
+        <img
+          src="/brand/verivo-light.png"
+          alt="verivo"
           style={{
-            padding: "8px 14px",
-            background: "rgba(15,23,42,0.85)",
-            color: "#e5e7eb",
-            borderRadius: "8px",
-            border: "1px solid rgba(51,65,85,0.9)",
-            display: "flex",
-            alignItems: "center",
-            gap: 6,
-            cursor: loading ? "default" : "pointer",
-            fontSize: 13,
-            opacity: loading ? 0.6 : 1,
-            boxShadow: open
-              ? "0 0 14px rgba(56,189,248,0.4)"
-              : "0 0 0 rgba(0,0,0,0)",
-            transition: "0.16s ease",
+            height: 30,
+            width: "auto",
+            display: "block",
           }}
-        >
-          {loading ? "Loading…" : activeOrg?.name || "Select Organization"}
-          <CaretDown size={14} />
-        </button>
+        />
 
-        {open && !loading && (
-          <div
+        {/* Org Switcher */}
+        <div style={{ position: "relative" }}>
+          <button
+            onClick={() => {
+              if (!loading) setOpen((s) => !s);
+            }}
             style={{
-              position: "absolute",
-              top: "44px",
-              left: 0,
-              width: 240,
-              background:
-                "radial-gradient(circle at top, rgba(15,23,42,0.98), rgba(15,23,42,0.94))",
-              border: "1px solid rgba(51,65,85,0.95)",
-              borderRadius: 10,
-              padding: 10,
-              boxShadow: `
-                0 12px 30px rgba(0,0,0,0.65),
-                0 0 24px rgba(56,189,248,0.3)
-              `,
-              zIndex: 9999,
+              padding: "8px 14px",
+              background: "rgba(15,23,42,0.85)",
+              color: "#e5e7eb",
+              borderRadius: "8px",
+              border: "1px solid rgba(51,65,85,0.9)",
+              display: "flex",
+              alignItems: "center",
+              gap: 6,
+              cursor: loading ? "default" : "pointer",
+              fontSize: 13,
+              opacity: loading ? 0.6 : 1,
+              boxShadow: open
+                ? "0 0 14px rgba(56,189,248,0.4)"
+                : "0 0 0 rgba(0,0,0,0)",
+              transition: "0.16s ease",
             }}
           >
-            {orgs.length === 0 && (
-              <div
-                style={{
-                  padding: 8,
-                  color: "#94a3b8",
-                  fontSize: 13,
-                  textAlign: "center",
-                }}
-              >
-                No organizations found
-              </div>
-            )}
+            {loading ? "Loading…" : activeOrg?.name || "Select Organization"}
+            <CaretDown size={14} />
+          </button>
 
-            {orgs.map((o) => (
-              <div
-                key={o.id}
-                onClick={() => {
-                  switchOrg(o.id);
-                  setOpen(false);
-                }}
-                style={{
-                  padding: 10,
-                  borderRadius: 6,
-                  cursor: "pointer",
-                  background:
-                    o.id == activeOrgId
-                      ? "rgba(56,189,248,0.15)"
-                      : "transparent",
-                  color: o.id == activeOrgId ? "#38bdf8" : "#e5e7eb",
-                  marginBottom: 6,
-                  transition: "0.16s ease",
-                }}
-              >
-                {o.name}
-              </div>
-            ))}
-          </div>
-        )}
+          {open && !loading && (
+            <div
+              style={{
+                position: "absolute",
+                top: "44px",
+                left: 0,
+                width: 240,
+                background:
+                  "radial-gradient(circle at top, rgba(15,23,42,0.98), rgba(15,23,42,0.94))",
+                border: "1px solid rgba(51,65,85,0.95)",
+                borderRadius: 10,
+                padding: 10,
+                boxShadow: `
+                  0 12px 30px rgba(0,0,0,0.65),
+                  0 0 24px rgba(56,189,248,0.3)
+                `,
+                zIndex: 9999,
+              }}
+            >
+              {orgs.length === 0 && (
+                <div
+                  style={{
+                    padding: 8,
+                    color: "#94a3b8",
+                    fontSize: 13,
+                    textAlign: "center",
+                  }}
+                >
+                  No organizations found
+                </div>
+              )}
+
+              {orgs.map((o) => (
+                <div
+                  key={o.id}
+                  onClick={() => {
+                    switchOrg(o.id);
+                    setOpen(false);
+                  }}
+                  style={{
+                    padding: 10,
+                    borderRadius: 6,
+                    cursor: "pointer",
+                    background:
+                      o.id == activeOrgId
+                        ? "rgba(56,189,248,0.15)"
+                        : "transparent",
+                    color: o.id == activeOrgId ? "#38bdf8" : "#e5e7eb",
+                    marginBottom: 6,
+                    transition: "0.16s ease",
+                  }}
+                >
+                  {o.name}
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
       </div>
 
       {/* RIGHT — AI STATUS + SIGN OUT */}
@@ -137,7 +157,7 @@ export default function Header() {
           gap: 14,
         }}
       >
-        {/* Tiny AI System Status */}
+        {/* AI Status */}
         <div
           style={{
             display: "flex",
