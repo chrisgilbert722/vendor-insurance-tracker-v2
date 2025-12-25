@@ -745,6 +745,7 @@ export default function PropertyManagement() {
 
           {/* (C) Trust authority band */}
           <TrustAuthorityBand />
+          <TestimonialsBand />
 
           <section style={{ maxWidth: 1180, margin: "60px auto 30px auto" }}>
             <h2 style={{ fontSize: 26, marginBottom: 14 }}>
@@ -1523,3 +1524,85 @@ const linkBtn = {
   cursor: "pointer",
   fontSize: 12,
 };
+
+
+
+/* ============================================================
+   Testimonials (Illustrative avatars – no real people)
+============================================================ */
+function TestimonialsBand() {
+  const items = [
+    {
+      quote:
+        "We surfaced expiring and missing COIs across 38 properties in under an hour — before our owner review.",
+      role: "Regional Property Manager",
+      metric: "38 properties",
+      hue: "#38bdf8",
+    },
+    {
+      quote:
+        "Audit prep went from last‑minute panic to a repeatable process.",
+      role: "Compliance Lead",
+      metric: "Audit‑ready",
+      hue: "#22c55e",
+    },
+    {
+      quote:
+        "First time we’ve been able to see owner exposure before enforcement — without automation running ahead of us.",
+      role: "Director of Operations",
+      metric: "Owner‑safe",
+      hue: "#fb7185",
+    },
+  ];
+
+  return (
+    <section style={{ maxWidth: 1180, margin: "22px auto 0 auto" }}>
+      <div
+        style={{
+          display: "grid",
+          gridTemplateColumns: "repeat(auto-fit,minmax(260px,1fr))",
+          gap: 14,
+        }}
+      >
+        {items.map((t, i) => (
+          <div
+            key={i}
+            className="pm-card"
+            style={{
+              borderRadius: 18,
+              padding: 16,
+              border: "1px solid rgba(148,163,184,0.22)",
+              background: "rgba(15,23,42,0.9)",
+            }}
+          >
+            <div style={{ display: "flex", gap: 12, alignItems: "center" }}>
+              <div
+                aria-hidden="true"
+                title="Illustrative avatar"
+                style={{
+                  width: 44,
+                  height: 44,
+                  borderRadius: 999,
+                  background: `radial-gradient(circle at 30% 0, ${t.hue}, #0f172a)`,
+                  boxShadow: `0 0 24px ${t.hue}55`,
+                }}
+              />
+              <div>
+                <div style={{ fontSize: 12, color: "#e5e7eb", fontWeight: 700 }}>
+                  {t.role}
+                </div>
+                <div style={{ fontSize: 11, color: "#9ca3af" }}>{t.metric}</div>
+              </div>
+            </div>
+            <p style={{ fontSize: 13, color: "#cbd5f5", marginTop: 10 }}>
+              “{t.quote}”
+            </p>
+            <div style={{ fontSize: 11, color: "#9ca3af", marginTop: 6 }}>
+              *Illustrative testimonial
+            </div>
+          </div>
+        ))}
+      </div>
+    </section>
+  );
+}
