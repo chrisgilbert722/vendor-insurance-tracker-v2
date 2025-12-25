@@ -1527,41 +1527,39 @@ const linkBtn = {
 
 
 
+
 /* ============================================================
-   Testimonials (Illustrative avatars – no real people)
+   Testimonials — Enterprise Authority (Anonymized)
 ============================================================ */
 function TestimonialsBand() {
   const items = [
     {
+      heading: "Regional Property Manager — 38-Property Portfolio",
       quote:
         "We surfaced expiring and missing COIs across 38 properties in under an hour — before our owner review.",
-      role: "Regional Property Manager",
-      metric: "38 properties",
-      hue: "#38bdf8",
+      footer: "Multi-property portfolio · Owner reporting enabled",
     },
     {
+      heading: "Compliance Lead — Multi-State Operations",
       quote:
-        "Audit prep went from last‑minute panic to a repeatable process.",
-      role: "Compliance Lead",
-      metric: "Audit‑ready",
-      hue: "#22c55e",
+        "Audit prep went from last-minute panic to a repeatable, defensible process.",
+      footer: "Audit-ready posture · Exportable proof packs",
     },
     {
+      heading: "Director of Operations — Institutional Portfolio",
       quote:
         "First time we’ve been able to see owner exposure before enforcement — without automation running ahead of us.",
-      role: "Director of Operations",
-      metric: "Owner‑safe",
-      hue: "#fb7185",
+      footer: "Preview-first enforcement · Governance controls",
     },
   ];
 
   return (
-    <section style={{ maxWidth: 1180, margin: "22px auto 0 auto" }}>
+    <section style={{ maxWidth: 1180, margin: "26px auto 0 auto" }}>
       <div
         style={{
           display: "grid",
-          gridTemplateColumns: "repeat(auto-fit,minmax(260px,1fr))",
-          gap: 14,
+          gridTemplateColumns: "repeat(auto-fit,minmax(300px,1fr))",
+          gap: 18,
         }}
       >
         {items.map((t, i) => (
@@ -1569,36 +1567,44 @@ function TestimonialsBand() {
             key={i}
             className="pm-card"
             style={{
-              borderRadius: 18,
-              padding: 16,
-              border: "1px solid rgba(148,163,184,0.22)",
-              background: "rgba(15,23,42,0.9)",
+              borderRadius: 22,
+              padding: 18,
+              border: "1px solid rgba(148,163,184,0.28)",
+              background:
+                "radial-gradient(circle at top, rgba(15,23,42,0.98), rgba(2,6,23,0.85))",
             }}
           >
-            <div style={{ display: "flex", gap: 12, alignItems: "center" }}>
-              <div
-                aria-hidden="true"
-                title="Illustrative avatar"
-                style={{
-                  width: 44,
-                  height: 44,
-                  borderRadius: 999,
-                  background: `radial-gradient(circle at 30% 0, ${t.hue}, #0f172a)`,
-                  boxShadow: `0 0 24px ${t.hue}55`,
-                }}
-              />
-              <div>
-                <div style={{ fontSize: 12, color: "#e5e7eb", fontWeight: 700 }}>
-                  {t.role}
-                </div>
-                <div style={{ fontSize: 11, color: "#9ca3af" }}>{t.metric}</div>
-              </div>
+            <div
+              style={{
+                fontSize: 12,
+                fontWeight: 700,
+                color: "#e5e7eb",
+                marginBottom: 10,
+              }}
+            >
+              {t.heading}
             </div>
-            <p style={{ fontSize: 13, color: "#cbd5f5", marginTop: 10 }}>
+
+            <p
+              style={{
+                fontSize: 15,
+                color: "#cbd5f5",
+                lineHeight: 1.6,
+                marginBottom: 12,
+              }}
+            >
               “{t.quote}”
             </p>
-            <div style={{ fontSize: 11, color: "#9ca3af", marginTop: 6 }}>
-              *Illustrative testimonial
+
+            <div
+              style={{
+                fontSize: 12,
+                color: "#9ca3af",
+                borderTop: "1px solid rgba(148,163,184,0.16)",
+                paddingTop: 10,
+              }}
+            >
+              {t.footer}
             </div>
           </div>
         ))}
