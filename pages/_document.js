@@ -5,6 +5,7 @@ export default function Document() {
   return (
     <Html lang="en">
       <Head>
+        {/* Primary favicon stack */}
         <link
           rel="icon"
           type="image/png"
@@ -22,6 +23,13 @@ export default function Document() {
           type="image/png"
           sizes="48x48"
           href="/brand/favicons/favicon-48.png"
+        />
+
+        {/* Safari / modern browser mask icon (THIS is the missing piece) */}
+        <link
+          rel="mask-icon"
+          href="/brand/favicons/safari-pinned-tab.svg"
+          color="#FFFFFF"
         />
       </Head>
       <body>
