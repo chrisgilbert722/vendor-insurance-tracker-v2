@@ -55,9 +55,10 @@ export default function Header() {
           src="/brand/verivo-light.png"
           alt="verivo"
           style={{
-            height: 30,
+            height: 38,
             width: "auto",
             display: "block",
+            marginTop: 1, // optical centering vs org pill
           }}
         />
 
