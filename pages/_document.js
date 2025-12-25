@@ -8,6 +8,12 @@ export default function Document() {
         <link
           rel="icon"
           type="image/png"
+          sizes="16x16"
+          href="/brand/favicons/favicon-16.png"
+        />
+        <link
+          rel="icon"
+          type="image/png"
           sizes="32x32"
           href="/brand/favicons/favicon-32.png"
         />
