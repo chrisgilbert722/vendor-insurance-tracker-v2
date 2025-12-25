@@ -26,24 +26,33 @@ export default function PropertyManagement() {
   }
 
   const title =
-    "Vendor Risk Management for Property Managers | Owner-Safe Insurance Compliance";
+    "Vendor Insurance Compliance for Property Managers | COI Tracking — verivo";
   const description =
-    "See vendor insurance exposure across your property portfolio in minutes. COI tracking, expirations, endorsements, and owner risk — preview-first automation. 14-day free trial.";
+    "verivo gives property managers instant COI tracking and vendor insurance compliance visibility — expiring COIs, missing endorsements, and owner exposure. Preview-first automation. 14-day free trial.";
 
-  const siteUrl = "https://vendor-insurance-tracker-v2.vercel.app";
+
+  const siteUrl = "https://vendor-insurance-tracker-v2.vercel.app"; // TODO: switch to https://verivo.io when DNS is live
 
   // --- SEO + Schema (kept)
   const orgJsonLd = {
     "@context": "https://schema.org",
     "@type": "Organization",
-    name: "Vendor Insurance Tracker",
+    name: "verivo",
     url: siteUrl,
     description:
       "AI-powered certificate of insurance tracking and vendor compliance automation.",
-    logo: `${siteUrl}/logo.png`,
+    logo: `${siteUrl}/brand/verivo-dark.png`,
   };
 
-  const faqJsonLd = {
+  
+  const webSiteJsonLd = {
+    "@context": "https://schema.org",
+    "@type": "WebSite",
+    name: "verivo",
+    url: siteUrl,
+  };
+
+const faqJsonLd = {
     "@context": "https://schema.org",
     "@type": "FAQPage",
     mainEntity: [
@@ -77,12 +86,12 @@ export default function PropertyManagement() {
   const softwareJsonLd = {
     "@context": "https://schema.org",
     "@type": "SoftwareApplication",
-    name: "Vendor Insurance Tracker",
-    applicationCategory: "BusinessApplication",
-    applicationSubCategory: "COI Tracking & Vendor Compliance",
+    name: "verivo",
+    applicationCategory: "RiskManagementApplication",
+    applicationSubCategory: "Vendor Insurance & COI Compliance for Property Managers",
     operatingSystem: "Web",
     description:
-      "Vendor risk management and insurance compliance software for property managers to track COIs, monitor expirations, and reduce owner exposure.",
+      "Vendor insurance compliance and COI tracking software for property managers to monitor expirations, endorsements, and owner exposure with preview-first automation.",
     offers: {
       "@type": "Offer",
       price: "0",
@@ -116,7 +125,7 @@ export default function PropertyManagement() {
   const offerJsonLd = {
     "@context": "https://schema.org",
     "@type": "Offer",
-    name: "Property Management — 14-Day Free Trial · Annual option available ($4,999)",
+    name: "verivo for Property Management — 14-Day Free Trial · Annual option available ($4,999)",
     price: "0",
     priceCurrency: "USD",
     availability: "https://schema.org/InStock",
@@ -190,7 +199,7 @@ export default function PropertyManagement() {
         <meta name="description" content={description} />
         <meta
           name="keywords"
-          content="property management vendor compliance, COI tracking property managers, vendor risk management, insurance compliance, owner exposure, certificate of insurance tracking"
+          content="property management vendor compliance, COI tracking for property managers, vendor insurance compliance software, certificate of insurance tracking, owner exposure, vendor risk management, verivo"
         />
         <meta name="robots" content="index,follow" />
         <meta property="og:title" content={title} />
@@ -198,11 +207,22 @@ export default function PropertyManagement() {
         <meta property="og:type" content="website" />
         <meta property="og:url" content={`${siteUrl}/property-management`} />
         <meta property="og:image" content={`${siteUrl}/og-image.png`} />
+        <meta property="og:site_name" content="verivo" />
+        <meta name="theme-color" content="#0F172A" />
+
+        <meta name="twitter:card" content="summary_large_image" />
+        <meta name="twitter:title" content={title} />
+        <meta name="twitter:description" content={description} />
+        <meta name="twitter:image" content={`${siteUrl}/og-image.png`} />
         <link rel="canonical" href={`${siteUrl}/property-management`} />
 
         <script
           type="application/ld+json"
           dangerouslySetInnerHTML={{ __html: JSON.stringify(orgJsonLd) }}
+        />
+        <script
+          type="application/ld+json"
+          dangerouslySetInnerHTML={{ __html: JSON.stringify(webSiteJsonLd) }}
         />
         <script
           type="application/ld+json"
@@ -365,7 +385,7 @@ export default function PropertyManagement() {
               <span style={{ fontSize: 18 }}>⚡</span>
             </div>
             <span style={{ fontSize: 18, fontWeight: 600, letterSpacing: 0.4 }}>
-              Vendor Insurance Tracker
+              verivo
             </span>
           </div>
 
@@ -911,7 +931,7 @@ export default function PropertyManagement() {
               flexWrap: "wrap",
             }}
           >
-            <div>© {new Date().getFullYear()} Vendor Insurance Tracker</div>
+            <div>© {new Date().getFullYear()} verivo</div>
             <div style={{ display: "flex", gap: 16 }}>
               <button onClick={() => router.push("/terms")} style={linkBtn}>
                 Terms
