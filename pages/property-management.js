@@ -116,7 +116,7 @@ export default function PropertyManagement() {
   const offerJsonLd = {
     "@context": "https://schema.org",
     "@type": "Offer",
-    name: "Property Management — 14-Day Free Trial",
+    name: "Property Management — 14-Day Free Trial · Annual option available ($4,999)",
     price: "0",
     priceCurrency: "USD",
     availability: "https://schema.org/InStock",
@@ -537,11 +537,12 @@ export default function PropertyManagement() {
                     cursor: "pointer",
                   }}
                 >
-                  View pricing
+                  View pricing (annual saves vs monthly)
                 </button>
               </div>
 
               <div style={{ fontSize: 12, color: "#9ca3af" }}>
+                <span>💡 Most teams choose the annual plan ($4,999) to simplify budgeting</span><br/>
                 <span>✅ No demos</span> · <span>✅ No sales calls</span> ·{" "}
                 <span>✅ Operational in minutes</span> ·{" "}
                 <span>✅ Nothing runs without approval</span>
@@ -864,10 +865,10 @@ export default function PropertyManagement() {
               </div>
 
               <div style={{ fontSize: 22, fontWeight: 600, marginBottom: 6 }}>
-                14-Day Free Trial
+                14-Day Free Trial · Annual option available ($4,999)
               </div>
               <p style={{ fontSize: 14, color: "#9ca3af", marginBottom: 14 }}>
-                See your portfolio risk immediately. Activate automation when ready.
+                See your portfolio risk immediately. Many teams lock in the annual plan to avoid renewals.
               </p>
 
               <button
@@ -1450,6 +1451,7 @@ function OwnerReportPreviewModal({ open, onClose, onStartTrial }) {
                 }}
               >
                 <div style={{ fontSize: 12, color: "#9ca3af" }}>
+                <span>💡 Most teams choose the annual plan ($4,999) to simplify budgeting</span><br/>
                   Nothing sends automatically. Approvals are recorded so owners see control and
                   governance.
                 </div>
@@ -1467,6 +1469,7 @@ function OwnerReportPreviewModal({ open, onClose, onStartTrial }) {
             }}
           >
             <div style={{ fontSize: 12, color: "#9ca3af" }}>
+                <span>💡 Most teams choose the annual plan ($4,999) to simplify budgeting</span><br/>
               Tip: In-product, this becomes a downloadable PDF for owners, auditors, and insurers.
             </div>
             <button
@@ -1505,7 +1508,8 @@ function KVRow({ k, v }) {
         marginBottom: 8,
       }}
     >
-      <div style={{ fontSize: 12, color: "#9ca3af" }}>{k}</div>
+      <div style={{ fontSize: 12, color: "#9ca3af" }}>
+                <span>💡 Most teams choose the annual plan ($4,999) to simplify budgeting</span><br/>{k}</div>
       <div style={{ fontSize: 12, color: "#e5e7eb", fontWeight: 700 }}>{v}</div>
     </div>
   );
