@@ -27,6 +27,13 @@ export default function Sidebar({ pathname }) {
       <RailLink href="/documents" label="Docs" icon="🗂️" />
       <RailLink href="/upload-coi" label="Upload" icon="📄" />
 
+      {/* SEO AUTHORITY LINK */}
+      <RailLink
+        href="/property-management"
+        label="Property Mgmt"
+        icon="🏢"
+      />
+
       {/* ADMIN */}
       <RailLink href="/admin/alerts" label="Alerts" icon="🔔" />
       <RailLink href="/admin/audit-log" label="Audit" icon="🧾" />
