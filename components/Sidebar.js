@@ -1,4 +1,4 @@
-// components/Sidebar.js — Tactical Neon Rail V17 (STABLE + ONBOARDING)
+// components/Sidebar.js — Tactical Neon Rail V17 (CLEANED + SEO SAFE)
 
 import React from "react";
 import Link from "next/link";
@@ -21,18 +21,12 @@ export default function Sidebar({ pathname }) {
       {/* LOGO */}
       <div style={{ marginBottom: 26, fontSize: 28 }}>⚡</div>
 
-      {/* CORE */}
+      {/* CORE WORKFLOW */}
       <RailLink href="/dashboard" label="Dashboard" icon="📊" />
       <RailLink href="/vendors" label="Vendors" icon="👥" />
+      <RailLink href="/property-management" label="Properties" icon="🏬" />
       <RailLink href="/documents" label="Docs" icon="🗂️" />
       <RailLink href="/upload-coi" label="Upload" icon="📄" />
-
-      {/* SEO AUTHORITY LINK */}
-      <RailLink
-        href="/property-management"
-        label="Property Mgmt"
-        icon="🏢"
-      />
 
       {/* ADMIN */}
       <RailLink href="/admin/alerts" label="Alerts" icon="🔔" />
@@ -57,7 +51,7 @@ export default function Sidebar({ pathname }) {
 }
 
 /* ======================================================
-   RailLink — NEXT SAFE (NO REACT CRASH)
+   RailLink — NEXT SAFE (NO WRAP, NO CRASH)
 ====================================================== */
 function RailLink({ href, label, icon }) {
   return (
@@ -75,6 +69,7 @@ function RailLink({ href, label, icon }) {
           fontSize: 11,
           fontWeight: 700,
           textTransform: "uppercase",
+          whiteSpace: "nowrap",
           transition: "background 0.15s ease",
         }}
       >
