@@ -1,11 +1,11 @@
 // components/alerts/FixActionCard.js
 // ============================================================
 // FIX ACTION CARD — PREVIEW MODE (DAY 10)
-// - DEV TEST: Auto-opens Fix Preview for verification
-// - REMOVE test block after confirming UI
+// - All actions route through Fix Preview
+// - No execution during trial
 // ============================================================
 
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import FixPreviewPanel from "../FixPreviewPanel";
 
 export default function FixActionCard({ alert, onResolve, onRequest }) {
@@ -18,32 +18,19 @@ export default function FixActionCard({ alert, onResolve, onRequest }) {
 
   function openFixPreview() {
     setPreviewVendor({
-      name: alert.vendor_name || "Test Vendor",
-      issue: title || "Expired COI",
-      severity: alert.severity || "critical",
+      name: alert.vendor_name || "Vendor",
+      issue: title,
+      severity: alert.severity || "medium",
       broker: alert.broker
         ? {
             name: alert.broker.name,
             email: alert.broker.email,
           }
-        : {
-            name: "Demo Insurance Group",
-            email: "broker@demoins.com",
-          },
+        : null,
     });
 
     setPreviewOpen(true);
   }
-
-  /* ======================================================
-     DEV TEST BLOCK — REMOVE AFTER CONFIRMING UI
-  ====================================================== */
-  useEffect(() => {
-    // Auto-open Fix Preview for testing
-    openFixPreview();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-  /* ====================================================== */
 
   return (
     <>
