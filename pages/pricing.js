@@ -1,4 +1,3 @@
-
 // pages/pricing.js
 import { useState, useEffect } from "react";
 import { useRouter } from "next/router";
@@ -23,6 +22,42 @@ export default function PricingPage() {
   }
 
   return (
+    <>
+
+      <Head>
+        <title>Vendor Insurance Compliance Pricing | COI Tracking Software — verivo</title>
+        <meta
+          name="description"
+          content="Transparent pricing for verivo’s vendor insurance compliance and COI tracking software. Built for property managers, risk teams, and owner-safe operations. Start your 14-day free trial."
+        />
+        <meta name="robots" content="index,follow" />
+        <meta property="og:title" content="Vendor Insurance Compliance Pricing — verivo" />
+        <meta
+          property="og:description"
+          content="See verivo pricing for vendor insurance compliance and COI tracking. No demos. No contracts. Annual plans available for property managers."
+        />
+        <meta property="og:type" content="website" />
+        <meta property="og:url" content="https://vendor-insurance-tracker-v2.vercel.app/pricing" />
+        <meta property="og:image" content="https://vendor-insurance-tracker-v2.vercel.app/og-image.png" />
+        <script
+          type="application/ld+json"
+          dangerouslySetInnerHTML={{
+            __html: JSON.stringify({
+              "@context": "https://schema.org",
+              "@type": "SoftwareApplication",
+              name: "verivo",
+              applicationCategory: "RiskManagementApplication",
+              offers: {
+                "@type": "Offer",
+                price: "4999",
+                priceCurrency: "USD",
+                availability: "https://schema.org/InStock"
+              }
+            }),
+          }}
+        />
+      </Head>
+
     <div
       style={{
         minHeight: "100vh",
@@ -216,6 +251,7 @@ export default function PricingPage() {
         No demos · No contracts · Cancel anytime
       </div>
     </div>
+    </>
   );
 }
 
