@@ -1,126 +1,295 @@
-// components/alerts/FixActionCard.js
-// ============================================================
-// FIX ACTION CARD — PREVIEW MODE (DAY 10)
-// - All actions route through Fix Preview
-// - No execution during trial
-// ============================================================
+// components/FixPreviewPanel.js
+// =======================================
+// FIX PREVIEW PANEL — READ ONLY
+// Includes Trial Countdown (UI ONLY)
+// No automation. No billing. No side effects.
+// =======================================
 
-import { useState } from "react";
-import FixPreviewPanel from "../FixPreviewPanel";
+import React, { useMemo } from "react";
 
-export default function FixActionCard({ alert, onResolve, onRequest }) {
-  if (!alert?.fix) return null;
+export default function FixPreviewPanel({ open, onClose, vendor, trialEndsAt }) {
+  if (!open || !vendor) return null;
 
-  const { title, description, required_document, action, actor } = alert.fix;
-
-  const [previewOpen, setPreviewOpen] = useState(false);
-  const [previewVendor, setPreviewVendor] = useState(null);
-
-  function openFixPreview() {
-    setPreviewVendor({
-      name: alert.vendor_name || "Vendor",
-      issue: title,
-      severity: alert.severity || "medium",
-      broker: alert.broker
-        ? {
-            name: alert.broker.name,
-            email: alert.broker.email,
-          }
-        : null,
-    });
-
-    setPreviewOpen(true);
-  }
+  // ---- Trial countdown (safe fallback) ----
+  const daysLeft = useMemo(() => {
+    if (!trialEndsAt) return null;
+    const end =
+      typeof trialEndsAt === "string"
+        ? new Date(trialEndsAt)
+        : trialEndsAt;
+    const now = new Date();
+    const diffMs = end.getTime() - now.getTime();
+    const d = Math.ceil(diffMs / (1000 * 60 * 60 * 24));
+    return Number.isFinite(d) ? Math.max(d, 0) : null;
+  }, [trialEndsAt]);
 
   return (
-    <>
+    <div
+      style={{
+        position: "fixed",
+        top: 0,
+        right: 0,
+        width: 420,
+        height: "100vh",
+        background:
+          "radial-gradient(circle at top, rgba(15,23,42,0.98), rgba(2,6,23,0.98))",
+        borderLeft: "1px solid rgba(56,189,248,0.25)",
+        boxShadow: "-20px 0 60px rgba(0,0,0,0.6)",
+        zIndex: 9999,
+        display: "flex",
+        flexDirection: "column",
+      }}
+    >
+      {/* HEADER */}
       <div
         style={{
-          marginTop: 10,
-          padding: 12,
-          borderRadius: 12,
-          background: "rgba(15,23,42,0.85)",
-          border: "1px solid rgba(148,163,184,0.35)",
+          padding: "18px 20px",
+          borderBottom: "1px solid rgba(51,65,85,0.8)",
         }}
       >
         <div
           style={{
             fontSize: 11,
+            letterSpacing: "0.16em",
             textTransform: "uppercase",
-            letterSpacing: "0.14em",
-            color: "rgba(148,163,184,0.7)",
-            marginBottom: 4,
+            color: "#9ca3af",
+            marginBottom: 6,
           }}
         >
-          Recommended Fix
+          Fix Preview
         </div>
-
-        <div style={{ fontSize: 14, fontWeight: 600 }}>{title}</div>
 
         <div
           style={{
-            fontSize: 13,
-            color: "rgba(203,213,245,0.9)",
-            marginTop: 4,
-            lineHeight: 1.4,
+            fontSize: 18,
+            fontWeight: 600,
+            color: "#e5e7eb",
           }}
         >
-          {description}
+          No actions will be taken yet
         </div>
 
-        {required_document && (
-          <div
-            style={{
-              marginTop: 6,
-              fontSize: 12,
-              color: "rgba(56,189,248,0.9)",
-            }}
-          >
-            Required: {required_document}
-          </div>
-        )}
-
-        <div style={{ display: "flex", gap: 10, marginTop: 10 }}>
-          {action === "request_coi" && (
-            <button
-              onClick={openFixPreview}
-              style={{
-                padding: "6px 12px",
-                borderRadius: 999,
-                border: "1px solid rgba(34,197,94,0.55)",
-                background: "rgba(15,23,42,0.9)",
-                color: "#bbf7d0",
-                fontSize: 13,
-                cursor: "pointer",
-              }}
-            >
-              Request COI
-            </button>
-          )}
-
-          <button
-            onClick={openFixPreview}
-            style={{
-              padding: "6px 12px",
-              borderRadius: 999,
-              border: "1px solid rgba(148,163,184,0.35)",
-              background: "transparent",
-              color: "rgba(148,163,184,0.9)",
-              fontSize: 13,
-              cursor: "pointer",
-            }}
-          >
-            Mark Resolved
-          </button>
+        {/* Trial countdown badge */}
+        <div
+          style={{
+            marginTop: 10,
+            display: "inline-flex",
+            alignItems: "center",
+            gap: 8,
+            padding: "6px 10px",
+            borderRadius: 999,
+            border: "1px solid rgba(56,189,248,0.35)",
+            background:
+              "linear-gradient(120deg, rgba(15,23,42,0.9), rgba(2,6,23,0.7))",
+            color: "#cbd5f5",
+            fontSize: 12,
+          }}
+        >
+          ⏳
+          <span style={{ fontWeight: 600 }}>
+            {daysLeft !== null
+              ? `Trial ends in ${daysLeft} day${daysLeft === 1 ? "" : "s"}`
+              : "Trial active"}
+          </span>
         </div>
       </div>
 
-      {/* FIX PREVIEW PANEL (READ-ONLY) */}
-      <FixPreviewPanel
-        open={previewOpen}
-        onClose={() => setPreviewOpen(false)}
-        vendor={previewVendor}
-      />
-    </>
+      {/* BODY */}
+      <div
+        style={{
+          flex: 1,
+          overflowY: "auto",
+          padding: 20,
+        }}
+      >
+        {/* SUMMARY */}
+        <Section title="What will happen">
+          <p style={bodyText}>
+            If automation were active, verivo would take the following steps to
+            resolve this issue.
+          </p>
+        </Section>
+
+        {/* VENDOR */}
+        <Section title="Vendor notification (preview)">
+          <PreviewCard>
+            <div style={emailMeta}>
+              <strong>To:</strong> {vendor.name}
+            </div>
+            <div style={emailMeta}>
+              <strong>Subject:</strong> Updated Certificate of Insurance Required
+            </div>
+            <div style={emailBody}>
+              Hello {vendor.name},
+              <br />
+              <br />
+              Our records show a compliance issue with your insurance documents.
+              Please upload an updated COI using the secure link below.
+              <br />
+              <br />
+              Thank you,
+              <br />
+              verivo Compliance Team
+            </div>
+            <div style={emailTiming}>Sent immediately</div>
+          </PreviewCard>
+        </Section>
+
+        {/* BROKER */}
+        {vendor.broker && (
+          <Section title="Broker escalation (if needed)">
+            <PreviewCard>
+              <div style={emailMeta}>
+                <strong>Broker:</strong> {vendor.broker.name}
+              </div>
+              <div style={emailMeta}>
+                <strong>Email:</strong> {vendor.broker.email}
+              </div>
+              <div style={emailTiming}>
+                Sent if no response after 7 days
+              </div>
+            </PreviewCard>
+          </Section>
+        )}
+
+        {/* OUTCOME */}
+        <Section title="Once resolved">
+          <ul style={outcomeList}>
+            <li>✔ Vendor marked compliant</li>
+            <li>✔ Removed from owner audit risk</li>
+            <li>✔ Compliance score improves</li>
+            <li>✔ Logged in audit trail</li>
+          </ul>
+        </Section>
+      </div>
+
+      {/* FOOTER */}
+      <div
+        style={{
+          padding: 16,
+          borderTop: "1px solid rgba(51,65,85,0.8)",
+        }}
+      >
+        <button
+          disabled
+          style={{
+            width: "100%",
+            padding: "14px",
+            borderRadius: 999,
+            background: "rgba(51,65,85,0.8)",
+            border: "1px solid rgba(148,163,184,0.4)",
+            color: "#9ca3af",
+            fontWeight: 600,
+            cursor: "not-allowed",
+            marginBottom: 8,
+          }}
+        >
+          Activate Automation
+        </button>
+
+        <div
+          style={{
+            fontSize: 12,
+            color: "#9ca3af",
+            textAlign: "center",
+            marginBottom: 10,
+          }}
+        >
+          Automation sends vendor reminders, broker escalations, and renewals
+          automatically.
+        </div>
+
+        <button
+          onClick={onClose}
+          style={{
+            width: "100%",
+            background: "transparent",
+            border: "none",
+            color: "#9ca3af",
+            cursor: "pointer",
+            fontSize: 13,
+          }}
+        >
+          Close preview
+        </button>
+      </div>
+    </div>
   );
 }
+
+/* =========================
+   Helper Components
+========================= */
+
+function Section({ title, children }) {
+  return (
+    <div style={{ marginBottom: 26 }}>
+      <div
+        style={{
+          fontSize: 12,
+          textTransform: "uppercase",
+          letterSpacing: "0.14em",
+          color: "#9ca3af",
+          marginBottom: 10,
+        }}
+      >
+        {title}
+      </div>
+      {children}
+    </div>
+  );
+}
+
+function PreviewCard({ children }) {
+  return (
+    <div
+      style={{
+        borderRadius: 14,
+        padding: 14,
+        border: "1px solid rgba(51,65,85,0.9)",
+        background: "rgba(15,23,42,0.95)",
+        fontSize: 13,
+        color: "#cbd5f5",
+      }}
+    >
+      {children}
+    </div>
+  );
+}
+
+/* =========================
+   Styles
+========================= */
+
+const bodyText = {
+  fontSize: 14,
+  color: "#cbd5f5",
+  lineHeight: 1.5,
+};
+
+const emailMeta = {
+  fontSize: 12,
+  color: "#9ca3af",
+  marginBottom: 6,
+};
+
+const emailBody = {
+  fontSize: 13,
+  color: "#e5e7eb",
+  lineHeight: 1.5,
+  marginTop: 10,
+};
+
+const emailTiming = {
+  fontSize: 11,
+  color: "#9ca3af",
+  marginTop: 12,
+};
+
+const outcomeList = {
+  paddingLeft: 18,
+  margin: 0,
+  fontSize: 13,
+  color: "#cbd5f5",
+  lineHeight: 1.6,
+};
