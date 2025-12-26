@@ -283,6 +283,23 @@ export default function Home() {
                 </button>
               </div>
 
+              <p
+                style={{
+                  fontSize: 13,
+                  color: "#9ca3af",
+                  marginTop: 10,
+                }}
+              >
+                Built specifically for{" "}
+                <a
+                  href="/property-management"
+                  style={{ color: "#38bdf8", textDecoration: "none" }}
+                >
+                  property management vendor compliance
+                </a>
+                .
+              </p>
+
               <div style={{ fontSize: 12, color: "#9ca3af" }}>
                 <span>✅ No long-term contracts</span> ·{" "}
                 <span>✅ Cancel anytime</span> ·{" "}
@@ -410,6 +427,15 @@ export default function Home() {
                 </div>
               </div>
             </div>
+            <div style={{ marginTop: 16 }}>
+              <a
+                href="/property-management"
+                style={{ fontSize: 12, color: "#38bdf8", textDecoration: "none" }}
+              >
+                See how verivo works for property managers →
+              </a>
+            </div>
+
           </section>
 
           {/* FEATURE GRID */}
@@ -472,6 +498,15 @@ export default function Home() {
                 body="Manage multiple entities, properties, or projects from a single sci-fi-grade cockpit view."
               />
             </div>
+            <div style={{ marginTop: 16 }}>
+              <a
+                href="/property-management"
+                style={{ fontSize: 12, color: "#38bdf8", textDecoration: "none" }}
+              >
+                See how verivo works for property managers →
+              </a>
+            </div>
+
           </section>
 
           {/* HOW IT WORKS */}
@@ -588,6 +623,15 @@ export default function Home() {
                 14-day free trial · Card required · Cancel anytime
               </div>
             </div>
+            <div style={{ marginTop: 16 }}>
+              <a
+                href="/property-management"
+                style={{ fontSize: 12, color: "#38bdf8", textDecoration: "none" }}
+              >
+                See how verivo works for property managers →
+              </a>
+            </div>
+
           </section>
 
           {/* FOOTER */}
@@ -619,6 +663,14 @@ export default function Home() {
               >
                 Privacy
               </button>
+
+              <button
+                onClick={() => router.push("/property-management")}
+                style={linkBtn}
+              >
+                Property Management
+              </button>
+
               <button
                 onClick={() => router.push("/pricing")}
                 style={linkBtn}
