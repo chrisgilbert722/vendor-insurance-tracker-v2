@@ -28,14 +28,32 @@ export default function SignupPage() {
 
     setLoading(true);
 
-    // For now → send user to fake Stripe
-    router.push(
-      `/billing/start?name=${encodeURIComponent(
-        form.name
-      )}&company=${encodeURIComponent(
-        form.company
-      )}&email=${encodeURIComponent(form.email)}`
-    );
+    try {
+      const res = await fetch("/api/org/create", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: form.name,
+          company: form.company,
+          email: form.email,
+        }),
+      });
+
+      const json = await res.json();
+
+      if (!json.ok) {
+        throw new Error(json.error || "Unable to create account.");
+      }
+
+      // ✅ Org created
+      // ✅ Trial started
+      // ✅ Signup email sent via Resend
+      // ✅ Automation locked until activation
+      router.push("/dashboard");
+    } catch (err) {
+      setError(err.message);
+      setLoading(false);
+    }
   }
 
   return (
@@ -139,24 +157,14 @@ export default function SignupPage() {
             </h1>
 
             <p style={{ marginTop: 6, fontSize: 13, color: "#9ca3af" }}>
-              No commitment · Cancel anytime · Card required to activate trial
+              Card required to activate · Nothing runs without approval
             </p>
           </div>
         </div>
 
         {/* FORM */}
         <form onSubmit={handleSubmit} style={{ marginTop: 10 }}>
-          {/* Name */}
-          <label
-            style={{
-              fontSize: 11,
-              color: "#9ca3af",
-              marginBottom: 4,
-              display: "block",
-            }}
-          >
-            Full Name
-          </label>
+          <label style={label}>Full Name</label>
           <input
             type="text"
             name="name"
@@ -166,39 +174,17 @@ export default function SignupPage() {
             style={field}
           />
 
-          {/* Company */}
-          <label
-            style={{
-              fontSize: 11,
-              color: "#9ca3af",
-              marginBottom: 4,
-              marginTop: 12,
-              display: "block",
-            }}
-          >
-            Company Name
-          </label>
+          <label style={{ ...label, marginTop: 12 }}>Company Name</label>
           <input
             type="text"
             name="company"
             value={form.company}
             onChange={handleChange}
-            placeholder="Acme Construction"
+            placeholder="Acme Property Group"
             style={field}
           />
 
-          {/* Email */}
-          <label
-            style={{
-              fontSize: 11,
-              color: "#9ca3af",
-              marginBottom: 4,
-              marginTop: 12,
-              display: "block",
-            }}
-          >
-            Work Email
-          </label>
+          <label style={{ ...label, marginTop: 12 }}>Work Email</label>
           <input
             type="email"
             name="email"
@@ -212,8 +198,7 @@ export default function SignupPage() {
             <div
               style={{
                 marginTop: 12,
-                marginBottom: 10,
-                padding: "7px 9px",
+                padding: "8px 10px",
                 borderRadius: 10,
                 background: "rgba(127,29,29,0.9)",
                 border: "1px solid rgba(248,113,113,0.8)",
@@ -243,13 +228,20 @@ export default function SignupPage() {
               cursor: loading ? "not-allowed" : "pointer",
             }}
           >
-            Continue to Billing →
+            {loading ? "Creating account…" : "Enter Dashboard →"}
           </button>
         </form>
       </div>
     </div>
   );
 }
+
+const label = {
+  fontSize: 11,
+  color: "#9ca3af",
+  marginBottom: 4,
+  display: "block",
+};
 
 const field = {
   width: "100%",
