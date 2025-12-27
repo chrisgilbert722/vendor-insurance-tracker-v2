@@ -2,7 +2,7 @@
 // ============================================================
 // ORG CREATE — SELF SERVE SIGNUP (TRIAL ENABLED)
 // - Creates or finds user
-// - Creates organization
+// - Creates organization (only if none exists)
 // - Links owner
 // - Starts 14-day trial
 // - Locks automation
@@ -30,21 +30,18 @@ export default async function handler(req, res) {
   }
 
   try {
-    // ----------------------------------------
-    // TRANSACTION START
-    // ----------------------------------------
     const result = await sql.begin(async (tx) => {
       // ----------------------------------------
       // 1. FIND OR CREATE USER
       // ----------------------------------------
-      let user = await tx`
+      const existingUser = await tx`
         SELECT id FROM users WHERE email = ${email} LIMIT 1;
       `;
 
       let userId;
 
-      if (user.length) {
-        userId = user[0].id;
+      if (existingUser.length) {
+        userId = existingUser[0].id;
       } else {
         const inserted = await tx`
           INSERT INTO users (email, created_at)
@@ -55,7 +52,27 @@ export default async function handler(req, res) {
       }
 
       // ----------------------------------------
-      // 2. CREATE ORGANIZATION
+      // 2. CHECK FOR EXISTING ORG OWNERSHIP
+      // ----------------------------------------
+      const existingOrg = await tx`
+        SELECT o.id
+        FROM organizations o
+        JOIN organization_members m ON m.org_id = o.id
+        WHERE m.user_id = ${userId}
+          AND m.role = 'owner'
+        LIMIT 1;
+      `;
+
+      if (existingOrg.length) {
+        return {
+          orgId: existingOrg[0].id,
+          reused: true,
+          trialEnd: null,
+        };
+      }
+
+      // ----------------------------------------
+      // 3. CREATE ORGANIZATION
       // ----------------------------------------
       const org = await tx`
         INSERT INTO organizations (
@@ -76,7 +93,7 @@ export default async function handler(req, res) {
       const orgId = org[0].id;
 
       // ----------------------------------------
-      // 3. LINK USER → ORG (OWNER)
+      // 4. LINK USER → ORG (OWNER)
       // ----------------------------------------
       await tx`
         INSERT INTO organization_members (
@@ -94,7 +111,7 @@ export default async function handler(req, res) {
       `;
 
       // ----------------------------------------
-      // 4. INIT TRIAL STATE
+      // 5. INIT TRIAL STATE
       // ----------------------------------------
       const trialStart = new Date();
       const trialEnd = new Date();
@@ -123,34 +140,28 @@ export default async function handler(req, res) {
         );
       `;
 
-      return { orgId, trialEnd };
+      return { orgId, reused: false, trialEnd };
     });
 
     // ----------------------------------------
-    // 5. SEND SIGNUP EMAIL (OUTSIDE TX)
+    // 6. SEND EMAIL
     // ----------------------------------------
     await resend.emails.send({
       from: "Verivo <noreply@verivo.io>",
       to: [email],
-      subject: "Your Verivo trial is live",
+      subject: "Verify your email to access Verivo",
       html: `
-        <div style="font-family: system-ui, -apple-system, sans-serif; max-width: 520px;">
+        <div style="font-family: system-ui; max-width: 520px;">
           <h2>Welcome to Verivo</h2>
 
-          <p>Your <strong>14-day trial</strong> is now active.</p>
-
-          <ul>
-            <li>✔ Portfolio risk visibility enabled</li>
-            <li>✔ Fix Preview unlocked</li>
-            <li>🔒 Automation locked until billing</li>
-          </ul>
+          <p>Your trial is ready.</p>
 
           <p>
-            Trial ends on <strong>${result.trialEnd.toDateString()}</strong>.
+            Click below to verify your email and enter your dashboard.
           </p>
 
           <a
-            href="https://verivo.io/dashboard?org=${result.orgId}"
+            href="https://verivo.io/dashboard"
             style="
               display:inline-block;
               margin-top:16px;
@@ -159,26 +170,22 @@ export default async function handler(req, res) {
               color:#ffffff;
               border-radius:999px;
               text-decoration:none;
-              font-weight:500;
             "
           >
-            View Portfolio Risk →
+            Enter Dashboard →
           </a>
 
           <p style="margin-top:24px;font-size:12px;color:#6b7280">
-            Nothing will run automatically without your approval.
+            Automation is locked during trial. Nothing runs without approval.
           </p>
         </div>
       `,
     });
 
-    // ----------------------------------------
-    // DONE
-    // ----------------------------------------
     return res.status(200).json({
       ok: true,
       orgId: result.orgId,
-      trialEndsAt: result.trialEnd.toISOString(),
+      reused: result.reused,
     });
   } catch (err) {
     console.error("ORG CREATE ERROR:", err);
