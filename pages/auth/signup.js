@@ -1,10 +1,7 @@
 // pages/auth/signup.js
 import { useState } from "react";
-import { useRouter } from "next/router";
 
 export default function SignupPage() {
-  const router = useRouter();
-
   const [form, setForm] = useState({
     name: "",
     company: "",
@@ -13,6 +10,7 @@ export default function SignupPage() {
 
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
+  const [sent, setSent] = useState(false);
 
   const handleChange = (e) =>
     setForm({ ...form, [e.target.name]: e.target.value });
@@ -45,11 +43,8 @@ export default function SignupPage() {
         throw new Error(json.error || "Unable to create account.");
       }
 
-      // ✅ Org created
-      // ✅ Trial started
-      // ✅ Signup email sent via Resend
-      // ✅ Automation locked until activation
-      router.push("/dashboard");
+      // Magic link sent — wait for email verification
+      setSent(true);
     } catch (err) {
       setError(err.message);
       setLoading(false);
@@ -82,7 +77,6 @@ export default function SignupPage() {
             "radial-gradient(circle, rgba(56,189,248,0.4), transparent 60%)",
           filter: "blur(120px)",
           pointerEvents: "none",
-          zIndex: 0,
         }}
       />
 
@@ -101,136 +95,136 @@ export default function SignupPage() {
             "0 24px 60px rgba(15,23,42,0.98), 0 0 40px rgba(56,189,248,0.25)",
         }}
       >
-        <div style={{ display: "flex", gap: 10, marginBottom: 12 }}>
-          <div
-            style={{
-              padding: 12,
-              borderRadius: "999px",
-              background:
-                "radial-gradient(circle at 30% 0,#38bdf8,#6366f1,#0f172a)",
-              boxShadow: "0 0 30px rgba(56,189,248,0.6)",
-            }}
-          >
-            <span style={{ fontSize: 20 }}>🚀</span>
-          </div>
-
-          <div>
-            <div
-              style={{
-                display: "inline-flex",
-                gap: 6,
-                padding: "3px 9px",
-                borderRadius: 999,
-                border: "1px solid rgba(148,163,184,0.4)",
-                background:
-                  "linear-gradient(120deg,rgba(15,23,42,0.9),rgba(15,23,42,0))",
-                marginBottom: 4,
-              }}
-            >
-              <span style={{ fontSize: 10, color: "#9ca3af" }}>
-                Create Account
-              </span>
-              <span style={{ fontSize: 10, color: "#38bdf8" }}>
-                Start Free Trial
-              </span>
-            </div>
-
-            <h1
-              style={{
-                margin: 0,
-                fontSize: 26,
-                fontWeight: 600,
-                letterSpacing: 0.2,
-              }}
-            >
-              Start your{" "}
-              <span
+        {!sent ? (
+          <>
+            <div style={{ display: "flex", gap: 10, marginBottom: 12 }}>
+              <div
                 style={{
+                  padding: 12,
+                  borderRadius: "999px",
                   background:
-                    "linear-gradient(90deg,#38bdf8,#a5b4fc,#e5e7eb)",
-                  WebkitBackgroundClip: "text",
-                  color: "transparent",
+                    "radial-gradient(circle at 30% 0,#38bdf8,#6366f1,#0f172a)",
+                  boxShadow: "0 0 30px rgba(56,189,248,0.6)",
                 }}
               >
-                14-Day Free Trial
-              </span>
-            </h1>
+                <span style={{ fontSize: 20 }}>🚀</span>
+              </div>
 
-            <p style={{ marginTop: 6, fontSize: 13, color: "#9ca3af" }}>
-              Card required to activate · Nothing runs without approval
+              <div>
+                <div
+                  style={{
+                    display: "inline-flex",
+                    gap: 6,
+                    padding: "3px 9px",
+                    borderRadius: 999,
+                    border: "1px solid rgba(148,163,184,0.4)",
+                    marginBottom: 4,
+                  }}
+                >
+                  <span style={{ fontSize: 10, color: "#9ca3af" }}>
+                    Create Account
+                  </span>
+                  <span style={{ fontSize: 10, color: "#38bdf8" }}>
+                    14-Day Trial
+                  </span>
+                </div>
+
+                <h1 style={{ margin: 0, fontSize: 26, fontWeight: 600 }}>
+                  Start your{" "}
+                  <span
+                    style={{
+                      background:
+                        "linear-gradient(90deg,#38bdf8,#a5b4fc,#e5e7eb)",
+                      WebkitBackgroundClip: "text",
+                      color: "transparent",
+                    }}
+                  >
+                    14-Day Free Trial
+                  </span>
+                </h1>
+
+                <p style={{ marginTop: 6, fontSize: 13, color: "#9ca3af" }}>
+                  Full access · View-only during trial
+                </p>
+              </div>
+            </div>
+
+            <form onSubmit={handleSubmit}>
+              <label style={label}>Full Name</label>
+              <input
+                name="name"
+                value={form.name}
+                onChange={handleChange}
+                placeholder="John Smith"
+                style={field}
+              />
+
+              <label style={{ ...label, marginTop: 12 }}>Company Name</label>
+              <input
+                name="company"
+                value={form.company}
+                onChange={handleChange}
+                placeholder="Acme Property Group"
+                style={field}
+              />
+
+              <label style={{ ...label, marginTop: 12 }}>Work Email</label>
+              <input
+                name="email"
+                type="email"
+                value={form.email}
+                onChange={handleChange}
+                placeholder="you@company.com"
+                style={field}
+              />
+
+              {error && (
+                <div
+                  style={{
+                    marginTop: 12,
+                    padding: "8px 10px",
+                    borderRadius: 10,
+                    background: "rgba(127,29,29,0.9)",
+                    border: "1px solid rgba(248,113,113,0.8)",
+                    color: "#fecaca",
+                    fontSize: 12,
+                  }}
+                >
+                  {error}
+                </div>
+              )}
+
+              <button
+                type="submit"
+                disabled={loading}
+                style={{
+                  marginTop: 18,
+                  width: "100%",
+                  borderRadius: 999,
+                  padding: "10px 16px",
+                  border: "1px solid rgba(59,130,246,0.9)",
+                  background:
+                    "radial-gradient(circle at top left,#3b82f6,#1d4ed8,#0f172a)",
+                  color: "#e0f2fe",
+                  fontSize: 14,
+                  fontWeight: 500,
+                  opacity: loading ? 0.6 : 1,
+                }}
+              >
+                {loading ? "Sending magic link…" : "Send Login Link →"}
+              </button>
+            </form>
+          </>
+        ) : (
+          <div style={{ textAlign: "center", padding: 30 }}>
+            <h2>Check your email</h2>
+            <p>
+              We sent a secure magic link to <b>{form.email}</b>.
+              <br />
+              Click it to enter your dashboard.
             </p>
           </div>
-        </div>
-
-        {/* FORM */}
-        <form onSubmit={handleSubmit} style={{ marginTop: 10 }}>
-          <label style={label}>Full Name</label>
-          <input
-            type="text"
-            name="name"
-            value={form.name}
-            onChange={handleChange}
-            placeholder="John Smith"
-            style={field}
-          />
-
-          <label style={{ ...label, marginTop: 12 }}>Company Name</label>
-          <input
-            type="text"
-            name="company"
-            value={form.company}
-            onChange={handleChange}
-            placeholder="Acme Property Group"
-            style={field}
-          />
-
-          <label style={{ ...label, marginTop: 12 }}>Work Email</label>
-          <input
-            type="email"
-            name="email"
-            value={form.email}
-            onChange={handleChange}
-            placeholder="you@company.com"
-            style={field}
-          />
-
-          {error && (
-            <div
-              style={{
-                marginTop: 12,
-                padding: "8px 10px",
-                borderRadius: 10,
-                background: "rgba(127,29,29,0.9)",
-                border: "1px solid rgba(248,113,113,0.8)",
-                color: "#fecaca",
-                fontSize: 12,
-              }}
-            >
-              {error}
-            </div>
-          )}
-
-          <button
-            type="submit"
-            disabled={loading}
-            style={{
-              marginTop: 18,
-              width: "100%",
-              borderRadius: 999,
-              padding: "10px 16px",
-              border: "1px solid rgba(59,130,246,0.9)",
-              background:
-                "radial-gradient(circle at top left,#3b82f6,#1d4ed8,#0f172a)",
-              color: "#e0f2fe",
-              fontSize: 14,
-              fontWeight: 500,
-              opacity: loading ? 0.6 : 1,
-              cursor: loading ? "not-allowed" : "pointer",
-            }}
-          >
-            {loading ? "Creating account…" : "Enter Dashboard →"}
-          </button>
-        </form>
+        )}
       </div>
     </div>
   );
