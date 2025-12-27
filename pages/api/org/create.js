@@ -1,7 +1,9 @@
 // pages/api/org/create.js
 // ============================================================
 // ORG CREATE — SELF SERVE SIGNUP (TRIAL ENABLED)
-// - Creates user + organization
+// - Creates or finds user
+// - Creates organization
+// - Links owner
 // - Starts 14-day trial
 // - Locks automation
 // - Sends signup email via Resend
@@ -18,100 +20,114 @@ export default async function handler(req, res) {
     return res.status(405).json({ ok: false, error: "Method not allowed" });
   }
 
+  const { name, company, email } = req.body;
+
+  if (!name || !company || !email) {
+    return res.status(400).json({
+      ok: false,
+      error: "Missing required fields",
+    });
+  }
+
   try {
-    const { name, company, email } = req.body;
+    // ----------------------------------------
+    // TRANSACTION START
+    // ----------------------------------------
+    const result = await sql.begin(async (tx) => {
+      // ----------------------------------------
+      // 1. FIND OR CREATE USER
+      // ----------------------------------------
+      let user = await tx`
+        SELECT id FROM users WHERE email = ${email} LIMIT 1;
+      `;
 
-    if (!name || !company || !email) {
-      return res.status(400).json({
-        ok: false,
-        error: "Missing required fields",
-      });
-    }
+      let userId;
+
+      if (user.length) {
+        userId = user[0].id;
+      } else {
+        const inserted = await tx`
+          INSERT INTO users (email, created_at)
+          VALUES (${email}, NOW())
+          RETURNING id;
+        `;
+        userId = inserted[0].id;
+      }
+
+      // ----------------------------------------
+      // 2. CREATE ORGANIZATION
+      // ----------------------------------------
+      const org = await tx`
+        INSERT INTO organizations (
+          name,
+          industry,
+          onboarding_step,
+          created_at
+        )
+        VALUES (
+          ${company},
+          'property_management',
+          1,
+          NOW()
+        )
+        RETURNING id;
+      `;
+
+      const orgId = org[0].id;
+
+      // ----------------------------------------
+      // 3. LINK USER → ORG (OWNER)
+      // ----------------------------------------
+      await tx`
+        INSERT INTO organization_members (
+          org_id,
+          user_id,
+          role,
+          created_at
+        )
+        VALUES (
+          ${orgId},
+          ${userId},
+          'owner',
+          NOW()
+        );
+      `;
+
+      // ----------------------------------------
+      // 4. INIT TRIAL STATE
+      // ----------------------------------------
+      const trialStart = new Date();
+      const trialEnd = new Date();
+      trialEnd.setDate(trialEnd.getDate() + TRIAL_DAYS);
+
+      await tx`
+        INSERT INTO org_onboarding_state (
+          org_id,
+          current_step,
+          metadata,
+          created_at,
+          updated_at
+        )
+        VALUES (
+          ${orgId},
+          1,
+          ${JSON.stringify({
+            trial_started_at: trialStart.toISOString(),
+            trial_ends_at: trialEnd.toISOString(),
+            trial_days_total: TRIAL_DAYS,
+            automation_locked: true,
+            billing_status: "trial",
+          })},
+          NOW(),
+          NOW()
+        );
+      `;
+
+      return { orgId, trialEnd };
+    });
 
     // ----------------------------------------
-    // 1. CREATE OR FIND USER
-    // ----------------------------------------
-    const userResult = await sql`
-      INSERT INTO users (email)
-      VALUES (${email})
-      ON CONFLICT (email)
-      DO UPDATE SET email = EXCLUDED.email
-      RETURNING id;
-    `;
-
-    const userId = userResult[0].id;
-
-    // ----------------------------------------
-    // 2. CREATE ORGANIZATION
-    // ----------------------------------------
-    const orgResult = await sql`
-      INSERT INTO organizations (
-        name,
-        industry,
-        onboarding_step,
-        created_at
-      )
-      VALUES (
-        ${company},
-        'property_management',
-        1,
-        NOW()
-      )
-      RETURNING id;
-    `;
-
-    const orgId = orgResult[0].id;
-
-    // ----------------------------------------
-    // 3. LINK USER → ORG (OWNER)
-    // ----------------------------------------
-    await sql`
-      INSERT INTO organization_members (
-        org_id,
-        user_id,
-        role,
-        created_at
-      )
-      VALUES (
-        ${orgId},
-        ${userId},
-        'owner',
-        NOW()
-      );
-    `;
-
-    // ----------------------------------------
-    // 4. INIT TRIAL STATE
-    // ----------------------------------------
-    const trialStart = new Date();
-    const trialEnd = new Date();
-    trialEnd.setDate(trialEnd.getDate() + TRIAL_DAYS);
-
-    await sql`
-      INSERT INTO org_onboarding_state (
-        org_id,
-        current_step,
-        metadata,
-        created_at,
-        updated_at
-      )
-      VALUES (
-        ${orgId},
-        1,
-        ${JSON.stringify({
-          trial_started_at: trialStart.toISOString(),
-          trial_ends_at: trialEnd.toISOString(),
-          trial_days_total: TRIAL_DAYS,
-          automation_locked: true,
-          billing_status: "trial",
-        })},
-        NOW(),
-        NOW()
-      );
-    `;
-
-    // ----------------------------------------
-    // 5. SEND SIGNUP EMAIL (RESEND)
+    // 5. SEND SIGNUP EMAIL (OUTSIDE TX)
     // ----------------------------------------
     await resend.emails.send({
       from: "Verivo <noreply@verivo.io>",
@@ -130,11 +146,11 @@ export default async function handler(req, res) {
           </ul>
 
           <p>
-            Trial ends on <strong>${trialEnd.toDateString()}</strong>.
+            Trial ends on <strong>${result.trialEnd.toDateString()}</strong>.
           </p>
 
           <a
-            href="https://verivo.io/dashboard"
+            href="https://verivo.io/dashboard?org=${result.orgId}"
             style="
               display:inline-block;
               margin-top:16px;
@@ -161,8 +177,8 @@ export default async function handler(req, res) {
     // ----------------------------------------
     return res.status(200).json({
       ok: true,
-      orgId,
-      trialEndsAt: trialEnd.toISOString(),
+      orgId: result.orgId,
+      trialEndsAt: result.trialEnd.toISOString(),
     });
   } catch (err) {
     console.error("ORG CREATE ERROR:", err);
