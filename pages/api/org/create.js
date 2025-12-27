@@ -3,6 +3,7 @@
 // ORG CREATE — SELF SERVE SIGNUP (TRIAL ENABLED)
 // - Creates user + organization
 // - Starts 14-day trial
+// - Locks automation
 // - Sends signup email via Resend
 // ============================================================
 
@@ -10,7 +11,6 @@ import { sql } from "../../../lib/db";
 import { Resend } from "resend";
 
 const resend = new Resend(process.env.RESEND_API_KEY);
-
 const TRIAL_DAYS = 14;
 
 export default async function handler(req, res) {
@@ -31,7 +31,7 @@ export default async function handler(req, res) {
     // ----------------------------------------
     // 1. CREATE OR FIND USER
     // ----------------------------------------
-    const userRows = await sql`
+    const userResult = await sql`
       INSERT INTO users (email)
       VALUES (${email})
       ON CONFLICT (email)
@@ -39,12 +39,12 @@ export default async function handler(req, res) {
       RETURNING id;
     `;
 
-    const userId = userRows[0].id;
+    const userId = userResult[0].id;
 
     // ----------------------------------------
     // 2. CREATE ORGANIZATION
     // ----------------------------------------
-    const orgRows = await sql`
+    const orgResult = await sql`
       INSERT INTO organizations (
         name,
         industry,
@@ -60,10 +60,10 @@ export default async function handler(req, res) {
       RETURNING id;
     `;
 
-    const orgId = orgRows[0].id;
+    const orgId = orgResult[0].id;
 
     // ----------------------------------------
-    // 3. LINK USER → ORG
+    // 3. LINK USER → ORG (OWNER)
     // ----------------------------------------
     await sql`
       INSERT INTO organization_members (
@@ -97,12 +97,13 @@ export default async function handler(req, res) {
       )
       VALUES (
         ${orgId},
-        'trial_active',
+        1,
         ${JSON.stringify({
           trial_started_at: trialStart.toISOString(),
           trial_ends_at: trialEnd.toISOString(),
           trial_days_total: TRIAL_DAYS,
           automation_locked: true,
+          billing_status: "trial",
         })},
         NOW(),
         NOW()
@@ -119,16 +120,17 @@ export default async function handler(req, res) {
       html: `
         <div style="font-family: system-ui, -apple-system, sans-serif; max-width: 520px;">
           <h2>Welcome to Verivo</h2>
-          <p>Your 14-day trial has started.</p>
+
+          <p>Your <strong>14-day trial</strong> is now active.</p>
 
           <ul>
-            <li>✔ Portfolio risk visibility is live</li>
-            <li>✔ Fix Preview is unlocked</li>
-            <li>🔒 Automation is locked until billing</li>
+            <li>✔ Portfolio risk visibility enabled</li>
+            <li>✔ Fix Preview unlocked</li>
+            <li>🔒 Automation locked until billing</li>
           </ul>
 
           <p>
-            Your trial ends on <strong>${trialEnd.toDateString()}</strong>.
+            Trial ends on <strong>${trialEnd.toDateString()}</strong>.
           </p>
 
           <a
@@ -138,16 +140,17 @@ export default async function handler(req, res) {
               margin-top:16px;
               padding:10px 16px;
               background:#2563eb;
-              color:#fff;
+              color:#ffffff;
               border-radius:999px;
               text-decoration:none;
+              font-weight:500;
             "
           >
             View Portfolio Risk →
           </a>
 
           <p style="margin-top:24px;font-size:12px;color:#6b7280">
-            Nothing will be sent automatically without approval.
+            Nothing will run automatically without your approval.
           </p>
         </div>
       `,
