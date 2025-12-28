@@ -2,7 +2,7 @@
 // =======================================
 // FIX ACTION CARD — ATTEMPTS REAL ACTION
 // Enforces TRIAL_LOCKED server response
-// Adds trial countdown urgency (UI only)
+// Adds trial countdown + unlock value + urgency (UI only)
 // =======================================
 
 import { useState, useMemo } from "react";
@@ -13,6 +13,7 @@ export default function FixActionCard({
   subject,
   body,
   trialEndsAt,
+  nonCompliantCount, // NEW (optional)
 }) {
   const [loading, setLoading] = useState(false);
   const [trialLocked, setTrialLocked] = useState(false);
@@ -112,10 +113,41 @@ export default function FixActionCard({
             Activate Automation
           </div>
 
-          <div style={{ color: "#9ca3af", marginBottom: 8 }}>
-            Automation sends vendor reminders, broker escalations, and renewal
-            follow-ups automatically.
+          {/* Dynamic urgency */}
+          {Number.isFinite(nonCompliantCount) && nonCompliantCount > 0 && (
+            <div
+              style={{
+                marginBottom: 8,
+                fontSize: 13,
+                fontWeight: 600,
+                color: "#fbbf24",
+              }}
+            >
+              ⚠️ {nonCompliantCount} vendor
+              {nonCompliantCount === 1 ? "" : "s"} currently non-compliant
+            </div>
+          )}
+
+          <div style={{ color: "#9ca3af", marginBottom: 10 }}>
+            Automation resolves compliance issues automatically — without
+            chasing vendors.
           </div>
+
+          {/* What you unlock */}
+          <ul
+            style={{
+              margin: "0 0 10px 0",
+              paddingLeft: 18,
+              lineHeight: 1.6,
+              color: "#cbd5f5",
+              fontSize: 13,
+            }}
+          >
+            <li>Automatic vendor reminder emails</li>
+            <li>Broker escalation when vendors don’t respond</li>
+            <li>Renewal follow-ups before policies expire</li>
+            <li>Audit-ready compliance activity timeline</li>
+          </ul>
 
           {daysLeft !== null && (
             <div
