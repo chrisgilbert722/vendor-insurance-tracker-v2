@@ -2,7 +2,7 @@
 // =======================================
 // FIX ACTION CARD — ATTEMPTS REAL ACTION
 // Enforces TRIAL_LOCKED server response
-// Adds trial countdown + unlock value + urgency (UI only)
+// Adds trial countdown + unlock value + owner audit risk (UI only)
 // =======================================
 
 import { useState, useMemo } from "react";
@@ -13,7 +13,7 @@ export default function FixActionCard({
   subject,
   body,
   trialEndsAt,
-  nonCompliantCount, // NEW (optional)
+  nonCompliantCount, // optional
 }) {
   const [loading, setLoading] = useState(false);
   const [trialLocked, setTrialLocked] = useState(false);
@@ -113,11 +113,11 @@ export default function FixActionCard({
             Activate Automation
           </div>
 
-          {/* Dynamic urgency */}
+          {/* Dynamic non-compliance urgency */}
           {Number.isFinite(nonCompliantCount) && nonCompliantCount > 0 && (
             <div
               style={{
-                marginBottom: 8,
+                marginBottom: 6,
                 fontSize: 13,
                 fontWeight: 600,
                 color: "#fbbf24",
@@ -125,6 +125,22 @@ export default function FixActionCard({
             >
               ⚠️ {nonCompliantCount} vendor
               {nonCompliantCount === 1 ? "" : "s"} currently non-compliant
+            </div>
+          )}
+
+          {/* Owner audit risk framing */}
+          {Number.isFinite(nonCompliantCount) && nonCompliantCount > 0 && (
+            <div
+              style={{
+                marginBottom: 10,
+                fontSize: 12,
+                lineHeight: 1.5,
+                color: "#9ca3af",
+              }}
+            >
+              <strong>Owner audit risk:</strong> Non-compliant vendors can trigger
+              owner audits, delayed approvals, or liability disputes if coverage
+              gaps are discovered.
             </div>
           )}
 
