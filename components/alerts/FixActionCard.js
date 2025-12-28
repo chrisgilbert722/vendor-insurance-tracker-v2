@@ -2,19 +2,33 @@
 // =======================================
 // FIX ACTION CARD — ATTEMPTS REAL ACTION
 // Enforces TRIAL_LOCKED server response
+// Adds trial countdown urgency (UI only)
 // =======================================
 
-import { useState } from "react";
+import { useState, useMemo } from "react";
 
 export default function FixActionCard({
   vendorId,
   orgId,
   subject,
   body,
+  trialEndsAt,
 }) {
   const [loading, setLoading] = useState(false);
   const [trialLocked, setTrialLocked] = useState(false);
   const [error, setError] = useState("");
+
+  // ---- Trial countdown (UI only, safe) ----
+  const daysLeft = useMemo(() => {
+    if (!trialEndsAt) return null;
+    const end =
+      typeof trialEndsAt === "string"
+        ? new Date(trialEndsAt)
+        : trialEndsAt;
+    const diffMs = end.getTime() - Date.now();
+    const d = Math.ceil(diffMs / (1000 * 60 * 60 * 24));
+    return Number.isFinite(d) ? Math.max(d, 0) : null;
+  }, [trialEndsAt]);
 
   async function handleSend() {
     setLoading(true);
@@ -86,7 +100,7 @@ export default function FixActionCard({
         <div
           style={{
             marginTop: 12,
-            padding: 12,
+            padding: 14,
             borderRadius: 12,
             background: "rgba(37,99,235,0.08)",
             border: "1px solid rgba(37,99,235,0.4)",
@@ -94,13 +108,26 @@ export default function FixActionCard({
             color: "#cbd5f5",
           }}
         >
-          <div style={{ fontWeight: 600, marginBottom: 4 }}>
+          <div style={{ fontWeight: 600, marginBottom: 6 }}>
             Activate Automation
           </div>
-          <div style={{ color: "#9ca3af" }}>
-            Automation sends vendor reminders and broker escalations
-            automatically. Available after your trial.
+
+          <div style={{ color: "#9ca3af", marginBottom: 8 }}>
+            Automation sends vendor reminders, broker escalations, and renewal
+            follow-ups automatically.
           </div>
+
+          {daysLeft !== null && (
+            <div
+              style={{
+                fontSize: 12,
+                fontWeight: 600,
+                color: daysLeft <= 3 ? "#fbbf24" : "#93c5fd",
+              }}
+            >
+              ⏳ Trial ends in {daysLeft} day{daysLeft === 1 ? "" : "s"}
+            </div>
+          )}
         </div>
       )}
 
