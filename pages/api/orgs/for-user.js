@@ -1,52 +1,65 @@
-// pages/api/orgs/for-user.js
-// ============================================================
-// ORGS FOR USER — COOKIE AUTH (UUID SAFE)
-// - Uses Supabase cookie session
-// - No Authorization headers
-// - No service role auth for identity
-// - Canonical source for OrgContext
-// ============================================================
-
+import { createClient } from "@supabase/supabase-js";
 import { sql } from "../../../lib/db";
-import { supabaseServer } from "../../../lib/supabaseServer";
+
+// Service role is OK here (server-only)
+const supabase = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL,
+  process.env.SUPABASE_SERVICE_ROLE_KEY
+);
 
 export default async function handler(req, res) {
-  if (req.method !== "GET") {
-    return res.status(405).json({ ok: false, error: "GET only" });
-  }
-
   try {
-    // 🔐 COOKIE-BASED AUTH (SOURCE OF TRUTH)
-    const supabase = supabaseServer(req, res);
-    const {
-      data: { user },
-      error,
-    } = await supabase.auth.getUser();
+    // --------------------------------------------------
+    // AUTH — SUPABASE SESSION (SOURCE OF TRUTH)
+    // --------------------------------------------------
+    const auth = req.headers.authorization || "";
+    const token = auth.replace("Bearer ", "");
 
-    if (error || !user) {
-      return res.status(401).json({
-        ok: false,
-        error: "Unauthenticated",
-      });
+    if (!token) {
+      return res.status(401).json({ ok: false, error: "No auth token" });
     }
 
-    const userId = user.id;
+    const { data, error } = await supabase.auth.getUser(token);
+    if (error || !data?.user) {
+      return res.status(401).json({ ok: false, error: "Invalid session" });
+    }
 
-    // 🔑 ORGS OWNED / MEMBER OF USER
-    const rows = await sql`
+    const supabaseUserId = data.user.id; // UUID
+
+    // --------------------------------------------------
+    // MAP → INTERNAL USER ID (INT)
+    // --------------------------------------------------
+    const userRows = await sql`
+      SELECT id
+      FROM users
+      WHERE auth_user_id = ${supabaseUserId}
+      LIMIT 1
+    `;
+
+    if (!userRows.length) {
+      // User exists in auth but not yet in app DB
+      return res.status(200).json({ ok: true, orgs: [] });
+    }
+
+    const internalUserId = userRows[0].id;
+
+    // --------------------------------------------------
+    // FETCH ORGS (CORRECT JOIN)
+    // --------------------------------------------------
+    const orgs = await sql`
       SELECT
         o.id,
         o.name,
         o.external_uuid
       FROM organization_members om
       JOIN organizations o ON o.id = om.org_id
-      WHERE om.user_id = ${userId}
+      WHERE om.user_id = ${internalUserId}
       ORDER BY o.id ASC
     `;
 
     return res.status(200).json({
       ok: true,
-      orgs: rows,
+      orgs,
     });
   } catch (err) {
     console.error("[api/orgs/for-user] error:", err);
