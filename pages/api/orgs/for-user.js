@@ -1,28 +1,38 @@
 // pages/api/orgs/for-user.js
-import { createClient } from "@supabase/supabase-js";
-import { sql } from "../../../lib/db";
+// ============================================================
+// ORGS FOR USER — COOKIE AUTH (UUID SAFE)
+// - Uses Supabase cookie session
+// - No Authorization headers
+// - No service role auth for identity
+// - Canonical source for OrgContext
+// ============================================================
 
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL,
-  process.env.SUPABASE_SERVICE_ROLE_KEY
-);
+import { sql } from "../../../lib/db";
+import { supabaseServer } from "../../../lib/supabaseServer";
 
 export default async function handler(req, res) {
+  if (req.method !== "GET") {
+    return res.status(405).json({ ok: false, error: "GET only" });
+  }
+
   try {
-    const auth = req.headers.authorization || "";
-    const token = auth.replace("Bearer ", "");
+    // 🔐 COOKIE-BASED AUTH (SOURCE OF TRUTH)
+    const supabase = supabaseServer(req, res);
+    const {
+      data: { user },
+      error,
+    } = await supabase.auth.getUser();
 
-    if (!token) {
-      return res.status(401).json({ ok: false, error: "No auth token" });
+    if (error || !user) {
+      return res.status(401).json({
+        ok: false,
+        error: "Unauthenticated",
+      });
     }
 
-    const { data, error } = await supabase.auth.getUser(token);
-    if (error || !data?.user) {
-      return res.status(401).json({ ok: false, error: "Invalid session" });
-    }
+    const userId = user.id;
 
-    const userId = data.user.id;
-
+    // 🔑 ORGS OWNED / MEMBER OF USER
     const rows = await sql`
       SELECT
         o.id,
@@ -34,9 +44,15 @@ export default async function handler(req, res) {
       ORDER BY o.id ASC
     `;
 
-    return res.status(200).json({ ok: true, orgs: rows });
+    return res.status(200).json({
+      ok: true,
+      orgs: rows,
+    });
   } catch (err) {
     console.error("[api/orgs/for-user] error:", err);
-    return res.status(500).json({ ok: false, error: err.message });
+    return res.status(500).json({
+      ok: false,
+      error: "Failed to load organizations",
+    });
   }
 }
