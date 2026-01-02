@@ -4,68 +4,60 @@ import { sql } from "../../../lib/db";
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL,
-  process.env.SUPABASE_SERVICE_ROLE_KEY
+  process.env.SUPABASE_SERVICE_ROLE_KEY,
+  {
+    auth: {
+      persistSession: false,
+    },
+  }
 );
 
 export default async function handler(req, res) {
   try {
-    // -------------------------------
-    // 1. Read auth token
-    // -------------------------------
-    const auth = req.headers.authorization || "";
-    const token = auth.replace("Bearer ", "");
+    // 🔒 COOKIE-BASED AUTH (NO HEADERS)
+    const {
+      data: { user },
+      error,
+    } = await supabase.auth.getUser(req.headers.authorization?.replace("Bearer ", ""));
 
-    if (!token) {
-      return res.status(401).json({ ok: false, error: "No auth token" });
-    }
+    // Fallback: read session from cookies (PRIMARY PATH)
+    const cookieUser =
+      req.cookies?.["sb-access-token"]
+        ? await supabase.auth.getUser(req.cookies["sb-access-token"])
+        : null;
 
-    // -------------------------------
-    // 2. Resolve Supabase auth user (UUID)
-    // -------------------------------
-    const { data, error } = await supabase.auth.getUser(token);
+    const authUser = user || cookieUser?.data?.user;
 
-    if (error || !data?.user) {
-      return res.status(401).json({ ok: false, error: "Invalid session" });
-    }
-
-    const authUserId = data.user.id; // UUID
-
-    // -------------------------------
-    // 3. Resolve INTERNAL user.id (INT)
-    // -------------------------------
-    const userRow = await sql`
-      SELECT id
-      FROM users
-      WHERE auth_user_id = ${authUserId}
-      LIMIT 1
-    `;
-
-    if (!userRow.length) {
-      return res.status(200).json({
-        ok: true,
-        orgs: [], // user exists in auth, but not yet in app DB
+    if (!authUser) {
+      return res.status(401).json({
+        ok: false,
+        error: "Not authenticated",
       });
     }
 
-    const internalUserId = userRow[0].id;
+    const userId = authUser.id;
 
-    // -------------------------------
-    // 4. Load organizations for user
-    // -------------------------------
-    const orgs = await sql`
+    // 🔑 AUTHORITATIVE ORG LOOKUP
+    const rows = await sql`
       SELECT
         o.id,
         o.name,
         o.external_uuid
       FROM organization_members om
       JOIN organizations o ON o.id = om.org_id
-      WHERE om.user_id = ${internalUserId}
+      WHERE om.user_id = ${userId}
       ORDER BY o.id ASC
     `;
 
-    return res.status(200).json({ ok: true, orgs });
+    return res.status(200).json({
+      ok: true,
+      orgs: rows,
+    });
   } catch (err) {
     console.error("[api/orgs/for-user] error:", err);
-    return res.status(500).json({ ok: false, error: err.message });
+    return res.status(500).json({
+      ok: false,
+      error: err.message,
+    });
   }
 }
