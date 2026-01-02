@@ -1,11 +1,3 @@
-// pages/api/orgs/for-user.js
-// ============================================================
-// ORGS FOR USER — CANONICAL + UUID SAFE
-// - Auth UUID → users.auth_user_id → users.id
-// - NO guessing
-// - NO cross-user leakage
-// ============================================================
-
 import { createClient } from "@supabase/supabase-js";
 import { sql } from "../../../lib/db";
 
@@ -17,7 +9,7 @@ const supabase = createClient(
 export default async function handler(req, res) {
   try {
     // ----------------------------------------
-    // 1. AUTH — VERIFY SESSION
+    // AUTH — SUPABASE USER (SOURCE OF TRUTH)
     // ----------------------------------------
     const auth = req.headers.authorization || "";
     const token = auth.replace("Bearer ", "");
@@ -27,15 +19,14 @@ export default async function handler(req, res) {
     }
 
     const { data, error } = await supabase.auth.getUser(token);
-
     if (error || !data?.user) {
       return res.status(401).json({ ok: false, error: "Invalid session" });
     }
 
-    const authUserId = data.user.id; // UUID from Supabase Auth
+    const authUserId = data.user.id; // UUID
 
     // ----------------------------------------
-    // 2. MAP AUTH USER → INTERNAL USER (INT)
+    // MAP → INTERNAL USER (NEON)
     // ----------------------------------------
     const userRows = await sql`
       SELECT id
@@ -45,17 +36,17 @@ export default async function handler(req, res) {
     `;
 
     if (!userRows.length) {
-      // User exists in auth, but not in app DB yet
+      // User exists in Supabase Auth but not linked yet
       return res.status(200).json({
         ok: true,
         orgs: [],
       });
     }
 
-    const internalUserId = userRows[0].id;
+    const internalUserId = userRows[0].id; // INTEGER
 
     // ----------------------------------------
-    // 3. LOAD ORGS FOR INTERNAL USER
+    // FETCH ORGS VIA MEMBERSHIP
     // ----------------------------------------
     const orgs = await sql`
       SELECT
@@ -74,9 +65,6 @@ export default async function handler(req, res) {
     });
   } catch (err) {
     console.error("[api/orgs/for-user] error:", err);
-    return res.status(500).json({
-      ok: false,
-      error: "Failed to load organizations",
-    });
+    return res.status(500).json({ ok: false, error: err.message });
   }
 }
