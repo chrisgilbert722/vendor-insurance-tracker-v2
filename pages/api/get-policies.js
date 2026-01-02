@@ -1,6 +1,5 @@
 // pages/api/get-policies.js
 import { sql } from "../../lib/db";
-import { supabaseServer } from "../../lib/supabaseServer";
 
 // ---- Risk + Score Engine (Enterprise Mode) ---- //
 
@@ -17,10 +16,8 @@ function computeExpiration(expiration_date_str) {
 
   if (daysRemaining < 0)
     return { daysRemaining, label: "Expired", level: "expired" };
-
   if (daysRemaining <= 30)
     return { daysRemaining, label: "Critical", level: "critical" };
-
   if (daysRemaining <= 90)
     return { daysRemaining, label: "Warning", level: "warning" };
 
@@ -28,7 +25,7 @@ function computeExpiration(expiration_date_str) {
 }
 
 function computeComplianceScore(expiration) {
-  if (!expiration.daysRemaining && expiration.daysRemaining !== 0) return 0;
+  if (expiration.daysRemaining === null) return 0;
   if (expiration.level === "expired") return 20;
   if (expiration.level === "critical") return 40;
   if (expiration.level === "warning") return 70;
@@ -64,37 +61,28 @@ export default async function handler(req, res) {
   }
 
   try {
-    // 🔐 Cookie-based auth (self-serve)
-    const supabase = supabaseServer();
-    const {
-      data: { user },
-      error: authError,
-    } = await supabase.auth.getUser();
+    // 🔒 ORG-SCOPED — REQUIRED
+    const orgId = Number(req.query.orgId);
 
-    if (authError || !user) {
-      return res.status(401).json({ ok: false, error: "Unauthorized" });
+    if (!orgId) {
+      return res.status(400).json({
+        ok: false,
+        error: "Missing orgId",
+      });
     }
 
-    // 🏢 Resolve org for this user
-    const orgRows = await sql`
-      SELECT org_id
-      FROM organization_members
-      WHERE user_id = ${user.id}
-      ORDER BY created_at ASC
-      LIMIT 1
-    `;
-
-    if (!orgRows.length) {
-      return res.status(200).json({ ok: true, policies: [], noOrg: true });
-    }
-
-    const orgId = orgRows[0].org_id;
-
-    // 🔒 ORG-SCOPED QUERY (THIS WAS THE ROOT BUG)
+    // 🔐 HARD ORG ISOLATION (THIS FIXES EVERYTHING)
     const rows = await sql`
-      SELECT id, vendor_name, policy_number, carrier,
-             effective_date, expiration_date, coverage_type,
-             status, created_at
+      SELECT
+        id,
+        vendor_name,
+        policy_number,
+        carrier,
+        effective_date,
+        expiration_date,
+        coverage_type,
+        status,
+        created_at
       FROM policies
       WHERE org_id = ${orgId}
       ORDER BY created_at DESC;
