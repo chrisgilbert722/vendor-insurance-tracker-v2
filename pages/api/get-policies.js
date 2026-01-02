@@ -1,7 +1,7 @@
-// pages/api/get-policies.js
 import { sql } from "../../lib/db";
+import { supabaseServer } from "../../lib/supabaseServer";
 
-// ---- Risk + Score Engine (Enterprise Mode) ---- //
+// ---- Risk + Score Engine ---- //
 
 function computeExpiration(expiration_date_str) {
   if (!expiration_date_str)
@@ -29,8 +29,7 @@ function computeComplianceScore(expiration) {
   if (expiration.level === "expired") return 20;
   if (expiration.level === "critical") return 40;
   if (expiration.level === "warning") return 70;
-  if (expiration.level === "ok") return 100;
-  return 0;
+  return 100;
 }
 
 function computeRiskBucket(score) {
@@ -38,13 +37,6 @@ function computeRiskBucket(score) {
   if (score >= 70) return "Moderate Risk";
   if (score >= 40) return "High Risk";
   return "Severe Risk";
-}
-
-function computeUnderwriterColor(score) {
-  if (score >= 90) return "#1b5e20";
-  if (score >= 70) return "#b59b00";
-  if (score >= 40) return "#cc5200";
-  return "#b20000";
 }
 
 function computeFlags(expiration) {
@@ -61,31 +53,44 @@ export default async function handler(req, res) {
   }
 
   try {
-    // 🔒 ORG-SCOPED — REQUIRED
-    const orgId = Number(req.query.orgId);
+    // 🔐 Cookie-based auth
+    const supabase = supabaseServer();
+    const {
+      data: { user },
+      error,
+    } = await supabase.auth.getUser();
 
-    if (!orgId) {
-      return res.status(400).json({
-        ok: false,
-        error: "Missing orgId",
+    if (error || !user) {
+      return res.status(401).json({ ok: false, error: "Unauthorized" });
+    }
+
+    // 🏢 Resolve org
+    const orgRows = await sql`
+      SELECT org_id
+      FROM organization_members
+      WHERE user_id = ${user.id}
+      ORDER BY created_at ASC
+      LIMIT 1
+    `;
+
+    if (!orgRows.length) {
+      return res.status(200).json({
+        ok: true,
+        policies: [],
+        noOrg: true,
       });
     }
 
-    // 🔐 HARD ORG ISOLATION (THIS FIXES EVERYTHING)
+    const orgId = orgRows[0].org_id;
+
+    // 🔒 ORG-SCOPED QUERY (CRITICAL FIX)
     const rows = await sql`
-      SELECT
-        id,
-        vendor_name,
-        policy_number,
-        carrier,
-        effective_date,
-        expiration_date,
-        coverage_type,
-        status,
-        created_at
+      SELECT id, vendor_name, policy_number, carrier,
+             effective_date, expiration_date, coverage_type,
+             status, created_at
       FROM policies
       WHERE org_id = ${orgId}
-      ORDER BY created_at DESC;
+      ORDER BY created_at DESC
     `;
 
     const policies = rows.map((row) => {
@@ -97,14 +102,13 @@ export default async function handler(req, res) {
         expiration,
         complianceScore,
         riskBucket: computeRiskBucket(complianceScore),
-        underwriterColor: computeUnderwriterColor(complianceScore),
         flags: computeFlags(expiration),
       };
     });
 
     return res.status(200).json({ ok: true, policies });
   } catch (err) {
-    console.error("GET POLICIES ERROR:", err);
+    console.error("[get-policies]", err);
     return res.status(500).json({ ok: false, error: err.message });
   }
 }
