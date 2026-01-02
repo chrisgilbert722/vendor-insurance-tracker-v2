@@ -1,5 +1,12 @@
 // pages/onboarding/ai-wizard.js
-// AI Onboarding Wizard V5 — AUTOPILOT SHELL (UUID-SAFE)
+// ============================================================
+// AI Onboarding Wizard V5 — UUID-SAFE
+// - Reads ONLY activeOrgUuid
+// - No redirects
+// - No legacy org_id assumptions
+// - No auth logic
+// - Fail-open UI (never bricks app)
+// ============================================================
 
 import { useOrg } from "../../context/OrgContext";
 import AiWizardPanel from "../../components/onboarding/AiWizardPanel";
@@ -7,7 +14,7 @@ import AiWizardPanel from "../../components/onboarding/AiWizardPanel";
 export default function AiOnboardingWizardPage() {
   const { activeOrgUuid, loading } = useOrg();
 
-  // Still loading org context
+  // Still resolving org context
   if (loading) {
     return (
       <div style={{ padding: 40, color: "#9ca3af" }}>
@@ -16,17 +23,17 @@ export default function AiOnboardingWizardPage() {
     );
   }
 
-  // No org selected or UUID missing (should be rare now)
+  // Org exists but UUID missing (should be rare)
   if (!activeOrgUuid) {
     return (
       <div
         style={{
           padding: 24,
+          margin: 40,
           borderRadius: 16,
           background: "rgba(15,23,42,0.95)",
           border: "1px solid rgba(239,68,68,0.6)",
           color: "#fecaca",
-          margin: 40,
         }}
       >
         Invalid organization context. Please re-select your organization.
@@ -34,6 +41,7 @@ export default function AiOnboardingWizardPage() {
     );
   }
 
+  // ✅ UUID IS SOURCE OF TRUTH
   return (
     <div
       style={{
