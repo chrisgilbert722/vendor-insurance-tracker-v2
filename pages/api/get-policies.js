@@ -1,5 +1,6 @@
 // pages/api/get-policies.js
 import { sql } from "../../lib/db";
+import { supabaseServer } from "../../lib/supabaseServerClient";
 
 // ---- Risk + Score Engine (Enterprise Mode) ---- //
 
@@ -67,12 +68,40 @@ export default async function handler(req, res) {
   }
 
   try {
-    // Neon SQL query
+    // 1️⃣ Auth via Supabase cookie (self-serve)
+    const supabase = supabaseServer(req, res);
+    const {
+      data: { user },
+      error: authError,
+    } = await supabase.auth.getUser();
+
+    if (authError || !user) {
+      return res.status(401).json({ ok: false, error: "Unauthorized" });
+    }
+
+    // 2️⃣ Resolve org_id for this user
+    const orgRows = await sql`
+      SELECT org_id
+      FROM organization_members
+      WHERE user_id = ${user.id}
+      ORDER BY created_at ASC
+      LIMIT 1
+    `;
+
+    if (!orgRows.length) {
+      // No org yet → onboarding should trigger
+      return res.status(200).json({ ok: true, policies: [], noOrg: true });
+    }
+
+    const orgId = orgRows[0].org_id;
+
+    // 3️⃣ Org-scoped policy query (🔥 THIS IS THE FIX 🔥)
     const rows = await sql`
       SELECT id, vendor_name, policy_number, carrier,
              effective_date, expiration_date, coverage_type,
              status, created_at
       FROM policies
+      WHERE org_id = ${orgId}
       ORDER BY created_at DESC;
     `;
 
@@ -89,7 +118,7 @@ export default async function handler(req, res) {
         complianceScore,
         riskBucket,
         underwriterColor,
-        flags
+        flags,
       };
     });
 
@@ -99,4 +128,3 @@ export default async function handler(req, res) {
     return res.status(500).json({ ok: false, error: err.message });
   }
 }
-
