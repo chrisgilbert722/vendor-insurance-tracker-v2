@@ -1,4 +1,3 @@
-// context/OrgContext.js
 import { createContext, useContext, useEffect, useMemo, useState } from "react";
 import { supabase } from "../lib/supabaseClient";
 
@@ -6,7 +5,7 @@ const OrgContext = createContext(null);
 
 export function OrgProvider({ children }) {
   const [orgs, setOrgs] = useState([]);
-  const [activeOrgId, setActiveOrgId] = useState(null);
+  const [activeOrgId, setActiveOrgId] = useState(null); // internal INT
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -16,46 +15,63 @@ export function OrgProvider({ children }) {
       try {
         setLoading(true);
 
-        const { data } = await supabase.auth.getSession();
-        if (!data?.session) {
-          setOrgs([]);
-          setActiveOrgId(null);
-          setLoading(false);
+        // 🔑 ALWAYS read the Supabase session
+        const {
+          data: { session },
+        } = await supabase.auth.getSession();
+
+        // Not logged in
+        if (!session?.access_token) {
+          if (!cancelled) {
+            setOrgs([]);
+            setActiveOrgId(null);
+            setLoading(false);
+          }
           return;
         }
 
-        // 🔑 COOKIE AUTH — NO AUTH HEADER
+        // 🔐 AUTH HEADER — THIS WAS THE MISSING PIECE
         const res = await fetch("/api/orgs/for-user", {
-          credentials: "include",
+          headers: {
+            Authorization: `Bearer ${session.access_token}`,
+          },
         });
 
         if (!res.ok) {
-          console.warn("[OrgContext] org fetch failed", res.status);
-          setOrgs([]);
-          setActiveOrgId(null);
-          setLoading(false);
+          console.warn("[OrgContext] org fetch failed:", res.status);
+          if (!cancelled) {
+            setOrgs([]);
+            setActiveOrgId(null);
+            setLoading(false);
+          }
           return;
         }
 
         const json = await res.json();
         if (!json.ok) {
-          setOrgs([]);
-          setActiveOrgId(null);
-          setLoading(false);
+          if (!cancelled) {
+            setOrgs([]);
+            setActiveOrgId(null);
+            setLoading(false);
+          }
           return;
         }
 
         if (cancelled) return;
 
-        setOrgs(json.orgs || []);
+        const loadedOrgs = json.orgs || [];
+        setOrgs(loadedOrgs);
 
-        if (!activeOrgId && json.orgs?.length) {
-          setActiveOrgId(json.orgs[0].id);
+        // Default org selection (INT)
+        if (!activeOrgId && loadedOrgs.length > 0) {
+          setActiveOrgId(loadedOrgs[0].id);
         }
       } catch (err) {
-        console.error("[OrgContext] load error", err);
-        setOrgs([]);
-        setActiveOrgId(null);
+        console.error("[OrgContext] load error:", err);
+        if (!cancelled) {
+          setOrgs([]);
+          setActiveOrgId(null);
+        }
       } finally {
         if (!cancelled) setLoading(false);
       }
@@ -67,6 +83,7 @@ export function OrgProvider({ children }) {
     };
   }, []);
 
+  // Canonical active org object
   const activeOrg = useMemo(
     () => orgs.find((o) => o.id === activeOrgId) || null,
     [orgs, activeOrgId]
@@ -75,11 +92,18 @@ export function OrgProvider({ children }) {
   return (
     <OrgContext.Provider
       value={{
+        // collections
         orgs,
+
+        // active org
         activeOrg,
-        activeOrgId,
-        activeOrgUuid: activeOrg?.external_uuid || null,
+        activeOrgId, // internal INT
+        activeOrgUuid: activeOrg?.external_uuid || null, // PUBLIC UUID
+
+        // setters
         setActiveOrgId,
+
+        // state
         loading,
       }}
     >
@@ -90,6 +114,8 @@ export function OrgProvider({ children }) {
 
 export function useOrg() {
   const ctx = useContext(OrgContext);
-  if (!ctx) throw new Error("useOrg must be used within OrgProvider");
+  if (!ctx) {
+    throw new Error("useOrg must be used within OrgProvider");
+  }
   return ctx;
 }
