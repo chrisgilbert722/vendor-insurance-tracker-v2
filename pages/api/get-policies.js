@@ -1,6 +1,6 @@
 // pages/api/get-policies.js
 import { sql } from "../../lib/db";
-import { supabaseServer } from "../../lib/supabaseServerClient";
+import { supabaseServer } from "../../lib/supabaseServer";
 
 // ---- Risk + Score Engine (Enterprise Mode) ---- //
 
@@ -29,12 +29,10 @@ function computeExpiration(expiration_date_str) {
 
 function computeComplianceScore(expiration) {
   if (!expiration.daysRemaining && expiration.daysRemaining !== 0) return 0;
-
   if (expiration.level === "expired") return 20;
   if (expiration.level === "critical") return 40;
   if (expiration.level === "warning") return 70;
   if (expiration.level === "ok") return 100;
-
   return 0;
 }
 
@@ -54,11 +52,9 @@ function computeUnderwriterColor(score) {
 
 function computeFlags(expiration) {
   const flags = [];
-
   if (expiration.level === "expired") flags.push("Expired policy");
   if (expiration.level === "critical") flags.push("Expires in ≤30 days");
   if (expiration.level === "warning") flags.push("Expires in ≤90 days");
-
   return flags;
 }
 
@@ -68,8 +64,8 @@ export default async function handler(req, res) {
   }
 
   try {
-    // 1️⃣ Auth via Supabase cookie (self-serve)
-    const supabase = supabaseServer(req, res);
+    // 🔐 Cookie-based auth (self-serve)
+    const supabase = supabaseServer();
     const {
       data: { user },
       error: authError,
@@ -79,7 +75,7 @@ export default async function handler(req, res) {
       return res.status(401).json({ ok: false, error: "Unauthorized" });
     }
 
-    // 2️⃣ Resolve org_id for this user
+    // 🏢 Resolve org for this user
     const orgRows = await sql`
       SELECT org_id
       FROM organization_members
@@ -89,13 +85,12 @@ export default async function handler(req, res) {
     `;
 
     if (!orgRows.length) {
-      // No org yet → onboarding should trigger
       return res.status(200).json({ ok: true, policies: [], noOrg: true });
     }
 
     const orgId = orgRows[0].org_id;
 
-    // 3️⃣ Org-scoped policy query (🔥 THIS IS THE FIX 🔥)
+    // 🔒 ORG-SCOPED QUERY (THIS WAS THE ROOT BUG)
     const rows = await sql`
       SELECT id, vendor_name, policy_number, carrier,
              effective_date, expiration_date, coverage_type,
@@ -108,17 +103,14 @@ export default async function handler(req, res) {
     const policies = rows.map((row) => {
       const expiration = computeExpiration(row.expiration_date);
       const complianceScore = computeComplianceScore(expiration);
-      const riskBucket = computeRiskBucket(complianceScore);
-      const underwriterColor = computeUnderwriterColor(complianceScore);
-      const flags = computeFlags(expiration);
 
       return {
         ...row,
         expiration,
         complianceScore,
-        riskBucket,
-        underwriterColor,
-        flags,
+        riskBucket: computeRiskBucket(complianceScore),
+        underwriterColor: computeUnderwriterColor(complianceScore),
+        flags: computeFlags(expiration),
       };
     });
 
