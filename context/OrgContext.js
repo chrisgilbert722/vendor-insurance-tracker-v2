@@ -6,7 +6,7 @@ const OrgContext = createContext(null);
 
 export function OrgProvider({ children }) {
   const [orgs, setOrgs] = useState([]);
-  const [activeOrgId, setActiveOrgId] = useState(null); // INT (internal)
+  const [activeOrgId, setActiveOrgId] = useState(null); // INT
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -16,35 +16,50 @@ export function OrgProvider({ children }) {
       try {
         setLoading(true);
 
-        const { data: sessionData } = await supabase.auth.getSession();
-        const session = sessionData?.session;
+        // 🔐 Cookie-based session (single source of truth)
+        const {
+          data: { session },
+        } = await supabase.auth.getSession();
 
         if (!session) {
           if (!cancelled) {
             setOrgs([]);
             setActiveOrgId(null);
-            setLoading(false);
           }
           return;
         }
 
+        // ✅ COOKIE AUTH — NO AUTH HEADER
         const res = await fetch("/api/orgs/for-user", {
-          headers: {
-            Authorization: `Bearer ${session.access_token}`,
-          },
+          credentials: "include",
         });
 
+        if (!res.ok) {
+          console.warn("[OrgContext] org fetch failed:", res.status);
+          if (!cancelled) {
+            setOrgs([]);
+            setActiveOrgId(null);
+          }
+          return;
+        }
+
         const json = await res.json();
-        if (!json.ok) throw new Error(json.error || "Failed to load orgs");
+        if (!json?.ok) {
+          if (!cancelled) {
+            setOrgs([]);
+            setActiveOrgId(null);
+          }
+          return;
+        }
 
         if (cancelled) return;
 
-        const loadedOrgs = json.orgs || [];
-        setOrgs(loadedOrgs);
+        const loaded = json.orgs || [];
+        setOrgs(loaded);
 
-        // Default org selection (INT)
-        if (!activeOrgId && loadedOrgs.length > 0) {
-          setActiveOrgId(loadedOrgs[0].id);
+        // ✅ Default org selection (INT only)
+        if (!activeOrgId && loaded.length > 0) {
+          setActiveOrgId(loaded[0].id);
         }
       } catch (err) {
         console.error("[OrgContext] load error:", err);
@@ -69,24 +84,17 @@ export function OrgProvider({ children }) {
     [orgs, activeOrgId]
   );
 
-  // 🔑 Canonical UUID (PUBLIC ID)
+  // 🔑 Canonical UUID (PUBLIC)
   const activeOrgUuid = activeOrg?.external_uuid || null;
 
   return (
     <OrgContext.Provider
       value={{
-        // collections
         orgs,
-
-        // active org
-        activeOrg,          // full object
-        activeOrgId,        // INT (internal)
-        activeOrgUuid,      // UUID (public / canonical)
-
-        // setters
+        activeOrg,
+        activeOrgId,
+        activeOrgUuid,
         setActiveOrgId,
-
-        // state
         loading,
       }}
     >

@@ -7,12 +7,8 @@ const UserContext = createContext(null);
 export function UserProvider({ children }) {
   const [session, setSession] = useState(null);
   const [user, setUser] = useState(null);
-  const [org, setOrg] = useState(null);
   const [initializing, setInitializing] = useState(true);
 
-  // ---------------------------------
-  // AUTH SESSION (ALWAYS FINISHES)
-  // ---------------------------------
   useEffect(() => {
     let mounted = true;
 
@@ -22,7 +18,7 @@ export function UserProvider({ children }) {
 
       setSession(data?.session ?? null);
       setUser(data?.session?.user ?? null);
-      setInitializing(false); // ✅ AUTH IS DONE — ALWAYS
+      setInitializing(false);
     }
 
     loadSession();
@@ -40,40 +36,11 @@ export function UserProvider({ children }) {
     };
   }, []);
 
-  // ---------------------------------
-  // ORG LOOKUP (NON-BLOCKING)
-  // ---------------------------------
-  useEffect(() => {
-    if (!user) {
-      setOrg(null);
-      return;
-    }
-
-    async function loadOrg() {
-      try {
-        const { data } = await supabase
-          .from("org_members")
-          .select("org_id")
-          .eq("user_id", user.id)
-          .single();
-
-        if (data?.org_id) {
-          setOrg({ id: data.org_id });
-        }
-      } catch (err) {
-        console.error("[UserContext] org lookup failed:", err);
-      }
-    }
-
-    loadOrg();
-  }, [user]);
-
   return (
     <UserContext.Provider
       value={{
         session,
         user,
-        org,
         isLoggedIn: !!user,
         initializing,
       }}
@@ -84,5 +51,9 @@ export function UserProvider({ children }) {
 }
 
 export function useUser() {
-  return useContext(UserContext);
+  const ctx = useContext(UserContext);
+  if (!ctx) {
+    throw new Error("useUser must be used within UserProvider");
+  }
+  return ctx;
 }
