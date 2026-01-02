@@ -1,44 +1,28 @@
 // pages/api/orgs/for-user.js
-import { createClient } from "@supabase/supabase-js";
 import { sql } from "../../../lib/db";
-
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL,
-  process.env.SUPABASE_SERVICE_ROLE_KEY,
-  {
-    auth: {
-      persistSession: false,
-    },
-  }
-);
+import { supabaseServer } from "../../../lib/supabaseServer";
 
 export default async function handler(req, res) {
   try {
-    // 🔒 COOKIE-BASED AUTH (NO HEADERS)
+    // 🔐 COOKIE-BASED AUTH (THE ONLY VALID WAY)
+    const supabase = supabaseServer(req, res);
+
     const {
       data: { user },
       error,
-    } = await supabase.auth.getUser(req.headers.authorization?.replace("Bearer ", ""));
+    } = await supabase.auth.getUser();
 
-    // Fallback: read session from cookies (PRIMARY PATH)
-    const cookieUser =
-      req.cookies?.["sb-access-token"]
-        ? await supabase.auth.getUser(req.cookies["sb-access-token"])
-        : null;
-
-    const authUser = user || cookieUser?.data?.user;
-
-    if (!authUser) {
+    if (error || !user) {
       return res.status(401).json({
         ok: false,
         error: "Not authenticated",
       });
     }
 
-    const userId = authUser.id;
+    const userId = user.id;
 
     // 🔑 AUTHORITATIVE ORG LOOKUP
-    const rows = await sql`
+    const orgs = await sql`
       SELECT
         o.id,
         o.name,
@@ -51,7 +35,7 @@ export default async function handler(req, res) {
 
     return res.status(200).json({
       ok: true,
-      orgs: rows,
+      orgs,
     });
   } catch (err) {
     console.error("[api/orgs/for-user] error:", err);
