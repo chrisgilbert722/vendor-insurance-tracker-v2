@@ -1,11 +1,10 @@
 // pages/api/orgs/for-user.js
 import { sql } from "../../../lib/db";
-import { supabaseServer } from "../../../lib/supabaseServer";
+import { supabaseServerClient } from "../../../lib/supabaseServerClient";
 
 export default async function handler(req, res) {
   try {
-    // 🔐 COOKIE-BASED AUTH (THE ONLY VALID WAY)
-    const supabase = supabaseServer(req, res);
+    const supabase = supabaseServerClient(req, res);
 
     const {
       data: { user },
@@ -19,9 +18,6 @@ export default async function handler(req, res) {
       });
     }
 
-    const userId = user.id;
-
-    // 🔑 AUTHORITATIVE ORG LOOKUP
     const orgs = await sql`
       SELECT
         o.id,
@@ -29,7 +25,7 @@ export default async function handler(req, res) {
         o.external_uuid
       FROM organization_members om
       JOIN organizations o ON o.id = om.org_id
-      WHERE om.user_id = ${userId}
+      WHERE om.user_id = ${user.id}
       ORDER BY o.id ASC
     `;
 
@@ -38,7 +34,7 @@ export default async function handler(req, res) {
       orgs,
     });
   } catch (err) {
-    console.error("[api/orgs/for-user] error:", err);
+    console.error("[api/orgs/for-user] fatal:", err);
     return res.status(500).json({
       ok: false,
       error: err.message,
