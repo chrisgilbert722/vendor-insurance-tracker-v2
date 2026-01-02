@@ -1,4 +1,5 @@
-// context/OrgContext.js
+// context/OrgContext.js — RECOVERY SAFE (NO LOOPS, NO REDIRECTS)
+
 import { createContext, useContext, useEffect, useState, useMemo } from "react";
 import { supabase } from "../lib/supabaseClient";
 
@@ -8,6 +9,7 @@ export function OrgProvider({ children }) {
   const [orgs, setOrgs] = useState([]);
   const [activeOrgId, setActiveOrgId] = useState(null); // INT (internal)
   const [loading, setLoading] = useState(true);
+  const [hasSession, setHasSession] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -16,38 +18,48 @@ export function OrgProvider({ children }) {
       try {
         setLoading(true);
 
-        const { data: sessionData } = await supabase.auth.getSession();
-        const session = sessionData?.session;
+        // 🔑 Cookie-based session (source of truth)
+        const { data } = await supabase.auth.getSession();
+        const session = data?.session;
 
         if (!session) {
           if (!cancelled) {
+            setHasSession(false);
             setOrgs([]);
             setActiveOrgId(null);
-            setLoading(false);
           }
           return;
         }
 
+        setHasSession(true);
+
+        // 🔑 SINGLE SOURCE OF TRUTH — backend resolves orgs
         const res = await fetch("/api/orgs/for-user", {
-          headers: {
-            Authorization: `Bearer ${session.access_token}`,
-          },
+          credentials: "include",
         });
 
         const json = await res.json();
-        if (!json.ok) throw new Error(json.error || "Failed to load orgs");
+
+        // Fail-open: never brick UI
+        if (!json?.ok) {
+          if (!cancelled) {
+            setOrgs([]);
+            setActiveOrgId(null);
+          }
+          return;
+        }
 
         if (cancelled) return;
 
         const loadedOrgs = json.orgs || [];
         setOrgs(loadedOrgs);
 
-        // Default org selection (INT)
+        // Auto-select first org if none selected
         if (!activeOrgId && loadedOrgs.length > 0) {
           setActiveOrgId(loadedOrgs[0].id);
         }
       } catch (err) {
-        console.error("[OrgContext] load error:", err);
+        console.error("[OrgContext] loadOrgs error:", err);
         if (!cancelled) {
           setOrgs([]);
           setActiveOrgId(null);
@@ -61,7 +73,7 @@ export function OrgProvider({ children }) {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, []); // 🚫 DO NOT add activeOrgId here (prevents loops)
 
   // 🔑 Canonical active org object
   const activeOrg = useMemo(
@@ -69,7 +81,7 @@ export function OrgProvider({ children }) {
     [orgs, activeOrgId]
   );
 
-  // 🔑 Canonical UUID (PUBLIC ID)
+  // 🔑 Canonical UUID (PUBLIC, used by onboarding)
   const activeOrgUuid = activeOrg?.external_uuid || null;
 
   return (
@@ -79,15 +91,16 @@ export function OrgProvider({ children }) {
         orgs,
 
         // active org
-        activeOrg,          // full object
-        activeOrgId,        // INT (internal)
-        activeOrgUuid,      // UUID (public / canonical)
+        activeOrg,      // full object
+        activeOrgId,    // INT
+        activeOrgUuid,  // UUID
 
         // setters
         setActiveOrgId,
 
         // state
         loading,
+        hasSession,
       }}
     >
       {children}
