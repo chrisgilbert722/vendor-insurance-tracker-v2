@@ -9,14 +9,16 @@ const supabase = createClient(
 
 export default async function handler(req, res) {
   try {
+    // ---------------------------------------------
+    // 1. AUTH — SUPABASE USER (UUID)
+    // ---------------------------------------------
     const auth = req.headers.authorization || "";
     const token = auth.replace("Bearer ", "");
 
     if (!token) {
-      return res.status(401).json({ ok: false, error: "No auth token" });
+      return res.status(401).json({ ok: false, error: "Missing auth token" });
     }
 
-    // 1️⃣ Get authenticated Supabase user (UUID)
     const { data, error } = await supabase.auth.getUser(token);
     if (error || !data?.user) {
       return res.status(401).json({ ok: false, error: "Invalid session" });
@@ -24,7 +26,9 @@ export default async function handler(req, res) {
 
     const authUserId = data.user.id; // UUID
 
-    // 2️⃣ Resolve app-level user (INT id)
+    // ---------------------------------------------
+    // 2. MAP UUID → INTERNAL USER ID (INT)
+    // ---------------------------------------------
     const userRows = await sql`
       SELECT id
       FROM users
@@ -32,7 +36,7 @@ export default async function handler(req, res) {
       LIMIT 1;
     `;
 
-    if (userRows.length === 0) {
+    if (!userRows.length) {
       return res.status(200).json({
         ok: true,
         orgs: [],
@@ -41,7 +45,9 @@ export default async function handler(req, res) {
 
     const userId = userRows[0].id; // INT
 
-    // 3️⃣ Fetch organizations for THIS user only
+    // ---------------------------------------------
+    // 3. LOAD ORGS FOR THAT USER (INT SAFE)
+    // ---------------------------------------------
     const orgs = await sql`
       SELECT
         o.id,
@@ -53,9 +59,12 @@ export default async function handler(req, res) {
       ORDER BY o.id ASC;
     `;
 
-    return res.status(200).json({ ok: true, orgs });
+    return res.status(200).json({
+      ok: true,
+      orgs,
+    });
   } catch (err) {
     console.error("[api/orgs/for-user] error:", err);
-    return res.status(500).json({ ok: false, error: err.message });
+    return res.status(500).json({ ok: false, error: "Server error" });
   }
 }
