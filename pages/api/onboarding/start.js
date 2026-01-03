@@ -1,13 +1,9 @@
-// pages/api/onboarding/start.js
 // ============================================================
-// ONBOARDING AUTOPILOT — START / RESUME (Observable Autopilot)
+// ONBOARDING AUTOPILOT — START / RESUME (NEON SAFE)
 // - org_onboarding_state.org_id = INTERNAL org INT
-// - organizations.onboarding_step = UI step driver
-// - external_uuid resolved once via resolveOrg
+// - organizations.onboarding_step = UI driver
+// - NO sql.identifier (Neon incompatible)
 // - idempotent + resume-safe
-// - rules_generated -> AI Wizard
-// - launch_system guarded by Company Profile
-// - sets dashboard_tutorial_enabled on completion
 // ============================================================
 
 import { sql } from "../../../lib/db";
@@ -27,145 +23,114 @@ const STEPS = [
   { key: "requirements_assigned", progress: 55 },
   { key: "rules_generated", progress: 70 },
   { key: "rules_applied", progress: 85 },
-  { key: "launch_system", progress: 95 }, // ⛔ guarded
+  { key: "launch_system", progress: 95 },
   { key: "complete", progress: 100 },
 ];
 
 // ------------------------------------------------------------
 // STATE HELPERS (INT orgId ONLY)
 // ------------------------------------------------------------
-async function ensureStateRow(orgIdInt) {
+async function ensureStateRow(orgId) {
   await sql`
     INSERT INTO org_onboarding_state (
       org_id, status, current_step, progress, started_at, updated_at
     )
-    VALUES (
-      ${orgIdInt}, 'running', 'starting', 0,
-      NOW(), NOW()
-    )
+    VALUES (${orgId}, 'running', 'starting', 0, NOW(), NOW())
     ON CONFLICT (org_id) DO NOTHING;
   `;
 }
 
-async function setState(orgIdInt, patch = {}) {
-  const fields = [];
-  const add = (col, val) => fields.push(sql`${sql.identifier([col])} = ${val}`);
-
-  if (patch.status !== undefined) add("status", patch.status);
-  if (patch.current_step !== undefined) add("current_step", patch.current_step);
-  if (patch.progress !== undefined) add("progress", patch.progress);
-  if (patch.last_error !== undefined) add("last_error", patch.last_error);
-  if (patch.finished_at !== undefined) add("finished_at", patch.finished_at);
-
-  add("updated_at", new Date().toISOString());
-  if (!fields.length) return;
-
-  await sql`
-    UPDATE org_onboarding_state
-    SET ${sql.join(fields, sql`, `)}
-    WHERE org_id = ${orgIdInt};
-  `;
-}
-
-async function getState(orgIdInt) {
+async function getState(orgId) {
   const rows = await sql`
     SELECT *
     FROM org_onboarding_state
-    WHERE org_id = ${orgIdInt}
+    WHERE org_id = ${orgId}
     LIMIT 1;
   `;
   return rows?.[0] || null;
 }
 
-async function setOrgStep(orgIdInt, stepIndex) {
+async function setState(orgId, patch) {
+  await sql`
+    UPDATE org_onboarding_state
+    SET
+      status = ${patch.status ?? 'running'},
+      current_step = ${patch.current_step ?? 'starting'},
+      progress = ${patch.progress ?? 0},
+      last_error = ${patch.last_error ?? null},
+      finished_at = ${patch.finished_at ?? null},
+      updated_at = NOW()
+    WHERE org_id = ${orgId};
+  `;
+}
+
+async function setOrgStep(orgId, stepIndex) {
   await sql`
     UPDATE organizations
     SET onboarding_step = ${stepIndex}
-    WHERE id = ${orgIdInt};
+    WHERE id = ${orgId};
   `;
 }
 
 // ------------------------------------------------------------
-// STEP EXECUTION
+// STEP EXECUTION (SAFE IMPORTS)
 // ------------------------------------------------------------
-async function runStep({ stepKey, startedAtMs, req, orgIdInt }) {
+async function runStep({ stepKey, startedAtMs, req, orgId }) {
   if (Date.now() - startedAtMs > MAX_RUNTIME_MS) {
     throw new Error("Autopilot timed out");
   }
 
-  try {
-    switch (stepKey) {
-      case "vendors_created":
-        await import("../onboarding/create-vendors.js").catch(() => {});
-        break;
+  switch (stepKey) {
+    case "vendors_created":
+      await import("../onboarding/create-vendors.js").catch(() => {});
+      break;
 
-      case "vendors_analyzed":
-        await import("../onboarding-api/analyze-csv.js").catch(() => {});
-        break;
+    case "vendors_analyzed":
+      await import("../onboarding-api/analyze-csv.js").catch(() => {});
+      break;
 
-      case "contracts_extracted":
-        await import("../onboarding/ai-contract-extract.js").catch(() => {});
-        break;
+    case "contracts_extracted":
+      await import("../onboarding/ai-contract-extract.js").catch(() => {});
+      break;
 
-      case "requirements_assigned":
-        await import("../onboarding/assign-requirements.js").catch(() => {});
-        break;
+    case "requirements_assigned":
+      await import("../onboarding/assign-requirements.js").catch(() => {});
+      break;
 
-      case "rules_generated": {
-        try {
-          const mod = await import("../onboarding/ai-wizard.js");
-          await mod.default(
-            {
-              method: "POST",
-              body: { vendorCsv: [] },
-              query: { orgId: String(req.body?.orgId || req.query?.orgId || "") },
-            },
-            { status: () => ({ json: () => {} }), json: () => {} }
-          );
-        } catch (err) {
-          console.error("[autopilot] AI Wizard failed:", err);
-        }
-        break;
+    case "rules_generated":
+      await import("../onboarding/ai-wizard.js").catch(() => {});
+      break;
+
+    case "rules_applied":
+      await import("../onboarding/apply-rules-v5.js").catch(() => {});
+      break;
+
+    case "launch_system": {
+      const org = await sql`
+        SELECT legal_name, contact_email
+        FROM organizations
+        WHERE id = ${orgId}
+        LIMIT 1;
+      `;
+
+      if (!org?.[0]?.legal_name || !org?.[0]?.contact_email) {
+        return "BLOCKED";
       }
 
-      case "rules_applied":
-        await import("../onboarding/apply-rules-v5.js").catch(() => {});
-        break;
-
-      case "launch_system": {
-        // 🔒 COMPANY PROFILE HUMAN GATE
-        const org = await sql`
-          SELECT legal_name, contact_email
-          FROM organizations
-          WHERE id = ${orgIdInt}
-          LIMIT 1;
-        `;
-
-        if (!org?.[0]?.legal_name || !org?.[0]?.contact_email) {
-          return "BLOCKED";
-        }
-
-        await import("../onboarding/launch-system.js").catch(() => {});
-        break;
-      }
-
-      case "complete": {
-        // 🔥 FINAL HANDOFF SIGNAL
-        await sql`
-          UPDATE organizations
-          SET
-            dashboard_tutorial_enabled = TRUE,
-            onboarding_step = ${STEPS.length + 1}
-          WHERE id = ${orgIdInt};
-        `;
-        break;
-      }
-
-      default:
-        break;
+      await import("../onboarding/launch-system.js").catch(() => {});
+      break;
     }
-  } catch {
-    // Non-fatal
+
+    case "complete":
+      await sql`
+        UPDATE organizations
+        SET
+          onboarding_completed = TRUE,
+          dashboard_tutorial_enabled = TRUE,
+          onboarding_step = ${STEPS.length + 1}
+        WHERE id = ${orgId};
+      `;
+      break;
   }
 }
 
@@ -180,22 +145,14 @@ export default async function handler(req, res) {
   const startedAtMs = Date.now();
 
   try {
-    const orgIdInt = await resolveOrg(req, res);
-    if (!orgIdInt) return res.status(200).json({ ok: true, skipped: true });
+    const orgId = await resolveOrg(req, res);
+    if (!orgId) return res.status(200).json({ ok: true, skipped: true });
 
-    await ensureStateRow(orgIdInt);
-    const existing = await getState(orgIdInt);
-
-    if (
-      existing?.status === "running" &&
-      existing?.current_step &&
-      existing.current_step !== "starting"
-    ) {
-      return res.status(200).json({ ok: true, skipped: true, state: existing });
-    }
+    await ensureStateRow(orgId);
+    const existing = await getState(orgId);
 
     if (existing?.status === "complete") {
-      return res.status(200).json({ ok: true, skipped: true, state: existing });
+      return res.status(200).json({ ok: true, state: existing });
     }
 
     const startIndex = Math.max(
@@ -203,29 +160,24 @@ export default async function handler(req, res) {
       STEPS.findIndex((s) => s.key === existing?.current_step)
     );
 
-    let lastHeartbeat = 0;
-
     for (let i = startIndex; i < STEPS.length; i++) {
       const step = STEPS[i];
 
-      await setOrgStep(orgIdInt, i + 2);
-      await setState(orgIdInt, {
+      await setOrgStep(orgId, i + 2);
+      await setState(orgId, {
+        status: step.key === "complete" ? "complete" : "running",
         current_step: step.key,
         progress: step.progress,
-        status: step.key === "complete" ? "complete" : "running",
-        ...(step.key === "complete"
-          ? { finished_at: new Date().toISOString() }
-          : {}),
+        finished_at: step.key === "complete" ? new Date() : null,
       });
 
       if (step.key === "complete") break;
-      if (Date.now() - lastHeartbeat > HEARTBEAT_EVERY_MS) lastHeartbeat = Date.now();
 
       const result = await runStep({
         stepKey: step.key,
         startedAtMs,
         req,
-        orgIdInt,
+        orgId,
       });
 
       if (result === "BLOCKED") break;
@@ -233,15 +185,15 @@ export default async function handler(req, res) {
 
     return res.status(200).json({
       ok: true,
-      state: await getState(orgIdInt),
+      state: await getState(orgId),
     });
   } catch (err) {
     console.error("[onboarding/start]", err);
 
     try {
-      const orgIdInt = await resolveOrg(req, res);
-      if (orgIdInt) {
-        await setState(orgIdInt, {
+      const orgId = await resolveOrg(req, res);
+      if (orgId) {
+        await setState(orgId, {
           status: "error",
           last_error: err.message,
         });
