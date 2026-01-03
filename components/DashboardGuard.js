@@ -11,6 +11,9 @@ export default function DashboardGuard({ children }) {
   useEffect(() => {
     if (initializing || loading) return;
 
+    // 🚫 Never guard onboarding routes (prevents loops)
+    if (router.pathname.startsWith("/onboarding")) return;
+
     // 🔐 Not logged in → login
     if (!isLoggedIn) {
       router.replace("/auth/login");
@@ -28,10 +31,25 @@ export default function DashboardGuard({ children }) {
       router.replace("/onboarding/ai-wizard");
       return;
     }
-  }, [initializing, loading, isLoggedIn, activeOrg, router]);
+  }, [
+    initializing,
+    loading,
+    isLoggedIn,
+    activeOrg,
+    router,
+    router.pathname,
+  ]);
 
+  // ⛔ Block render until decision is final
   if (initializing || loading) return null;
-  if (!activeOrg || !activeOrg.onboarding_completed) return null;
+
+  if (!activeOrg || !activeOrg.onboarding_completed) {
+    // Allow onboarding pages to render
+    if (router.pathname.startsWith("/onboarding")) {
+      return children;
+    }
+    return null;
+  }
 
   return children;
 }
