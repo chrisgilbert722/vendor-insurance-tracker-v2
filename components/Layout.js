@@ -1,5 +1,5 @@
 // components/Layout.js — STABLE (Tutorial + Roles + Admin fixed)
-// ✅ Never hard-block render on role loading (prevents infinite Loading deadlock)
+// ✅ Reflects real onboarding state (no redirects here)
 
 import { useRouter } from "next/router";
 import Sidebar from "./Sidebar";
@@ -17,10 +17,13 @@ function extractVendorId(path) {
 export default function Layout({ children }) {
   const router = useRouter();
 
-  // ✅ use asPath for active highlighting + vendor id parsing
+  // Use asPath for active highlighting + vendor id parsing
   const pathname = router.asPath || router.pathname || "";
 
-  const { activeOrgId, onboardingComplete } = useOrg() || {};
+  const { activeOrg, activeOrgId } = useOrg() || {};
+
+  // 🔑 TRUE onboarding state (single source of truth)
+  const onboardingComplete = !!activeOrg?.onboarding_completed;
 
   // Roles (DO NOT block render on loading)
   const roleState = useRole() || {};
@@ -70,13 +73,12 @@ export default function Layout({ children }) {
 
       <div className="cockpit-particles" />
 
-      {/* Sidebar */}
+      {/* Sidebar (LOCKED until onboarding complete) */}
       <Sidebar
         pathname={pathname}
         isAdmin={safeIsAdmin}
         isManager={safeIsManager}
         isViewer={safeIsViewer}
-        // If your Sidebar ignores this prop, that's fine (no break)
         onboardingComplete={onboardingComplete}
       />
 
@@ -92,7 +94,7 @@ export default function Layout({ children }) {
       >
         <Header />
 
-        {/* Optional tiny role-loading hint (non-blocking) */}
+        {/* Optional role-loading hint */}
         {loadingRole && (
           <div
             style={{
@@ -149,12 +151,12 @@ export default function Layout({ children }) {
         ❓
       </button>
 
-      {/* Global Chat (safe if orgId null) */}
+      {/* Global Chat (safe during onboarding) */}
       <SupportChatPanel
         orgId={activeOrgId || null}
         vendorId={vendorId}
         pathname={pathname}
-        onboardingComplete={!!onboardingComplete}
+        onboardingComplete={onboardingComplete}
       />
     </div>
   );
