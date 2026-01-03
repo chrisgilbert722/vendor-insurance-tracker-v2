@@ -17,6 +17,11 @@ export const config = {
 const HEARTBEAT_EVERY_MS = 1500;
 const MAX_RUNTIME_MS = 60_000;
 
+/**
+ * IMPORTANT:
+ * These are backend autopilot steps (not the same as UI wizard steps).
+ * Your UI wizard step is driven by organizations.onboarding_step.
+ */
 const STEPS = [
   { key: "vendors_created", progress: 10 },
   { key: "vendors_analyzed", progress: 25 },
@@ -81,50 +86,87 @@ async function setOrgStep(orgId, stepIndex) {
 }
 
 // ------------------------------------------------------------
-// DATA GATE (CRITICAL): decide what step is allowed based on data
+// DATA GATE (CRITICAL)
 // ------------------------------------------------------------
 // Goal:
-// - If NO uploads exist → force Step 1 (start screen)
-// - If uploads exist but no parsed vendors yet → Step 2 (upload step)
-// - If vendors exist but mappings missing → Step 3 (map step)
-// - Otherwise allow normal autopilot progression
+// - If NO uploads exist → force UI Step 1 (start screen)
+// - If uploads exist but no vendors yet → force UI Step 2 (upload done, create vendors)
+// - If vendors exist but mappings missing → force UI Step 3 (map columns)
+// - Otherwise: allow normal progression
+//
+// NOTE: table names below may differ in your app. If so, change ONLY the query.
+// Also: fail-open (table missing) to avoid breaking production.
 async function computeForcedUiStep(orgId) {
   // 1) Do we have any vendor uploads?
-  // NOTE: If your table name differs, change only this query.
-  const uploads = await sql`
-    SELECT 1
-    FROM vendor_uploads
-    WHERE org_id = ${orgId}
-    LIMIT 1;
-  `;
-  if (!uploads.length) return 1; // ✅ always show Step 1 until uploads exist
+  try {
+    const uploads = await sql`
+      SELECT 1
+      FROM vendor_uploads
+      WHERE org_id = ${orgId}
+      LIMIT 1;
+    `;
+    if (!uploads.length) return 1; // always show step 1 until uploads exist
+  } catch (e) {
+    // If table doesn't exist, do NOT brick onboarding
+    console.warn("[onboarding/start] vendor_uploads check skipped:", e?.message);
+    // If we can't verify uploads exist, we force Step 1 (safest)
+    return 1;
+  }
 
   // 2) Do we have vendors created/parsed?
-  const vendors = await sql`
-    SELECT 1
-    FROM vendors
-    WHERE org_id = ${orgId}
-    LIMIT 1;
-  `;
-  if (!vendors.length) return 2;
+  try {
+    const vendors = await sql`
+      SELECT 1
+      FROM vendors
+      WHERE org_id = ${orgId}
+      LIMIT 1;
+    `;
+    if (!vendors.length) return 2;
+  } catch (e) {
+    console.warn("[onboarding/start] vendors check skipped:", e?.message);
+    // Can't verify vendors — keep user on Step 2
+    return 2;
+  }
 
   // 3) Do we have mappings saved?
-  const mappings = await sql`
-    SELECT 1
-    FROM vendor_column_mappings
-    WHERE org_id = ${orgId}
-    LIMIT 1;
-  `;
-  if (!mappings.length) return 3;
+  try {
+    const mappings = await sql`
+      SELECT 1
+      FROM vendor_column_mappings
+      WHERE org_id = ${orgId}
+      LIMIT 1;
+    `;
+    if (!mappings.length) return 3;
+  } catch (e) {
+    console.warn(
+      "[onboarding/start] vendor_column_mappings check skipped:",
+      e?.message
+    );
+    // Can't verify mappings — keep user on Step 3
+    return 3;
+  }
 
-  // Otherwise: no forced step
   return null;
 }
 
 // ------------------------------------------------------------
+// UI STEP → organizations.onboarding_step mapping
+// ------------------------------------------------------------
+// Your UI reads organizations.onboarding_step and then useOnboardingObserver
+// translates to uiStep.
+// We must align the forced steps so step 1 really shows Start screen.
+//
+// IMPORTANT: If your UI mapping is different, change only these constants.
+const UI_STEP_TO_ONBOARDING_STEP = {
+  1: 0, // Start screen (your DB shows 0 for new orgs in your screenshot)
+  2: 1, // Upload step
+  3: 2, // Map step (your screenshot shows onboarding_step=2 -> step 3)
+};
+
+// ------------------------------------------------------------
 // STEP EXECUTION (SAFE IMPORTS)
 // ------------------------------------------------------------
-async function runStep({ stepKey, startedAtMs, req, orgId }) {
+async function runStep({ stepKey, startedAtMs, orgId }) {
   if (Date.now() - startedAtMs > MAX_RUNTIME_MS) {
     throw new Error("Autopilot timed out");
   }
@@ -201,24 +243,27 @@ export default async function handler(req, res) {
 
     await ensureStateRow(orgId);
 
-    // ✅ HARD DATA GATE: force correct UI step before running anything
-    const forced = await computeForcedUiStep(orgId);
-    if (forced !== null) {
-      // Align org step to your UI mapping:
-      // Your UI shows Start screen when onboarding_step is 0/1-ish.
-      // We store forced steps directly as onboarding_step for clarity.
-      await setOrgStep(orgId, forced);
+    // ✅ HARD DATA GATE: force correct UI step BEFORE running anything
+    const forcedUiStep = await computeForcedUiStep(orgId);
+
+    if (forcedUiStep !== null) {
+      const onboardingStep =
+        UI_STEP_TO_ONBOARDING_STEP[forcedUiStep] ?? 0;
+
+      await setOrgStep(orgId, onboardingStep);
+
       await setState(orgId, {
         status: "running",
-        current_step: forced === 1 ? "starting" : "data_gate",
-        progress: forced === 1 ? 0 : 5,
+        current_step: forcedUiStep === 1 ? "starting" : "data_gate",
+        progress: forcedUiStep === 1 ? 0 : forcedUiStep === 2 ? 5 : 8,
         last_error: null,
         finished_at: null,
       });
 
       return res.status(200).json({
         ok: true,
-        forcedStep: forced,
+        forcedUiStep,
+        onboarding_step: onboardingStep,
         reason: "Data-gated (uploads/vendors/mappings)",
         state: await getState(orgId),
       });
@@ -240,7 +285,9 @@ export default async function handler(req, res) {
     for (let i = startIndex; i < STEPS.length; i++) {
       const step = STEPS[i];
 
+      // This is the autopilot progression (separate from UI data gate)
       await setOrgStep(orgId, i + 2);
+
       await setState(orgId, {
         status: step.key === "complete" ? "complete" : "running",
         current_step: step.key,
@@ -258,7 +305,6 @@ export default async function handler(req, res) {
       const result = await runStep({
         stepKey: step.key,
         startedAtMs,
-        req,
         orgId,
       });
 
