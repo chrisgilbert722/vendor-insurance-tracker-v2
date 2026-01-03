@@ -1,8 +1,8 @@
-// components/onboarding/AiWizardPanel.js
 // AI Onboarding Wizard V5 — TELEMETRY-ONLY AUTOPILOT (BUILD SAFE)
 // Property Management copy pass (Day 3)
 
 import { useState } from "react";
+import { useRouter } from "next/router";
 import { useOnboardingObserver } from "./useOnboardingObserver";
 import OnboardingActivityFeed from "./OnboardingActivityFeed";
 
@@ -21,7 +21,10 @@ const UUID_RE =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 export default function AiWizardPanel({ orgId }) {
+  const router = useRouter();
+
   const [starting, setStarting] = useState(false);
+  const [finishing, setFinishing] = useState(false);
   const [error, setError] = useState("");
 
   // Enforce UUID-only orgId
@@ -40,7 +43,8 @@ export default function AiWizardPanel({ orgId }) {
           color: "#fecaca",
         }}
       >
-        We couldn’t load your property portfolio.  
+        We couldn’t load your property portfolio.
+        <br />
         Please refresh or re-select your organization.
       </div>
     );
@@ -160,9 +164,37 @@ export default function AiWizardPanel({ orgId }) {
       case 9:
         content = <TeamBrokersStep />;
         break;
+
+      /* ============================================================
+         STEP 10 — FINALIZE + REDIRECT
+      ============================================================ */
       case 10:
-        content = <ReviewLaunchStep orgId={orgUuid} />;
+        content = (
+          <ReviewLaunchStep
+            orgId={orgUuid}
+            onComplete={async () => {
+              if (finishing) return;
+
+              setFinishing(true);
+
+              try {
+                // ✅ Mark onboarding complete (server truth)
+                await fetch("/api/onboarding/complete", {
+                  method: "POST",
+                });
+
+                // 🚀 DashboardGuard will now allow entry
+                router.replace("/dashboard");
+              } catch (err) {
+                console.error("Onboarding completion failed:", err);
+                setError("We couldn’t finish setup. Please try again.");
+                setFinishing(false);
+              }
+            }}
+          />
+        );
         break;
+
       default:
         content = null;
     }
@@ -171,6 +203,12 @@ export default function AiWizardPanel({ orgId }) {
   return (
     <>
       {content}
+
+      {error && (
+        <div style={{ color: "#f87171", marginTop: 16 }}>
+          {error}
+        </div>
+      )}
 
       {/* 🔥 LIVE AI ACTIVITY FEED (Backend-driven) */}
       <OnboardingActivityFeed />
