@@ -9,12 +9,6 @@ import { OrgProvider, useOrg } from "../context/OrgContext";
 import { useUser } from "../context/UserContext";
 import Layout from "../components/Layout";
 
-/* ============================================================
-   GLOBAL APP GUARD — ROUTING ONLY (NO RENDER BLOCK)
-   - Single source of truth
-   - Self-serve safe
-   - Billing → Onboarding → Dashboard
-============================================================ */
 function AppGuard({ children }) {
   const router = useRouter();
   const { initializing, isLoggedIn } = useUser();
@@ -25,11 +19,8 @@ function AppGuard({ children }) {
 
     const path = router.pathname;
 
-    const isAuth =
-      path.startsWith("/auth");
-
-    const isOnboarding =
-      path.startsWith("/onboarding");
+    const isAuth = path.startsWith("/auth");
+    const isOnboarding = path.startsWith("/onboarding");
 
     const isPublic =
       path === "/" ||
@@ -38,78 +29,48 @@ function AppGuard({ children }) {
       path.startsWith("/terms") ||
       path.startsWith("/privacy");
 
-    /* --------------------------------------------------------
-       1️⃣ LOGGED OUT USERS
-       - Allow public pages
-       - Force login for app routes
-    -------------------------------------------------------- */
+    // 🔓 Logged out users: allow public + auth pages
     if (!isLoggedIn) {
-      if (!isPublic && !isAuth) {
-        router.replace("/auth/login");
-      }
+      if (!isPublic && !isAuth) router.replace("/auth/login");
       return;
     }
 
-    /* --------------------------------------------------------
-       2️⃣ LOGGED IN — NO ORG YET
-       - Always go to onboarding
-    -------------------------------------------------------- */
-    if (isLoggedIn && !activeOrg) {
-      if (!isOnboarding) {
-        router.replace("/onboarding/ai-wizard");
-      }
+    // ✅ Logged in: enforce org + onboarding gates
+    if (!activeOrg && !isOnboarding) {
+      router.replace("/onboarding/ai-wizard");
       return;
     }
 
-    /* --------------------------------------------------------
-       3️⃣ ONBOARDING NOT COMPLETE
-       - Lock app until finished
-    -------------------------------------------------------- */
-    if (
-      isLoggedIn &&
-      activeOrg &&
-      !activeOrg.onboarding_completed
-    ) {
-      if (!isOnboarding) {
-        router.replace("/onboarding/ai-wizard");
-      }
+    if (activeOrg && !activeOrg.onboarding_completed && !isOnboarding) {
+      router.replace("/onboarding/ai-wizard");
       return;
     }
 
-    /* --------------------------------------------------------
-       4️⃣ ONBOARDING COMPLETE
-       - Never allow onboarding again
-    -------------------------------------------------------- */
-    if (
-      isLoggedIn &&
-      activeOrg?.onboarding_completed &&
-      isOnboarding
-    ) {
+    if (activeOrg?.onboarding_completed && isOnboarding) {
       router.replace("/dashboard");
     }
-  }, [
-    initializing,
-    loading,
-    isLoggedIn,
-    activeOrg,
-    router.pathname,
-    router,
-  ]);
+  }, [initializing, loading, isLoggedIn, activeOrg, router.pathname, router]);
 
-  // ❗ NEVER block rendering — routing only
   return children;
 }
 
-/* ============================================================
-   APP ROOT
-============================================================ */
 export default function App({ Component, pageProps }) {
   const router = useRouter();
-  const isOnboardingRoute = router.pathname.startsWith("/onboarding");
+
+  const path = router.pathname;
+
+  const isAuthRoute = path.startsWith("/auth");
+  const isOnboardingRoute = path.startsWith("/onboarding");
+
+  const isPublicRoute =
+    path === "/" ||
+    path.startsWith("/pricing") ||
+    path.startsWith("/property-management") ||
+    path.startsWith("/terms") ||
+    path.startsWith("/privacy");
 
   return (
     <>
-      {/* Google Analytics (GA4) */}
       <Script
         strategy="afterInteractive"
         src="https://www.googletagmanager.com/gtag/js?id=G-M5YME3TEQ1"
@@ -126,11 +87,11 @@ export default function App({ Component, pageProps }) {
       <UserProvider>
         <OrgProvider>
           <AppGuard>
-            {isOnboardingRoute ? (
-              // 🚀 ONBOARDING — NO SIDEBAR / NO LAYOUT
+            {/* ✅ Public + Auth + Onboarding routes: NO Layout */}
+            {isPublicRoute || isAuthRoute || isOnboardingRoute ? (
               <Component {...pageProps} />
             ) : (
-              // 🧠 APPLICATION SHELL
+              /* ✅ App routes only */
               <Layout>
                 <Component {...pageProps} />
               </Layout>
