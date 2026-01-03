@@ -4,11 +4,17 @@ import Script from "next/script";
 import { useRouter } from "next/router";
 import { useEffect } from "react";
 
-import { UserProvider } from "../context/UserContext";
+import { UserProvider, useUser } from "../context/UserContext";
 import { OrgProvider, useOrg } from "../context/OrgContext";
-import { useUser } from "../context/UserContext";
 import Layout from "../components/Layout";
 
+/* ============================================================
+   GLOBAL APP GUARD — ROUTING ONLY
+   - Public-first
+   - Onboarding enforced post-login
+   - No render blocking
+   - No loops
+============================================================ */
 function AppGuard({ children }) {
   const router = useRouter();
   const { initializing, isLoggedIn } = useUser();
@@ -29,34 +35,62 @@ function AppGuard({ children }) {
       path.startsWith("/terms") ||
       path.startsWith("/privacy");
 
-    // 🔓 Logged out users: allow public + auth pages
+    /* ------------------------------------------------------------
+       LOGGED OUT USERS
+       - Always allowed on public pages
+       - Never forced to login
+    ------------------------------------------------------------ */
     if (!isLoggedIn) {
-      if (!isPublic && !isAuth) router.replace("/auth/login");
+      if (!isPublic && !isAuth) {
+        router.replace("/");
+      }
       return;
     }
 
-    // ✅ Logged in: enforce org + onboarding gates
+    /* ------------------------------------------------------------
+       LOGGED IN USERS
+    ------------------------------------------------------------ */
+
+    // No org yet → onboarding
     if (!activeOrg && !isOnboarding) {
       router.replace("/onboarding/ai-wizard");
       return;
     }
 
-    if (activeOrg && !activeOrg.onboarding_completed && !isOnboarding) {
+    // Onboarding incomplete → force onboarding
+    if (
+      activeOrg &&
+      !activeOrg.onboarding_completed &&
+      !isOnboarding
+    ) {
       router.replace("/onboarding/ai-wizard");
       return;
     }
 
-    if (activeOrg?.onboarding_completed && isOnboarding) {
+    // Onboarding complete → escape onboarding
+    if (
+      activeOrg?.onboarding_completed &&
+      isOnboarding
+    ) {
       router.replace("/dashboard");
     }
-  }, [initializing, loading, isLoggedIn, activeOrg, router.pathname, router]);
+  }, [
+    initializing,
+    loading,
+    isLoggedIn,
+    activeOrg,
+    router.pathname,
+    router,
+  ]);
 
   return children;
 }
 
+/* ============================================================
+   APP ROOT
+============================================================ */
 export default function App({ Component, pageProps }) {
   const router = useRouter();
-
   const path = router.pathname;
 
   const isAuthRoute = path.startsWith("/auth");
@@ -71,6 +105,7 @@ export default function App({ Component, pageProps }) {
 
   return (
     <>
+      {/* Google Analytics (GA4) */}
       <Script
         strategy="afterInteractive"
         src="https://www.googletagmanager.com/gtag/js?id=G-M5YME3TEQ1"
@@ -87,11 +122,11 @@ export default function App({ Component, pageProps }) {
       <UserProvider>
         <OrgProvider>
           <AppGuard>
-            {/* ✅ Public + Auth + Onboarding routes: NO Layout */}
+            {/* PUBLIC / AUTH / ONBOARDING → NO SIDEBAR */}
             {isPublicRoute || isAuthRoute || isOnboardingRoute ? (
               <Component {...pageProps} />
             ) : (
-              /* ✅ App routes only */
+              /* APP ROUTES → FULL LAYOUT */
               <Layout>
                 <Component {...pageProps} />
               </Layout>
