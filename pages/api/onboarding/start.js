@@ -1,9 +1,10 @@
 // ============================================================
-// ONBOARDING AUTOPILOT — START / RESUME (NEON SAFE)
+// ONBOARDING AUTOPILOT — START / RESUME (NEON SAFE, DATA-GATED)
 // - org_onboarding_state.org_id = INTERNAL org INT
-// - organizations.onboarding_step = UI driver
+// - organizations.onboarding_step = UI driver (but must be data-gated)
 // - NO sql.identifier (Neon incompatible)
 // - idempotent + resume-safe
+// - IMPORTANT: Users must stay at Step 1 until uploads exist
 // ============================================================
 
 import { sql } from "../../../lib/db";
@@ -28,7 +29,7 @@ const STEPS = [
 ];
 
 // ------------------------------------------------------------
-// STATE HELPERS (INT orgId ONLY)
+// STATE HELPERS
 // ------------------------------------------------------------
 async function ensureStateRow(orgId) {
   await sql`
@@ -50,15 +51,22 @@ async function getState(orgId) {
   return rows?.[0] || null;
 }
 
-async function setState(orgId, patch) {
+// ✅ NEON SAFE: no sql.identifier, no dynamic column building
+async function setState(orgId, patch = {}) {
+  const status = patch.status ?? "running";
+  const current_step = patch.current_step ?? "starting";
+  const progress = patch.progress ?? 0;
+  const last_error = patch.last_error ?? null;
+  const finished_at = patch.finished_at ?? null;
+
   await sql`
     UPDATE org_onboarding_state
     SET
-      status = ${patch.status ?? 'running'},
-      current_step = ${patch.current_step ?? 'starting'},
-      progress = ${patch.progress ?? 0},
-      last_error = ${patch.last_error ?? null},
-      finished_at = ${patch.finished_at ?? null},
+      status = ${status},
+      current_step = ${current_step},
+      progress = ${progress},
+      last_error = ${last_error},
+      finished_at = ${finished_at},
       updated_at = NOW()
     WHERE org_id = ${orgId};
   `;
@@ -70,6 +78,47 @@ async function setOrgStep(orgId, stepIndex) {
     SET onboarding_step = ${stepIndex}
     WHERE id = ${orgId};
   `;
+}
+
+// ------------------------------------------------------------
+// DATA GATE (CRITICAL): decide what step is allowed based on data
+// ------------------------------------------------------------
+// Goal:
+// - If NO uploads exist → force Step 1 (start screen)
+// - If uploads exist but no parsed vendors yet → Step 2 (upload step)
+// - If vendors exist but mappings missing → Step 3 (map step)
+// - Otherwise allow normal autopilot progression
+async function computeForcedUiStep(orgId) {
+  // 1) Do we have any vendor uploads?
+  // NOTE: If your table name differs, change only this query.
+  const uploads = await sql`
+    SELECT 1
+    FROM vendor_uploads
+    WHERE org_id = ${orgId}
+    LIMIT 1;
+  `;
+  if (!uploads.length) return 1; // ✅ always show Step 1 until uploads exist
+
+  // 2) Do we have vendors created/parsed?
+  const vendors = await sql`
+    SELECT 1
+    FROM vendors
+    WHERE org_id = ${orgId}
+    LIMIT 1;
+  `;
+  if (!vendors.length) return 2;
+
+  // 3) Do we have mappings saved?
+  const mappings = await sql`
+    SELECT 1
+    FROM vendor_column_mappings
+    WHERE org_id = ${orgId}
+    LIMIT 1;
+  `;
+  if (!mappings.length) return 3;
+
+  // Otherwise: no forced step
+  return null;
 }
 
 // ------------------------------------------------------------
@@ -132,6 +181,8 @@ async function runStep({ stepKey, startedAtMs, req, orgId }) {
       `;
       break;
   }
+
+  return null;
 }
 
 // ------------------------------------------------------------
@@ -149,16 +200,42 @@ export default async function handler(req, res) {
     if (!orgId) return res.status(200).json({ ok: true, skipped: true });
 
     await ensureStateRow(orgId);
+
+    // ✅ HARD DATA GATE: force correct UI step before running anything
+    const forced = await computeForcedUiStep(orgId);
+    if (forced !== null) {
+      // Align org step to your UI mapping:
+      // Your UI shows Start screen when onboarding_step is 0/1-ish.
+      // We store forced steps directly as onboarding_step for clarity.
+      await setOrgStep(orgId, forced);
+      await setState(orgId, {
+        status: "running",
+        current_step: forced === 1 ? "starting" : "data_gate",
+        progress: forced === 1 ? 0 : 5,
+        last_error: null,
+        finished_at: null,
+      });
+
+      return res.status(200).json({
+        ok: true,
+        forcedStep: forced,
+        reason: "Data-gated (uploads/vendors/mappings)",
+        state: await getState(orgId),
+      });
+    }
+
     const existing = await getState(orgId);
 
     if (existing?.status === "complete") {
-      return res.status(200).json({ ok: true, state: existing });
+      return res.status(200).json({ ok: true, skipped: true, state: existing });
     }
 
     const startIndex = Math.max(
       0,
       STEPS.findIndex((s) => s.key === existing?.current_step)
     );
+
+    let lastHeartbeat = 0;
 
     for (let i = startIndex; i < STEPS.length; i++) {
       const step = STEPS[i];
@@ -169,9 +246,14 @@ export default async function handler(req, res) {
         current_step: step.key,
         progress: step.progress,
         finished_at: step.key === "complete" ? new Date() : null,
+        last_error: null,
       });
 
       if (step.key === "complete") break;
+
+      if (Date.now() - lastHeartbeat > HEARTBEAT_EVERY_MS) {
+        lastHeartbeat = Date.now();
+      }
 
       const result = await runStep({
         stepKey: step.key,
