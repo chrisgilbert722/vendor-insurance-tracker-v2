@@ -1,5 +1,6 @@
 // pages/auth/signup.js
 import { useState } from "react";
+import { supabase } from "../../lib/supabaseClient";
 
 export default function SignupPage() {
   const [form, setForm] = useState({
@@ -27,26 +28,21 @@ export default function SignupPage() {
     setLoading(true);
 
     try {
-      const res = await fetch("/api/org/create", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          name: form.name,
-          company: form.company,
-          email: form.email,
-        }),
+      // ✅ AUTH ONLY — NO ORG CREATION HERE
+      const { error } = await supabase.auth.signInWithOtp({
+        email: form.email,
+        options: {
+          emailRedirectTo: `${window.location.origin}/dashboard`,
+        },
       });
 
-      const json = await res.json();
+      if (error) throw error;
 
-      if (!json.ok) {
-        throw new Error(json.error || "Unable to create account.");
-      }
-
-      // Magic link sent — wait for email verification
+      // ✅ Success — magic link sent
       setSent(true);
     } catch (err) {
-      setError(err.message);
+      setError(err.message || "Unable to send login link.");
+    } finally {
       setLoading(false);
     }
   }
@@ -64,23 +60,6 @@ export default function SignupPage() {
         color: "#e5e7eb",
       }}
     >
-      {/* AURA */}
-      <div
-        style={{
-          position: "absolute",
-          top: -260,
-          left: "50%",
-          transform: "translateX(-50%)",
-          width: 900,
-          height: 900,
-          background:
-            "radial-gradient(circle, rgba(56,189,248,0.4), transparent 60%)",
-          filter: "blur(120px)",
-          pointerEvents: "none",
-        }}
-      />
-
-      {/* CARD */}
       <div
         style={{
           position: "relative",
@@ -97,57 +76,23 @@ export default function SignupPage() {
       >
         {!sent ? (
           <>
-            <div style={{ display: "flex", gap: 10, marginBottom: 12 }}>
-              <div
+            <h1 style={{ fontSize: 26, marginBottom: 6 }}>
+              Start your{" "}
+              <span
                 style={{
-                  padding: 12,
-                  borderRadius: "999px",
                   background:
-                    "radial-gradient(circle at 30% 0,#38bdf8,#6366f1,#0f172a)",
-                  boxShadow: "0 0 30px rgba(56,189,248,0.6)",
+                    "linear-gradient(90deg,#38bdf8,#a5b4fc,#e5e7eb)",
+                  WebkitBackgroundClip: "text",
+                  color: "transparent",
                 }}
               >
-                <span style={{ fontSize: 20 }}>🚀</span>
-              </div>
+                14-Day Free Trial
+              </span>
+            </h1>
 
-              <div>
-                <div
-                  style={{
-                    display: "inline-flex",
-                    gap: 6,
-                    padding: "3px 9px",
-                    borderRadius: 999,
-                    border: "1px solid rgba(148,163,184,0.4)",
-                    marginBottom: 4,
-                  }}
-                >
-                  <span style={{ fontSize: 10, color: "#9ca3af" }}>
-                    Create Account
-                  </span>
-                  <span style={{ fontSize: 10, color: "#38bdf8" }}>
-                    14-Day Trial
-                  </span>
-                </div>
-
-                <h1 style={{ margin: 0, fontSize: 26, fontWeight: 600 }}>
-                  Start your{" "}
-                  <span
-                    style={{
-                      background:
-                        "linear-gradient(90deg,#38bdf8,#a5b4fc,#e5e7eb)",
-                      WebkitBackgroundClip: "text",
-                      color: "transparent",
-                    }}
-                  >
-                    14-Day Free Trial
-                  </span>
-                </h1>
-
-                <p style={{ marginTop: 6, fontSize: 13, color: "#9ca3af" }}>
-                  Full access · View-only during trial
-                </p>
-              </div>
-            </div>
+            <p style={{ fontSize: 13, color: "#9ca3af", marginBottom: 20 }}>
+              Full access · No credit card · Cancel anytime
+            </p>
 
             <form onSubmit={handleSubmit}>
               <label style={label}>Full Name</label>
@@ -155,26 +100,27 @@ export default function SignupPage() {
                 name="name"
                 value={form.name}
                 onChange={handleChange}
-                placeholder="John Smith"
                 style={field}
               />
 
-              <label style={{ ...label, marginTop: 12 }}>Company Name</label>
+              <label style={{ ...label, marginTop: 12 }}>
+                Company Name
+              </label>
               <input
                 name="company"
                 value={form.company}
                 onChange={handleChange}
-                placeholder="Acme Property Group"
                 style={field}
               />
 
-              <label style={{ ...label, marginTop: 12 }}>Work Email</label>
+              <label style={{ ...label, marginTop: 12 }}>
+                Work Email
+              </label>
               <input
                 name="email"
                 type="email"
                 value={form.email}
                 onChange={handleChange}
-                placeholder="you@company.com"
                 style={field}
               />
 
@@ -219,9 +165,9 @@ export default function SignupPage() {
           <div style={{ textAlign: "center", padding: 30 }}>
             <h2>Check your email</h2>
             <p>
-              We sent a secure magic link to <b>{form.email}</b>.
+              We sent a secure login link to <b>{form.email}</b>.
               <br />
-              Click it to enter your dashboard.
+              Click it to continue.
             </p>
           </div>
         )}
