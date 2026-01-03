@@ -30,7 +30,7 @@ export function OrgProvider({ children }) {
           return;
         }
 
-        // 🔐 AUTH HEADER — THIS WAS THE MISSING PIECE
+        // 🔐 AUTH HEADER — REQUIRED
         const res = await fetch("/api/orgs/for-user", {
           headers: {
             Authorization: `Bearer ${session.access_token}`,
@@ -98,7 +98,13 @@ export function OrgProvider({ children }) {
         // active org
         activeOrg,
         activeOrgId, // internal INT
-        activeOrgUuid: activeOrg?.external_uuid || null, // PUBLIC UUID
+
+        // 🔑 PUBLIC UUID — SAFE AGAINST NAMING MISMATCHES
+        activeOrgUuid:
+          activeOrg?.external_uuid ||
+          activeOrg?.externalUuid ||
+          activeOrg?.uuid ||
+          null,
 
         // setters
         setActiveOrgId,
