@@ -53,12 +53,16 @@ export default function AiWizardPanel({ orgId }) {
   // Telemetry observer (UUID only)
   const { uiStep } = useOnboardingObserver({ orgId: orgUuid });
 
+  // 🔑 CRITICAL FIX:
+  // If onboarding has never started, default to STEP 1
+  const effectiveStep = uiStep ?? 1;
+
   let content = null;
 
   /* ============================================================
      STEP 1 — START (AUTOPILOT TRIGGER)
   ============================================================ */
-  if (uiStep === 1) {
+  if (effectiveStep === 1) {
     const startAutopilot = async () => {
       if (starting) return;
 
@@ -139,7 +143,7 @@ export default function AiWizardPanel({ orgId }) {
     /* ============================================================
        STEP ROUTER — TELEMETRY ONLY
     ============================================================ */
-    switch (uiStep) {
+    switch (effectiveStep) {
       case 2:
         content = <VendorsUploadStep orgId={orgUuid} />;
         break;
@@ -183,7 +187,7 @@ export default function AiWizardPanel({ orgId }) {
                   method: "POST",
                 });
 
-                // 🚀 DashboardGuard will now allow entry
+                // 🚀 App / Layout gate now allows dashboard
                 router.replace("/dashboard");
               } catch (err) {
                 console.error("Onboarding completion failed:", err);
