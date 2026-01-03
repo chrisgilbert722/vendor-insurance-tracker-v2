@@ -1,6 +1,5 @@
 // pages/dashboard.js — Dashboard V5 (Cinematic Intelligence Cockpit)
 
-import DashboardGuard from "../components/DashboardGuard";
 import React, { useEffect, useState, useRef } from "react";
 import PropertyManagementRiskPreview from "../components/dashboard/PropertyManagementRiskPreview";
 import VendorDrawer from "../components/VendorDrawer";
@@ -2120,11 +2119,7 @@ class PanelErrorBoundary extends React.Component {
 
 
 export default function DashboardPage() {
-  return (
-    <DashboardGuard>
-      <Dashboard />
-    </DashboardGuard>
-  );
+  return <Dashboard />;
 }
 
 // =======================================
