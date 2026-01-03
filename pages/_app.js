@@ -10,10 +10,9 @@ import { useUser } from "../context/UserContext";
 import Layout from "../components/Layout";
 
 /* ============================================================
-   GLOBAL APP GUARD — SINGLE SOURCE OF TRUTH
-   - Blocks ALL navigation until onboarding is complete
-   - Catches sidebar clicks, deep links, refreshes
-   - Self-serve safe (no manual steps per customer)
+   GLOBAL APP GUARD — ROUTING ONLY (NO RENDER BLOCK)
+   - Handles redirects
+   - NEVER hides children
 ============================================================ */
 function AppGuard({ children }) {
   const router = useRouter();
@@ -23,33 +22,38 @@ function AppGuard({ children }) {
   useEffect(() => {
     if (initializing || loading) return;
 
+    const isOnboarding = router.pathname.startsWith("/onboarding");
+    const isAuth = router.pathname.startsWith("/auth");
+
     // 🔐 Not logged in → login
-    if (!isLoggedIn) {
-      if (!router.pathname.startsWith("/auth")) {
-        router.replace("/auth/login");
-      }
+    if (!isLoggedIn && !isAuth) {
+      router.replace("/auth/login");
       return;
     }
 
-    // 🚧 No org yet → onboarding
-    if (!activeOrg) {
-      if (router.pathname !== "/onboarding/ai-wizard") {
-        router.replace("/onboarding/ai-wizard");
-      }
+    // 🚧 Logged in but no org yet → onboarding
+    if (isLoggedIn && !activeOrg && !isOnboarding) {
+      router.replace("/onboarding/ai-wizard");
       return;
     }
 
-    // 🚧 Onboarding not complete → onboarding
-    if (!activeOrg.onboarding_completed) {
-      if (router.pathname !== "/onboarding/ai-wizard") {
-        router.replace("/onboarding/ai-wizard");
-      }
+    // 🚧 Onboarding incomplete → force onboarding
+    if (
+      isLoggedIn &&
+      activeOrg &&
+      !activeOrg.onboarding_completed &&
+      !isOnboarding
+    ) {
+      router.replace("/onboarding/ai-wizard");
       return;
     }
 
-    // ✅ Onboarding complete
-    // If user is still on onboarding, send them to dashboard
-    if (router.pathname === "/onboarding/ai-wizard") {
+    // ✅ Onboarding complete → escape onboarding
+    if (
+      isLoggedIn &&
+      activeOrg?.onboarding_completed &&
+      isOnboarding
+    ) {
       router.replace("/dashboard");
     }
   }, [
@@ -61,11 +65,7 @@ function AppGuard({ children }) {
     router,
   ]);
 
-  // ⛔ Block render until state is resolved
-  if (initializing || loading) return null;
-  if (!isLoggedIn) return null;
-  if (!activeOrg || !activeOrg.onboarding_completed) return null;
-
+  // ❗ NEVER block rendering
   return children;
 }
 
@@ -73,6 +73,9 @@ function AppGuard({ children }) {
    APP ROOT
 ============================================================ */
 export default function App({ Component, pageProps }) {
+  const router = useRouter();
+  const isOnboardingRoute = router.pathname.startsWith("/onboarding");
+
   return (
     <>
       {/* Google Analytics (GA4) */}
@@ -92,9 +95,15 @@ export default function App({ Component, pageProps }) {
       <UserProvider>
         <OrgProvider>
           <AppGuard>
-            <Layout>
+            {isOnboardingRoute ? (
+              // 🚀 ONBOARDING: NO LAYOUT, NO SIDEBAR
               <Component {...pageProps} />
-            </Layout>
+            ) : (
+              // 🧠 APP: DASHBOARD SHELL
+              <Layout>
+                <Component {...pageProps} />
+              </Layout>
+            )}
           </AppGuard>
         </OrgProvider>
       </UserProvider>
