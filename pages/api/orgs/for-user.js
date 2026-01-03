@@ -10,7 +10,7 @@ const supabase = createClient(
 
 export default async function handler(req, res) {
   try {
-    // 🔐 Read auth token (cookie OR header safe)
+    // 🔐 Read auth token (Authorization header)
     const authHeader = req.headers.authorization || "";
     const token = authHeader.replace("Bearer ", "");
 
@@ -27,29 +27,31 @@ export default async function handler(req, res) {
     const authUserId = data.user.id;
     const email = data.user.email || null;
 
-    // 🔎 Fetch orgs for this user
+    // 🔎 Fetch orgs for this user (INCLUDES onboarding flag)
     let orgs = await sql`
       SELECT
         o.id,
         o.name,
-        o.external_uuid
+        o.external_uuid,
+        o.onboarding_completed
       FROM organization_members om
       JOIN organizations o ON o.id = om.org_id
       WHERE om.user_id = ${authUserId}
       ORDER BY o.id ASC
     `;
 
-    // ✅ SELF-SERVE GUARANTEE:
-    // If user has NO orgs → create one automatically
+    // ✅ SELF-SERVE GUARANTEE
+    // If user has NO org → create one automatically
     if (!orgs || orgs.length === 0) {
-      // 1️⃣ Create organization
       const [org] = await sql`
-        INSERT INTO organizations (name)
-        VALUES (${email ? `${email.split("@")[0]}'s Organization` : "My Organization"})
-        RETURNING id, name, external_uuid
+        INSERT INTO organizations (name, onboarding_completed)
+        VALUES (
+          ${email ? `${email.split("@")[0]}'s Organization` : "My Organization"},
+          false
+        )
+        RETURNING id, name, external_uuid, onboarding_completed
       `;
 
-      // 2️⃣ Attach user as owner
       await sql`
         INSERT INTO organization_members (org_id, user_id, role)
         VALUES (${org.id}, ${authUserId}, 'owner')
@@ -58,7 +60,7 @@ export default async function handler(req, res) {
       orgs = [org];
     }
 
-    // 🚀 Always returns at least one org
+    // 🚀 Always returns orgs WITH onboarding state
     return res.status(200).json({
       ok: true,
       orgs,
