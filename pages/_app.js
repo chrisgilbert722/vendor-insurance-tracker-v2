@@ -11,8 +11,9 @@ import Layout from "../components/Layout";
 
 /* ============================================================
    GLOBAL APP GUARD — ROUTING ONLY (NO RENDER BLOCK)
-   - Handles redirects
-   - NEVER hides children
+   - Single source of truth
+   - Self-serve safe
+   - Billing → Onboarding → Dashboard
 ============================================================ */
 function AppGuard({ children }) {
   const router = useRouter();
@@ -22,33 +23,63 @@ function AppGuard({ children }) {
   useEffect(() => {
     if (initializing || loading) return;
 
-    const isOnboarding = router.pathname.startsWith("/onboarding");
-    const isAuth = router.pathname.startsWith("/auth");
+    const path = router.pathname;
 
-    // 🔐 Not logged in → login
-    if (!isLoggedIn && !isAuth) {
-      router.replace("/auth/login");
+    const isAuth =
+      path.startsWith("/auth");
+
+    const isOnboarding =
+      path.startsWith("/onboarding");
+
+    const isPublic =
+      path === "/" ||
+      path.startsWith("/pricing") ||
+      path.startsWith("/property-management") ||
+      path.startsWith("/terms") ||
+      path.startsWith("/privacy");
+
+    /* --------------------------------------------------------
+       1️⃣ LOGGED OUT USERS
+       - Allow public pages
+       - Force login for app routes
+    -------------------------------------------------------- */
+    if (!isLoggedIn) {
+      if (!isPublic && !isAuth) {
+        router.replace("/auth/login");
+      }
       return;
     }
 
-    // 🚧 Logged in but no org yet → onboarding
-    if (isLoggedIn && !activeOrg && !isOnboarding) {
-      router.replace("/onboarding/ai-wizard");
+    /* --------------------------------------------------------
+       2️⃣ LOGGED IN — NO ORG YET
+       - Always go to onboarding
+    -------------------------------------------------------- */
+    if (isLoggedIn && !activeOrg) {
+      if (!isOnboarding) {
+        router.replace("/onboarding/ai-wizard");
+      }
       return;
     }
 
-    // 🚧 Onboarding incomplete → force onboarding
+    /* --------------------------------------------------------
+       3️⃣ ONBOARDING NOT COMPLETE
+       - Lock app until finished
+    -------------------------------------------------------- */
     if (
       isLoggedIn &&
       activeOrg &&
-      !activeOrg.onboarding_completed &&
-      !isOnboarding
+      !activeOrg.onboarding_completed
     ) {
-      router.replace("/onboarding/ai-wizard");
+      if (!isOnboarding) {
+        router.replace("/onboarding/ai-wizard");
+      }
       return;
     }
 
-    // ✅ Onboarding complete → escape onboarding
+    /* --------------------------------------------------------
+       4️⃣ ONBOARDING COMPLETE
+       - Never allow onboarding again
+    -------------------------------------------------------- */
     if (
       isLoggedIn &&
       activeOrg?.onboarding_completed &&
@@ -65,7 +96,7 @@ function AppGuard({ children }) {
     router,
   ]);
 
-  // ❗ NEVER block rendering
+  // ❗ NEVER block rendering — routing only
   return children;
 }
 
@@ -96,10 +127,10 @@ export default function App({ Component, pageProps }) {
         <OrgProvider>
           <AppGuard>
             {isOnboardingRoute ? (
-              // 🚀 ONBOARDING: NO LAYOUT, NO SIDEBAR
+              // 🚀 ONBOARDING — NO SIDEBAR / NO LAYOUT
               <Component {...pageProps} />
             ) : (
-              // 🧠 APP: DASHBOARD SHELL
+              // 🧠 APPLICATION SHELL
               <Layout>
                 <Component {...pageProps} />
               </Layout>
