@@ -81,12 +81,25 @@ export default function VendorsUploadStep({ orgId }) {
     try {
       setUploading(true);
 
+      // 🔑 CRITICAL FIX: include Supabase access token
+      const authRaw = localStorage.getItem("supabase.auth.token");
+      const auth = authRaw ? JSON.parse(authRaw) : null;
+      const accessToken =
+        auth?.currentSession?.access_token || auth?.access_token || null;
+
+      if (!accessToken) {
+        throw new Error("Authentication session missing. Please refresh.");
+      }
+
       const formData = new FormData();
       formData.append("file", file);
       if (orgId) formData.append("orgId", String(orgId));
 
       const res = await fetch("/api/onboarding/upload-vendors-csv", {
         method: "POST",
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+        },
         body: formData,
       });
 
@@ -95,10 +108,13 @@ export default function VendorsUploadStep({ orgId }) {
         throw new Error(json.error || "Upload failed.");
       }
 
-      // 🔑 CRITICAL: re-run onboarding start to RELEASE DATA GATE
+      // 🔓 RELEASE DATA GATE
       await fetch("/api/onboarding/start", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${accessToken}`,
+        },
         body: JSON.stringify({ orgId }),
       });
 
