@@ -27,11 +27,13 @@ export default function AiWizardPanel({ orgId }) {
   const [finishing, setFinishing] = useState(false);
   const [error, setError] = useState("");
 
+  // 🔥 LOCAL UI OVERRIDE (frontend only)
+  const [forceUiStep, setForceUiStep] = useState(null);
+
   // Enforce UUID-only orgId
   const orgUuid =
     typeof orgId === "string" && UUID_RE.test(orgId) ? orgId : null;
 
-  // Fail closed if org context is invalid
   if (!orgUuid) {
     return (
       <div
@@ -50,17 +52,16 @@ export default function AiWizardPanel({ orgId }) {
     );
   }
 
-  // Telemetry observer (UUID only)
-  const { uiStep } = useOnboardingObserver({ orgId: orgUuid });
+  // Backend-driven step
+  const { uiStep: observedStep } = useOnboardingObserver({ orgId: orgUuid });
 
-  // 🔑 CRITICAL FIX:
-  // If onboarding has never started, default to STEP 1
-  const effectiveStep = uiStep ?? 1;
+  // 🔑 FINAL STEP DECISION
+  const effectiveStep = forceUiStep ?? observedStep ?? 1;
 
   let content = null;
 
   /* ============================================================
-     STEP 1 — START (AUTOPILOT TRIGGER)
+     STEP 1 — START
   ============================================================ */
   if (effectiveStep === 1) {
     const startAutopilot = async () => {
@@ -80,6 +81,9 @@ export default function AiWizardPanel({ orgId }) {
         if (!json.ok) {
           throw new Error(json.error || "Failed to start onboarding");
         }
+
+        // ✅ UI IMMEDIATELY MOVES TO UPLOAD STEP
+        setForceUiStep(2);
       } catch (e) {
         setError(
           e.message ||
@@ -141,37 +145,47 @@ export default function AiWizardPanel({ orgId }) {
     );
   } else {
     /* ============================================================
-       STEP ROUTER — TELEMETRY ONLY
+       STEP ROUTER
     ============================================================ */
     switch (effectiveStep) {
       case 2:
-        content = <VendorsUploadStep orgId={orgUuid} />;
+        content = (
+          <VendorsUploadStep
+            orgId={orgUuid}
+            // 🔓 RELEASE DATA GATE ON SUCCESS
+            onUploadSuccess={() => setForceUiStep(3)}
+          />
+        );
         break;
+
       case 3:
         content = <VendorsMapStep />;
         break;
+
       case 4:
         content = <VendorsAnalyzeStep orgId={orgUuid} />;
         break;
+
       case 5:
         content = <ContractsUploadStep orgId={orgUuid} />;
         break;
+
       case 6:
         content = <RulesGenerateStep orgId={orgUuid} />;
         break;
+
       case 7:
         content = <FixPlansStep orgId={orgUuid} />;
         break;
+
       case 8:
         content = <CompanyProfileStep orgId={orgUuid} />;
         break;
+
       case 9:
         content = <TeamBrokersStep />;
         break;
 
-      /* ============================================================
-         STEP 10 — FINALIZE + REDIRECT
-      ============================================================ */
       case 10:
         content = (
           <ReviewLaunchStep
@@ -180,17 +194,10 @@ export default function AiWizardPanel({ orgId }) {
               if (finishing) return;
 
               setFinishing(true);
-
               try {
-                // ✅ Mark onboarding complete (server truth)
-                await fetch("/api/onboarding/complete", {
-                  method: "POST",
-                });
-
-                // 🚀 App / Layout gate now allows dashboard
+                await fetch("/api/onboarding/complete", { method: "POST" });
                 router.replace("/dashboard");
               } catch (err) {
-                console.error("Onboarding completion failed:", err);
                 setError("We couldn’t finish setup. Please try again.");
                 setFinishing(false);
               }
@@ -214,7 +221,6 @@ export default function AiWizardPanel({ orgId }) {
         </div>
       )}
 
-      {/* 🔥 LIVE AI ACTIVITY FEED (Backend-driven) */}
       <OnboardingActivityFeed />
     </>
   );
