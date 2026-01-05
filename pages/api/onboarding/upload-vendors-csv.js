@@ -1,4 +1,3 @@
-// pages/api/onboarding/upload-vendors-csv.js
 import formidable from "formidable";
 import fs from "fs";
 import { supabaseServer } from "../../../lib/supabaseServer";
@@ -13,43 +12,46 @@ export default async function handler(req, res) {
   }
 
   try {
+    const supabase = supabaseServer();
+
+    // 🔐 Get authenticated user
+    const {
+      data: { user },
+      error: userErr,
+    } = await supabase.auth.getUser(req.headers.authorization?.replace("Bearer ", ""));
+
+    if (userErr || !user) {
+      return res.status(401).json({ ok: false, error: "Not authenticated" });
+    }
+
+    // 🔐 Resolve org via membership (SOURCE OF TRUTH)
+    const { data: orgRow, error: orgErr } = await supabase
+      .from("org_members")
+      .select("org_id")
+      .eq("user_id", user.id)
+      .limit(1)
+      .single();
+
+    if (orgErr || !orgRow?.org_id) {
+      return res.status(400).json({
+        ok: false,
+        error: "Organization not found for authenticated user",
+      });
+    }
+
+    const orgId = orgRow.org_id;
+
+    // 📦 Parse upload
     const form = formidable({ multiples: false });
-    const [fields, files] = await form.parse(req);
+    const [_, files] = await form.parse(req);
 
     const file = Array.isArray(files.file) ? files.file[0] : files.file;
     if (!file) {
       return res.status(400).json({ ok: false, error: "No file uploaded" });
     }
 
-    const orgId = Array.isArray(fields.orgId)
-      ? fields.orgId[0]
-      : fields.orgId;
-
-    if (!orgId) {
-      return res.status(400).json({
-        ok: false,
-        error: "Missing orgId (must be orgs.id UUID)",
-      });
-    }
-
-    const supabase = supabaseServer();
-
-    // ✅ HARD VALIDATION — this is what you were missing
-    const { data: org, error: orgError } = await supabase
-      .from("orgs")
-      .select("id")
-      .eq("id", orgId)
-      .single();
-
-    if (orgError || !org) {
-      return res.status(400).json({
-        ok: false,
-        error: "Organization not found for orgId",
-      });
-    }
-
-    // ✅ CONFIRMED bucket name
-    const bucket = "vendor-uploads";
+    // 📁 Upload to Supabase Storage
+    const bucket = "vendor-uploads"; // CONFIRMED EXISTS
     const filename = `${orgId}/${Date.now()}-${file.originalFilename}`;
     const stream = fs.createReadStream(file.filepath);
 
@@ -62,16 +64,15 @@ export default async function handler(req, res) {
 
     if (uploadError) throw uploadError;
 
-    // ✅ FK-safe insert
-    const { error: dbError } = await supabase
-      .from("vendor_uploads")
-      .insert({
-        org_id: orgId,
-        file_path: filename,
-        original_name: file.originalFilename,
-        mime_type: file.mimetype,
-        size_bytes: file.size,
-      });
+    // 🧾 Insert metadata (FK SAFE)
+    const { error: dbError } = await supabase.from("vendor_uploads").insert({
+      org_id: orgId,
+      file_path: filename,
+      original_name: file.originalFilename,
+      mime_type: file.mimetype,
+      size_bytes: file.size,
+      created_by: user.id,
+    });
 
     if (dbError) throw dbError;
 
