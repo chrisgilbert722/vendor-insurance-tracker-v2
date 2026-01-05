@@ -1,9 +1,11 @@
 // pages/api/onboarding/upload-vendors-csv.js
-// Vendor CSV Upload → Supabase Storage (vendor-uploads bucket)
+// Vendor CSV Upload → Supabase Storage (Onboarding Bucket)
+// ✅ FIXED: resolves real org_id before insert
 
 import formidable from "formidable";
 import fs from "fs";
 import { supabaseServer } from "../../../lib/supabaseServer";
+import { resolveOrg } from "../../../lib/resolveOrg";
 
 export const config = {
   api: {
@@ -13,69 +15,83 @@ export const config = {
 
 export default async function handler(req, res) {
   if (req.method !== "POST") {
-    return res.status(405).json({ ok: false, error: "POST only" });
+    return res
+      .status(405)
+      .json({ ok: false, error: "Use POST for this endpoint." });
   }
 
   try {
+    // 🔑 CRITICAL: resolve REAL org_id (orgs.id)
+    const orgId = await resolveOrg(req, res);
+    if (!orgId) {
+      return res.status(400).json({
+        ok: false,
+        error: "Unable to resolve organization.",
+      });
+    }
+
     const form = formidable({ multiples: false });
     const [fields, files] = await form.parse(req);
 
-    const file = Array.isArray(files.file) ? files.file[0] : files.file;
-    if (!file) {
-      return res.status(400).json({ ok: false, error: "No file uploaded" });
+    const rawFile = Array.isArray(files.file) ? files.file[0] : files.file;
+    if (!rawFile) {
+      return res.status(400).json({
+        ok: false,
+        error: "No file uploaded (expected field: file).",
+      });
     }
 
-    const orgId =
-      Array.isArray(fields.orgId) ? fields.orgId[0] : fields.orgId;
+    const supabase = supabaseServer();
 
-    if (!orgId) {
-      return res.status(400).json({ ok: false, error: "Missing orgId" });
-    }
-
-    const supabase = supabaseServer(); // ✅ SERVICE ROLE CLIENT
-
-    const bucket = "vendor-uploads"; // ✅ matches Supabase UI exactly
-    const filename = `${orgId}/${Date.now()}-${file.originalFilename}`
+    const originalName = rawFile.originalFilename || "vendors.csv";
+    const timestamp = Date.now();
+    const storagePath = `vendors-csv/${orgId}/${timestamp}-${originalName}`
       .replace(/\s+/g, "_")
       .toLowerCase();
 
-    const stream = fs.createReadStream(file.filepath);
+    // Upload to storage
+    const stream = fs.createReadStream(rawFile.filepath);
 
-    const { error: uploadError } = await supabase.storage
-      .from(bucket)
-      .upload(filename, stream, {
-        contentType: file.mimetype || "text/csv",
+    const { error: storageError } = await supabase.storage
+      .from("vendor-uploads")
+      .upload(storagePath, stream, {
+        contentType: rawFile.mimetype || "text/csv",
+        duplex: "half",
         upsert: false,
       });
 
-    if (uploadError) {
-      console.error("Storage upload failed:", uploadError);
-      throw uploadError;
+    if (storageError) {
+      throw storageError;
     }
 
-    // ✅ Insert metadata using service role (bypasses RLS safely)
-    const { error: dbError } = await supabase.from("vendor_uploads").insert({
-      org_id: orgId,
-      file_path: filename,
-      original_name: file.originalFilename,
-      mime_type: file.mimetype,
-      size_bytes: file.size,
-    });
+    // Insert metadata row (FK-safe)
+    const { error: insertError } = await supabase
+      .from("vendor_uploads")
+      .insert({
+        org_id: orgId,
+        file_path: storagePath,
+        original_name: originalName,
+        mime_type: rawFile.mimetype || "text/csv",
+        size_bytes: rawFile.size,
+        created_by: null,
+      });
 
-    if (dbError) {
-      console.error("DB insert failed:", dbError);
-      throw dbError;
+    if (insertError) {
+      throw insertError;
     }
 
     return res.status(200).json({
       ok: true,
-      bucket,
-      path: filename,
+      orgId,
+      path: storagePath,
+      originalName,
+      size: rawFile.size,
     });
   } catch (err) {
     console.error("[upload-vendors-csv]", err);
-    return res
-      .status(500)
-      .json({ ok: false, error: err.message || "Upload failed" });
+    return res.status(500).json({
+      ok: false,
+      error: err.message || "Upload failed.",
+    });
   }
 }
