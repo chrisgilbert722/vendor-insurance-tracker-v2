@@ -1,6 +1,6 @@
 // pages/api/onboarding/upload-vendors-csv.js
-// Vendor CSV Upload → Supabase Storage + Neon vendor_uploads row
-// IMPORTANT: matches EXISTING Neon schema exactly (NO extra columns)
+// Vendor CSV Upload → Supabase Storage + minimal Neon vendor_uploads insert
+// MATCHES ACTUAL vendor_uploads SCHEMA (NO EXTRA COLUMNS)
 
 import formidable from "formidable";
 import fs from "fs";
@@ -28,7 +28,7 @@ export default async function handler(req, res) {
   }
 
   try {
-    // 1) Require Supabase session
+    // 1) Require Supabase auth session
     const token = getBearerToken(req);
     if (!token) {
       return res.status(401).json({
@@ -62,7 +62,7 @@ export default async function handler(req, res) {
     if (!orgUuid) {
       return res.status(400).json({
         ok: false,
-        error: "Missing orgId (external UUID)",
+        error: "Missing orgId",
       });
     }
 
@@ -85,7 +85,7 @@ export default async function handler(req, res) {
 
     const orgIdInt = orgRows[0].id;
 
-    // 4) Upload to Supabase Storage
+    // 4) Upload file to Supabase Storage (already working)
     const bucket = "vendor-uploads";
     const safeName = (file.originalFilename || "vendors.csv").replace(/\s+/g, "_");
     const objectPath = `vendors-csv/${orgUuid}/${Date.now()}-${safeName}`;
@@ -97,7 +97,6 @@ export default async function handler(req, res) {
       .upload(objectPath, stream, {
         contentType: file.mimetype || "text/csv",
         duplex: "half",
-        upsert: false,
       });
 
     if (uploadError) {
@@ -112,13 +111,11 @@ export default async function handler(req, res) {
       INSERT INTO vendor_uploads (
         org_id,
         mime_type,
-        size_bytes,
         created_by
       )
       VALUES (
         ${orgIdInt},
         ${file.mimetype || "text/csv"},
-        ${Number(file.size || 0)},
         ${authUserId}
       );
     `;
