@@ -2,6 +2,7 @@
 // Wizard Step 2 — Vendor CSV Upload (Browser parse + Backend gate release)
 
 import { useState } from "react";
+import { supabase } from "../../lib/supabaseClient"; // ✅ THE ONLY REQUIRED CLIENT FIX
 
 export default function VendorsUploadStep({ orgId }) {
   const [file, setFile] = useState(null);
@@ -81,20 +82,23 @@ export default function VendorsUploadStep({ orgId }) {
     try {
       setUploading(true);
 
-      // 🔑 CRITICAL FIX: include Supabase access token
-      const authRaw = localStorage.getItem("supabase.auth.token");
-      const auth = authRaw ? JSON.parse(authRaw) : null;
-      const accessToken =
-        auth?.currentSession?.access_token || auth?.access_token || null;
+      // ✅ CORRECT WAY: get Supabase session
+      const {
+        data: { session },
+        error: sessionError,
+      } = await supabase.auth.getSession();
 
-      if (!accessToken) {
+      if (sessionError || !session?.access_token) {
         throw new Error("Authentication session missing. Please refresh.");
       }
+
+      const accessToken = session.access_token;
 
       const formData = new FormData();
       formData.append("file", file);
       if (orgId) formData.append("orgId", String(orgId));
 
+      // 1️⃣ Upload CSV
       const res = await fetch("/api/onboarding/upload-vendors-csv", {
         method: "POST",
         headers: {
@@ -108,7 +112,7 @@ export default function VendorsUploadStep({ orgId }) {
         throw new Error(json.error || "Upload failed.");
       }
 
-      // 🔓 RELEASE DATA GATE
+      // 2️⃣ Re-run onboarding to RELEASE DATA GATE
       await fetch("/api/onboarding/start", {
         method: "POST",
         headers: {
@@ -118,7 +122,7 @@ export default function VendorsUploadStep({ orgId }) {
         body: JSON.stringify({ orgId }),
       });
 
-      // Force observer refresh
+      // 3️⃣ Force observer refresh → advances to Step 3
       window.location.reload();
     } catch (err) {
       console.error("Vendor CSV upload error:", err);
