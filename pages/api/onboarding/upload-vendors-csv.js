@@ -23,8 +23,7 @@ const supabaseAdmin = createClient(
 
 function getBearerToken(req) {
   const auth = req.headers.authorization || "";
-  const token = auth.startsWith("Bearer ") ? auth.slice(7) : "";
-  return token || null;
+  return auth.startsWith("Bearer ") ? auth.slice(7) : null;
 }
 
 export default async function handler(req, res) {
@@ -33,7 +32,7 @@ export default async function handler(req, res) {
   }
 
   try {
-    // 1) Auth: require Supabase access token (from browser session)
+    // 1) Auth: require Supabase access token
     const token = getBearerToken(req);
     if (!token) {
       return res
@@ -41,10 +40,13 @@ export default async function handler(req, res) {
         .json({ ok: false, error: "Authentication session missing. Please refresh." });
     }
 
-    const { data: userData, error: userErr } = await supabaseAdmin.auth.getUser(token);
+    const { data: userData, error: userErr } =
+      await supabaseAdmin.auth.getUser(token);
+
     if (userErr || !userData?.user) {
       return res.status(401).json({ ok: false, error: "Invalid session" });
     }
+
     const authUserId = userData.user.id;
 
     // 2) Parse multipart form
@@ -53,11 +55,15 @@ export default async function handler(req, res) {
 
     const file = Array.isArray(files.file) ? files.file[0] : files.file;
     if (!file) {
-      return res.status(400).json({ ok: false, error: "No file uploaded (field: file)" });
+      return res
+        .status(400)
+        .json({ ok: false, error: "No file uploaded (field: file)" });
     }
 
-    // IMPORTANT: orgId is the org UUID you use everywhere in the app (organizations.external_uuid)
-    const orgUuid = Array.isArray(fields.orgId) ? fields.orgId[0] : fields.orgId;
+    const orgUuid = Array.isArray(fields.orgId)
+      ? fields.orgId[0]
+      : fields.orgId;
+
     if (!orgUuid) {
       return res.status(400).json({
         ok: false,
@@ -84,8 +90,8 @@ export default async function handler(req, res) {
 
     const orgIdInt = orgRows[0].id;
 
-    // 4) Upload to Supabase Storage bucket
-    const bucket = "vendor-uploads"; // ✅ matches what you showed in Supabase Storage
+    // 4) Upload to Supabase Storage
+    const bucket = "vendor-uploads"; // EXISTS
     const originalName = file.originalFilename || "vendors.csv";
     const safeName = originalName.replace(/\s+/g, "_");
     const objectPath = `vendors-csv/${orgUuid}/${Date.now()}-${safeName}`;
@@ -102,14 +108,15 @@ export default async function handler(req, res) {
 
     if (uploadError) {
       console.error("[upload-vendors-csv] storage error:", uploadError);
-      return res.status(500).json({ ok: false, error: uploadError.message || "Storage upload failed" });
+      return res
+        .status(500)
+        .json({ ok: false, error: uploadError.message });
     }
 
-    // 5) Insert metadata into Neon vendor_uploads (this releases the data-gate)
+    // 5) INSERT INTO Neon vendor_uploads (NO storage_bucket column)
     await sql`
       INSERT INTO vendor_uploads (
         org_id,
-        storage_bucket,
         file_path,
         original_name,
         mime_type,
@@ -118,7 +125,6 @@ export default async function handler(req, res) {
       )
       VALUES (
         ${orgIdInt},
-        ${bucket},
         ${objectPath},
         ${originalName},
         ${file.mimetype || "text/csv"},
@@ -131,12 +137,13 @@ export default async function handler(req, res) {
       ok: true,
       orgId: orgUuid,
       orgIdInt,
-      bucket,
       file_path: objectPath,
       originalName,
     });
   } catch (err) {
     console.error("[upload-vendors-csv] handler error:", err);
-    return res.status(500).json({ ok: false, error: err.message || "Upload failed." });
+    return res
+      .status(500)
+      .json({ ok: false, error: err.message || "Upload failed." });
   }
 }
