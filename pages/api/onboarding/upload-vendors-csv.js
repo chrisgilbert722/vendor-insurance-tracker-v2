@@ -1,6 +1,6 @@
 // pages/api/onboarding/upload-vendors-csv.js
 // Vendor CSV Upload → Supabase Storage + Neon vendor_uploads row
-// IMPORTANT: matches existing Neon schema exactly
+// IMPORTANT: matches EXISTING Neon schema exactly (NO extra columns)
 
 import formidable from "formidable";
 import fs from "fs";
@@ -66,7 +66,7 @@ export default async function handler(req, res) {
       });
     }
 
-    // 3) Resolve Neon org_id (INT) + verify membership
+    // 3) Resolve Neon org INT + verify membership
     const orgRows = await sql`
       SELECT o.id
       FROM organizations o
@@ -85,10 +85,9 @@ export default async function handler(req, res) {
 
     const orgIdInt = orgRows[0].id;
 
-    // 4) Upload file to Supabase Storage
+    // 4) Upload to Supabase Storage
     const bucket = "vendor-uploads";
-    const originalName = file.originalFilename || "vendors.csv";
-    const safeName = originalName.replace(/\s+/g, "_");
+    const safeName = (file.originalFilename || "vendors.csv").replace(/\s+/g, "_");
     const objectPath = `vendors-csv/${orgUuid}/${Date.now()}-${safeName}`;
 
     const stream = fs.createReadStream(file.filepath);
@@ -102,25 +101,22 @@ export default async function handler(req, res) {
       });
 
     if (uploadError) {
-      console.error("[storage upload]", uploadError);
       return res.status(500).json({
         ok: false,
         error: uploadError.message,
       });
     }
 
-    // 5) Insert ONLY existing columns into vendor_uploads
+    // 5) INSERT ONLY EXISTING COLUMNS
     await sql`
       INSERT INTO vendor_uploads (
         org_id,
-        original_name,
         mime_type,
         size_bytes,
         created_by
       )
       VALUES (
         ${orgIdInt},
-        ${originalName},
         ${file.mimetype || "text/csv"},
         ${Number(file.size || 0)},
         ${authUserId}
@@ -131,7 +127,6 @@ export default async function handler(req, res) {
       ok: true,
       orgId: orgUuid,
       orgIdInt,
-      originalName,
     });
   } catch (err) {
     console.error("[upload-vendors-csv]", err);
