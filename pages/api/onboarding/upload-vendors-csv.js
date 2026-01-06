@@ -1,8 +1,5 @@
 // pages/api/onboarding/upload-vendors-csv.js
-// FINAL NEON-SAFE VERSION
-// - Uploads CSV to Supabase Storage
-// - Inserts ONLY org_id into Neon vendor_uploads
-// - No extra columns (matches real schema)
+// FINAL NEON-SAFE VERSION — MATCHES REAL vendor_uploads SCHEMA
 
 import formidable from "formidable";
 import fs from "fs";
@@ -13,15 +10,15 @@ export const config = {
   api: { bodyParser: false },
 };
 
-// Supabase service role (storage only)
+// Supabase service-role client (SERVER ONLY)
 const supabaseAdmin = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL,
   process.env.SUPABASE_SERVICE_ROLE_KEY
 );
 
 function getBearerToken(req) {
-  const h = req.headers.authorization || "";
-  return h.startsWith("Bearer ") ? h.slice(7) : null;
+  const auth = req.headers.authorization || "";
+  return auth.startsWith("Bearer ") ? auth.slice(7) : null;
 }
 
 export default async function handler(req, res) {
@@ -30,7 +27,9 @@ export default async function handler(req, res) {
   }
 
   try {
-    // 1️⃣ Require auth session
+    /* -------------------------------------------------
+       1) AUTH — verify Supabase session
+    -------------------------------------------------- */
     const token = getBearerToken(req);
     if (!token) {
       return res.status(401).json({
@@ -46,7 +45,11 @@ export default async function handler(req, res) {
       return res.status(401).json({ ok: false, error: "Invalid session" });
     }
 
-    // 2️⃣ Parse multipart
+    const authUserId = userData.user.id; // UUID string
+
+    /* -------------------------------------------------
+       2) PARSE MULTIPART FORM
+    -------------------------------------------------- */
     const form = formidable({ multiples: false });
     const [fields, files] = await form.parse(req);
 
@@ -60,56 +63,81 @@ export default async function handler(req, res) {
       : fields.orgId;
 
     if (!orgUuid) {
-      return res.status(400).json({ ok: false, error: "Missing orgId" });
+      return res.status(400).json({
+        ok: false,
+        error: "Missing orgId",
+      });
     }
 
-    // 3️⃣ Resolve Neon org.id (INT) via external_uuid
-    const rows = await sql`
-      SELECT id
-      FROM organizations
-      WHERE external_uuid = ${orgUuid}
+    /* -------------------------------------------------
+       3) RESOLVE NEON org_id (INT) + MEMBERSHIP CHECK
+    -------------------------------------------------- */
+    const orgRows = await sql`
+      SELECT o.id
+      FROM organizations o
+      JOIN organization_members om
+        ON om.org_id = o.id
+      WHERE o.external_uuid = ${orgUuid}
+        AND om.user_id = ${authUserId}
       LIMIT 1;
     `;
 
-    if (!rows.length) {
+    if (!orgRows.length) {
       return res.status(400).json({
         ok: false,
         error: "Organization not found for orgId",
       });
     }
 
-    const orgIdInt = rows[0].id;
+    const orgIdInt = orgRows[0].id;
 
-    // 4️⃣ Upload to Supabase Storage
+    /* -------------------------------------------------
+       4) UPLOAD FILE TO SUPABASE STORAGE
+    -------------------------------------------------- */
     const bucket = "vendor-uploads";
-    const safeName = (file.originalFilename || "vendors.csv").replace(/\s+/g, "_");
-    const objectPath = `vendors/${orgUuid}/${Date.now()}-${safeName}`;
+    const safeFilename = (file.originalFilename || "vendors.csv")
+      .replace(/\s+/g, "_");
 
+    const objectPath = `vendors-csv/${orgUuid}/${Date.now()}-${safeFilename}`;
     const stream = fs.createReadStream(file.filepath);
 
-    const { error: uploadErr } = await supabaseAdmin.storage
+    const { error: uploadError } = await supabaseAdmin.storage
       .from(bucket)
       .upload(objectPath, stream, {
         contentType: file.mimetype || "text/csv",
         duplex: "half",
       });
 
-    if (uploadErr) {
+    if (uploadError) {
       return res.status(500).json({
         ok: false,
-        error: uploadErr.message,
+        error: uploadError.message,
       });
     }
 
-    // 5️⃣ NEON-SAFE INSERT (ONLY org_id)
+    /* -------------------------------------------------
+       5) INSERT INTO NEON vendor_uploads (REAL COLUMNS)
+    -------------------------------------------------- */
     await sql`
-      INSERT INTO vendor_uploads (org_id)
-      VALUES (${orgIdInt});
+      INSERT INTO vendor_uploads (
+        org_id,
+        filename,
+        mime_type,
+        uploaded_by
+      )
+      VALUES (
+        ${orgIdInt},
+        ${safeFilename},
+        ${file.mimetype || "text/csv"},
+        ${authUserId}
+      );
     `;
 
     return res.status(200).json({
       ok: true,
       orgId: orgUuid,
+      orgIdInt,
+      filename: safeFilename,
     });
   } catch (err) {
     console.error("[upload-vendors-csv]", err);
