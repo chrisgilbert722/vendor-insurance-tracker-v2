@@ -1,6 +1,6 @@
 // pages/api/onboarding/upload-vendors-csv.js
-// Vendor CSV Upload → Supabase Storage + minimal Neon vendor_uploads insert
-// MATCHES ACTUAL vendor_uploads SCHEMA (NO EXTRA COLUMNS)
+// Vendor CSV Upload → Supabase Storage + minimal vendor_uploads insert
+// MATCHES ACTUAL vendor_uploads SCHEMA (org_id UUID ONLY)
 
 import formidable from "formidable";
 import fs from "fs";
@@ -55,40 +55,38 @@ export default async function handler(req, res) {
       return res.status(400).json({ ok: false, error: "No file uploaded" });
     }
 
-    const orgUuid = Array.isArray(fields.orgId)
+    // orgId MUST be orgs.id (UUID)
+    const orgId = Array.isArray(fields.orgId)
       ? fields.orgId[0]
       : fields.orgId;
 
-    if (!orgUuid) {
+    if (!orgId) {
       return res.status(400).json({
         ok: false,
-        error: "Missing orgId",
+        error: "Missing orgId (orgs.id UUID)",
       });
     }
 
-    // 3) Resolve Neon org INT + verify membership
-    const orgRows = await sql`
-      SELECT o.id
-      FROM organizations o
-      JOIN organization_members om ON om.org_id = o.id
-      WHERE o.external_uuid = ${orgUuid}
-        AND om.user_id = ${authUserId}
+    // 3) Verify user is member of org (NO ID TRANSLATION)
+    const membership = await sql`
+      SELECT 1
+      FROM org_members
+      WHERE org_id = ${orgId}
+        AND user_id = ${authUserId}
       LIMIT 1;
     `;
 
-    if (!orgRows.length) {
-      return res.status(400).json({
+    if (!membership.length) {
+      return res.status(403).json({
         ok: false,
-        error: "Organization not found for orgId",
+        error: "User not a member of this organization",
       });
     }
 
-    const orgIdInt = orgRows[0].id;
-
-    // 4) Upload file to Supabase Storage (already working)
+    // 4) Upload CSV to Supabase Storage
     const bucket = "vendor-uploads";
     const safeName = (file.originalFilename || "vendors.csv").replace(/\s+/g, "_");
-    const objectPath = `vendors-csv/${orgUuid}/${Date.now()}-${safeName}`;
+    const objectPath = `vendors-csv/${orgId}/${Date.now()}-${safeName}`;
 
     const stream = fs.createReadStream(file.filepath);
 
@@ -106,7 +104,7 @@ export default async function handler(req, res) {
       });
     }
 
-    // 5) INSERT ONLY EXISTING COLUMNS
+    // 5) INSERT ONLY REAL COLUMNS (THIS IS THE GATE)
     await sql`
       INSERT INTO vendor_uploads (
         org_id,
@@ -114,7 +112,7 @@ export default async function handler(req, res) {
         created_by
       )
       VALUES (
-        ${orgIdInt},
+        ${orgId},
         ${file.mimetype || "text/csv"},
         ${authUserId}
       );
@@ -122,8 +120,7 @@ export default async function handler(req, res) {
 
     return res.status(200).json({
       ok: true,
-      orgId: orgUuid,
-      orgIdInt,
+      orgId,
     });
   } catch (err) {
     console.error("[upload-vendors-csv]", err);
@@ -133,3 +130,4 @@ export default async function handler(req, res) {
     });
   }
 }
+
