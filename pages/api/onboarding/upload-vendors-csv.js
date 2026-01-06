@@ -1,10 +1,6 @@
 // pages/api/onboarding/upload-vendors-csv.js
-// Vendor CSV Upload → Supabase Storage (bucket: vendor-uploads) + Neon vendor_uploads row
-// - Accepts orgId as Neon org UUID (organizations.external_uuid)
-// - Verifies Supabase user via Authorization: Bearer <access_token>
-// - Resolves Neon org INT id via organizations.external_uuid + organization_members.user_id
-// - Uploads to Supabase Storage using SERVICE ROLE
-// - Inserts metadata into Neon vendor_uploads (org_id INT) to release data-gate
+// Vendor CSV Upload → Supabase Storage + Neon vendor_uploads row
+// IMPORTANT: matches existing Neon schema exactly
 
 import formidable from "formidable";
 import fs from "fs";
@@ -15,7 +11,7 @@ export const config = {
   api: { bodyParser: false },
 };
 
-// Supabase admin client (server only)
+// Supabase service-role client (server only)
 const supabaseAdmin = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL,
   process.env.SUPABASE_SERVICE_ROLE_KEY
@@ -32,12 +28,13 @@ export default async function handler(req, res) {
   }
 
   try {
-    // 1) Auth: require Supabase access token
+    // 1) Require Supabase session
     const token = getBearerToken(req);
     if (!token) {
-      return res
-        .status(401)
-        .json({ ok: false, error: "Authentication session missing. Please refresh." });
+      return res.status(401).json({
+        ok: false,
+        error: "Authentication session missing. Please refresh.",
+      });
     }
 
     const { data: userData, error: userErr } =
@@ -55,9 +52,7 @@ export default async function handler(req, res) {
 
     const file = Array.isArray(files.file) ? files.file[0] : files.file;
     if (!file) {
-      return res
-        .status(400)
-        .json({ ok: false, error: "No file uploaded (field: file)" });
+      return res.status(400).json({ ok: false, error: "No file uploaded" });
     }
 
     const orgUuid = Array.isArray(fields.orgId)
@@ -67,11 +62,11 @@ export default async function handler(req, res) {
     if (!orgUuid) {
       return res.status(400).json({
         ok: false,
-        error: "Missing orgId (expected organizations.external_uuid UUID)",
+        error: "Missing orgId (external UUID)",
       });
     }
 
-    // 3) Resolve Neon org INT id + verify membership
+    // 3) Resolve Neon org_id (INT) + verify membership
     const orgRows = await sql`
       SELECT o.id
       FROM organizations o
@@ -81,7 +76,7 @@ export default async function handler(req, res) {
       LIMIT 1;
     `;
 
-    if (!orgRows?.length) {
+    if (!orgRows.length) {
       return res.status(400).json({
         ok: false,
         error: "Organization not found for orgId",
@@ -90,8 +85,8 @@ export default async function handler(req, res) {
 
     const orgIdInt = orgRows[0].id;
 
-    // 4) Upload to Supabase Storage
-    const bucket = "vendor-uploads"; // EXISTS
+    // 4) Upload file to Supabase Storage
+    const bucket = "vendor-uploads";
     const originalName = file.originalFilename || "vendors.csv";
     const safeName = originalName.replace(/\s+/g, "_");
     const objectPath = `vendors-csv/${orgUuid}/${Date.now()}-${safeName}`;
@@ -107,17 +102,17 @@ export default async function handler(req, res) {
       });
 
     if (uploadError) {
-      console.error("[upload-vendors-csv] storage error:", uploadError);
-      return res
-        .status(500)
-        .json({ ok: false, error: uploadError.message });
+      console.error("[storage upload]", uploadError);
+      return res.status(500).json({
+        ok: false,
+        error: uploadError.message,
+      });
     }
 
-    // 5) INSERT INTO Neon vendor_uploads (NO storage_bucket column)
+    // 5) Insert ONLY existing columns into vendor_uploads
     await sql`
       INSERT INTO vendor_uploads (
         org_id,
-        file_path,
         original_name,
         mime_type,
         size_bytes,
@@ -125,7 +120,6 @@ export default async function handler(req, res) {
       )
       VALUES (
         ${orgIdInt},
-        ${objectPath},
         ${originalName},
         ${file.mimetype || "text/csv"},
         ${Number(file.size || 0)},
@@ -137,13 +131,13 @@ export default async function handler(req, res) {
       ok: true,
       orgId: orgUuid,
       orgIdInt,
-      file_path: objectPath,
       originalName,
     });
   } catch (err) {
-    console.error("[upload-vendors-csv] handler error:", err);
-    return res
-      .status(500)
-      .json({ ok: false, error: err.message || "Upload failed." });
+    console.error("[upload-vendors-csv]", err);
+    return res.status(500).json({
+      ok: false,
+      error: err.message || "Upload failed",
+    });
   }
 }
