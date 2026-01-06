@@ -1,5 +1,6 @@
 // pages/api/onboarding/upload-vendors-csv.js
 // FINAL NEON-SAFE VERSION — MATCHES REAL vendor_uploads SCHEMA
+// + UPDATES org_onboarding_state TO ADVANCE WIZARD
 
 import formidable from "formidable";
 import fs from "fs";
@@ -131,6 +132,17 @@ export default async function handler(req, res) {
         ${file.mimetype || "text/csv"},
         ${authUserId}
       );
+    `;
+
+    /* -------------------------------------------------
+       6) 🔓 ADVANCE ONBOARDING STATE (THIS WAS MISSING)
+    -------------------------------------------------- */
+    await sql`
+      UPDATE org_onboarding_state
+      SET
+        vendors_uploaded = true,
+        updated_at = now()
+      WHERE org_id = ${orgIdInt};
     `;
 
     return res.status(200).json({
