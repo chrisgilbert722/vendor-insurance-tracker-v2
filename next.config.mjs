@@ -8,7 +8,10 @@ const nextConfig = {
     optimizePackageImports: [],
   },
 
-  // 🔑 REQUIRED for client-side Excel (.xlsx) support
+  // 🔑 Explicitly enable Turbopack (required in Next 16)
+  turbopack: {},
+
+  // 🔑 Required for client-side Excel (.xlsx) support
   webpack: (config) => {
     config.resolve.fallback = {
       ...config.resolve.fallback,
