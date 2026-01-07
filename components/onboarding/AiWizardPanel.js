@@ -27,6 +27,9 @@ export default function AiWizardPanel({ orgId }) {
   const [finishing, setFinishing] = useState(false);
   const [error, setError] = useState("");
 
+  // 🔑 WIZARD STATE (CSV + mapping + AI results)
+  const [wizardState, setWizardState] = useState({});
+
   // 🔥 LOCAL UI OVERRIDE (frontend only)
   const [forceUiStep, setForceUiStep] = useState(null);
 
@@ -152,18 +155,38 @@ export default function AiWizardPanel({ orgId }) {
         content = (
           <VendorsUploadStep
             orgId={orgUuid}
-            // 🔓 RELEASE DATA GATE ON SUCCESS
-            onUploadSuccess={() => setForceUiStep(3)}
+            onUploadSuccess={({ headers, rows }) => {
+              setWizardState((prev) => ({
+                ...prev,
+                vendorsCsv: {
+                  headers,
+                  rows,
+                  mapping: {},
+                },
+              }));
+              setForceUiStep(3);
+            }}
           />
         );
         break;
 
       case 3:
-        content = <VendorsMapStep />;
+        content = (
+          <VendorsMapStep
+            wizardState={wizardState}
+            setWizardState={setWizardState}
+          />
+        );
         break;
 
       case 4:
-        content = <VendorsAnalyzeStep orgId={orgUuid} />;
+        content = (
+          <VendorsAnalyzeStep
+            orgId={orgUuid}
+            wizardState={wizardState}
+            setWizardState={setWizardState}
+          />
+        );
         break;
 
       case 5:
