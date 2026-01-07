@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { supabase } from "@/lib/supabaseClient";
 
 function clamp(n, min, max) {
   return Math.max(min, Math.min(max, n));
@@ -33,11 +34,25 @@ export function useOnboardingObserver({ orgId, pollMs = 1200 }) {
         setLoading(true);
         setError("");
 
+        // 🔑 GET SUPABASE SESSION (HYDRATION-SAFE)
+        const {
+          data: { session },
+        } = await supabase.auth.getSession();
+
+        // Fail-open: don’t brick UI if session not ready yet
+        if (!session?.access_token) {
+          setLoading(false);
+          return;
+        }
+
         const res = await fetch(
           `/api/onboarding/status?orgId=${encodeURIComponent(orgId)}`,
           {
             signal: abortRef.current.signal,
-            headers: { "cache-control": "no-cache" },
+            headers: {
+              "cache-control": "no-cache",
+              Authorization: `Bearer ${session.access_token}`,
+            },
           }
         );
 
@@ -89,7 +104,7 @@ export function useOnboardingObserver({ orgId, pollMs = 1200 }) {
   }, [orgId, pollMs]);
 
   return {
-    uiStep,     // 🔑 THIS replaces local step state
+    uiStep, // 🔑 THIS replaces local step state
     status,
     loading,
     error,
