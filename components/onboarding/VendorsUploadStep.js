@@ -1,6 +1,6 @@
 // components/onboarding/VendorsUploadStep.js
 // Wizard Step 2 — Vendor CSV / Excel Upload (Fully Autonomous, PM-First)
-// ✅ Excel parsing moved to server for production reliability
+// ✅ Server parses CSV / Excel, client only uploads
 
 import { useState } from "react";
 import { supabase } from "../../lib/supabaseClient";
@@ -80,7 +80,6 @@ function shouldAutoSkip(mapping) {
 -------------------------------------------------- */
 export default function VendorsUploadStep({ orgId, onUploadSuccess }) {
   const [file, setFile] = useState(null);
-
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState("");
 
@@ -96,7 +95,7 @@ export default function VendorsUploadStep({ orgId, onUploadSuccess }) {
     setError("");
 
     if (!file) {
-      setError("Please select a valid file before continuing.");
+      setError("Please select a file before continuing.");
       return;
     }
 
@@ -108,14 +107,14 @@ export default function VendorsUploadStep({ orgId, onUploadSuccess }) {
       } = await supabase.auth.getSession();
 
       if (!session?.access_token) {
-        throw new Error("Authentication session missing.");
+        throw new Error("Authentication session missing. Please refresh.");
       }
 
       const fd = new FormData();
       fd.append("file", file);
       if (orgId) fd.append("orgId", String(orgId));
 
-      // ✅ Upload file to server (server parses CSV/Excel and returns headers+rows)
+      // 🔥 THIS IS THE REQUEST YOU WERE LOOKING FOR
       const res = await fetch("/api/onboarding/upload-vendors-csv", {
         method: "POST",
         headers: {
@@ -125,9 +124,11 @@ export default function VendorsUploadStep({ orgId, onUploadSuccess }) {
       });
 
       const json = await res.json();
-      if (!json.ok) throw new Error(json.error || "Upload failed.");
+      if (!json.ok) {
+        throw new Error(json.error || "Upload failed.");
+      }
 
-      // Backend bookkeeping (kept exactly as you had it)
+      // Backend bookkeeping (unchanged)
       await fetch("/api/onboarding/start", {
         method: "POST",
         headers: {
@@ -137,7 +138,7 @@ export default function VendorsUploadStep({ orgId, onUploadSuccess }) {
         body: JSON.stringify({ orgId }),
       });
 
-      // ✅ AI mapping is computed from server-returned headers
+      // ✅ Server MUST return headers + rows
       const headers = Array.isArray(json.headers) ? json.headers : [];
       const rows = Array.isArray(json.rows) ? json.rows : [];
 
@@ -183,7 +184,9 @@ export default function VendorsUploadStep({ orgId, onUploadSuccess }) {
         </div>
       </label>
 
-      {error && <div style={{ color: "#fecaca", marginTop: 10 }}>{error}</div>}
+      {error && (
+        <div style={{ color: "#fecaca", marginTop: 10 }}>{error}</div>
+      )}
 
       <button
         type="submit"
@@ -205,4 +208,3 @@ export default function VendorsUploadStep({ orgId, onUploadSuccess }) {
     </form>
   );
 }
-
