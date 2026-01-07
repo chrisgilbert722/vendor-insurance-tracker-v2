@@ -1,16 +1,8 @@
 // pages/api/get-policies.js
-// FINAL — Cookie + Bearer compatible (UNBLOCKS onboarding)
+// FINAL — COOKIE-BASED AUTH (UNBLOCKS ONBOARDING)
 
 import { sql } from "../../lib/db";
-import { createClient } from "@supabase/supabase-js";
-
-/* -------------------------------------------------
-   Supabase admin client (server-only)
--------------------------------------------------- */
-const supabaseAdmin = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL,
-  process.env.SUPABASE_SERVICE_ROLE_KEY
-);
+import { createServerClient } from "@supabase/auth-helpers-nextjs";
 
 /* -------------------------------------------------
    Risk + Score Engine
@@ -69,45 +61,20 @@ export default async function handler(req, res) {
 
   try {
     /* ---------------------------------------------
-       AUTH — COOKIE FIRST, BEARER FALLBACK
+       COOKIE-BASED SUPABASE AUTH (REQUIRED)
     ---------------------------------------------- */
-    let user = null;
-
-    // 1) Try cookie-based auth (onboarding / dashboard)
-    const cookieClient = createClient(
+    const supabase = createServerClient(
       process.env.NEXT_PUBLIC_SUPABASE_URL,
       process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY,
-      {
-        cookies: {
-          get(name) {
-            return req.cookies?.[name];
-          },
-        },
-      }
+      { req, res }
     );
 
     const {
-      data: { user: cookieUser },
-    } = await cookieClient.auth.getUser();
+      data: { user },
+      error,
+    } = await supabase.auth.getUser();
 
-    if (cookieUser) {
-      user = cookieUser;
-    }
-
-    // 2) Fallback to Bearer token (API usage)
-    if (!user) {
-      const authHeader = req.headers.authorization || "";
-      const token = authHeader.startsWith("Bearer ")
-        ? authHeader.slice(7)
-        : null;
-
-      if (token) {
-        const { data } = await supabaseAdmin.auth.getUser(token);
-        user = data?.user || null;
-      }
-    }
-
-    if (!user) {
+    if (error || !user) {
       return res.status(401).json({ ok: false, error: "Unauthorized" });
     }
 
