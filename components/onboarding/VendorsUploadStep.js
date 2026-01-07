@@ -119,9 +119,12 @@ export default function VendorsUploadStep({ orgId, onUploadSuccess }) {
         body: JSON.stringify({ orgId }),
       });
 
-      // 3) ✅ ADVANCE WIZARD LOCALLY (THIS WAS THE BUG)
+      // 3) ✅ PASS CSV DATA FOR STEP 3 MAPPING
       if (typeof onUploadSuccess === "function") {
-        onUploadSuccess();
+        onUploadSuccess({
+          headers: previewHeaders,
+          rows: parsedRows,
+        });
       }
     } catch (err) {
       console.error("Vendor CSV upload error:", err);
