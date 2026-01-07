@@ -1,6 +1,6 @@
 // AI Onboarding Wizard V5 — TELEMETRY-ONLY AUTOPILOT (BUILD SAFE)
 // Property Management copy pass (Day 3)
-// ✅ Autonomous mapping + auto-skip + persistence honored here
+// ✅ Autonomous mapping + auto-skip + persistence + reuse toast
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/router";
@@ -28,13 +28,15 @@ export default function AiWizardPanel({ orgId }) {
   const [finishing, setFinishing] = useState(false);
   const [error, setError] = useState("");
 
-  // 🔑 WIZARD STATE (CSV + mapping + AI results)
+  // 🔑 WIZARD STATE
   const [wizardState, setWizardState] = useState({});
 
-  // 🔥 LOCAL UI OVERRIDE (frontend only)
+  // 🔥 LOCAL UI OVERRIDE
   const [forceUiStep, setForceUiStep] = useState(null);
 
-  // Enforce UUID-only orgId
+  // 🔔 Mapping reuse toast
+  const [showMappingToast, setShowMappingToast] = useState(false);
+
   const orgUuid =
     typeof orgId === "string" && UUID_RE.test(orgId) ? orgId : null;
 
@@ -60,8 +62,12 @@ export default function AiWizardPanel({ orgId }) {
             source: "persisted",
           },
         }));
+
+        // 🔔 Show reuse toast
+        setShowMappingToast(true);
+        setTimeout(() => setShowMappingToast(false), 3000);
       } catch {
-        // silent — persistence is an optimization, not a blocker
+        // Silent — reuse is an optimization
       }
     }
 
@@ -89,10 +95,7 @@ export default function AiWizardPanel({ orgId }) {
     );
   }
 
-  // Backend-driven step
   const { uiStep: observedStep } = useOnboardingObserver({ orgId: orgUuid });
-
-  // 🔑 FINAL STEP DECISION
   const effectiveStep = forceUiStep ?? observedStep ?? 1;
 
   let content = null;
@@ -115,16 +118,11 @@ export default function AiWizardPanel({ orgId }) {
         });
 
         const json = await res.json();
-        if (!json.ok) {
-          throw new Error(json.error || "Failed to start onboarding");
-        }
+        if (!json.ok) throw new Error(json.error);
 
         setForceUiStep(2);
       } catch (e) {
-        setError(
-          e.message ||
-            "We couldn’t start your compliance setup. Please try again."
-        );
+        setError("We couldn’t start your compliance setup.");
       } finally {
         setStarting(false);
       }
@@ -147,11 +145,7 @@ export default function AiWizardPanel({ orgId }) {
           Upload your vendor insurance file. AI will handle the rest.
         </p>
 
-        {error && (
-          <div style={{ color: "#f87171", marginBottom: 12 }}>
-            {error}
-          </div>
-        )}
+        {error && <div style={{ color: "#f87171" }}>{error}</div>}
 
         <button
           onClick={startAutopilot}
@@ -180,14 +174,9 @@ export default function AiWizardPanel({ orgId }) {
             onUploadSuccess={async ({ headers, rows, mapping, autoSkip }) => {
               setWizardState((prev) => ({
                 ...prev,
-                vendorsCsv: {
-                  headers,
-                  rows,
-                  mapping,
-                },
+                vendorsCsv: { headers, rows, mapping },
               }));
 
-              // 🔥 AUTO-PERSIST ON AUTONOMOUS PATH
               if (autoSkip) {
                 fetch("/api/onboarding/save-mapping", {
                   method: "POST",
@@ -223,41 +212,14 @@ export default function AiWizardPanel({ orgId }) {
         );
         break;
 
-      case 5:
-        content = <ContractsUploadStep orgId={orgUuid} />;
-        break;
-
-      case 6:
-        content = <RulesGenerateStep orgId={orgUuid} />;
-        break;
-
-      case 7:
-        content = <FixPlansStep orgId={orgUuid} />;
-        break;
-
-      case 8:
-        content = <CompanyProfileStep orgId={orgUuid} />;
-        break;
-
-      case 9:
-        content = <TeamBrokersStep />;
-        break;
-
       case 10:
         content = (
           <ReviewLaunchStep
             orgId={orgUuid}
             onComplete={async () => {
-              if (finishing) return;
-
               setFinishing(true);
-              try {
-                await fetch("/api/onboarding/complete", { method: "POST" });
-                router.replace("/dashboard");
-              } catch (err) {
-                setError("We couldn’t finish setup. Please try again.");
-                setFinishing(false);
-              }
+              await fetch("/api/onboarding/complete");
+              router.replace("/dashboard");
             }}
           />
         );
@@ -270,12 +232,30 @@ export default function AiWizardPanel({ orgId }) {
 
   return (
     <>
+      {showMappingToast && (
+        <div
+          style={{
+            position: "fixed",
+            top: 20,
+            right: 20,
+            padding: "10px 16px",
+            borderRadius: 999,
+            background: "rgba(15,23,42,0.95)",
+            border: "1px solid rgba(56,189,248,0.5)",
+            color: "#7dd3fc",
+            fontSize: 13,
+            zIndex: 9999,
+            boxShadow: "0 0 20px rgba(56,189,248,0.4)",
+          }}
+        >
+          Using your previous vendor mapping
+        </div>
+      )}
+
       {content}
 
       {error && (
-        <div style={{ color: "#f87171", marginTop: 16 }}>
-          {error}
-        </div>
+        <div style={{ color: "#f87171", marginTop: 16 }}>{error}</div>
       )}
 
       <OnboardingActivityFeed />
