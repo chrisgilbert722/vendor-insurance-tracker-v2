@@ -1,4 +1,5 @@
-// FINAL NEON-SAFE VERSION — UPLOAD CSV + ADVANCE ONBOARDING
+// pages/api/onboarding/upload-vendors-csv.js
+// FINAL NEON-SAFE VERSION — ADVANCES ONBOARDING STATE
 
 import formidable from "formidable";
 import fs from "fs";
@@ -26,9 +27,7 @@ export default async function handler(req, res) {
   }
 
   try {
-    /* -------------------------------------------------
-       1) AUTH — verify Supabase session
-    -------------------------------------------------- */
+    /* 1) AUTH */
     const token = getBearerToken(req);
     if (!token) {
       return res.status(401).json({
@@ -37,18 +36,14 @@ export default async function handler(req, res) {
       });
     }
 
-    const { data: userData, error: userErr } =
-      await supabaseAdmin.auth.getUser(token);
-
-    if (userErr || !userData?.user) {
+    const { data, error } = await supabaseAdmin.auth.getUser(token);
+    if (error || !data?.user) {
       return res.status(401).json({ ok: false, error: "Invalid session" });
     }
 
-    const authUserId = userData.user.id; // UUID string
+    const userId = data.user.id;
 
-    /* -------------------------------------------------
-       2) PARSE MULTIPART FORM
-    -------------------------------------------------- */
+    /* 2) PARSE FORM */
     const form = formidable({ multiples: false });
     const [fields, files] = await form.parse(req);
 
@@ -65,16 +60,13 @@ export default async function handler(req, res) {
       return res.status(400).json({ ok: false, error: "Missing orgId" });
     }
 
-    /* -------------------------------------------------
-       3) RESOLVE NEON org_id (INT) + MEMBERSHIP CHECK
-    -------------------------------------------------- */
+    /* 3) RESOLVE ORG */
     const orgRows = await sql`
       SELECT o.id
       FROM organizations o
-      JOIN organization_members om
-        ON om.org_id = o.id
+      JOIN organization_members om ON om.org_id = o.id
       WHERE o.external_uuid = ${orgUuid}
-        AND om.user_id = ${authUserId}
+        AND om.user_id = ${userId}
       LIMIT 1;
     `;
 
@@ -87,35 +79,18 @@ export default async function handler(req, res) {
 
     const orgIdInt = orgRows[0].id;
 
-    /* -------------------------------------------------
-       4) UPLOAD FILE TO SUPABASE STORAGE
-    -------------------------------------------------- */
-    const bucket = "vendor-uploads";
-    const safeFilename = (file.originalFilename || "vendors.csv").replace(
-      /\s+/g,
-      "_"
-    );
-
+    /* 4) STORAGE UPLOAD */
+    const safeFilename = (file.originalFilename || "vendors.csv").replace(/\s+/g, "_");
     const objectPath = `vendors-csv/${orgUuid}/${Date.now()}-${safeFilename}`;
-    const stream = fs.createReadStream(file.filepath);
 
-    const { error: uploadError } = await supabaseAdmin.storage
-      .from(bucket)
-      .upload(objectPath, stream, {
+    await supabaseAdmin.storage
+      .from("vendor-uploads")
+      .upload(objectPath, fs.createReadStream(file.filepath), {
         contentType: file.mimetype || "text/csv",
         duplex: "half",
       });
 
-    if (uploadError) {
-      return res.status(500).json({
-        ok: false,
-        error: uploadError.message,
-      });
-    }
-
-    /* -------------------------------------------------
-       5) INSERT INTO vendor_uploads (REAL SCHEMA)
-    -------------------------------------------------- */
+    /* 5) INSERT METADATA */
     await sql`
       INSERT INTO vendor_uploads (
         org_id,
@@ -127,29 +102,21 @@ export default async function handler(req, res) {
         ${orgIdInt},
         ${safeFilename},
         ${file.mimetype || "text/csv"},
-        ${authUserId}
+        ${userId}
       );
     `;
 
-    /* -------------------------------------------------
-       6) ADVANCE ONBOARDING STATE (THIS WAS MISSING)
-    -------------------------------------------------- */
+    /* 6) 🔥 ADVANCE ONBOARDING STATE */
     await sql`
       UPDATE org_onboarding_state
       SET
-        current_step = 'processing',
-        status = 'running',
-        updated_at = NOW()
+        current_step = 'ai_wizard',
+        progress = 40,
+        updated_at = now()
       WHERE org_id = ${orgIdInt};
     `;
 
-    return res.status(200).json({
-      ok: true,
-      orgId: orgUuid,
-      orgIdInt,
-      filename: safeFilename,
-      next_step: "processing",
-    });
+    return res.status(200).json({ ok: true });
   } catch (err) {
     console.error("[upload-vendors-csv]", err);
     return res.status(500).json({
