@@ -1,8 +1,9 @@
 // pages/api/onboarding/upload-vendors-csv.js
-// FINAL NEON-SAFE VERSION — COMPLETES ONBOARDING (UNLOCKS APP)
+// FINAL NEON-SAFE VERSION — SERVER PARSES CSV + EXCEL (UNLOCKS APP)
 
 import formidable from "formidable";
 import fs from "fs";
+import XLSX from "xlsx";
 import { createClient } from "@supabase/supabase-js";
 import { sql } from "../../../lib/db";
 
@@ -87,24 +88,71 @@ export default async function handler(req, res) {
     const orgIdInt = orgRows[0].id;
 
     /* -------------------------------------------------
-       4) UPLOAD CSV TO SUPABASE STORAGE
+       4) PARSE FILE CONTENT (CSV OR EXCEL)
     -------------------------------------------------- */
-    const safeFilename = (file.originalFilename || "vendors.csv").replace(
-      /\s+/g,
-      "_"
-    );
+    const filename = file.originalFilename || "vendors";
+    const ext = filename.split(".").pop().toLowerCase();
 
+    let headers = [];
+    let rows = [];
+
+    if (ext === "csv") {
+      const text = fs.readFileSync(file.filepath, "utf8");
+      const lines = text
+        .split(/\r?\n/)
+        .map((l) => l.trim())
+        .filter(Boolean);
+
+      if (!lines.length) {
+        return res.status(400).json({
+          ok: false,
+          error: "CSV file is empty",
+        });
+      }
+
+      headers = lines[0].split(",").map((h) => h.trim());
+      rows = lines.slice(1).map((line) => {
+        const cols = line.split(",");
+        const obj = {};
+        headers.forEach((h, i) => {
+          obj[h] = (cols[i] || "").trim();
+        });
+        return obj;
+      });
+    } else if (ext === "xls" || ext === "xlsx") {
+      const workbook = XLSX.read(fs.readFileSync(file.filepath));
+      const sheet = workbook.Sheets[workbook.SheetNames[0]];
+      rows = XLSX.utils.sheet_to_json(sheet, { defval: "" });
+      headers = Object.keys(rows[0] || {});
+    } else {
+      return res.status(400).json({
+        ok: false,
+        error: "Unsupported file type",
+      });
+    }
+
+    if (!headers.length || !rows.length) {
+      return res.status(400).json({
+        ok: false,
+        error: "No usable data found in file",
+      });
+    }
+
+    /* -------------------------------------------------
+       5) UPLOAD ORIGINAL FILE TO SUPABASE STORAGE
+    -------------------------------------------------- */
+    const safeFilename = filename.replace(/\s+/g, "_");
     const objectPath = `vendors-csv/${orgUuid}/${Date.now()}-${safeFilename}`;
 
     await supabaseAdmin.storage
       .from("vendor-uploads")
       .upload(objectPath, fs.createReadStream(file.filepath), {
-        contentType: file.mimetype || "text/csv",
+        contentType: file.mimetype || "application/octet-stream",
         duplex: "half",
       });
 
     /* -------------------------------------------------
-       5) INSERT vendor_uploads ROW (REAL SCHEMA)
+       6) INSERT vendor_uploads ROW (REAL SCHEMA)
     -------------------------------------------------- */
     await sql`
       INSERT INTO vendor_uploads (
@@ -116,13 +164,13 @@ export default async function handler(req, res) {
       VALUES (
         ${orgIdInt},
         ${safeFilename},
-        ${file.mimetype || "text/csv"},
+        ${file.mimetype || "application/octet-stream"},
         ${userId}
       );
     `;
 
     /* -------------------------------------------------
-       6) ✅ COMPLETE ONBOARDING (THIS UNLOCKS APP)
+       7) COMPLETE ONBOARDING STATE (UNCHANGED)
     -------------------------------------------------- */
     await sql`
       UPDATE org_onboarding_state
@@ -134,7 +182,14 @@ export default async function handler(req, res) {
       WHERE org_id = ${orgIdInt};
     `;
 
-    return res.status(200).json({ ok: true });
+    /* -------------------------------------------------
+       8) ✅ RETURN PARSED DATA TO CLIENT
+    -------------------------------------------------- */
+    return res.status(200).json({
+      ok: true,
+      headers,
+      rows,
+    });
   } catch (err) {
     console.error("[upload-vendors-csv]", err);
     return res.status(500).json({
