@@ -1,5 +1,5 @@
 // pages/api/get-policies.js
-// FINAL — Bearer-token auth, Neon-safe, AppGuard-safe
+// FINAL — Cookie + Bearer compatible (UNBLOCKS onboarding)
 
 import { sql } from "../../lib/db";
 import { createClient } from "@supabase/supabase-js";
@@ -16,13 +16,11 @@ const supabaseAdmin = createClient(
    Risk + Score Engine
 -------------------------------------------------- */
 function computeExpiration(expiration_date_str) {
-  if (!expiration_date_str) {
+  if (!expiration_date_str)
     return { daysRemaining: null, label: "Unknown", level: "unknown" };
-  }
 
-  // Expecting MM/DD/YYYY
   const [mm, dd, yyyy] = expiration_date_str.split("/");
-  const expDate = new Date(`${yyyy}-${mm}-${dd}T00:00:00Z`);
+  const expDate = new Date(`${yyyy}-${mm}-${dd}T00:00:00`);
   const today = new Date();
 
   const diffMs = expDate.getTime() - today.getTime();
@@ -71,34 +69,57 @@ export default async function handler(req, res) {
 
   try {
     /* ---------------------------------------------
-       AUTH — REQUIRE BEARER TOKEN
+       AUTH — COOKIE FIRST, BEARER FALLBACK
     ---------------------------------------------- */
-    const authHeader = req.headers.authorization || "";
-    const token = authHeader.startsWith("Bearer ")
-      ? authHeader.slice(7)
-      : null;
+    let user = null;
 
-    if (!token) {
-      return res.status(401).json({ ok: false, error: "Unauthorized" });
+    // 1) Try cookie-based auth (onboarding / dashboard)
+    const cookieClient = createClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL,
+      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY,
+      {
+        cookies: {
+          get(name) {
+            return req.cookies?.[name];
+          },
+        },
+      }
+    );
+
+    const {
+      data: { user: cookieUser },
+    } = await cookieClient.auth.getUser();
+
+    if (cookieUser) {
+      user = cookieUser;
     }
 
-    const { data, error } = await supabaseAdmin.auth.getUser(token);
+    // 2) Fallback to Bearer token (API usage)
+    if (!user) {
+      const authHeader = req.headers.authorization || "";
+      const token = authHeader.startsWith("Bearer ")
+        ? authHeader.slice(7)
+        : null;
 
-    if (error || !data?.user) {
-      return res.status(401).json({ ok: false, error: "Unauthorized" });
+      if (token) {
+        const { data } = await supabaseAdmin.auth.getUser(token);
+        user = data?.user || null;
+      }
     }
 
-    const userId = data.user.id;
+    if (!user) {
+      return res.status(401).json({ ok: false, error: "Unauthorized" });
+    }
 
     /* ---------------------------------------------
-       RESOLVE ORGANIZATION
+       RESOLVE ORG
     ---------------------------------------------- */
     const orgRows = await sql`
       SELECT org_id
       FROM organization_members
-      WHERE user_id = ${userId}
+      WHERE user_id = ${user.id}
       ORDER BY created_at ASC
-      LIMIT 1;
+      LIMIT 1
     `;
 
     if (!orgRows.length) {
@@ -112,7 +133,7 @@ export default async function handler(req, res) {
     const orgId = orgRows[0].org_id;
 
     /* ---------------------------------------------
-       FETCH POLICIES (ORG-SCOPED)
+       FETCH POLICIES
     ---------------------------------------------- */
     const rows = await sql`
       SELECT
@@ -127,7 +148,7 @@ export default async function handler(req, res) {
         created_at
       FROM policies
       WHERE org_id = ${orgId}
-      ORDER BY created_at DESC;
+      ORDER BY created_at DESC
     `;
 
     const policies = rows.map((row) => {
