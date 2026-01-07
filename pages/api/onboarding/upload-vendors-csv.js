@@ -1,11 +1,13 @@
 // pages/api/onboarding/upload-vendors-csv.js
-// FINAL NEON-SAFE VERSION — SERVER PARSES CSV + EXCEL (UNLOCKS APP)
+// FINAL NEON-SAFE VERSION — SERVER PARSES CSV + EXCEL (TURBOPACK SAFE)
 
 import formidable from "formidable";
 import fs from "fs";
-import XLSX from "xlsx";
 import { createClient } from "@supabase/supabase-js";
 import { sql } from "../../../lib/db";
+
+// 🔑 FORCE NODE RUNTIME (avoids Turbopack edge analysis)
+export const runtime = "nodejs";
 
 export const config = {
   api: { bodyParser: false },
@@ -104,10 +106,7 @@ export default async function handler(req, res) {
         .filter(Boolean);
 
       if (!lines.length) {
-        return res.status(400).json({
-          ok: false,
-          error: "CSV file is empty",
-        });
+        return res.status(400).json({ ok: false, error: "CSV file is empty" });
       }
 
       headers = lines[0].split(",").map((h) => h.trim());
@@ -120,6 +119,9 @@ export default async function handler(req, res) {
         return obj;
       });
     } else if (ext === "xls" || ext === "xlsx") {
+      // 🔑 DYNAMIC IMPORT — THIS FIXES THE BUILD
+      const XLSX = (await import("xlsx")).default;
+
       const workbook = XLSX.read(fs.readFileSync(file.filepath));
       const sheet = workbook.Sheets[workbook.SheetNames[0]];
       rows = XLSX.utils.sheet_to_json(sheet, { defval: "" });
@@ -152,7 +154,7 @@ export default async function handler(req, res) {
       });
 
     /* -------------------------------------------------
-       6) INSERT vendor_uploads ROW (REAL SCHEMA)
+       6) INSERT vendor_uploads ROW
     -------------------------------------------------- */
     await sql`
       INSERT INTO vendor_uploads (
@@ -170,7 +172,7 @@ export default async function handler(req, res) {
     `;
 
     /* -------------------------------------------------
-       7) COMPLETE ONBOARDING STATE (UNCHANGED)
+       7) COMPLETE ONBOARDING (UNCHANGED)
     -------------------------------------------------- */
     await sql`
       UPDATE org_onboarding_state
@@ -183,7 +185,7 @@ export default async function handler(req, res) {
     `;
 
     /* -------------------------------------------------
-       8) ✅ RETURN PARSED DATA TO CLIENT
+       8) RETURN PARSED DATA
     -------------------------------------------------- */
     return res.status(200).json({
       ok: true,
