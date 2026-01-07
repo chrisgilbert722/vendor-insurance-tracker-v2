@@ -2,18 +2,20 @@
 import { useEffect, useState } from "react";
 
 const STEP_MESSAGES = {
-  vendors_created: "Preparing vendor records",
-  vendors_analyzed: "Analyzing vendor risk profiles",
-  contracts_extracted: "Extracting contract requirements",
-  requirements_assigned: "Assigning insurance requirements",
-  rules_generated: "Generating compliance rules with AI",
-  rules_applied: "Applying rules to your system",
-  launch_system: "Launching compliance engine",
-  complete: "Onboarding complete",
+  vendors_created: "Preparing vendor records…",
+  vendors_analyzed: "Analyzing vendor risk profiles…",
+  contracts_extracted: "Extracting contract requirements…",
+  requirements_assigned: "Assigning insurance requirements…",
+  rules_generated: "Generating compliance rules with AI…",
+  rules_applied: "Applying rules to your system…",
+  launch_system: "Launching compliance engine…",
+  complete: "AI onboarding complete.",
 };
 
 export default function OnboardingActivityFeed() {
-  const [message, setMessage] = useState("Waiting for input…");
+  const [message, setMessage] = useState(
+    "Upload a file to begin AI analysis."
+  );
   const [progress, setProgress] = useState(0);
   const [industries, setIndustries] = useState([]);
   const [status, setStatus] = useState("idle");
@@ -31,16 +33,26 @@ export default function OnboardingActivityFeed() {
         setProgress(json.progress || 0);
 
         const stepKey = json.currentStep;
-        setMessage(
-          STEP_MESSAGES[stepKey] ||
-          (json.onboardingComplete ? "Onboarding complete" : "Standing by…")
-        );
 
-        // 🔥 Show detected industries once rules are generated
-        if (json.detectedIndustries && Array.isArray(json.detectedIndustries)) {
+        // 🔑 Honest, autonomous messaging
+        if (json.onboardingComplete) {
+          setMessage("AI onboarding complete.");
+        } else if (status === "idle" && progress === 0) {
+          setMessage("Upload a file to begin AI analysis.");
+        } else {
+          setMessage(
+            STEP_MESSAGES[stepKey] ||
+              "AI is analyzing your vendor insurance data…"
+          );
+        }
+
+        // Detected industries (post-analysis)
+        if (Array.isArray(json.detectedIndustries)) {
           setIndustries(json.detectedIndustries);
         }
-      } catch {}
+      } catch {
+        // Silent fail — activity feed is non-blocking
+      }
     }
 
     poll();
@@ -49,7 +61,7 @@ export default function OnboardingActivityFeed() {
       mounted = false;
       clearInterval(t);
     };
-  }, []);
+  }, [status, progress]);
 
   const isActive = status === "running";
 
@@ -78,7 +90,14 @@ export default function OnboardingActivityFeed() {
         `}
       </style>
 
-      <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 12 }}>
+      <div
+        style={{
+          display: "flex",
+          alignItems: "center",
+          gap: 10,
+          marginBottom: 12,
+        }}
+      >
         <span
           style={{
             width: 10,
