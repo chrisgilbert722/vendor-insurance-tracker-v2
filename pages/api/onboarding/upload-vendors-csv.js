@@ -1,8 +1,7 @@
-// pages/api/onboarding/upload-vendors-csv.js
-// FINAL, NEON-SAFE, SCHEMA-ACCURATE VERSION
+// FINAL NEON-SAFE VERSION
 // - Uploads CSV to Supabase Storage
 // - Inserts into Neon vendor_uploads
-// - Advances org_onboarding_state correctly (NO fake columns)
+// - RELEASES onboarding gate by updating org_onboarding_state
 
 import formidable from "formidable";
 import fs from "fs";
@@ -13,7 +12,7 @@ export const config = {
   api: { bodyParser: false },
 };
 
-// Supabase service role (server only)
+// Supabase service-role client (SERVER ONLY)
 const supabaseAdmin = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL,
   process.env.SUPABASE_SERVICE_ROLE_KEY
@@ -31,7 +30,7 @@ export default async function handler(req, res) {
 
   try {
     /* -------------------------------------------------
-       1) AUTH
+       1) AUTH — verify Supabase session
     -------------------------------------------------- */
     const token = getBearerToken(req);
     if (!token) {
@@ -41,17 +40,17 @@ export default async function handler(req, res) {
       });
     }
 
-    const { data: userData, error: authErr } =
+    const { data: userData, error: userErr } =
       await supabaseAdmin.auth.getUser(token);
 
-    if (authErr || !userData?.user) {
+    if (userErr || !userData?.user) {
       return res.status(401).json({ ok: false, error: "Invalid session" });
     }
 
-    const userId = userData.user.id;
+    const authUserId = userData.user.id; // UUID
 
     /* -------------------------------------------------
-       2) PARSE FORM
+       2) PARSE MULTIPART FORM
     -------------------------------------------------- */
     const form = formidable({ multiples: false });
     const [fields, files] = await form.parse(req);
@@ -70,7 +69,7 @@ export default async function handler(req, res) {
     }
 
     /* -------------------------------------------------
-       3) RESOLVE ORG (NEON)
+       3) RESOLVE NEON org_id (INT) + MEMBERSHIP CHECK
     -------------------------------------------------- */
     const orgRows = await sql`
       SELECT o.id
@@ -78,7 +77,7 @@ export default async function handler(req, res) {
       JOIN organization_members om
         ON om.org_id = o.id
       WHERE o.external_uuid = ${orgUuid}
-        AND om.user_id = ${userId}
+        AND om.user_id = ${authUserId}
       LIMIT 1;
     `;
 
@@ -89,10 +88,10 @@ export default async function handler(req, res) {
       });
     }
 
-    const orgId = orgRows[0].id;
+    const orgIdInt = orgRows[0].id;
 
     /* -------------------------------------------------
-       4) UPLOAD TO SUPABASE STORAGE
+       4) UPLOAD FILE TO SUPABASE STORAGE
     -------------------------------------------------- */
     const bucket = "vendor-uploads";
     const safeFilename = (file.originalFilename || "vendors.csv")
@@ -116,7 +115,7 @@ export default async function handler(req, res) {
     }
 
     /* -------------------------------------------------
-       5) INSERT vendor_uploads (REAL SCHEMA)
+       5) INSERT INTO vendor_uploads (REAL SCHEMA)
     -------------------------------------------------- */
     await sql`
       INSERT INTO vendor_uploads (
@@ -126,28 +125,29 @@ export default async function handler(req, res) {
         uploaded_by
       )
       VALUES (
-        ${orgId},
+        ${orgIdInt},
         ${safeFilename},
         ${file.mimetype || "text/csv"},
-        ${userId}
+        ${authUserId}
       );
     `;
 
     /* -------------------------------------------------
-       6) ADVANCE ONBOARDING STATE (CORRECT WAY)
+       6) RELEASE ONBOARDING DATA GATE
     -------------------------------------------------- */
     await sql`
       UPDATE org_onboarding_state
       SET
-        current_step = 'vendors_uploaded',
-        progress = 25,
+        current_step = 'analysis',
+        progress = 50,
         updated_at = now()
-      WHERE org_id = ${orgId};
+      WHERE org_id = ${orgIdInt};
     `;
 
     return res.status(200).json({
       ok: true,
-      orgId,
+      orgId: orgUuid,
+      orgIdInt,
       filename: safeFilename,
     });
   } catch (err) {
