@@ -1,7 +1,4 @@
-// FINAL NEON-SAFE VERSION
-// - Uploads CSV to Supabase Storage
-// - Inserts into Neon vendor_uploads
-// - RELEASES onboarding gate by updating org_onboarding_state
+// FINAL NEON-SAFE VERSION — UPLOAD CSV + ADVANCE ONBOARDING
 
 import formidable from "formidable";
 import fs from "fs";
@@ -47,7 +44,7 @@ export default async function handler(req, res) {
       return res.status(401).json({ ok: false, error: "Invalid session" });
     }
 
-    const authUserId = userData.user.id; // UUID
+    const authUserId = userData.user.id; // UUID string
 
     /* -------------------------------------------------
        2) PARSE MULTIPART FORM
@@ -94,8 +91,10 @@ export default async function handler(req, res) {
        4) UPLOAD FILE TO SUPABASE STORAGE
     -------------------------------------------------- */
     const bucket = "vendor-uploads";
-    const safeFilename = (file.originalFilename || "vendors.csv")
-      .replace(/\s+/g, "_");
+    const safeFilename = (file.originalFilename || "vendors.csv").replace(
+      /\s+/g,
+      "_"
+    );
 
     const objectPath = `vendors-csv/${orgUuid}/${Date.now()}-${safeFilename}`;
     const stream = fs.createReadStream(file.filepath);
@@ -133,14 +132,14 @@ export default async function handler(req, res) {
     `;
 
     /* -------------------------------------------------
-       6) RELEASE ONBOARDING DATA GATE
+       6) ADVANCE ONBOARDING STATE (THIS WAS MISSING)
     -------------------------------------------------- */
     await sql`
       UPDATE org_onboarding_state
       SET
-        current_step = 'analysis',
-        progress = 50,
-        updated_at = now()
+        current_step = 'processing',
+        status = 'running',
+        updated_at = NOW()
       WHERE org_id = ${orgIdInt};
     `;
 
@@ -149,6 +148,7 @@ export default async function handler(req, res) {
       orgId: orgUuid,
       orgIdInt,
       filename: safeFilename,
+      next_step: "processing",
     });
   } catch (err) {
     console.error("[upload-vendors-csv]", err);
