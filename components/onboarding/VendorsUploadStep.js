@@ -2,7 +2,7 @@
 // Wizard Step 2 — Vendor CSV Upload (Browser parse + Backend gate release)
 
 import { useState } from "react";
-import { supabase } from "../../lib/supabaseClient"; // ✅ THE ONLY REQUIRED CLIENT FIX
+import { supabase } from "../../lib/supabaseClient";
 
 export default function VendorsUploadStep({ orgId }) {
   const [file, setFile] = useState(null);
@@ -25,7 +25,6 @@ export default function VendorsUploadStep({ orgId }) {
 
   function parseCsvFile(f) {
     setParsing(true);
-
     const reader = new FileReader();
 
     reader.onload = () => {
@@ -37,9 +36,7 @@ export default function VendorsUploadStep({ orgId }) {
           .map((l) => l.trim())
           .filter(Boolean);
 
-        if (!lines.length) {
-          throw new Error("Empty CSV");
-        }
+        if (!lines.length) throw new Error("Empty CSV");
 
         const headers = lines[0].split(",").map((h) => h.trim());
         const rows = lines.slice(1).map((line) => {
@@ -82,7 +79,7 @@ export default function VendorsUploadStep({ orgId }) {
     try {
       setUploading(true);
 
-      // ✅ CORRECT WAY: get Supabase session
+      // ✅ Correct Supabase session retrieval
       const {
         data: { session },
         error: sessionError,
@@ -98,7 +95,7 @@ export default function VendorsUploadStep({ orgId }) {
       formData.append("file", file);
       if (orgId) formData.append("orgId", String(orgId));
 
-      // 1️⃣ Upload CSV
+      // 1) Upload CSV
       const res = await fetch("/api/onboarding/upload-vendors-csv", {
         method: "POST",
         headers: {
@@ -112,7 +109,7 @@ export default function VendorsUploadStep({ orgId }) {
         throw new Error(json.error || "Upload failed.");
       }
 
-      // 2️⃣ Re-run onboarding to RELEASE DATA GATE
+      // 2) Release onboarding data gate
       await fetch("/api/onboarding/start", {
         method: "POST",
         headers: {
@@ -122,8 +119,8 @@ export default function VendorsUploadStep({ orgId }) {
         body: JSON.stringify({ orgId }),
       });
 
-      // 3️⃣ Force observer refresh → advances to Step 3
-      window.location.reload();
+      // 3) HARD NAVIGATION — forces AppGuard to advance
+      window.location.href = "/dashboard";
     } catch (err) {
       console.error("Vendor CSV upload error:", err);
       setError(err.message || "Upload failed. Please try again.");
@@ -132,7 +129,7 @@ export default function VendorsUploadStep({ orgId }) {
     }
   }
 
-  const hasPreview = previewHeaders.length && previewRows.length;
+  const hasPreview = previewHeaders.length > 0 && previewRows.length > 0;
 
   return (
     <form onSubmit={handleUpload}>
