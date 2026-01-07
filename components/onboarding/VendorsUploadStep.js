@@ -1,8 +1,92 @@
 // components/onboarding/VendorsUploadStep.js
 // Wizard Step 2 — Vendor CSV Upload (Browser parse + Backend gate release)
+// ✅ AI detection added (non-breaking)
 
 import { useState } from "react";
 import { supabase } from "../../lib/supabaseClient";
+
+/* -------------------------------------------------
+   AI AUTO-DETECT + CONFIDENCE (PM-FIRST, SAFE)
+-------------------------------------------------- */
+function detectMappingWithConfidence(headers = []) {
+  const normalize = (s) =>
+    String(s || "").toLowerCase().replace(/[^a-z0-9]/g, "");
+
+  const mapping = {};
+
+  const assign = (key, column, confidence) => {
+    if (!mapping[key]) {
+      mapping[key] = {
+        column,
+        confidence,
+        source: "ai",
+      };
+    }
+  };
+
+  headers.forEach((h) => {
+    const n = normalize(h);
+
+    if (
+      (n.includes("vendor") || n.includes("company") || n.includes("insured")) &&
+      n.includes("name")
+    ) assign("vendorName", h, 0.98);
+
+    else if (n.includes("email")) assign("email", h, 0.98);
+    else if (n.includes("phone") || n.includes("mobile") || n.includes("tel"))
+      assign("phone", h, 0.95);
+
+    else if (
+      n.includes("category") ||
+      n.includes("profession") ||
+      n.includes("trade") ||
+      n.includes("industry")
+    ) assign("category", h, 0.9);
+
+    else if (n.includes("carrier")) assign("carrier", h, 0.95);
+
+    else if (
+      n.includes("policytype") ||
+      (n.includes("coverage") && n.includes("type"))
+    ) assign("coverageType", h, 0.9);
+
+    else if (
+      n.includes("limit") ||
+      n.includes("coverageamount") ||
+      n.includes("eachoccurrence")
+    ) assign("coverageAmount", h, 0.85);
+
+    else if (
+      n.includes("policynumber") ||
+      (n.includes("policy") && n.includes("number"))
+    ) assign("policyNumber", h, 0.98);
+
+    else if (
+      n.includes("expiration") ||
+      n.includes("expire") ||
+      n.includes("expdate")
+    ) assign("expiration", h, 0.97);
+
+    else if (n.includes("address") || n.includes("street"))
+      assign("address", h, 0.85);
+
+    else if (n.includes("city")) assign("city", h, 0.9);
+    else if (n === "state" || n.includes("province"))
+      assign("state", h, 0.9);
+    else if (n.includes("zip") || n.includes("postal"))
+      assign("zip", h, 0.9);
+  });
+
+  return mapping;
+}
+
+function shouldAutoSkip(mapping) {
+  return (
+    mapping.vendorName?.confidence >= 0.9 &&
+    mapping.policyNumber?.confidence >= 0.9 &&
+    mapping.expiration?.confidence >= 0.9
+  );
+}
 
 export default function VendorsUploadStep({ orgId, onUploadSuccess }) {
   const [file, setFile] = useState(null);
@@ -30,7 +114,6 @@ export default function VendorsUploadStep({ orgId, onUploadSuccess }) {
     reader.onload = () => {
       try {
         const text = String(reader.result || "");
-
         const lines = text
           .split(/\r?\n/)
           .map((l) => l.trim())
@@ -79,7 +162,6 @@ export default function VendorsUploadStep({ orgId, onUploadSuccess }) {
     try {
       setUploading(true);
 
-      // 🔑 Supabase session
       const {
         data: { session },
         error: sessionError,
@@ -95,7 +177,6 @@ export default function VendorsUploadStep({ orgId, onUploadSuccess }) {
       formData.append("file", file);
       if (orgId) formData.append("orgId", String(orgId));
 
-      // 1) Upload CSV
       const res = await fetch("/api/onboarding/upload-vendors-csv", {
         method: "POST",
         headers: {
@@ -109,7 +190,6 @@ export default function VendorsUploadStep({ orgId, onUploadSuccess }) {
         throw new Error(json.error || "Upload failed.");
       }
 
-      // 2) Release onboarding data gate (backend bookkeeping)
       await fetch("/api/onboarding/start", {
         method: "POST",
         headers: {
@@ -119,11 +199,16 @@ export default function VendorsUploadStep({ orgId, onUploadSuccess }) {
         body: JSON.stringify({ orgId }),
       });
 
-      // 3) ✅ PASS CSV DATA FOR STEP 3 MAPPING
+      // 🧠 AI DETECTION (ADDITIVE ONLY)
+      const detectedMapping = detectMappingWithConfidence(previewHeaders);
+      const autoSkip = shouldAutoSkip(detectedMapping);
+
       if (typeof onUploadSuccess === "function") {
         onUploadSuccess({
           headers: previewHeaders,
           rows: parsedRows,
+          mapping: detectedMapping,
+          autoSkip,
         });
       }
     } catch (err) {
@@ -134,11 +219,8 @@ export default function VendorsUploadStep({ orgId, onUploadSuccess }) {
     }
   }
 
-  const hasPreview = previewHeaders.length > 0 && previewRows.length > 0;
-
   return (
     <form onSubmit={handleUpload}>
-      {/* Upload */}
       <label
         style={{
           display: "block",
@@ -160,78 +242,20 @@ export default function VendorsUploadStep({ orgId, onUploadSuccess }) {
           {file ? file.name : "Upload vendors.csv"}
         </div>
         <div style={{ fontSize: 12, color: "#9ca3af" }}>
-          CSV only — vendor list + policy data
+          AI will automatically analyze and map your vendor insurance data
         </div>
       </label>
 
       {(parsing || uploading) && (
         <div style={{ marginTop: 10, fontSize: 12, color: "#a5b4fc" }}>
-          {parsing ? "Parsing CSV…" : "Uploading and preparing next step…"}
+          {parsing
+            ? "Reading your file…"
+            : "AI is understanding your insurance data…"}
         </div>
       )}
 
       {error && (
-        <div
-          style={{
-            marginTop: 12,
-            padding: "10px 14px",
-            borderRadius: 10,
-            background: "rgba(127,29,29,0.9)",
-            border: "1px solid rgba(248,113,113,0.8)",
-            color: "#fecaca",
-            fontSize: 13,
-          }}
-        >
-          {error}
-        </div>
-      )}
-
-      {hasPreview && (
-        <div
-          style={{
-            marginTop: 18,
-            borderRadius: 14,
-            border: "1px solid rgba(51,65,85,0.9)",
-            background: "rgba(15,23,42,0.97)",
-            overflow: "hidden",
-          }}
-        >
-          <div
-            style={{
-              padding: "8px 12px",
-              fontSize: 12,
-              color: "#9ca3af",
-              borderBottom: "1px solid rgba(51,65,85,0.9)",
-            }}
-          >
-            Preview (first 5 rows)
-          </div>
-
-          <div style={{ maxHeight: 220, overflow: "auto", padding: 10 }}>
-            <table style={{ width: "100%", fontSize: 12 }}>
-              <thead>
-                <tr>
-                  {previewHeaders.map((h, i) => (
-                    <th key={i} style={{ textAlign: "left", color: "#e5e7eb" }}>
-                      {h}
-                    </th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {previewRows.map((row, r) => (
-                  <tr key={r}>
-                    {previewHeaders.map((h, c) => (
-                      <td key={c} style={{ color: "#cbd5f5" }}>
-                        {row[h] || ""}
-                      </td>
-                    ))}
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </div>
+        <div style={{ color: "#fecaca", marginTop: 10 }}>{error}</div>
       )}
 
       <button
@@ -249,7 +273,7 @@ export default function VendorsUploadStep({ orgId, onUploadSuccess }) {
           cursor: uploading || parsing ? "not-allowed" : "pointer",
         }}
       >
-        {uploading ? "Saving…" : "Save CSV & Continue →"}
+        {uploading ? "Analyzing…" : "Upload & Continue →"}
       </button>
     </form>
   );
