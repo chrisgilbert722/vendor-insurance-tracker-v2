@@ -1,5 +1,6 @@
 // components/onboarding/VendorsUploadStep.js
 // Wizard Step 2 — Vendor CSV / Excel Upload (Fully Autonomous, PM-First)
+// ✅ Excel parsing moved to server for production reliability
 
 import { useState } from "react";
 import { supabase } from "../../lib/supabaseClient";
@@ -79,10 +80,7 @@ function shouldAutoSkip(mapping) {
 -------------------------------------------------- */
 export default function VendorsUploadStep({ orgId, onUploadSuccess }) {
   const [file, setFile] = useState(null);
-  const [headers, setHeaders] = useState([]);
-  const [rows, setRows] = useState([]);
 
-  const [parsing, setParsing] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState("");
 
@@ -91,87 +89,13 @@ export default function VendorsUploadStep({ orgId, onUploadSuccess }) {
     if (!f) return;
     setError("");
     setFile(f);
-    parseFile(f);
-  }
-
-  function parseFile(file) {
-    setParsing(true);
-    const ext = file.name.split(".").pop().toLowerCase();
-
-    if (ext === "csv") parseCsv(file);
-    else if (ext === "xls" || ext === "xlsx") parseExcel(file);
-    else {
-      setError("Unsupported file type. Please upload CSV or Excel.");
-      setParsing(false);
-    }
-  }
-
-  function parseCsv(file) {
-    const reader = new FileReader();
-    reader.onload = () => {
-      try {
-        const text = String(reader.result || "");
-        const lines = text.split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
-        if (!lines.length) throw new Error("Empty CSV");
-
-        const h = lines[0].split(",").map((x) => x.trim());
-        const r = lines.slice(1).map((line) => {
-          const cols = line.split(",");
-          const obj = {};
-          h.forEach((key, i) => (obj[key] = (cols[i] || "").trim()));
-          return obj;
-        });
-
-        setHeaders(h);
-        setRows(r);
-      } catch {
-        setError("There was a problem parsing the CSV file.");
-      } finally {
-        setParsing(false);
-      }
-    };
-    reader.readAsText(file);
-  }
-
-  async function parseExcel(file) {
-    setParsing(true);
-
-    try {
-      const XLSX = await import("xlsx");
-
-      const reader = new FileReader();
-      reader.onload = (e) => {
-        try {
-          const data = new Uint8Array(e.target.result);
-          const workbook = XLSX.read(data, { type: "array" });
-
-          const sheetName = workbook.SheetNames[0];
-          const sheet = workbook.Sheets[sheetName];
-
-          const json = XLSX.utils.sheet_to_json(sheet, { defval: "" });
-          if (!json.length) throw new Error("Empty sheet");
-
-          setHeaders(Object.keys(json[0]));
-          setRows(json);
-        } catch {
-          setError("There was a problem parsing the Excel file.");
-        } finally {
-          setParsing(false);
-        }
-      };
-
-      reader.readAsArrayBuffer(file);
-    } catch {
-      setError("Excel support failed to load.");
-      setParsing(false);
-    }
   }
 
   async function handleUpload(e) {
     e.preventDefault();
     setError("");
 
-    if (!file || !rows.length) {
+    if (!file) {
       setError("Please select a valid file before continuing.");
       return;
     }
@@ -179,23 +103,31 @@ export default function VendorsUploadStep({ orgId, onUploadSuccess }) {
     try {
       setUploading(true);
 
-      const { data: { session } } = await supabase.auth.getSession();
-      if (!session?.access_token)
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
+
+      if (!session?.access_token) {
         throw new Error("Authentication session missing.");
+      }
 
       const fd = new FormData();
       fd.append("file", file);
       if (orgId) fd.append("orgId", String(orgId));
 
+      // ✅ Upload file to server (server parses CSV/Excel and returns headers+rows)
       const res = await fetch("/api/onboarding/upload-vendors-csv", {
         method: "POST",
-        headers: { Authorization: `Bearer ${session.access_token}` },
+        headers: {
+          Authorization: `Bearer ${session.access_token}`,
+        },
         body: fd,
       });
 
       const json = await res.json();
       if (!json.ok) throw new Error(json.error || "Upload failed.");
 
+      // Backend bookkeeping (kept exactly as you had it)
       await fetch("/api/onboarding/start", {
         method: "POST",
         headers: {
@@ -204,6 +136,14 @@ export default function VendorsUploadStep({ orgId, onUploadSuccess }) {
         },
         body: JSON.stringify({ orgId }),
       });
+
+      // ✅ AI mapping is computed from server-returned headers
+      const headers = Array.isArray(json.headers) ? json.headers : [];
+      const rows = Array.isArray(json.rows) ? json.rows : [];
+
+      if (!headers.length || !rows.length) {
+        throw new Error("We couldn’t read any rows from this file.");
+      }
 
       const mapping = detectMappingWithConfidence(headers);
       const autoSkip = shouldAutoSkip(mapping);
@@ -243,19 +183,11 @@ export default function VendorsUploadStep({ orgId, onUploadSuccess }) {
         </div>
       </label>
 
-      {(parsing || uploading) && (
-        <div style={{ marginTop: 10, fontSize: 12, color: "#a5b4fc" }}>
-          {parsing
-            ? "Reading your file…"
-            : "AI is understanding your insurance data…"}
-        </div>
-      )}
-
       {error && <div style={{ color: "#fecaca", marginTop: 10 }}>{error}</div>}
 
       <button
         type="submit"
-        disabled={uploading || parsing}
+        disabled={uploading || !file}
         style={{
           marginTop: 14,
           padding: "10px 18px",
@@ -265,7 +197,7 @@ export default function VendorsUploadStep({ orgId, onUploadSuccess }) {
             "linear-gradient(90deg,rgba(56,189,248,0.9),rgba(88,28,135,0.85))",
           color: "#e5f2ff",
           fontWeight: 600,
-          cursor: uploading || parsing ? "not-allowed" : "pointer",
+          cursor: uploading || !file ? "not-allowed" : "pointer",
         }}
       >
         {uploading ? "Analyzing…" : "Upload & Continue →"}
@@ -273,3 +205,4 @@ export default function VendorsUploadStep({ orgId, onUploadSuccess }) {
     </form>
   );
 }
+
