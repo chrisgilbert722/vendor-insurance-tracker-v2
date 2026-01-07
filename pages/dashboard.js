@@ -1,5 +1,6 @@
 // pages/dashboard.js — Dashboard V5 (Cinematic Intelligence Cockpit)
 
+import { supabase } from "../lib/supabaseClient";
 import React, { useEffect, useState, useRef } from "react";
 import PropertyManagementRiskPreview from "../components/dashboard/PropertyManagementRiskPreview";
 import VendorDrawer from "../components/VendorDrawer";
@@ -578,23 +579,50 @@ function Dashboard() {
   }, [activeOrgId]);
 
   /* ============================================================
-     LOAD POLICIES
+   LOAD POLICIES (AUTH SAFE)
 ============================================================ */
-  useEffect(() => {
-    (async () => {
-      try {
-        const res = await fetch("/api/get-policies");
-        const json = await res.json();
+useEffect(() => {
+  let cancelled = false;
+
+  (async () => {
+    try {
+      setLoadingPolicies(true);
+
+      // 🔑 Get Supabase session
+      const {
+        data: { session },
+        error: sessionError,
+      } = await supabase.auth.getSession();
+
+      if (sessionError || !session?.access_token) {
+        if (!cancelled) setPolicies([]);
+        return;
+      }
+
+      const res = await fetch("/api/get-policies", {
+        headers: {
+          Authorization: `Bearer ${session.access_token}`,
+        },
+      });
+
+      const json = await res.json();
+
+      if (!cancelled) {
         if (json?.ok) setPolicies(safeArray(json.policies));
         else setPolicies([]);
-      } catch (err) {
-        console.error("[dashboard] policies error:", err);
-        setPolicies([]);
-      } finally {
-        setLoadingPolicies(false);
       }
-    })();
-  }, []);
+    } catch (err) {
+      console.error("[dashboard] policies error:", err);
+      if (!cancelled) setPolicies([]);
+    } finally {
+      if (!cancelled) setLoadingPolicies(false);
+    }
+  })();
+
+  return () => {
+    cancelled = true;
+  };
+}, []);
 
   /* ============================================================
      ELITE ENGINE — COI Evaluation
