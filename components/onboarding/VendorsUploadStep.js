@@ -4,7 +4,7 @@
 import { useState } from "react";
 import { supabase } from "../../lib/supabaseClient";
 
-export default function VendorsUploadStep({ orgId }) {
+export default function VendorsUploadStep({ orgId, onUploadSuccess }) {
   const [file, setFile] = useState(null);
   const [previewHeaders, setPreviewHeaders] = useState([]);
   const [previewRows, setPreviewRows] = useState([]);
@@ -79,7 +79,7 @@ export default function VendorsUploadStep({ orgId }) {
     try {
       setUploading(true);
 
-      // ✅ Correct Supabase session retrieval
+      // 🔑 Supabase session
       const {
         data: { session },
         error: sessionError,
@@ -109,7 +109,7 @@ export default function VendorsUploadStep({ orgId }) {
         throw new Error(json.error || "Upload failed.");
       }
 
-      // 2) Release onboarding data gate
+      // 2) Release onboarding data gate (backend bookkeeping)
       await fetch("/api/onboarding/start", {
         method: "POST",
         headers: {
@@ -119,8 +119,10 @@ export default function VendorsUploadStep({ orgId }) {
         body: JSON.stringify({ orgId }),
       });
 
-      // 3) HARD NAVIGATION — forces AppGuard to advance
-      window.location.href = "/dashboard";
+      // 3) ✅ ADVANCE WIZARD LOCALLY (THIS WAS THE BUG)
+      if (typeof onUploadSuccess === "function") {
+        onUploadSuccess();
+      }
     } catch (err) {
       console.error("Vendor CSV upload error:", err);
       setError(err.message || "Upload failed. Please try again.");
