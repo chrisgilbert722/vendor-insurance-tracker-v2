@@ -1,7 +1,7 @@
 // components/onboarding/VendorsMapStep.js
 // STEP 3 — Map CSV Columns (Cinematic, Neon Focus)
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 const TARGET_FIELDS = [
   { key: "vendorName", label: "Vendor Name", required: true },
@@ -18,10 +18,24 @@ const TARGET_FIELDS = [
   { key: "zip", label: "Zip Code" },
 ];
 
-export default function VendorsMapStep() {
-  const [mapping, setMapping] = useState({});
+export default function VendorsMapStep({ wizardState, setWizardState }) {
+  const csv = wizardState?.vendorsCsv || {};
+  const headers = Array.isArray(csv.headers) ? csv.headers : [];
+
+  const [mapping, setMapping] = useState(csv.mapping || {});
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
+
+  // Keep wizardState in sync
+  useEffect(() => {
+    setWizardState((prev) => ({
+      ...prev,
+      vendorsCsv: {
+        ...(prev.vendorsCsv || {}),
+        mapping,
+      },
+    }));
+  }, [mapping, setWizardState]);
 
   function update(key, val) {
     setMapping((m) => ({ ...m, [key]: val }));
@@ -40,6 +54,7 @@ export default function VendorsMapStep() {
 
     setSaving(true);
     try {
+      // Backend persistence optional — wizard state already updated
       const res = await fetch("/api/onboarding/save-mapping", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -47,6 +62,12 @@ export default function VendorsMapStep() {
       });
       const json = await res.json();
       if (!json.ok) throw new Error(json.error || "Save failed");
+
+      // Advance to Step 4 (Analyze)
+      setWizardState((prev) => ({
+        ...prev,
+        __advance: 4,
+      }));
     } catch (e) {
       setError(e.message || "Unable to save mapping.");
     } finally {
@@ -129,19 +150,15 @@ export default function VendorsMapStep() {
                 border: "1px solid rgba(148,163,184,0.35)",
                 color: "#e5e7eb",
                 outline: "none",
-                transition: "all 200ms ease",
-              }}
-              onFocus={(e) => {
-                e.target.style.boxShadow =
-                  "0 0 0 2px rgba(56,189,248,0.6), 0 0 20px rgba(56,189,248,0.45)";
-                e.target.style.borderColor = "#38bdf8";
-              }}
-              onBlur={(e) => {
-                e.target.style.boxShadow = "none";
-                e.target.style.borderColor = "rgba(148,163,184,0.35)";
               }}
             >
               <option value="">Select column</option>
+
+              {headers.map((h) => (
+                <option key={h} value={h}>
+                  {h}
+                </option>
+              ))}
             </select>
           </div>
         ))}
@@ -177,8 +194,6 @@ export default function VendorsMapStep() {
             fontWeight: 800,
             fontSize: 14,
             cursor: saving ? "not-allowed" : "pointer",
-            boxShadow:
-              "0 0 22px rgba(56,189,248,0.9), 0 0 50px rgba(168,85,247,0.55)",
           }}
         >
           {saving ? "Saving…" : "Save Mapping"}
