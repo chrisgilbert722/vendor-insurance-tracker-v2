@@ -1,189 +1,232 @@
-// components/onboarding/VendorsUploadStep.js
-// Wizard Step 2 — Vendor CSV Upload (AI Auto-Detect + Backend gate release)
+// components/onboarding/VendorsMapStep.js
+// STEP 3 — Map CSV Columns (Fallback + Confidence Review)
 
-import { useState } from "react";
-import { supabase } from "../../lib/supabaseClient";
+import { useEffect, useState } from "react";
 
-/* -------------------------------------------------
-   AI AUTO-DETECT COLUMN MAPPING (FULL COVERAGE)
--------------------------------------------------- */
-function autoDetectMapping(headers = []) {
-  const normalize = (s) =>
-    String(s || "")
-      .toLowerCase()
-      .replace(/[^a-z0-9]/g, "");
+const TARGET_FIELDS = [
+  { key: "vendorName", label: "Vendor Name", required: true },
+  { key: "email", label: "Vendor Email", required: true },
+  { key: "phone", label: "Phone" },
+  { key: "category", label: "Category" },
+  { key: "carrier", label: "Carrier" },
+  { key: "coverageType", label: "Coverage Type" },
+  { key: "policyNumber", label: "Policy Number" },
+  { key: "expiration", label: "Policy Expiration" },
+  { key: "address", label: "Address" },
+  { key: "city", label: "City" },
+  { key: "state", label: "State" },
+  { key: "zip", label: "Zip Code" },
+];
 
-  const mapping = {};
+export default function VendorsMapStep({ wizardState, setWizardState, onComplete }) {
+  const csv = wizardState?.vendorsCsv || {};
+  const headers = Array.isArray(csv.headers) ? csv.headers : [];
+  const detectedMapping = csv.mapping || {};
 
-  headers.forEach((h) => {
-    const n = normalize(h);
-
-    if (!mapping.vendorName && (n.includes("vendor") || n.includes("company") || n.includes("insured")) && n.includes("name")) {
-      mapping.vendorName = h; return;
-    }
-    if (!mapping.email && n.includes("email")) {
-      mapping.email = h; return;
-    }
-    if (!mapping.phone && (n.includes("phone") || n.includes("mobile") || n.includes("tel"))) {
-      mapping.phone = h; return;
-    }
-    if (!mapping.category && (n.includes("category") || n.includes("profession") || n.includes("trade") || n.includes("industry"))) {
-      mapping.category = h; return;
-    }
-    if (!mapping.carrier && n.includes("carrier")) {
-      mapping.carrier = h; return;
-    }
-    if (!mapping.coverageType && (n.includes("policytype") || (n.includes("coverage") && n.includes("type")))) {
-      mapping.coverageType = h; return;
-    }
-    if (!mapping.coverageAmount && (n.includes("limit") || n.includes("coverageamount") || n.includes("eachoccurrence"))) {
-      mapping.coverageAmount = h; return;
-    }
-    if (!mapping.policyNumber && (n.includes("policynumber") || (n.includes("policy") && n.includes("number")))) {
-      mapping.policyNumber = h; return;
-    }
-    if (!mapping.expiration && (n.includes("expiration") || n.includes("expire") || n.includes("expdate"))) {
-      mapping.expiration = h; return;
-    }
-    if (!mapping.address && (n.includes("address") || n.includes("street"))) {
-      mapping.address = h; return;
-    }
-    if (!mapping.city && n.includes("city")) {
-      mapping.city = h; return;
-    }
-    if (!mapping.state && (n === "state" || n.includes("province"))) {
-      mapping.state = h; return;
-    }
-    if (!mapping.zip && (n.includes("zip") || n.includes("postal"))) {
-      mapping.zip = h; return;
-    }
-  });
-
-  return mapping;
-}
-
-export default function VendorsUploadStep({ orgId, onUploadSuccess }) {
-  const [file, setFile] = useState(null);
-  const [previewHeaders, setPreviewHeaders] = useState([]);
-  const [previewRows, setPreviewRows] = useState([]);
-  const [parsedRows, setParsedRows] = useState([]);
-
-  const [parsing, setParsing] = useState(false);
-  const [uploading, setUploading] = useState(false);
+  const [mapping, setMapping] = useState(detectedMapping);
+  const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
 
-  function handleFileChange(e) {
-    const f = e.target.files?.[0];
-    if (!f) return;
-    setError("");
-    setFile(f);
-    parseCsvFile(f);
+  // Keep wizardState in sync
+  useEffect(() => {
+    setWizardState((prev) => ({
+      ...prev,
+      vendorsCsv: {
+        ...(prev.vendorsCsv || {}),
+        mapping,
+      },
+    }));
+  }, [mapping, setWizardState]);
+
+  function update(key, val) {
+    setMapping((m) => ({
+      ...m,
+      [key]: {
+        column: val,
+        source: "user",
+      },
+    }));
   }
 
-  function parseCsvFile(f) {
-    setParsing(true);
-    const reader = new FileReader();
-
-    reader.onload = () => {
-      try {
-        const text = String(reader.result || "");
-        const lines = text.split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
-        if (!lines.length) throw new Error("Empty CSV");
-
-        const headers = lines[0].split(",").map((h) => h.trim());
-        const rows = lines.slice(1).map((line) => {
-          const cols = line.split(",");
-          const obj = {};
-          headers.forEach((h, i) => (obj[h || `col_${i}`] = (cols[i] || "").trim()));
-          return obj;
-        });
-
-        setPreviewHeaders(headers);
-        setPreviewRows(rows.slice(0, 5));
-        setParsedRows(rows);
-      } catch {
-        setError("There was a problem parsing the CSV file.");
-      } finally {
-        setParsing(false);
-      }
-    };
-
-    reader.onerror = () => {
-      setError("Failed to read CSV file.");
-      setParsing(false);
-    };
-
-    reader.readAsText(f);
+  function validate() {
+    if (!mapping.vendorName?.column) return "Vendor Name is required.";
+    if (!mapping.email?.column) return "Vendor Email is required.";
+    return "";
   }
 
-  async function handleUpload(e) {
-    e.preventDefault();
-    setError("");
+  async function save() {
+    const err = validate();
+    setError(err);
+    if (err) return;
 
-    if (!file || !parsedRows.length) {
-      setError("Please select a valid CSV file before continuing.");
-      return;
-    }
-
+    setSaving(true);
     try {
-      setUploading(true);
-
-      const { data: { session } } = await supabase.auth.getSession();
-      if (!session?.access_token) throw new Error("Auth session missing.");
-
-      const formData = new FormData();
-      formData.append("file", file);
-      if (orgId) formData.append("orgId", String(orgId));
-
-      const res = await fetch("/api/onboarding/upload-vendors-csv", {
+      const res = await fetch("/api/onboarding/save-mapping", {
         method: "POST",
-        headers: { Authorization: `Bearer ${session.access_token}` },
-        body: formData,
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ mapping }),
       });
-
       const json = await res.json();
-      if (!json.ok) throw new Error(json.error || "Upload failed.");
+      if (!json.ok) throw new Error(json.error || "Save failed");
 
-      await fetch("/api/onboarding/start", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${session.access_token}`,
-        },
-        body: JSON.stringify({ orgId }),
-      });
-
-      const autoMapping = autoDetectMapping(previewHeaders);
-
-      onUploadSuccess?.({
-        headers: previewHeaders,
-        rows: parsedRows,
-        autoMapping,
-      });
-    } catch (err) {
-      setError(err.message || "Upload failed.");
+      onComplete?.();
+    } catch (e) {
+      setError(e.message || "Unable to save mapping.");
     } finally {
-      setUploading(false);
+      setSaving(false);
     }
+  }
+
+  function renderBadge(fieldKey) {
+    const meta = detectedMapping[fieldKey];
+    if (!meta || meta.source !== "ai" || typeof meta.confidence !== "number") {
+      return null;
+    }
+
+    const pct = Math.round(meta.confidence * 100);
+
+    if (pct >= 95) {
+      return (
+        <span style={{ marginLeft: 8, color: "#22c55e", fontSize: 11 }}>
+          ✓ {pct}% confident
+        </span>
+      );
+    }
+
+    if (pct >= 85) {
+      return (
+        <span style={{ marginLeft: 8, color: "#facc15", fontSize: 11 }}>
+          ⚠ Review suggested ({pct}%)
+        </span>
+      );
+    }
+
+    return null;
   }
 
   return (
-    <form onSubmit={handleUpload}>
-      <label style={{ display: "block", padding: 20, borderRadius: 18, border: "1.5px dashed rgba(148,163,184,0.7)", background: "rgba(15,23,42,0.96)", cursor: "pointer", textAlign: "center" }}>
-        <input type="file" accept=".csv" onChange={handleFileChange} style={{ display: "none" }} />
-        <div style={{ fontSize: 14, color: "#e5e7eb" }}>{file ? file.name : "Upload vendors.csv"}</div>
-        <div style={{ fontSize: 12, color: "#9ca3af" }}>CSV only — vendor list + policy data</div>
-      </label>
+    <div
+      style={{
+        padding: 28,
+        borderRadius: 22,
+        background:
+          "linear-gradient(180deg, rgba(15,23,42,0.95), rgba(2,6,23,0.98))",
+        border: "1px solid rgba(56,189,248,0.35)",
+        boxShadow:
+          "0 0 0 1px rgba(255,255,255,0.03), 0 30px 80px rgba(0,0,0,0.65)",
+      }}
+    >
+      <div style={{ marginBottom: 24 }}>
+        <div
+          style={{
+            fontSize: 11,
+            letterSpacing: "0.14em",
+            textTransform: "uppercase",
+            color: "#38bdf8",
+            marginBottom: 6,
+          }}
+        >
+          Review Mapping (Optional)
+        </div>
 
-      {(parsing || uploading) && (
-        <div style={{ marginTop: 10, fontSize: 12, color: "#a5b4fc" }}>
-          {parsing ? "Reading your file…" : "AI is analyzing your vendor policies…"}
+        <h2
+          style={{
+            margin: 0,
+            fontSize: 24,
+            fontWeight: 600,
+            background:
+              "linear-gradient(90deg,#e5e7eb,#38bdf8,#a855f7)",
+            WebkitBackgroundClip: "text",
+            color: "transparent",
+          }}
+        >
+          Confirm Vendor Data Mapping
+        </h2>
+
+        <p style={{ marginTop: 6, color: "#9ca3af", fontSize: 14 }}>
+          AI mapped your file automatically. Review only if something looks off.
+        </p>
+      </div>
+
+      <div
+        style={{
+          display: "grid",
+          gridTemplateColumns: "1fr 1fr",
+          gap: 18,
+        }}
+      >
+        {TARGET_FIELDS.map((f) => (
+          <div key={f.key}>
+            <label
+              style={{
+                display: "block",
+                fontSize: 12,
+                color: f.required ? "#e5e7eb" : "#9ca3af",
+                marginBottom: 6,
+              }}
+            >
+              {f.label} {f.required && "•"}
+              {renderBadge(f.key)}
+            </label>
+
+            <select
+              value={mapping[f.key]?.column || ""}
+              onChange={(e) => update(f.key, e.target.value)}
+              style={{
+                width: "100%",
+                padding: "12px 14px",
+                borderRadius: 14,
+                background: "rgba(2,6,23,0.9)",
+                border: "1px solid rgba(148,163,184,0.35)",
+                color: "#e5e7eb",
+              }}
+            >
+              <option value="">Select column</option>
+              {headers.map((h) => (
+                <option key={h} value={h}>
+                  {h}
+                </option>
+              ))}
+            </select>
+          </div>
+        ))}
+      </div>
+
+      {error && (
+        <div
+          style={{
+            marginTop: 16,
+            padding: 12,
+            borderRadius: 12,
+            background: "rgba(127,29,29,0.25)",
+            border: "1px solid rgba(248,113,113,0.7)",
+            color: "#fecaca",
+            fontSize: 13,
+          }}
+        >
+          {error}
         </div>
       )}
 
-      <button type="submit" disabled={uploading || parsing} style={{ marginTop: 14, padding: "10px 18px", borderRadius: 999 }}>
-        {uploading ? "Analyzing…" : "Upload & Analyze →"}
-      </button>
-    </form>
+      <div style={{ marginTop: 28, display: "flex", justifyContent: "flex-end" }}>
+        <button
+          onClick={save}
+          disabled={saving}
+          style={{
+            padding: "12px 28px",
+            borderRadius: 999,
+            border: "1px solid rgba(56,189,248,0.9)",
+            background:
+              "linear-gradient(90deg,#38bdf8,#6366f1,#a855f7)",
+            color: "#020617",
+            fontWeight: 800,
+            fontSize: 14,
+            cursor: saving ? "not-allowed" : "pointer",
+          }}
+        >
+          {saving ? "Saving…" : "Confirm & Continue →"}
+        </button>
+      </div>
+    </div>
   );
 }
