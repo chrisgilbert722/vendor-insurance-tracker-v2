@@ -1,8 +1,8 @@
 // AI Onboarding Wizard V5 — TELEMETRY-ONLY AUTOPILOT (BUILD SAFE)
 // Property Management copy pass (Day 3)
-// ✅ Autonomous mapping + auto-skip honored here
+// ✅ Autonomous mapping + auto-skip + persistence honored here
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/router";
 import { useOnboardingObserver } from "./useOnboardingObserver";
 import OnboardingActivityFeed from "./OnboardingActivityFeed";
@@ -37,6 +37,39 @@ export default function AiWizardPanel({ orgId }) {
   // Enforce UUID-only orgId
   const orgUuid =
     typeof orgId === "string" && UUID_RE.test(orgId) ? orgId : null;
+
+  /* ------------------------------------------------------------
+     LOAD SAVED MAPPING (ONCE)
+  ------------------------------------------------------------ */
+  useEffect(() => {
+    if (!orgUuid) return;
+
+    let mounted = true;
+
+    async function loadSavedMapping() {
+      try {
+        const res = await fetch("/api/onboarding/get-mapping");
+        const json = await res.json();
+        if (!mounted || !json?.ok || !json.mapping) return;
+
+        setWizardState((prev) => ({
+          ...prev,
+          vendorsCsv: {
+            ...(prev.vendorsCsv || {}),
+            mapping: json.mapping,
+            source: "persisted",
+          },
+        }));
+      } catch {
+        // silent — persistence is an optimization, not a blocker
+      }
+    }
+
+    loadSavedMapping();
+    return () => {
+      mounted = false;
+    };
+  }, [orgUuid]);
 
   if (!orgUuid) {
     return (
@@ -86,7 +119,6 @@ export default function AiWizardPanel({ orgId }) {
           throw new Error(json.error || "Failed to start onboarding");
         }
 
-        // Move to upload
         setForceUiStep(2);
       } catch (e) {
         setError(
@@ -145,7 +177,7 @@ export default function AiWizardPanel({ orgId }) {
         content = (
           <VendorsUploadStep
             orgId={orgUuid}
-            onUploadSuccess={({ headers, rows, mapping, autoSkip }) => {
+            onUploadSuccess={async ({ headers, rows, mapping, autoSkip }) => {
               setWizardState((prev) => ({
                 ...prev,
                 vendorsCsv: {
@@ -155,11 +187,16 @@ export default function AiWizardPanel({ orgId }) {
                 },
               }));
 
-              // 🔥 AUTONOMOUS DECISION POINT
+              // 🔥 AUTO-PERSIST ON AUTONOMOUS PATH
               if (autoSkip) {
-                setForceUiStep(4); // skip mapping
+                fetch("/api/onboarding/save-mapping", {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({ mapping }),
+                }).catch(() => {});
+                setForceUiStep(4);
               } else {
-                setForceUiStep(3); // show mapping UI
+                setForceUiStep(3);
               }
             }}
           />
