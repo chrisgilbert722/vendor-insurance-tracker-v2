@@ -16,6 +16,7 @@
     "@reduxjs/toolkit": "2.1.0",
     "@sparticuz/chromium": "141.0.0",
     "@supabase/auth-helpers-nextjs": "^0.15.0",
+    "@supabase/ssr": "^0.8.0",
     "@supabase/supabase-js": "^2.89.0",
     "formidable": "3.5.0",
     "marked": "17.0.0",
@@ -32,7 +33,8 @@
     "react-dom": "18.2.0",
     "react-redux": "9.2.0",
     "recharts": "3.4.1",
-    "resend": "4.0.0"
+    "resend": "4.0.0",
+    "xlsx": "^0.18.5"
   },
   "devDependencies": {
     "@eslint/js": "9.39.1",
