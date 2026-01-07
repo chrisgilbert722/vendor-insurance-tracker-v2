@@ -1,8 +1,8 @@
 // pages/api/get-policies.js
-// FINAL — COOKIE-BASED AUTH (UNBLOCKS ONBOARDING)
+// FINAL — WORKS WITH YOUR EXISTING supabaseServer()
 
 import { sql } from "../../lib/db";
-import { createServerClient } from "@supabase/auth-helpers-nextjs";
+import { supabaseServer } from "../../lib/supabaseServer";
 
 /* -------------------------------------------------
    Risk + Score Engine
@@ -61,14 +61,9 @@ export default async function handler(req, res) {
 
   try {
     /* ---------------------------------------------
-       COOKIE-BASED SUPABASE AUTH (REQUIRED)
+       COOKIE-BASED AUTH (YOUR EXISTING HELPER)
     ---------------------------------------------- */
-    const supabase = createServerClient(
-      process.env.NEXT_PUBLIC_SUPABASE_URL,
-      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY,
-      { req, res }
-    );
-
+    const supabase = supabaseServer();
     const {
       data: { user },
       error,
