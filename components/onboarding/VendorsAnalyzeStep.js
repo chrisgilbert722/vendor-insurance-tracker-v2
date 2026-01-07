@@ -2,6 +2,7 @@
 // STEP 4 — AI Vendor Analysis (after CSV upload + mapping)
 
 import { useEffect, useState } from "react";
+import { supabase } from "../../lib/supabaseClient";
 
 export default function VendorsAnalyzeStep({
   orgId,
@@ -59,9 +60,22 @@ export default function VendorsAnalyzeStep({
     setAiLoading(true);
 
     try {
+      // 🔑 GET AUTH SESSION
+      const {
+        data: { session },
+        error: sessionError,
+      } = await supabase.auth.getSession();
+
+      if (sessionError || !session?.access_token) {
+        throw new Error("Authentication session missing. Please refresh.");
+      }
+
       const res = await fetch("/api/onboarding/ai-vendors-analyze", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${session.access_token}`,
+        },
         body: JSON.stringify({
           orgId,
           vendors,
@@ -134,7 +148,6 @@ export default function VendorsAnalyzeStep({
         </div>
       )}
 
-      {/* RUN AI BUTTON */}
       <button
         type="button"
         onClick={runAiAnalysis}
@@ -157,100 +170,9 @@ export default function VendorsAnalyzeStep({
         {aiLoading ? "Analyzing vendors…" : "✨ Run AI Vendor Analysis"}
       </button>
 
-      {aiLoading && (
-        <div
-          style={{
-            marginTop: 16,
-            padding: 12,
-            borderRadius: 12,
-            background: "rgba(2,6,23,0.65)",
-            border: "1px solid rgba(71,85,105,0.9)",
-            color: "#9ca3af",
-            fontSize: 13,
-          }}
-        >
-          AI is reading your vendor list, identifying missing data, reviewing
-          carrier patterns, and preparing risk insights…
-        </div>
-      )}
-
-      {/* AI RESULTS */}
-      {aiResult && (
-        <div style={{ marginTop: 26 }}>
-          <h3
-            style={{
-              fontSize: 15,
-              marginBottom: 12,
-              color: "#e5e7eb",
-            }}
-          >
-            🧠 AI Vendor Summary
-          </h3>
-
-          <div
-            style={{
-              padding: 14,
-              marginBottom: 18,
-              borderRadius: 14,
-              background: "rgba(2,6,23,0.65)",
-              border: "1px solid rgba(71,85,105,0.9)",
-              fontSize: 13,
-              color: "#cbd5f5",
-              lineHeight: 1.5,
-            }}
-          >
-            {aiResult.summary}
-          </div>
-
-          {/* Missing Data Block */}
-          {aiResult.missingData && aiResult.missingData.length > 0 && (
-            <div
-              style={{
-                marginBottom: 20,
-                padding: 12,
-                borderRadius: 14,
-                background: "rgba(15,23,42,0.9)",
-                border: "1px solid rgba(55,65,81,0.9)",
-                fontSize: 12,
-                color: "#e5e7eb",
-              }}
-            >
-              <strong style={{ color: "#38bdf8" }}>
-                Missing or incomplete data detected:
-              </strong>
-              <ul style={{ marginTop: 6 }}>
-                {aiResult.missingData.map((m, i) => (
-                  <li key={i}>{m}</li>
-                ))}
-              </ul>
-            </div>
-          )}
-
-          {/* Risk Highlights */}
-          {aiResult.riskHighlights && (
-            <div style={{}}>
-              <h3 style={{ fontSize: 15, color: "#e5e7eb" }}>
-                🚨 Risk Highlights
-              </h3>
-              {aiResult.riskHighlights.map((rh, idx) => (
-                <div
-                  key={idx}
-                  style={{
-                    padding: 12,
-                    marginTop: 10,
-                    borderRadius: 14,
-                    background: "rgba(2,6,23,0.6)",
-                    border: "1px solid rgba(71,85,105,0.9)",
-                  }}
-                >
-                  <div style={{ fontSize: 14, fontWeight: 600 }}>{rh.title}</div>
-                  <div style={{ fontSize: 12, color: "#9ca3af", marginTop: 4 }}>
-                    {rh.description}
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
+      {error && (
+        <div style={{ marginTop: 14, color: "#fca5a5", fontSize: 13 }}>
+          {error}
         </div>
       )}
     </div>
