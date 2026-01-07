@@ -1,59 +1,15 @@
 // pages/api/get-policies.js
-// FINAL — WORKS WITH YOUR EXISTING supabaseServer()
+// FINAL — Bearer-token auth (matches onboarding + CSV upload)
 
 import { sql } from "../../lib/db";
-import { supabaseServer } from "../../lib/supabaseServer";
+import { createClient } from "@supabase/supabase-js";
 
-/* -------------------------------------------------
-   Risk + Score Engine
--------------------------------------------------- */
-function computeExpiration(expiration_date_str) {
-  if (!expiration_date_str)
-    return { daysRemaining: null, label: "Unknown", level: "unknown" };
+// Supabase admin (server-only)
+const supabaseAdmin = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL,
+  process.env.SUPABASE_SERVICE_ROLE_KEY
+);
 
-  const [mm, dd, yyyy] = expiration_date_str.split("/");
-  const expDate = new Date(`${yyyy}-${mm}-${dd}T00:00:00`);
-  const today = new Date();
-
-  const diffMs = expDate.getTime() - today.getTime();
-  const daysRemaining = Math.floor(diffMs / (1000 * 60 * 60 * 24));
-
-  if (daysRemaining < 0)
-    return { daysRemaining, label: "Expired", level: "expired" };
-  if (daysRemaining <= 30)
-    return { daysRemaining, label: "Critical", level: "critical" };
-  if (daysRemaining <= 90)
-    return { daysRemaining, label: "Warning", level: "warning" };
-
-  return { daysRemaining, label: "Active", level: "ok" };
-}
-
-function computeComplianceScore(expiration) {
-  if (expiration.daysRemaining === null) return 0;
-  if (expiration.level === "expired") return 20;
-  if (expiration.level === "critical") return 40;
-  if (expiration.level === "warning") return 70;
-  return 100;
-}
-
-function computeRiskBucket(score) {
-  if (score >= 90) return "Low Risk";
-  if (score >= 70) return "Moderate Risk";
-  if (score >= 40) return "High Risk";
-  return "Severe Risk";
-}
-
-function computeFlags(expiration) {
-  const flags = [];
-  if (expiration.level === "expired") flags.push("Expired policy");
-  if (expiration.level === "critical") flags.push("Expires in ≤30 days");
-  if (expiration.level === "warning") flags.push("Expires in ≤90 days");
-  return flags;
-}
-
-/* -------------------------------------------------
-   API Handler
--------------------------------------------------- */
 export default async function handler(req, res) {
   if (req.method !== "GET") {
     return res.status(405).json({ ok: false, error: "Method not allowed" });
@@ -61,17 +17,23 @@ export default async function handler(req, res) {
 
   try {
     /* ---------------------------------------------
-       COOKIE-BASED AUTH (YOUR EXISTING HELPER)
+       AUTH — REQUIRE BEARER TOKEN
     ---------------------------------------------- */
-    const supabase = supabaseServer();
-    const {
-      data: { user },
-      error,
-    } = await supabase.auth.getUser();
+    const authHeader = req.headers.authorization || "";
+    const token = authHeader.startsWith("Bearer ")
+      ? authHeader.slice(7)
+      : null;
 
-    if (error || !user) {
+    if (!token) {
       return res.status(401).json({ ok: false, error: "Unauthorized" });
     }
+
+    const { data, error } = await supabaseAdmin.auth.getUser(token);
+    if (error || !data?.user) {
+      return res.status(401).json({ ok: false, error: "Unauthorized" });
+    }
+
+    const userId = data.user.id;
 
     /* ---------------------------------------------
        RESOLVE ORG
@@ -79,17 +41,13 @@ export default async function handler(req, res) {
     const orgRows = await sql`
       SELECT org_id
       FROM organization_members
-      WHERE user_id = ${user.id}
+      WHERE user_id = ${userId}
       ORDER BY created_at ASC
       LIMIT 1
     `;
 
     if (!orgRows.length) {
-      return res.status(200).json({
-        ok: true,
-        policies: [],
-        noOrg: true,
-      });
+      return res.status(200).json({ ok: true, policies: [], noOrg: true });
     }
 
     const orgId = orgRows[0].org_id;
@@ -113,20 +71,7 @@ export default async function handler(req, res) {
       ORDER BY created_at DESC
     `;
 
-    const policies = rows.map((row) => {
-      const expiration = computeExpiration(row.expiration_date);
-      const complianceScore = computeComplianceScore(expiration);
-
-      return {
-        ...row,
-        expiration,
-        complianceScore,
-        riskBucket: computeRiskBucket(complianceScore),
-        flags: computeFlags(expiration),
-      };
-    });
-
-    return res.status(200).json({ ok: true, policies });
+    return res.status(200).json({ ok: true, policies: rows });
   } catch (err) {
     console.error("[get-policies]", err);
     return res.status(500).json({ ok: false, error: err.message });
