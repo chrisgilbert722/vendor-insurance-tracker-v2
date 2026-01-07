@@ -1,5 +1,5 @@
 // components/onboarding/VendorsAnalyzeStep.js
-// STEP 4 — AI Vendor Analysis (after CSV upload + mapping)
+// STEP 4 — AI Vendor Analysis (after CSV upload + AI mapping)
 
 import { useEffect, useState } from "react";
 import { supabase } from "../../lib/supabaseClient";
@@ -9,65 +9,83 @@ export default function VendorsAnalyzeStep({
   wizardState,
   setWizardState,
 }) {
-  const csv = wizardState?.vendorsCsv;
-  const mapping = csv?.mapping || {};
-  const rows = csv?.rows || [];
+  const csv = wizardState?.vendorsCsv || {};
+  const rawMapping = csv.mapping || {};
+  const rows = Array.isArray(csv.rows) ? csv.rows : [];
 
   const [vendors, setVendors] = useState([]);
   const [aiLoading, setAiLoading] = useState(false);
   const [aiResult, setAiResult] = useState(null);
   const [error, setError] = useState("");
 
-  // Transform raw CSV rows → vendor objects using the mapping from Step 3
+  /* -------------------------------------------------
+     NORMALIZE MAPPING
+     Supports:
+     - { column, confidence } (AI)
+     - "Vendor Name" (legacy)
+  -------------------------------------------------- */
+  const mapping = Object.fromEntries(
+    Object.entries(rawMapping).map(([key, val]) => [
+      key,
+      typeof val === "string" ? val : val?.column || null,
+    ])
+  );
+
+  /* -------------------------------------------------
+     BUILD VENDOR OBJECTS (SAFE)
+  -------------------------------------------------- */
   useEffect(() => {
-    if (!mapping || !Object.keys(mapping).length || !rows.length) return;
+    if (!rows.length || !mapping.vendorName || !mapping.email) return;
 
     try {
-      const transformed = rows.map((row) => {
-        return {
-          name: row[mapping.vendorName] || "",
-          email: row[mapping.email] || "",
-          phone: row[mapping.phone] || "",
-          category: row[mapping.category] || "",
-          carrier: row[mapping.carrier] || "",
-          coverageType: row[mapping.coverageType] || "",
-          policyNumber: row[mapping.policyNumber] || "",
-          expiration: row[mapping.expiration] || "",
-          address: row[mapping.address] || "",
-          city: row[mapping.city] || "",
-          state: row[mapping.state] || "",
-          zip: row[mapping.zip] || "",
-        };
-      });
+      const transformed = rows.map((row) => ({
+        name: row[mapping.vendorName] || "",
+        email: row[mapping.email] || "",
+        phone: mapping.phone ? row[mapping.phone] || "" : "",
+        category: mapping.category ? row[mapping.category] || "" : "",
+        carrier: mapping.carrier ? row[mapping.carrier] || "" : "",
+        coverageType: mapping.coverageType
+          ? row[mapping.coverageType] || ""
+          : "",
+        policyNumber: mapping.policyNumber
+          ? row[mapping.policyNumber] || ""
+          : "",
+        expiration: mapping.expiration
+          ? row[mapping.expiration] || ""
+          : "",
+        address: mapping.address ? row[mapping.address] || "" : "",
+        city: mapping.city ? row[mapping.city] || "" : "",
+        state: mapping.state ? row[mapping.state] || "" : "",
+        zip: mapping.zip ? row[mapping.zip] || "" : "",
+      }));
 
       setVendors(transformed);
 
-      // Save to wizard state
       setWizardState((prev) => ({
         ...prev,
         vendorsAnalyzed: { transformed },
       }));
     } catch (err) {
       console.error("Vendor transformation error:", err);
-      setError("Failed to transform vendor rows.");
+      setError("Failed to prepare vendor data for analysis.");
     }
   }, [rows, mapping, setWizardState]);
 
-  // Run AI analysis on structured vendor objects
+  /* -------------------------------------------------
+     RUN AI ANALYSIS
+  -------------------------------------------------- */
   async function runAiAnalysis() {
     setError("");
     setAiResult(null);
     setAiLoading(true);
 
     try {
-      // 🔑 GET AUTH SESSION
       const {
         data: { session },
-        error: sessionError,
       } = await supabase.auth.getSession();
 
-      if (sessionError || !session?.access_token) {
-        throw new Error("Authentication session missing. Please refresh.");
+      if (!session?.access_token) {
+        throw new Error("Authentication session missing.");
       }
 
       const res = await fetch("/api/onboarding/ai-vendors-analyze", {
@@ -83,11 +101,10 @@ export default function VendorsAnalyzeStep({
       });
 
       const json = await res.json();
-      if (!json.ok) throw new Error(json.error);
+      if (!json.ok) throw new Error(json.error || "AI analysis failed.");
 
       setAiResult(json);
 
-      // Save to wizard state
       setWizardState((prev) => ({
         ...prev,
         vendorsAnalyzed: {
@@ -103,8 +120,10 @@ export default function VendorsAnalyzeStep({
     }
   }
 
-  const missingRequiredMappings =
-    !mapping.vendorName || !mapping.email || vendors.length === 0;
+  const canRun =
+    vendors.length > 0 &&
+    Boolean(mapping.vendorName) &&
+    Boolean(mapping.email);
 
   return (
     <div
@@ -127,12 +146,11 @@ export default function VendorsAnalyzeStep({
       </h2>
 
       <p style={{ fontSize: 13, color: "#9ca3af" }}>
-        The wizard now analyzes your vendors for missing data, coverage issues,
-        category-based risks, and areas where contracts may require additional
-        validation.
+        The system analyzes vendors for missing data, coverage gaps, risk
+        patterns, and compliance issues.
       </p>
 
-      {missingRequiredMappings && (
+      {!canRun && (
         <div
           style={{
             marginTop: 12,
@@ -144,14 +162,14 @@ export default function VendorsAnalyzeStep({
             fontSize: 13,
           }}
         >
-          CSV mapping (Step 3) is incomplete — Vendor Name and Email are required.
+          Vendor Name and Email are required to run analysis.
         </div>
       )}
 
       <button
         type="button"
         onClick={runAiAnalysis}
-        disabled={aiLoading || missingRequiredMappings}
+        disabled={aiLoading || !canRun}
         style={{
           marginTop: 16,
           padding: "10px 16px",
@@ -162,9 +180,8 @@ export default function VendorsAnalyzeStep({
           color: "#e0f2fe",
           fontSize: 13,
           fontWeight: 600,
-          cursor:
-            aiLoading || missingRequiredMappings ? "not-allowed" : "pointer",
-          opacity: aiLoading || missingRequiredMappings ? 0.6 : 1,
+          cursor: aiLoading || !canRun ? "not-allowed" : "pointer",
+          opacity: aiLoading || !canRun ? 0.6 : 1,
         }}
       >
         {aiLoading ? "Analyzing vendors…" : "✨ Run AI Vendor Analysis"}
