@@ -1,5 +1,6 @@
 // AI Onboarding Wizard V5 — TELEMETRY-ONLY AUTOPILOT (BUILD SAFE)
 // Property Management copy pass (Day 3)
+// ✅ Autonomous mapping + auto-skip honored here
 
 import { useState } from "react";
 import { useRouter } from "next/router";
@@ -85,7 +86,7 @@ export default function AiWizardPanel({ orgId }) {
           throw new Error(json.error || "Failed to start onboarding");
         }
 
-        // ✅ UI IMMEDIATELY MOVES TO UPLOAD STEP
+        // Move to upload
         setForceUiStep(2);
       } catch (e) {
         setError(
@@ -104,7 +105,6 @@ export default function AiWizardPanel({ orgId }) {
           borderRadius: 22,
           background: "rgba(15,23,42,0.96)",
           border: "1px solid rgba(51,65,85,0.9)",
-          boxShadow: "0 20px 50px rgba(0,0,0,0.65)",
         }}
       >
         <h2 style={{ fontSize: 22, marginBottom: 10 }}>
@@ -112,13 +112,7 @@ export default function AiWizardPanel({ orgId }) {
         </h2>
 
         <p style={{ color: "#9ca3af", marginBottom: 20 }}>
-          We’ll automatically analyze your vendors, contracts, and insurance
-          requirements across your properties — then prepare fix plans,
-          renewal reminders, and audit-ready reports.
-        </p>
-
-        <p style={{ color: "#9ca3af", marginBottom: 20 }}>
-          You can safely leave this page while setup runs in the background.
+          Upload your vendor insurance file. AI will handle the rest.
         </p>
 
         {error && (
@@ -136,13 +130,9 @@ export default function AiWizardPanel({ orgId }) {
             background: "linear-gradient(90deg,#38bdf8,#6366f1)",
             color: "#020617",
             fontWeight: 800,
-            fontSize: 14,
-            cursor: starting ? "not-allowed" : "pointer",
           }}
         >
-          {starting
-            ? "Analyzing your vendor compliance…"
-            : "Start Compliance Setup →"}
+          {starting ? "Starting…" : "Start Compliance Setup →"}
         </button>
       </div>
     );
@@ -155,16 +145,22 @@ export default function AiWizardPanel({ orgId }) {
         content = (
           <VendorsUploadStep
             orgId={orgUuid}
-            onUploadSuccess={({ headers, rows }) => {
+            onUploadSuccess={({ headers, rows, mapping, autoSkip }) => {
               setWizardState((prev) => ({
                 ...prev,
                 vendorsCsv: {
                   headers,
                   rows,
-                  mapping: {},
+                  mapping,
                 },
               }));
-              setForceUiStep(3);
+
+              // 🔥 AUTONOMOUS DECISION POINT
+              if (autoSkip) {
+                setForceUiStep(4); // skip mapping
+              } else {
+                setForceUiStep(3); // show mapping UI
+              }
             }}
           />
         );
@@ -175,6 +171,7 @@ export default function AiWizardPanel({ orgId }) {
           <VendorsMapStep
             wizardState={wizardState}
             setWizardState={setWizardState}
+            onComplete={() => setForceUiStep(4)}
           />
         );
         break;
