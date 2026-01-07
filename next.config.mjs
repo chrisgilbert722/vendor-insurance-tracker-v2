@@ -4,9 +4,19 @@ const nextConfig = {
 
   output: "standalone",
 
-  // Must be an array or removed completely.
   experimental: {
     optimizePackageImports: [],
+  },
+
+  // 🔑 REQUIRED for client-side Excel (.xlsx) support
+  webpack: (config) => {
+    config.resolve.fallback = {
+      ...config.resolve.fallback,
+      fs: false,
+      path: false,
+      crypto: false,
+    };
+    return config;
   },
 };
 
