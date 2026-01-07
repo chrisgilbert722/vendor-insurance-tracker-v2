@@ -2,7 +2,6 @@
 // Wizard Step 2 — Vendor CSV / Excel Upload (Fully Autonomous, PM-First)
 
 import { useState } from "react";
-import * as XLSX from "xlsx";
 import { supabase } from "../../lib/supabaseClient";
 
 /* -------------------------------------------------
@@ -53,8 +52,8 @@ function detectMappingWithConfidence(headers = []) {
     else if (
       n.includes("expiration") ||
       n.includes("expire") ||
-      n.includes("expdate"))
-      assign("expiration", h, 0.97);
+      n.includes("expdate")
+    ) assign("expiration", h, 0.97);
     else if (n.includes("address") || n.includes("street"))
       assign("address", h, 0.85);
     else if (n.includes("city")) assign("city", h, 0.9);
@@ -97,14 +96,11 @@ export default function VendorsUploadStep({ orgId, onUploadSuccess }) {
 
   function parseFile(file) {
     setParsing(true);
-
     const ext = file.name.split(".").pop().toLowerCase();
 
-    if (ext === "csv") {
-      parseCsv(file);
-    } else if (ext === "xls" || ext === "xlsx") {
-      parseExcel(file);
-    } else {
+    if (ext === "csv") parseCsv(file);
+    else if (ext === "xls" || ext === "xlsx") parseExcel(file);
+    else {
       setError("Unsupported file type. Please upload CSV or Excel.");
       setParsing(false);
     }
@@ -137,32 +133,38 @@ export default function VendorsUploadStep({ orgId, onUploadSuccess }) {
     reader.readAsText(file);
   }
 
-  function parseExcel(file) {
-    const reader = new FileReader();
-    reader.onload = (e) => {
-      try {
-        const data = new Uint8Array(e.target.result);
-        const workbook = XLSX.read(data, { type: "array" });
+  async function parseExcel(file) {
+    setParsing(true);
 
-        const sheetName = workbook.SheetNames[0];
-        const sheet = workbook.Sheets[sheetName];
+    try {
+      const XLSX = await import("xlsx");
 
-        const json = XLSX.utils.sheet_to_json(sheet, {
-          defval: "",
-        });
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        try {
+          const data = new Uint8Array(e.target.result);
+          const workbook = XLSX.read(data, { type: "array" });
 
-        if (!json.length) throw new Error("Empty sheet");
+          const sheetName = workbook.SheetNames[0];
+          const sheet = workbook.Sheets[sheetName];
 
-        const h = Object.keys(json[0]);
-        setHeaders(h);
-        setRows(json);
-      } catch {
-        setError("There was a problem parsing the Excel file.");
-      } finally {
-        setParsing(false);
-      }
-    };
-    reader.readAsArrayBuffer(file);
+          const json = XLSX.utils.sheet_to_json(sheet, { defval: "" });
+          if (!json.length) throw new Error("Empty sheet");
+
+          setHeaders(Object.keys(json[0]));
+          setRows(json);
+        } catch {
+          setError("There was a problem parsing the Excel file.");
+        } finally {
+          setParsing(false);
+        }
+      };
+
+      reader.readAsArrayBuffer(file);
+    } catch {
+      setError("Excel support failed to load.");
+      setParsing(false);
+    }
   }
 
   async function handleUpload(e) {
@@ -178,7 +180,8 @@ export default function VendorsUploadStep({ orgId, onUploadSuccess }) {
       setUploading(true);
 
       const { data: { session } } = await supabase.auth.getSession();
-      if (!session?.access_token) throw new Error("Authentication session missing.");
+      if (!session?.access_token)
+        throw new Error("Authentication session missing.");
 
       const fd = new FormData();
       fd.append("file", file);
@@ -205,12 +208,7 @@ export default function VendorsUploadStep({ orgId, onUploadSuccess }) {
       const mapping = detectMappingWithConfidence(headers);
       const autoSkip = shouldAutoSkip(mapping);
 
-      onUploadSuccess?.({
-        headers,
-        rows,
-        mapping,
-        autoSkip,
-      });
+      onUploadSuccess?.({ headers, rows, mapping, autoSkip });
     } catch (err) {
       setError(err.message || "Upload failed.");
     } finally {
@@ -247,7 +245,9 @@ export default function VendorsUploadStep({ orgId, onUploadSuccess }) {
 
       {(parsing || uploading) && (
         <div style={{ marginTop: 10, fontSize: 12, color: "#a5b4fc" }}>
-          {parsing ? "Reading your file…" : "AI is understanding your insurance data…"}
+          {parsing
+            ? "Reading your file…"
+            : "AI is understanding your insurance data…"}
         </div>
       )}
 
