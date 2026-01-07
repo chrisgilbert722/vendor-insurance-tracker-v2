@@ -1,12 +1,12 @@
 // components/onboarding/VendorsUploadStep.js
-// Wizard Step 2 — Vendor CSV / Excel Upload (Fully Autonomous, PM-First)
-// ✅ Server parses CSV / Excel, client only uploads
+// Wizard Step 2 — Vendor File Upload (CSV / Excel)
+// ✅ Client uploads only — ALL parsing happens on server
 
 import { useState } from "react";
 import { supabase } from "../../lib/supabaseClient";
 
 /* -------------------------------------------------
-   AI AUTO-DETECT + CONFIDENCE (PM-FIRST, SAFE)
+   AI AUTO-DETECT + CONFIDENCE (PM-FIRST)
 -------------------------------------------------- */
 function detectMappingWithConfidence(headers = []) {
   const normalize = (s) =>
@@ -95,26 +95,23 @@ export default function VendorsUploadStep({ orgId, onUploadSuccess }) {
     setError("");
 
     if (!file) {
-      setError("Please select a file before continuing.");
+      setError("Please select a file to upload.");
       return;
     }
 
     try {
       setUploading(true);
 
-      const {
-        data: { session },
-      } = await supabase.auth.getSession();
-
+      const { data: { session } } = await supabase.auth.getSession();
       if (!session?.access_token) {
         throw new Error("Authentication session missing. Please refresh.");
       }
 
       const fd = new FormData();
       fd.append("file", file);
-      if (orgId) fd.append("orgId", String(orgId));
+      fd.append("orgId", String(orgId));
 
-      // 🔥 THIS IS THE REQUEST YOU WERE LOOKING FOR
+      // 🔥 THIS REQUEST MUST APPEAR IN NETWORK TAB
       const res = await fetch("/api/onboarding/upload-vendors-csv", {
         method: "POST",
         headers: {
@@ -128,22 +125,12 @@ export default function VendorsUploadStep({ orgId, onUploadSuccess }) {
         throw new Error(json.error || "Upload failed.");
       }
 
-      // Backend bookkeeping (unchanged)
-      await fetch("/api/onboarding/start", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${session.access_token}`,
-        },
-        body: JSON.stringify({ orgId }),
-      });
-
-      // ✅ Server MUST return headers + rows
+      // Server must return headers + rows
       const headers = Array.isArray(json.headers) ? json.headers : [];
       const rows = Array.isArray(json.rows) ? json.rows : [];
 
       if (!headers.length || !rows.length) {
-        throw new Error("We couldn’t read any rows from this file.");
+        throw new Error("No usable data found in this file.");
       }
 
       const mapping = detectMappingWithConfidence(headers);
