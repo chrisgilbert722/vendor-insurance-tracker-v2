@@ -1,8 +1,11 @@
+// pages/api/get-policies.js
+// FINAL — Bearer-token auth, Neon-safe, AppGuard-safe
+
 import { sql } from "../../lib/db";
 import { createClient } from "@supabase/supabase-js";
 
 /* -------------------------------------------------
-   Supabase admin client (server-only, stateless)
+   Supabase admin client (server-only)
 -------------------------------------------------- */
 const supabaseAdmin = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL,
@@ -13,11 +16,13 @@ const supabaseAdmin = createClient(
    Risk + Score Engine
 -------------------------------------------------- */
 function computeExpiration(expiration_date_str) {
-  if (!expiration_date_str)
+  if (!expiration_date_str) {
     return { daysRemaining: null, label: "Unknown", level: "unknown" };
+  }
 
+  // Expecting MM/DD/YYYY
   const [mm, dd, yyyy] = expiration_date_str.split("/");
-  const expDate = new Date(`${yyyy}-${mm}-${dd}T00:00:00`);
+  const expDate = new Date(`${yyyy}-${mm}-${dd}T00:00:00Z`);
   const today = new Date();
 
   const diffMs = expDate.getTime() - today.getTime();
@@ -86,14 +91,14 @@ export default async function handler(req, res) {
     const userId = data.user.id;
 
     /* ---------------------------------------------
-       RESOLVE ORG
+       RESOLVE ORGANIZATION
     ---------------------------------------------- */
     const orgRows = await sql`
       SELECT org_id
       FROM organization_members
       WHERE user_id = ${userId}
       ORDER BY created_at ASC
-      LIMIT 1
+      LIMIT 1;
     `;
 
     if (!orgRows.length) {
@@ -107,7 +112,7 @@ export default async function handler(req, res) {
     const orgId = orgRows[0].org_id;
 
     /* ---------------------------------------------
-       FETCH POLICIES
+       FETCH POLICIES (ORG-SCOPED)
     ---------------------------------------------- */
     const rows = await sql`
       SELECT
@@ -122,7 +127,7 @@ export default async function handler(req, res) {
         created_at
       FROM policies
       WHERE org_id = ${orgId}
-      ORDER BY created_at DESC
+      ORDER BY created_at DESC;
     `;
 
     const policies = rows.map((row) => {
@@ -144,4 +149,3 @@ export default async function handler(req, res) {
     return res.status(500).json({ ok: false, error: err.message });
   }
 }
- 
