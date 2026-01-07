@@ -1,5 +1,5 @@
 // pages/api/onboarding/upload-vendors-csv.js
-// FINAL NEON-SAFE VERSION — ADVANCES ONBOARDING STATE
+// FINAL NEON-SAFE VERSION — COMPLETES ONBOARDING (UNLOCKS APP)
 
 import formidable from "formidable";
 import fs from "fs";
@@ -27,7 +27,9 @@ export default async function handler(req, res) {
   }
 
   try {
-    /* 1) AUTH */
+    /* -------------------------------------------------
+       1) AUTH — verify Supabase session
+    -------------------------------------------------- */
     const token = getBearerToken(req);
     if (!token) {
       return res.status(401).json({
@@ -43,7 +45,9 @@ export default async function handler(req, res) {
 
     const userId = data.user.id;
 
-    /* 2) PARSE FORM */
+    /* -------------------------------------------------
+       2) PARSE MULTIPART FORM
+    -------------------------------------------------- */
     const form = formidable({ multiples: false });
     const [fields, files] = await form.parse(req);
 
@@ -60,11 +64,14 @@ export default async function handler(req, res) {
       return res.status(400).json({ ok: false, error: "Missing orgId" });
     }
 
-    /* 3) RESOLVE ORG */
+    /* -------------------------------------------------
+       3) RESOLVE ORG + MEMBERSHIP
+    -------------------------------------------------- */
     const orgRows = await sql`
       SELECT o.id
       FROM organizations o
-      JOIN organization_members om ON om.org_id = o.id
+      JOIN organization_members om
+        ON om.org_id = o.id
       WHERE o.external_uuid = ${orgUuid}
         AND om.user_id = ${userId}
       LIMIT 1;
@@ -79,8 +86,14 @@ export default async function handler(req, res) {
 
     const orgIdInt = orgRows[0].id;
 
-    /* 4) STORAGE UPLOAD */
-    const safeFilename = (file.originalFilename || "vendors.csv").replace(/\s+/g, "_");
+    /* -------------------------------------------------
+       4) UPLOAD CSV TO SUPABASE STORAGE
+    -------------------------------------------------- */
+    const safeFilename = (file.originalFilename || "vendors.csv").replace(
+      /\s+/g,
+      "_"
+    );
+
     const objectPath = `vendors-csv/${orgUuid}/${Date.now()}-${safeFilename}`;
 
     await supabaseAdmin.storage
@@ -90,7 +103,9 @@ export default async function handler(req, res) {
         duplex: "half",
       });
 
-    /* 5) INSERT METADATA */
+    /* -------------------------------------------------
+       5) INSERT vendor_uploads ROW (REAL SCHEMA)
+    -------------------------------------------------- */
     await sql`
       INSERT INTO vendor_uploads (
         org_id,
@@ -106,12 +121,15 @@ export default async function handler(req, res) {
       );
     `;
 
-    /* 6) 🔥 ADVANCE ONBOARDING STATE */
+    /* -------------------------------------------------
+       6) ✅ COMPLETE ONBOARDING (THIS UNLOCKS APP)
+    -------------------------------------------------- */
     await sql`
       UPDATE org_onboarding_state
       SET
-        current_step = 'ai_wizard',
-        progress = 40,
+        status = 'completed',
+        completed_at = now(),
+        finished_at = now(),
         updated_at = now()
       WHERE org_id = ${orgIdInt};
     `;
