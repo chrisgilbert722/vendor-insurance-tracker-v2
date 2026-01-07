@@ -1,6 +1,8 @@
 // pages/api/onboarding/upload-vendors-csv.js
-// FINAL NEON-SAFE VERSION — MATCHES REAL vendor_uploads SCHEMA
-// + UPDATES org_onboarding_state TO ADVANCE WIZARD
+// FINAL, NEON-SAFE, SCHEMA-ACCURATE VERSION
+// - Uploads CSV to Supabase Storage
+// - Inserts into Neon vendor_uploads
+// - Advances org_onboarding_state correctly (NO fake columns)
 
 import formidable from "formidable";
 import fs from "fs";
@@ -11,7 +13,7 @@ export const config = {
   api: { bodyParser: false },
 };
 
-// Supabase service-role client (SERVER ONLY)
+// Supabase service role (server only)
 const supabaseAdmin = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL,
   process.env.SUPABASE_SERVICE_ROLE_KEY
@@ -29,7 +31,7 @@ export default async function handler(req, res) {
 
   try {
     /* -------------------------------------------------
-       1) AUTH — verify Supabase session
+       1) AUTH
     -------------------------------------------------- */
     const token = getBearerToken(req);
     if (!token) {
@@ -39,17 +41,17 @@ export default async function handler(req, res) {
       });
     }
 
-    const { data: userData, error: userErr } =
+    const { data: userData, error: authErr } =
       await supabaseAdmin.auth.getUser(token);
 
-    if (userErr || !userData?.user) {
+    if (authErr || !userData?.user) {
       return res.status(401).json({ ok: false, error: "Invalid session" });
     }
 
-    const authUserId = userData.user.id; // UUID string
+    const userId = userData.user.id;
 
     /* -------------------------------------------------
-       2) PARSE MULTIPART FORM
+       2) PARSE FORM
     -------------------------------------------------- */
     const form = formidable({ multiples: false });
     const [fields, files] = await form.parse(req);
@@ -64,14 +66,11 @@ export default async function handler(req, res) {
       : fields.orgId;
 
     if (!orgUuid) {
-      return res.status(400).json({
-        ok: false,
-        error: "Missing orgId",
-      });
+      return res.status(400).json({ ok: false, error: "Missing orgId" });
     }
 
     /* -------------------------------------------------
-       3) RESOLVE NEON org_id (INT) + MEMBERSHIP CHECK
+       3) RESOLVE ORG (NEON)
     -------------------------------------------------- */
     const orgRows = await sql`
       SELECT o.id
@@ -79,7 +78,7 @@ export default async function handler(req, res) {
       JOIN organization_members om
         ON om.org_id = o.id
       WHERE o.external_uuid = ${orgUuid}
-        AND om.user_id = ${authUserId}
+        AND om.user_id = ${userId}
       LIMIT 1;
     `;
 
@@ -90,10 +89,10 @@ export default async function handler(req, res) {
       });
     }
 
-    const orgIdInt = orgRows[0].id;
+    const orgId = orgRows[0].id;
 
     /* -------------------------------------------------
-       4) UPLOAD FILE TO SUPABASE STORAGE
+       4) UPLOAD TO SUPABASE STORAGE
     -------------------------------------------------- */
     const bucket = "vendor-uploads";
     const safeFilename = (file.originalFilename || "vendors.csv")
@@ -117,7 +116,7 @@ export default async function handler(req, res) {
     }
 
     /* -------------------------------------------------
-       5) INSERT INTO NEON vendor_uploads (REAL COLUMNS)
+       5) INSERT vendor_uploads (REAL SCHEMA)
     -------------------------------------------------- */
     await sql`
       INSERT INTO vendor_uploads (
@@ -127,28 +126,28 @@ export default async function handler(req, res) {
         uploaded_by
       )
       VALUES (
-        ${orgIdInt},
+        ${orgId},
         ${safeFilename},
         ${file.mimetype || "text/csv"},
-        ${authUserId}
+        ${userId}
       );
     `;
 
     /* -------------------------------------------------
-       6) 🔓 ADVANCE ONBOARDING STATE (THIS WAS MISSING)
+       6) ADVANCE ONBOARDING STATE (CORRECT WAY)
     -------------------------------------------------- */
     await sql`
       UPDATE org_onboarding_state
       SET
-        vendors_uploaded = true,
+        current_step = 'vendors_uploaded',
+        progress = 25,
         updated_at = now()
-      WHERE org_id = ${orgIdInt};
+      WHERE org_id = ${orgId};
     `;
 
     return res.status(200).json({
       ok: true,
-      orgId: orgUuid,
-      orgIdInt,
+      orgId,
       filename: safeFilename,
     });
   } catch (err) {
@@ -159,4 +158,4 @@ export default async function handler(req, res) {
     });
   }
 }
- 
+
