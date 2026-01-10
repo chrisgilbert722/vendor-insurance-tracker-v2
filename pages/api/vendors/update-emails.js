@@ -96,8 +96,7 @@ export default async function handler(req, res) {
 
       const result = await sql`
         UPDATE vendors
-        SET email = ${v.email},
-            updated_at = now()
+        SET email = ${v.email}
         WHERE org_id = ${orgIdInt}
           AND name = ${v.vendorName};
       `;
