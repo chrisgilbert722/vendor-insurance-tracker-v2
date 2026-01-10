@@ -1,8 +1,8 @@
 // AI Onboarding Wizard V5 — TELEMETRY-ONLY AUTOPILOT (BUILD SAFE)
 // Property Management copy pass (Day 3)
 // ✅ Autonomous mapping + auto-skip + persistence + reuse toast
-// ✅ FIX: Normalize AI mapping shape for Step 4
-// ✅ LOCK: Step 4 includes “Activate Automation” paywall CTA
+// ✅ LOCKED FUNNEL: Step 4 is activation wall
+// ✅ Activity feed hidden at Step 4
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/router";
@@ -48,9 +48,7 @@ export default function AiWizardPanel({ orgId }) {
   const router = useRouter();
 
   const [starting, setStarting] = useState(false);
-  const [finishing, setFinishing] = useState(false);
   const [error, setError] = useState("");
-
   const [wizardState, setWizardState] = useState({});
   const [forceUiStep, setForceUiStep] = useState(null);
   const [showMappingToast, setShowMappingToast] = useState(false);
@@ -76,7 +74,7 @@ export default function AiWizardPanel({ orgId }) {
           ...prev,
           vendorsCsv: {
             ...(prev.vendorsCsv || {}),
-            mapping: json.mapping, // already normalized
+            mapping: json.mapping,
             mappingSource: "persisted",
           },
         }));
@@ -93,11 +91,7 @@ export default function AiWizardPanel({ orgId }) {
   }, [orgUuid]);
 
   if (!orgUuid) {
-    return (
-      <div style={{ color: "#fecaca" }}>
-        We couldn’t load your organization.
-      </div>
-    );
+    return <div style={{ color: "#fecaca" }}>Organization not found.</div>;
   }
 
   const { uiStep: observedStep } = useOnboardingObserver({ orgId: orgUuid });
@@ -106,8 +100,9 @@ export default function AiWizardPanel({ orgId }) {
   let content = null;
 
   /* ============================================================
-     STEP 1 — START
+     STEP ROUTER
   ============================================================ */
+
   if (effectiveStep === 1) {
     const startAutopilot = async () => {
       if (starting) return;
@@ -138,9 +133,6 @@ export default function AiWizardPanel({ orgId }) {
       </button>
     );
   } else {
-    /* ============================================================
-       STEP ROUTER
-    ============================================================ */
     switch (effectiveStep) {
       case 2:
         content = (
@@ -185,72 +177,13 @@ export default function AiWizardPanel({ orgId }) {
         break;
 
       case 4:
+        // 🔒 FINAL LOCKED STEP — activation wall lives INSIDE VendorsAnalyzeStep
         content = (
-          <>
-            <VendorsAnalyzeStep
-              orgId={orgUuid}
-              wizardState={wizardState}
-              setWizardState={setWizardState}
-            />
-
-            {/* ============================================================
-               LOCKED PAYWALL HANDOFF (STEP 4 TERMINAL)
-               - Do NOT auto-redirect
-               - Explicit CTA converts best
-            ============================================================ */}
-            <div
-              style={{
-                marginTop: 22,
-                padding: 18,
-                borderRadius: 18,
-                background: "rgba(2,6,23,0.55)",
-                border: "1px solid rgba(56,189,248,0.25)",
-              }}
-            >
-              <div style={{ color: "#e5e7eb", fontWeight: 800, fontSize: 14 }}>
-                Preview complete
-              </div>
-              <div style={{ color: "#9ca3af", fontSize: 13, marginTop: 6 }}>
-                Automation is locked in preview mode. Activate to start your 14-day
-                trial and enable execution.
-              </div>
-
-              <div
-                style={{
-                  display: "flex",
-                  justifyContent: "flex-end",
-                  marginTop: 14,
-                }}
-              >
-                <button
-                  onClick={() => router.push("/billing/activate")}
-                  style={{
-                    padding: "12px 16px",
-                    borderRadius: 999,
-                    border: "1px solid rgba(56,189,248,0.9)",
-                    background:
-                      "linear-gradient(90deg,rgba(56,189,248,0.95),rgba(99,102,241,0.95))",
-                    color: "#020617",
-                    fontWeight: 900,
-                    cursor: "pointer",
-                  }}
-                >
-                  Activate Automation
-                </button>
-              </div>
-
-              <div
-                style={{
-                  color: "#9ca3af",
-                  fontSize: 12,
-                  marginTop: 8,
-                  textAlign: "right",
-                }}
-              >
-                14-day trial • $499/mo after • Cancel anytime • Card required
-              </div>
-            </div>
-          </>
+          <VendorsAnalyzeStep
+            orgId={orgUuid}
+            wizardState={wizardState}
+            setWizardState={setWizardState}
+          />
         );
         break;
 
@@ -259,7 +192,6 @@ export default function AiWizardPanel({ orgId }) {
           <ReviewLaunchStep
             orgId={orgUuid}
             onComplete={async () => {
-              setFinishing(true);
               await fetch("/api/onboarding/complete");
               router.replace("/dashboard");
             }}
@@ -282,7 +214,9 @@ export default function AiWizardPanel({ orgId }) {
 
       {content}
       {error && <div style={{ color: "#f87171" }}>{error}</div>}
-      <OnboardingActivityFeed />
+
+      {/* 🔒 Activity feed ONLY before Step 4 */}
+      {effectiveStep < 4 && <OnboardingActivityFeed />}
     </>
   );
 }
