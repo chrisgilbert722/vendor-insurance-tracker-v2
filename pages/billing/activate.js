@@ -1,26 +1,24 @@
 // pages/billing/activate.js
-// LOCKED: Activation Paywall Entry
-// - Starts Stripe checkout for the $499 plan + 14-day trial
-// - Card required
-// - Redirects to Stripe Checkout
+// LOCKED: Start Stripe Checkout for "Activate Automation"
+// - Requires logged-in Supabase session
+// - Redirects to Stripe Checkout URL returned by API
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/router";
 import { supabase } from "../../lib/supabaseClient";
 
-export default function ActivateAutomation() {
+export default function BillingActivate() {
   const router = useRouter();
   const [msg, setMsg] = useState("Preparing secure checkout…");
-  const [err, setErr] = useState("");
+  const [error, setError] = useState("");
 
   useEffect(() => {
     let cancelled = false;
 
-    async function go() {
+    async function start() {
       try {
-        setErr("");
+        setError("");
 
-        // Must be logged in to attach trial to the correct org/user
         const {
           data: { session },
         } = await supabase.auth.getSession();
@@ -33,19 +31,13 @@ export default function ActivateAutomation() {
 
         setMsg("Opening Stripe checkout…");
 
-        // 👇 IMPORTANT: if your checkout API endpoint is different,
-        // only change THIS URL.
         const res = await fetch("/api/billing/create-checkout", {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
             Authorization: `Bearer ${session.access_token}`,
           },
-          body: JSON.stringify({
-            // where Stripe should send them after payment
-            successUrl: `${window.location.origin}/billing/success`,
-            cancelUrl: `${window.location.origin}/onboarding/ai-wizard`,
-          }),
+          body: JSON.stringify({}),
         });
 
         const json = await res.json();
@@ -58,12 +50,12 @@ export default function ActivateAutomation() {
       } catch (e) {
         console.error("[billing/activate]", e);
         if (cancelled) return;
-        setErr(e.message || "Checkout failed.");
+        setError(e.message || "Checkout failed.");
         setMsg("Could not open checkout.");
       }
     }
 
-    go();
+    start();
     return () => {
       cancelled = true;
     };
@@ -92,23 +84,27 @@ export default function ActivateAutomation() {
             "0 20px 45px rgba(15,23,42,0.96),0 0 26px rgba(56,189,248,0.25)",
           textAlign: "center",
           width: "90%",
-          maxWidth: 480,
+          maxWidth: 520,
         }}
       >
-        <div style={{ fontSize: 18, fontWeight: 800, marginBottom: 6 }}>
+        <div style={{ fontSize: 18, fontWeight: 900, marginBottom: 6 }}>
           Activate Automation
         </div>
         <div style={{ color: "#9ca3af", fontSize: 13, marginBottom: 14 }}>
-          14-day trial • $499/mo after • Cancel anytime
+          14-day trial • $499/mo after • Cancel anytime • Card required
         </div>
 
         <div style={{ fontSize: 14 }}>{msg}</div>
 
-        {err && (
+        {error && (
           <div style={{ marginTop: 12, color: "#fca5a5", fontSize: 13 }}>
-            {err}
+            {error}
           </div>
         )}
+
+        <div style={{ marginTop: 14, color: "#64748b", fontSize: 12 }}>
+          You will not be charged today.
+        </div>
       </div>
     </div>
   );
