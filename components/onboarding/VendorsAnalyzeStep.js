@@ -1,5 +1,5 @@
 // components/onboarding/VendorsAnalyzeStep.js
-// STEP 4 — AI Vendor Analysis (AI-first, Fix Mode fully wired + auto-run + backend advance)
+// STEP 4 — AI Vendor Analysis (AI-first, Fix Mode — Option A)
 
 import { useEffect, useState } from "react";
 import { supabase } from "../../lib/supabaseClient";
@@ -20,7 +20,6 @@ export default function VendorsAnalyzeStep({
   const [aiResult, setAiResult] = useState(null);
   const [successMsg, setSuccessMsg] = useState("");
   const [error, setError] = useState("");
-  const [showFixEmails, setShowFixEmails] = useState(false);
 
   /* -------------------------------------------------
      NORMALIZE MAPPING
@@ -60,7 +59,7 @@ export default function VendorsAnalyzeStep({
   }, [rows, mapping, setWizardState]);
 
   /* -------------------------------------------------
-     RUN AI ANALYSIS + ADVANCE BACKEND (OPTION A)
+     RUN AI ANALYSIS + TRIGGER BACKEND STATE
   -------------------------------------------------- */
   async function runAiAnalysis() {
     setError("");
@@ -99,7 +98,7 @@ export default function VendorsAnalyzeStep({
         },
       }));
 
-      // 🔥 OPTION A — TRIGGER BACKEND AI STATE (COCKPIT ANIMATION)
+      // Cockpit animation trigger
       await fetch("/api/onboarding/launch-system", {
         method: "POST",
         headers: {
@@ -166,7 +165,6 @@ export default function VendorsAnalyzeStep({
 
       setVendors(updatedVendors);
       setEditedEmails({});
-      setShowFixEmails(false);
 
       setWizardState((prev) => ({
         ...prev,
@@ -228,42 +226,8 @@ export default function VendorsAnalyzeStep({
         </div>
       )}
 
+      {/* 🔥 OPTION A — ALWAYS SHOW FIX UI */}
       {vendorsMissingEmail.length > 0 && (
-        <div
-          style={{
-            marginTop: 12,
-            padding: "12px 14px",
-            borderRadius: 10,
-            background: "rgba(234,179,8,0.15)",
-            border: "1px solid rgba(234,179,8,0.6)",
-            color: "#fde68a",
-            fontSize: 13,
-          }}
-        >
-          {vendorsMissingEmail.length} vendor
-          {vendorsMissingEmail.length > 1 ? "s are" : " is"} missing an email
-          address.
-          <div style={{ marginTop: 8 }}>
-            <button
-              onClick={() => setShowFixEmails((v) => !v)}
-              style={{
-                background: "none",
-                border: "none",
-                color: "#facc15",
-                fontSize: 13,
-                fontWeight: 600,
-                cursor: "pointer",
-                padding: 0,
-              }}
-            >
-              {showFixEmails ? "Hide" : "Fix now"}
-            </button>
-          </div>
-        </div>
-      )}
-
-      {/* Editable table unchanged */}
-      {showFixEmails && vendorsMissingEmail.length > 0 && (
         <div
           style={{
             marginTop: 14,
@@ -272,7 +236,76 @@ export default function VendorsAnalyzeStep({
             overflow: "hidden",
           }}
         >
-          {/* table unchanged */}
+          <table style={{ width: "100%", fontSize: 13 }}>
+            <thead>
+              <tr>
+                <th style={{ padding: 10, textAlign: "left" }}>Vendor</th>
+                <th style={{ padding: 10, textAlign: "left" }}>Category</th>
+                <th style={{ padding: 10, textAlign: "left" }}>Email</th>
+              </tr>
+            </thead>
+            <tbody>
+              {vendorsMissingEmail.map((v) => (
+                <tr key={v.id}>
+                  <td style={{ padding: 10 }}>{v.name}</td>
+                  <td style={{ padding: 10, color: "#9ca3af" }}>
+                    {v.category || "—"}
+                  </td>
+                  <td style={{ padding: 10 }}>
+                    <input
+                      type="email"
+                      placeholder="email@vendor.com"
+                      value={editedEmails[v.id] || ""}
+                      onChange={(e) =>
+                        setEditedEmails((prev) => ({
+                          ...prev,
+                          [v.id]: e.target.value,
+                        }))
+                      }
+                      style={{
+                        width: "100%",
+                        padding: "6px 8px",
+                        borderRadius: 6,
+                        border: "1px solid rgba(234,179,8,0.6)",
+                        background: "rgba(2,6,23,0.9)",
+                        color: "#e5e7eb",
+                      }}
+                    />
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+
+          <div
+            style={{
+              padding: 12,
+              display: "flex",
+              justifyContent: "flex-end",
+            }}
+          >
+            <button
+              onClick={saveEmails}
+              disabled={!hasEdits || savingEmails}
+              style={{
+                padding: "8px 14px",
+                borderRadius: 999,
+                border: "1px solid rgba(34,197,94,0.9)",
+                background:
+                  hasEdits && !savingEmails
+                    ? "linear-gradient(90deg,#22c55e,#4ade80)"
+                    : "rgba(34,197,94,0.2)",
+                color: "#022c22",
+                fontWeight: 700,
+                cursor:
+                  hasEdits && !savingEmails ? "pointer" : "not-allowed",
+              }}
+            >
+              {savingEmails
+                ? "Saving…"
+                : "Save Emails & Enable Automation"}
+            </button>
+          </div>
         </div>
       )}
 
