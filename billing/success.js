@@ -1,58 +1,55 @@
 // pages/billing/success.js
+// LOCKED: Billing Success Handoff
+// - No account creation here
+// - No magic link sending here
+// - If logged in -> go dashboard
+// - If not logged in -> send to login
+
 import { useEffect, useState } from "react";
 import { useRouter } from "next/router";
 import { supabase } from "../../lib/supabaseClient";
 
 export default function BillingSuccess() {
   const router = useRouter();
-  const { email, name, company } = router.query;
-
-  const [msg, setMsg] = useState("Activating your trial…");
+  const [msg, setMsg] = useState("Finalizing activation…");
 
   useEffect(() => {
-    if (!email) return;
+    let cancelled = false;
 
-    async function activateTrial() {
+    async function go() {
       try {
-        setMsg("Creating your account…");
+        setMsg("Checking your session…");
 
-        // 1️⃣ Create / update Supabase user record
-        const { data: signInData, error: signInError } =
-          await supabase.auth.signInWithOtp({
-            email,
-            options: {
-              shouldCreateUser: true,
-              data: {
-                name,
-                company,
-                trial_active: true,
-                subscription_status: "trialing",
-                trial_ends_at: getTrialEndDate(14), // 14 days from now
-              },
-              emailRedirectTo: `${window.location.origin}/auth/callback`,
-            },
-          });
+        const {
+          data: { session },
+        } = await supabase.auth.getSession();
 
-        if (signInError) {
-          console.error("[success] signInWithOtp error:", signInError);
-          setMsg("Could not send login link.");
+        // ✅ If they’re logged in, go straight to dashboard
+        if (session?.user) {
+          if (cancelled) return;
+          setMsg("Activation complete — sending you to the dashboard…");
+          setTimeout(() => router.replace("/dashboard"), 700);
           return;
         }
 
-        setMsg("Magic link sent — check your email!");
-
-        // Smooth cinematic redirect
-        setTimeout(() => {
-          router.replace(`/auth/login?email=${encodeURIComponent(email)}`);
-        }, 2000);
+        // ✅ If not logged in, send them to login
+        // (No magic-link creation here — keeps flow stable)
+        if (cancelled) return;
+        setMsg("Almost done — please log in to continue…");
+        setTimeout(() => router.replace("/auth/login"), 900);
       } catch (err) {
         console.error("[billing/success] unexpected:", err);
-        setMsg("Something went wrong.");
+        if (cancelled) return;
+        setMsg("Something went wrong. Please log in again.");
+        setTimeout(() => router.replace("/auth/login"), 1200);
       }
     }
 
-    activateTrial();
-  }, [email, name, company, router]);
+    go();
+    return () => {
+      cancelled = true;
+    };
+  }, [router]);
 
   return (
     <div
@@ -81,16 +78,15 @@ export default function BillingSuccess() {
           maxWidth: 420,
         }}
       >
-        <div style={{ fontSize: 32, marginBottom: 12 }}>🎉</div>
+        <div style={{ fontSize: 32, marginBottom: 12 }}>✅</div>
+        <div style={{ fontWeight: 700, marginBottom: 6 }}>
+          Automation Activated
+        </div>
+        <div style={{ color: "#9ca3af", fontSize: 14, marginBottom: 14 }}>
+          Your trial is active. Redirecting you now…
+        </div>
         <div>{msg}</div>
       </div>
     </div>
   );
-}
-
-// Helper: compute trial end date
-function getTrialEndDate(days) {
-  const d = new Date();
-  d.setDate(d.getDate() + days);
-  return d.toISOString();
 }
