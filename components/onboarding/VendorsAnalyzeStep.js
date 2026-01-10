@@ -1,8 +1,8 @@
 // components/onboarding/VendorsAnalyzeStep.js
-// STEP 4 — AI Vendor Analysis (AI-first, Fix Mode — Option A, stable)
-// ✅ Does NOT call launch-system (that endpoint was causing 500 + killing flow)
-// ✅ Save Emails → re-run AI automatically
-// ✅ Option A: Fix UI always visible when emails are missing
+// STEP 4 — AI Vendor Analysis (LOCKED PREVIEW STATE)
+// ✅ AI runs once, then UI locks
+// ✅ Fix Emails inline if needed
+// ✅ Single CTA: Activate Automation
 
 import { useEffect, useMemo, useState } from "react";
 import { supabase } from "../../lib/supabaseClient";
@@ -16,10 +16,12 @@ export default function VendorsAnalyzeStep({ orgId, wizardState, setWizardState 
   const [editedEmails, setEditedEmails] = useState({});
   const [aiLoading, setAiLoading] = useState(false);
   const [savingEmails, setSavingEmails] = useState(false);
-  const [aiResult, setAiResult] = useState(null);
-  const [successMsg, setSuccessMsg] = useState("");
+  const [aiResult, setAiResult] = useState(
+    wizardState?.vendorsAnalyzed?.ai || null
+  );
   const [error, setError] = useState("");
-  const [aiRan, setAiRan] = useState(false);
+
+  const aiCompleted = Boolean(aiResult);
 
   /* -------------------------------------------------
      NORMALIZE MAPPING
@@ -34,7 +36,7 @@ export default function VendorsAnalyzeStep({ orgId, wizardState, setWizardState 
   }, [rawMapping]);
 
   /* -------------------------------------------------
-     BUILD VENDOR OBJECTS (EMAIL OPTIONAL)
+     BUILD VENDOR OBJECTS
   -------------------------------------------------- */
   useEffect(() => {
     if (!rows.length || !mapping.vendorName) return;
@@ -60,11 +62,12 @@ export default function VendorsAnalyzeStep({ orgId, wizardState, setWizardState 
   }, [rows, mapping, setWizardState]);
 
   /* -------------------------------------------------
-     RUN AI ANALYSIS (NO launch-system call)
+     RUN AI ANALYSIS (ONCE)
   -------------------------------------------------- */
   async function runAiAnalysis(vendorsOverride = null) {
+    if (aiCompleted) return;
+
     setError("");
-    setSuccessMsg("");
     setAiLoading(true);
 
     try {
@@ -76,7 +79,9 @@ export default function VendorsAnalyzeStep({ orgId, wizardState, setWizardState 
         throw new Error("Authentication session missing.");
       }
 
-      const payloadVendors = Array.isArray(vendorsOverride) ? vendorsOverride : vendors;
+      const payloadVendors = Array.isArray(vendorsOverride)
+        ? vendorsOverride
+        : vendors;
 
       const res = await fetch("/api/onboarding/ai-vendors-analyze", {
         method: "POST",
@@ -91,7 +96,6 @@ export default function VendorsAnalyzeStep({ orgId, wizardState, setWizardState 
       if (!json.ok) throw new Error(json.error || "AI analysis failed.");
 
       setAiResult(json);
-      setAiRan(true);
 
       setWizardState((prev) => ({
         ...prev,
@@ -108,11 +112,10 @@ export default function VendorsAnalyzeStep({ orgId, wizardState, setWizardState 
   }
 
   /* -------------------------------------------------
-     SAVE EMAILS → AUTO-RUN AI
+     SAVE EMAILS (NO UI UNLOCK)
   -------------------------------------------------- */
   async function saveEmails() {
     setError("");
-    setSuccessMsg("");
     setSavingEmails(true);
 
     try {
@@ -160,12 +163,9 @@ export default function VendorsAnalyzeStep({ orgId, wizardState, setWizardState 
         },
       }));
 
-      setSuccessMsg(
-        `Emails saved for ${json.updated} vendor${json.updated === 1 ? "" : "s"}.`
-      );
-
-      // ✅ Immediately re-run AI using the updated vendors list
-      await runAiAnalysis(updatedVendors);
+      if (!aiCompleted) {
+        await runAiAnalysis(updatedVendors);
+      }
     } catch (err) {
       setError(err.message || "Failed to save emails.");
     } finally {
@@ -179,47 +179,32 @@ export default function VendorsAnalyzeStep({ orgId, wizardState, setWizardState 
   return (
     <div
       style={{
-        padding: 18,
-        borderRadius: 18,
+        padding: 22,
+        borderRadius: 22,
         background: "rgba(15,23,42,0.96)",
         border: "1px solid rgba(51,65,85,0.9)",
       }}
     >
-      <h2 style={{ fontSize: 18, fontWeight: 600, color: "#e5e7eb" }}>
+      <h2 style={{ fontSize: 20, fontWeight: 700, color: "#e5e7eb" }}>
         Step 4 — AI Vendor Analysis
       </h2>
 
-      <p style={{ fontSize: 13, color: "#9ca3af" }}>
-        AI has analyzed your vendors. Fix missing contact info to enable automated reminders.
+      <p style={{ fontSize: 14, color: "#9ca3af", marginTop: 6 }}>
+        AI has analyzed your vendors. Automation is locked in preview mode.
       </p>
 
-      {successMsg && (
-        <div
-          style={{
-            marginTop: 12,
-            padding: "10px 14px",
-            borderRadius: 10,
-            background: "rgba(34,197,94,0.15)",
-            border: "1px solid rgba(34,197,94,0.6)",
-            color: "#86efac",
-            fontSize: 13,
-          }}
-        >
-          {successMsg}
-        </div>
-      )}
-
-      {aiRan && aiResult?.summary && (
-        <div style={{ marginTop: 10, fontSize: 12, color: "#a5b4fc" }}>
-          AI ran: {aiResult.summary.totalVendors} vendors • {aiResult.summary.highRisk} high risk
+      {aiCompleted && aiResult?.summary && (
+        <div style={{ marginTop: 10, fontSize: 13, color: "#a5b4fc" }}>
+          AI ran: {aiResult.summary.totalVendors} vendors •{" "}
+          {aiResult.summary.highRisk} high risk
         </div>
       )}
 
       {vendorsMissingEmail.length > 0 && (
         <div
           style={{
-            marginTop: 14,
-            borderRadius: 12,
+            marginTop: 18,
+            borderRadius: 14,
             border: "1px solid rgba(234,179,8,0.4)",
             overflow: "hidden",
           }}
@@ -230,36 +215,27 @@ export default function VendorsAnalyzeStep({ orgId, wizardState, setWizardState 
               background: "rgba(234,179,8,0.10)",
               color: "#fde68a",
               fontSize: 13,
-              borderBottom: "1px solid rgba(234,179,8,0.25)",
             }}
           >
-            {vendorsMissingEmail.length} vendor
-            {vendorsMissingEmail.length > 1 ? "s are" : " is"} missing an email address.
-            Add emails to enable automated reminders.
+            {vendorsMissingEmail.length} vendor missing email — required to enable
+            reminders.
           </div>
 
           <table style={{ width: "100%", fontSize: 13 }}>
-            <thead>
-              <tr>
-                <th style={{ padding: 10, textAlign: "left" }}>Vendor</th>
-                <th style={{ padding: 10, textAlign: "left" }}>Category</th>
-                <th style={{ padding: 10, textAlign: "left" }}>Email</th>
-              </tr>
-            </thead>
             <tbody>
               {vendorsMissingEmail.map((v) => (
                 <tr key={v.id}>
                   <td style={{ padding: 10, color: "#e5e7eb" }}>{v.name}</td>
-                  <td style={{ padding: 10, color: "#9ca3af" }}>
-                    {v.category || "—"}
-                  </td>
                   <td style={{ padding: 10 }}>
                     <input
                       type="email"
                       placeholder="email@vendor.com"
                       value={editedEmails[v.id] || ""}
                       onChange={(e) =>
-                        setEditedEmails((prev) => ({ ...prev, [v.id]: e.target.value }))
+                        setEditedEmails((prev) => ({
+                          ...prev,
+                          [v.id]: e.target.value,
+                        }))
                       }
                       style={{
                         width: "100%",
@@ -276,12 +252,12 @@ export default function VendorsAnalyzeStep({ orgId, wizardState, setWizardState 
             </tbody>
           </table>
 
-          <div style={{ padding: 12, display: "flex", justifyContent: "flex-end" }}>
+          <div style={{ padding: 12, textAlign: "right" }}>
             <button
               onClick={saveEmails}
               disabled={!hasEdits || savingEmails}
               style={{
-                padding: "8px 14px",
+                padding: "8px 16px",
                 borderRadius: 999,
                 border: "1px solid rgba(34,197,94,0.9)",
                 background:
@@ -290,31 +266,75 @@ export default function VendorsAnalyzeStep({ orgId, wizardState, setWizardState 
                     : "rgba(34,197,94,0.2)",
                 color: "#022c22",
                 fontWeight: 700,
-                cursor: hasEdits && !savingEmails ? "pointer" : "not-allowed",
               }}
             >
-              {savingEmails ? "Saving…" : "Save Emails & Re-Analyze"}
+              Save Emails
             </button>
           </div>
         </div>
       )}
 
-      <button
-        onClick={() => runAiAnalysis()}
-        disabled={aiLoading || vendors.length === 0}
-        style={{
-          marginTop: 18,
-          padding: "10px 16px",
-          borderRadius: 999,
-          border: "1px solid rgba(56,189,248,0.9)",
-          background:
-            "radial-gradient(circle at top left,#38bdf8,#0ea5e9,#1e3a8a)",
-          color: "#e0f2fe",
-          fontWeight: 600,
-        }}
-      >
-        {aiLoading ? "Analyzing vendors…" : "✨ Run AI Vendor Analysis"}
-      </button>
+      {!aiCompleted && (
+        <button
+          onClick={() => runAiAnalysis()}
+          disabled={aiLoading || vendors.length === 0}
+          style={{
+            marginTop: 18,
+            padding: "10px 18px",
+            borderRadius: 999,
+            border: "1px solid rgba(56,189,248,0.9)",
+            background:
+              "radial-gradient(circle at top left,#38bdf8,#0ea5e9,#1e3a8a)",
+            color: "#e0f2fe",
+            fontWeight: 700,
+          }}
+        >
+          {aiLoading ? "Analyzing…" : "✨ Run AI Vendor Analysis"}
+        </button>
+      )}
+
+      {aiCompleted && (
+        <div
+          style={{
+            marginTop: 26,
+            padding: 18,
+            borderRadius: 18,
+            background:
+              "linear-gradient(180deg, rgba(15,23,42,0.9), rgba(15,23,42,0.98))",
+            border: "1px solid rgba(56,189,248,0.35)",
+          }}
+        >
+          <div style={{ fontSize: 15, color: "#c7d2fe", marginBottom: 10 }}>
+            Preview complete. Automation is locked.
+          </div>
+
+          <button
+            onClick={() => (window.location.href = "/billing/activate")}
+            style={{
+              padding: "12px 22px",
+              borderRadius: 999,
+              border: "none",
+              background:
+                "linear-gradient(90deg,#38bdf8,#6366f1)",
+              color: "#020617",
+              fontWeight: 800,
+              fontSize: 16,
+            }}
+          >
+            Activate Automation
+          </button>
+
+          <div
+            style={{
+              marginTop: 8,
+              fontSize: 12,
+              color: "#94a3b8",
+            }}
+          >
+            14-day trial · $499/mo after · Cancel anytime · Card required
+          </div>
+        </div>
+      )}
 
       {error && <div style={{ marginTop: 14, color: "#fca5a5" }}>{error}</div>}
     </div>
