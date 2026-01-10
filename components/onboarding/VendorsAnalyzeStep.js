@@ -1,6 +1,5 @@
 // components/onboarding/VendorsAnalyzeStep.js
-// STEP 4 — AI Vendor Analysis (AI-first, Fix Mode enabled)
-// STEP 2: Editable Email Inputs (no backend writes yet)
+// STEP 4 — AI Vendor Analysis (AI-first, Fix Mode fully wired)
 
 import { useEffect, useState } from "react";
 import { supabase } from "../../lib/supabaseClient";
@@ -17,7 +16,9 @@ export default function VendorsAnalyzeStep({
   const [vendors, setVendors] = useState([]);
   const [editedEmails, setEditedEmails] = useState({});
   const [aiLoading, setAiLoading] = useState(false);
+  const [savingEmails, setSavingEmails] = useState(false);
   const [aiResult, setAiResult] = useState(null);
+  const [successMsg, setSuccessMsg] = useState("");
   const [error, setError] = useState("");
   const [showFixEmails, setShowFixEmails] = useState(false);
 
@@ -38,7 +39,7 @@ export default function VendorsAnalyzeStep({
     if (!rows.length || !mapping.vendorName) return;
 
     const transformed = rows.map((row) => ({
-      id: row[mapping.vendorName], // temporary stable key
+      id: row[mapping.vendorName], // stable-enough key for Fix Mode
       name: row[mapping.vendorName] || "",
       email: mapping.email ? row[mapping.email] || "" : "",
       category: mapping.category ? row[mapping.category] || "" : "",
@@ -59,10 +60,11 @@ export default function VendorsAnalyzeStep({
   }, [rows, mapping, setWizardState]);
 
   /* -------------------------------------------------
-     RUN AI ANALYSIS
+     RUN AI ANALYSIS (NEVER BLOCKED)
   -------------------------------------------------- */
   async function runAiAnalysis() {
     setError("");
+    setSuccessMsg("");
     setAiResult(null);
     setAiLoading(true);
 
@@ -95,10 +97,81 @@ export default function VendorsAnalyzeStep({
     }
   }
 
-  const vendorsMissingEmail = vendors.filter(
-    (v) => !v.email && !editedEmails[v.id]
-  );
+  /* -------------------------------------------------
+     SAVE EMAILS → ENABLE AUTOMATION
+  -------------------------------------------------- */
+  async function saveEmails() {
+    setError("");
+    setSuccessMsg("");
+    setSavingEmails(true);
 
+    try {
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
+
+      if (!session?.access_token) {
+        throw new Error("Authentication session missing.");
+      }
+
+      const payload = Object.entries(editedEmails)
+        .filter(([_, email]) => email && email.includes("@"))
+        .map(([vendorName, email]) => ({
+          vendorName,
+          email,
+        }));
+
+      if (!payload.length) {
+        throw new Error("No valid emails to save.");
+      }
+
+      const res = await fetch("/api/vendors/update-emails", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${session.access_token}`,
+        },
+        body: JSON.stringify({
+          orgId,
+          vendors: payload,
+        }),
+      });
+
+      const json = await res.json();
+      if (!json.ok) throw new Error(json.error || "Failed to save emails.");
+
+      // Update local state
+      const updatedVendors = vendors.map((v) =>
+        editedEmails[v.id]
+          ? { ...v, email: editedEmails[v.id] }
+          : v
+      );
+
+      setVendors(updatedVendors);
+      setEditedEmails({});
+      setShowFixEmails(false);
+
+      setWizardState((prev) => ({
+        ...prev,
+        vendorsAnalyzed: {
+          transformed: updatedVendors,
+          missingEmailCount: updatedVendors.filter((v) => !v.email).length,
+        },
+      }));
+
+      setSuccessMsg(
+        `Automation enabled for ${json.updated} vendor${
+          json.updated === 1 ? "" : "s"
+        }.`
+      );
+    } catch (err) {
+      setError(err.message || "Failed to save emails.");
+    } finally {
+      setSavingEmails(false);
+    }
+  }
+
+  const vendorsMissingEmail = vendors.filter((v) => !v.email);
   const hasEdits = Object.keys(editedEmails).length > 0;
 
   return (
@@ -115,10 +188,28 @@ export default function VendorsAnalyzeStep({
       </h2>
 
       <p style={{ fontSize: 13, color: "#9ca3af" }}>
-        AI has analyzed your vendors. You can fix missing contact info below to
-        enable automated reminders.
+        AI has analyzed your vendors. Fix missing contact info to enable
+        automated reminders.
       </p>
 
+      {/* SUCCESS BANNER */}
+      {successMsg && (
+        <div
+          style={{
+            marginTop: 12,
+            padding: "10px 14px",
+            borderRadius: 10,
+            background: "rgba(34,197,94,0.15)",
+            border: "1px solid rgba(34,197,94,0.6)",
+            color: "#86efac",
+            fontSize: 13,
+          }}
+        >
+          {successMsg}
+        </div>
+      )}
+
+      {/* FIX MODE SUMMARY */}
       {vendorsMissingEmail.length > 0 && (
         <div
           style={{
@@ -153,7 +244,8 @@ export default function VendorsAnalyzeStep({
         </div>
       )}
 
-      {showFixEmails && (
+      {/* EDITABLE EMAIL TABLE */}
+      {showFixEmails && vendorsMissingEmail.length > 0 && (
         <div
           style={{
             marginTop: 14,
@@ -211,20 +303,25 @@ export default function VendorsAnalyzeStep({
             }}
           >
             <button
-              disabled={!hasEdits}
+              onClick={saveEmails}
+              disabled={!hasEdits || savingEmails}
               style={{
                 padding: "8px 14px",
                 borderRadius: 999,
                 border: "1px solid rgba(34,197,94,0.9)",
-                background: hasEdits
-                  ? "linear-gradient(90deg,#22c55e,#4ade80)"
-                  : "rgba(34,197,94,0.2)",
+                background:
+                  hasEdits && !savingEmails
+                    ? "linear-gradient(90deg,#22c55e,#4ade80)"
+                    : "rgba(34,197,94,0.2)",
                 color: "#022c22",
                 fontWeight: 700,
-                cursor: hasEdits ? "pointer" : "not-allowed",
+                cursor:
+                  hasEdits && !savingEmails ? "pointer" : "not-allowed",
               }}
             >
-              Save Emails & Enable Automation
+              {savingEmails
+                ? "Saving…"
+                : "Save Emails & Enable Automation"}
             </button>
           </div>
         </div>
