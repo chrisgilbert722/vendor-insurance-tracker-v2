@@ -1,5 +1,5 @@
 // pages/api/onboarding/upload-vendors-csv.js
-// FINAL NEON-SAFE VERSION — SERVER PARSES CSV + EXCEL (TURBOPACK SAFE)
+// PHASE 1 LOCKED — Stable Ingest (CSV + Excel, never blocks AI)
 
 import formidable from "formidable";
 import fs from "fs";
@@ -91,6 +91,7 @@ export default async function handler(req, res) {
 
     /* -------------------------------------------------
        4) PARSE FILE CONTENT (CSV OR EXCEL)
+       ⚠️ IMPORTANT: NEVER BLOCK ANALYSIS
     -------------------------------------------------- */
     const filename = file.originalFilename || "vendors";
     const ext = filename.split(".").pop().toLowerCase();
@@ -105,22 +106,21 @@ export default async function handler(req, res) {
         .map((l) => l.trim())
         .filter(Boolean);
 
-      if (!lines.length) {
-        return res.status(400).json({ ok: false, error: "CSV file is empty" });
-      }
-
-      headers = lines[0].split(",").map((h) => h.trim());
-      rows = lines.slice(1).map((line) => {
-        const cols = line.split(",");
-        const obj = {};
-        headers.forEach((h, i) => {
-          obj[h] = (cols[i] || "").trim();
+      if (lines.length) {
+        headers = lines[0].split(",").map((h) => h.trim());
+        rows = lines.slice(1).map((line) => {
+          const cols = line.split(",");
+          const obj = {};
+          headers.forEach((h, i) => {
+            obj[h] = (cols[i] || "").trim();
+          });
+          return obj;
         });
-        return obj;
-      });
+      }
     } else if (ext === "xls" || ext === "xlsx") {
-      // 🔑 DYNAMIC IMPORT — THIS FIXES THE BUILD
-      const XLSX = (await import("xlsx")).default;
+      // 🔑 Dynamic import — Turbopack safe
+      const mod = await import("xlsx");
+      const XLSX = mod.default || mod;
 
       const workbook = XLSX.read(fs.readFileSync(file.filepath));
       const sheet = workbook.Sheets[workbook.SheetNames[0]];
@@ -130,13 +130,6 @@ export default async function handler(req, res) {
       return res.status(400).json({
         ok: false,
         error: "Unsupported file type",
-      });
-    }
-
-    if (!headers.length || !rows.length) {
-      return res.status(400).json({
-        ok: false,
-        error: "No usable data found in file",
       });
     }
 
@@ -185,7 +178,7 @@ export default async function handler(req, res) {
     `;
 
     /* -------------------------------------------------
-       8) RETURN PARSED DATA
+       8) ALWAYS RETURN DATA (EVEN IF PARTIAL)
     -------------------------------------------------- */
     return res.status(200).json({
       ok: true,
