@@ -1,7 +1,8 @@
 // components/onboarding/VendorsAnalyzeStep.js
 // STEP 4 — AI Vendor Analysis (LOCKED PREVIEW STATE)
-// ✅ AI runs once, then UI locks
-// ✅ Fix Emails inline if needed
+// ✅ AI runs once
+// ✅ UI locks after analysis
+// ✅ Animated blue → green dot + progress bar
 // ✅ Single CTA: Activate Automation
 
 import { useEffect, useMemo, useState } from "react";
@@ -64,24 +65,17 @@ export default function VendorsAnalyzeStep({ orgId, wizardState, setWizardState 
   /* -------------------------------------------------
      RUN AI ANALYSIS (ONCE)
   -------------------------------------------------- */
-  async function runAiAnalysis(vendorsOverride = null) {
+  async function runAiAnalysis() {
     if (aiCompleted) return;
 
     setError("");
     setAiLoading(true);
 
     try {
-      const {
-        data: { session },
-      } = await supabase.auth.getSession();
-
+      const { data: { session } } = await supabase.auth.getSession();
       if (!session?.access_token) {
         throw new Error("Authentication session missing.");
       }
-
-      const payloadVendors = Array.isArray(vendorsOverride)
-        ? vendorsOverride
-        : vendors;
 
       const res = await fetch("/api/onboarding/ai-vendors-analyze", {
         method: "POST",
@@ -89,7 +83,7 @@ export default function VendorsAnalyzeStep({ orgId, wizardState, setWizardState 
           "Content-Type": "application/json",
           Authorization: `Bearer ${session.access_token}`,
         },
-        body: JSON.stringify({ orgId, vendors: payloadVendors }),
+        body: JSON.stringify({ orgId, vendors }),
       });
 
       const json = await res.json();
@@ -112,17 +106,14 @@ export default function VendorsAnalyzeStep({ orgId, wizardState, setWizardState 
   }
 
   /* -------------------------------------------------
-     SAVE EMAILS (NO UI UNLOCK)
+     SAVE EMAILS (DOES NOT UNLOCK UI)
   -------------------------------------------------- */
   async function saveEmails() {
     setError("");
     setSavingEmails(true);
 
     try {
-      const {
-        data: { session },
-      } = await supabase.auth.getSession();
-
+      const { data: { session } } = await supabase.auth.getSession();
       if (!session?.access_token) {
         throw new Error("Authentication session missing.");
       }
@@ -162,10 +153,6 @@ export default function VendorsAnalyzeStep({ orgId, wizardState, setWizardState 
           missingEmailCount: updatedVendors.filter((v) => !v.email).length,
         },
       }));
-
-      if (!aiCompleted) {
-        await runAiAnalysis(updatedVendors);
-      }
     } catch (err) {
       setError(err.message || "Failed to save emails.");
     } finally {
@@ -179,7 +166,7 @@ export default function VendorsAnalyzeStep({ orgId, wizardState, setWizardState 
   return (
     <div
       style={{
-        padding: 22,
+        padding: 24,
         borderRadius: 22,
         background: "rgba(15,23,42,0.96)",
         border: "1px solid rgba(51,65,85,0.9)",
@@ -189,21 +176,75 @@ export default function VendorsAnalyzeStep({ orgId, wizardState, setWizardState 
         Step 4 — AI Vendor Analysis
       </h2>
 
-      <p style={{ fontSize: 14, color: "#9ca3af", marginTop: 6 }}>
-        AI has analyzed your vendors. Automation is locked in preview mode.
-      </p>
+      {/* STATUS LINE */}
+      <div style={{ marginTop: 14, display: "flex", alignItems: "center", gap: 10 }}>
+        <span
+          style={{
+            width: 10,
+            height: 10,
+            borderRadius: "50%",
+            background: aiCompleted ? "#22c55e" : "#38bdf8",
+            boxShadow: aiCompleted
+              ? "0 0 14px rgba(34,197,94,0.9)"
+              : "0 0 10px rgba(56,189,248,0.8)",
+            animation: "pulse 1.2s ease-in-out infinite",
+          }}
+        />
+        <span style={{ fontSize: 14, color: "#c7d2fe" }}>
+          {aiCompleted
+            ? "System ready for automation"
+            : "Analyzing vendor risk…"}
+        </span>
+      </div>
 
-      {aiCompleted && aiResult?.summary && (
-        <div style={{ marginTop: 10, fontSize: 13, color: "#a5b4fc" }}>
-          AI ran: {aiResult.summary.totalVendors} vendors •{" "}
-          {aiResult.summary.highRisk} high risk
-        </div>
+      {/* PROGRESS BAR */}
+      <div
+        style={{
+          marginTop: 14,
+          height: 6,
+          borderRadius: 999,
+          background: "rgba(15,23,42,0.9)",
+          overflow: "hidden",
+        }}
+      >
+        <div
+          style={{
+            width: aiCompleted ? "90%" : "45%",
+            height: "100%",
+            background: aiCompleted
+              ? "linear-gradient(90deg,#22c55e,#4ade80)"
+              : "linear-gradient(90deg,#38bdf8,#6366f1)",
+            transition: "width 600ms ease",
+            boxShadow: "0 0 18px rgba(56,189,248,0.7)",
+          }}
+        />
+      </div>
+
+      {/* RUN AI BUTTON (ONLY BEFORE COMPLETE) */}
+      {!aiCompleted && (
+        <button
+          onClick={runAiAnalysis}
+          disabled={aiLoading || vendors.length === 0}
+          style={{
+            marginTop: 20,
+            padding: "10px 18px",
+            borderRadius: 999,
+            border: "1px solid rgba(56,189,248,0.9)",
+            background:
+              "radial-gradient(circle at top left,#38bdf8,#0ea5e9,#1e3a8a)",
+            color: "#e0f2fe",
+            fontWeight: 700,
+          }}
+        >
+          {aiLoading ? "Analyzing…" : "Run AI Analysis"}
+        </button>
       )}
 
+      {/* FIX EMAILS (ONLY IF MISSING) */}
       {vendorsMissingEmail.length > 0 && (
         <div
           style={{
-            marginTop: 18,
+            marginTop: 20,
             borderRadius: 14,
             border: "1px solid rgba(234,179,8,0.4)",
             overflow: "hidden",
@@ -217,8 +258,7 @@ export default function VendorsAnalyzeStep({ orgId, wizardState, setWizardState 
               fontSize: 13,
             }}
           >
-            {vendorsMissingEmail.length} vendor missing email — required to enable
-            reminders.
+            {vendorsMissingEmail.length} vendor missing email — required to enable reminders.
           </div>
 
           <table style={{ width: "100%", fontSize: 13 }}>
@@ -274,63 +314,36 @@ export default function VendorsAnalyzeStep({ orgId, wizardState, setWizardState 
         </div>
       )}
 
-      {!aiCompleted && (
-        <button
-          onClick={() => runAiAnalysis()}
-          disabled={aiLoading || vendors.length === 0}
-          style={{
-            marginTop: 18,
-            padding: "10px 18px",
-            borderRadius: 999,
-            border: "1px solid rgba(56,189,248,0.9)",
-            background:
-              "radial-gradient(circle at top left,#38bdf8,#0ea5e9,#1e3a8a)",
-            color: "#e0f2fe",
-            fontWeight: 700,
-          }}
-        >
-          {aiLoading ? "Analyzing…" : "✨ Run AI Vendor Analysis"}
-        </button>
-      )}
-
+      {/* FINAL CTA */}
       {aiCompleted && (
         <div
           style={{
-            marginTop: 26,
-            padding: 18,
-            borderRadius: 18,
+            marginTop: 28,
+            padding: 20,
+            borderRadius: 20,
             background:
               "linear-gradient(180deg, rgba(15,23,42,0.9), rgba(15,23,42,0.98))",
             border: "1px solid rgba(56,189,248,0.35)",
+            textAlign: "center",
           }}
         >
-          <div style={{ fontSize: 15, color: "#c7d2fe", marginBottom: 10 }}>
-            Preview complete. Automation is locked.
-          </div>
-
           <button
             onClick={() => (window.location.href = "/billing/activate")}
             style={{
-              padding: "12px 22px",
+              padding: "14px 28px",
               borderRadius: 999,
               border: "none",
               background:
-                "linear-gradient(90deg,#38bdf8,#6366f1)",
-              color: "#020617",
-              fontWeight: 800,
+                "linear-gradient(90deg,#22c55e,#4ade80)",
+              color: "#022c22",
+              fontWeight: 900,
               fontSize: 16,
             }}
           >
             Activate Automation
           </button>
 
-          <div
-            style={{
-              marginTop: 8,
-              fontSize: 12,
-              color: "#94a3b8",
-            }}
-          >
+          <div style={{ marginTop: 8, fontSize: 12, color: "#94a3b8" }}>
             14-day trial · $499/mo after · Cancel anytime · Card required
           </div>
         </div>
