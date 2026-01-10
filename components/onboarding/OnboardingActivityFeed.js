@@ -1,24 +1,28 @@
 // components/onboarding/OnboardingActivityFeed.js
+// ============================================================
+// SYSTEM PREVIEW FEED (LOCKED)
+// - Reflects PREVIEW completeness, not automation execution
+// - Stops intentionally at Step 4
+// - Disappears after activation (handled elsewhere)
+// ============================================================
+
 import { useEffect, useState } from "react";
 
-const STEP_MESSAGES = {
-  vendors_created: "Preparing vendor records…",
-  vendors_analyzed: "Analyzing vendor risk profiles…",
-  contracts_extracted: "Extracting contract requirements…",
-  requirements_assigned: "Assigning insurance requirements…",
-  rules_generated: "Generating compliance rules with AI…",
-  rules_applied: "Applying rules to your system…",
-  launch_system: "Launching compliance engine…",
-  complete: "AI onboarding complete.",
+const PREVIEW_MESSAGES = {
+  vendors_created: "Vendor data prepared for analysis.",
+  vendors_analyzed: "Vendor risk analysis complete.",
+  contracts_extracted: "Contract requirements identified.",
+  requirements_assigned: "Insurance requirements previewed.",
+  rules_generated: "Automation rules previewed.",
+  preview_complete: "Preview complete.",
 };
 
 export default function OnboardingActivityFeed() {
   const [message, setMessage] = useState(
-    "Upload a file to begin AI analysis."
+    "Upload a file to preview automation."
   );
   const [progress, setProgress] = useState(0);
   const [industries, setIndustries] = useState([]);
-  const [status, setStatus] = useState("idle");
 
   useEffect(() => {
     let mounted = true;
@@ -29,29 +33,35 @@ export default function OnboardingActivityFeed() {
         const json = await res.json();
         if (!mounted || !json?.ok) return;
 
-        setStatus(json.status || "idle");
-        setProgress(json.progress || 0);
+        /**
+         * PREVIEW MODE LOGIC
+         * ------------------
+         * We intentionally cap progress at 100% (preview complete)
+         * and never imply automation is running.
+         */
 
-        const stepKey = json.currentStep;
-
-        // 🔑 Honest, autonomous messaging
-        if (json.onboardingComplete) {
-          setMessage("AI onboarding complete.");
-        } else if (status === "idle" && progress === 0) {
-          setMessage("Upload a file to begin AI analysis.");
-        } else {
+        if (json.onboardingComplete || json.previewComplete) {
+          setProgress(100);
+          setMessage("Preview complete. Activate automation to proceed.");
+        } else if (json.progress >= 75) {
+          setProgress(100);
+          setMessage("Preview complete. Activate automation to proceed.");
+        } else if (json.currentStep) {
+          setProgress(Math.min(json.progress || 75, 100));
           setMessage(
-            STEP_MESSAGES[stepKey] ||
-              "AI is analyzing your vendor insurance data…"
+            PREVIEW_MESSAGES[json.currentStep] ||
+              "Previewing automation outputs…"
           );
+        } else {
+          setProgress(0);
+          setMessage("Upload a file to preview automation.");
         }
 
-        // Detected industries (post-analysis)
         if (Array.isArray(json.detectedIndustries)) {
           setIndustries(json.detectedIndustries);
         }
       } catch {
-        // Silent fail — activity feed is non-blocking
+        // Silent fail — preview feed is non-blocking
       }
     }
 
@@ -61,9 +71,7 @@ export default function OnboardingActivityFeed() {
       mounted = false;
       clearInterval(t);
     };
-  }, [status, progress]);
-
-  const isActive = status === "running";
+  }, []);
 
   return (
     <div
@@ -73,23 +81,11 @@ export default function OnboardingActivityFeed() {
         borderRadius: 22,
         background:
           "linear-gradient(180deg, rgba(2,6,23,0.85), rgba(2,6,23,0.98))",
-        border: "1px solid rgba(34,197,94,0.35)",
-        boxShadow: isActive
-          ? "0 0 0 1px rgba(34,197,94,0.3), 0 0 40px rgba(34,197,94,0.45)"
-          : "0 0 0 1px rgba(255,255,255,0.02), 0 20px 60px rgba(0,0,0,0.6)",
-        animation: isActive ? "pulse 3s ease-in-out infinite" : "none",
+        border: "1px solid rgba(56,189,248,0.35)",
+        boxShadow:
+          "0 0 0 1px rgba(255,255,255,0.02), 0 20px 60px rgba(0,0,0,0.6)",
       }}
     >
-      <style>
-        {`
-          @keyframes pulse {
-            0% { box-shadow: 0 0 0 1px rgba(34,197,94,0.3), 0 0 30px rgba(34,197,94,0.3); }
-            50% { box-shadow: 0 0 0 1px rgba(34,197,94,0.6), 0 0 60px rgba(34,197,94,0.7); }
-            100% { box-shadow: 0 0 0 1px rgba(34,197,94,0.3), 0 0 30px rgba(34,197,94,0.3); }
-          }
-        `}
-      </style>
-
       <div
         style={{
           display: "flex",
@@ -103,12 +99,12 @@ export default function OnboardingActivityFeed() {
             width: 10,
             height: 10,
             borderRadius: "50%",
-            background: isActive ? "#22c55e" : "#64748b",
-            boxShadow: isActive ? "0 0 12px rgba(34,197,94,0.9)" : "none",
+            background: "#38bdf8",
+            boxShadow: "0 0 10px rgba(56,189,248,0.6)",
           }}
         />
         <span style={{ fontSize: 13, fontWeight: 700, color: "#e5e7eb" }}>
-          AI System Activity
+          System Preview
         </span>
       </div>
 
@@ -130,9 +126,9 @@ export default function OnboardingActivityFeed() {
             width: `${progress}%`,
             height: "100%",
             background:
-              "linear-gradient(90deg,#22c55e,#38bdf8,#a855f7)",
+              "linear-gradient(90deg,#38bdf8,#60a5fa,#a855f7)",
             transition: "width 500ms ease",
-            boxShadow: "0 0 18px rgba(56,189,248,0.7)",
+            boxShadow: "0 0 14px rgba(56,189,248,0.6)",
           }}
         />
       </div>
