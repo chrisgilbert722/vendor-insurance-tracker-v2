@@ -1,14 +1,13 @@
 // components/onboarding/VendorsAnalyzeStep.js
-// STEP 4 — AI Vendor Analysis (AI-first, Fix Mode — Option A)
+// STEP 4 — AI Vendor Analysis (AI-first, Fix Mode — Option A, stable)
+// ✅ Does NOT call launch-system (that endpoint was causing 500 + killing flow)
+// ✅ Save Emails → re-run AI automatically
+// ✅ Option A: Fix UI always visible when emails are missing
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { supabase } from "../../lib/supabaseClient";
 
-export default function VendorsAnalyzeStep({
-  orgId,
-  wizardState,
-  setWizardState,
-}) {
+export default function VendorsAnalyzeStep({ orgId, wizardState, setWizardState }) {
   const csv = wizardState?.vendorsCsv || {};
   const rawMapping = csv.mapping || {};
   const rows = Array.isArray(csv.rows) ? csv.rows : [];
@@ -20,16 +19,19 @@ export default function VendorsAnalyzeStep({
   const [aiResult, setAiResult] = useState(null);
   const [successMsg, setSuccessMsg] = useState("");
   const [error, setError] = useState("");
+  const [aiRan, setAiRan] = useState(false);
 
   /* -------------------------------------------------
      NORMALIZE MAPPING
   -------------------------------------------------- */
-  const mapping = Object.fromEntries(
-    Object.entries(rawMapping).map(([key, val]) => [
-      key,
-      typeof val === "string" ? val : val?.column || null,
-    ])
-  );
+  const mapping = useMemo(() => {
+    return Object.fromEntries(
+      Object.entries(rawMapping).map(([key, val]) => [
+        key,
+        typeof val === "string" ? val : val?.column || null,
+      ])
+    );
+  }, [rawMapping]);
 
   /* -------------------------------------------------
      BUILD VENDOR OBJECTS (EMAIL OPTIONAL)
@@ -42,9 +44,7 @@ export default function VendorsAnalyzeStep({
       name: row[mapping.vendorName] || "",
       email: mapping.email ? row[mapping.email] || "" : "",
       category: mapping.category ? row[mapping.category] || "" : "",
-      policyNumber: mapping.policyNumber
-        ? row[mapping.policyNumber] || ""
-        : "",
+      policyNumber: mapping.policyNumber ? row[mapping.policyNumber] || "" : "",
     }));
 
     setVendors(transformed);
@@ -52,6 +52,7 @@ export default function VendorsAnalyzeStep({
     setWizardState((prev) => ({
       ...prev,
       vendorsAnalyzed: {
+        ...(prev.vendorsAnalyzed || {}),
         transformed,
         missingEmailCount: transformed.filter((v) => !v.email).length,
       },
@@ -59,12 +60,11 @@ export default function VendorsAnalyzeStep({
   }, [rows, mapping, setWizardState]);
 
   /* -------------------------------------------------
-     RUN AI ANALYSIS + TRIGGER BACKEND STATE
+     RUN AI ANALYSIS (NO launch-system call)
   -------------------------------------------------- */
-  async function runAiAnalysis() {
+  async function runAiAnalysis(vendorsOverride = null) {
     setError("");
     setSuccessMsg("");
-    setAiResult(null);
     setAiLoading(true);
 
     try {
@@ -76,19 +76,22 @@ export default function VendorsAnalyzeStep({
         throw new Error("Authentication session missing.");
       }
 
+      const payloadVendors = Array.isArray(vendorsOverride) ? vendorsOverride : vendors;
+
       const res = await fetch("/api/onboarding/ai-vendors-analyze", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
           Authorization: `Bearer ${session.access_token}`,
         },
-        body: JSON.stringify({ orgId, vendors }),
+        body: JSON.stringify({ orgId, vendors: payloadVendors }),
       });
 
       const json = await res.json();
       if (!json.ok) throw new Error(json.error || "AI analysis failed.");
 
       setAiResult(json);
+      setAiRan(true);
 
       setWizardState((prev) => ({
         ...prev,
@@ -97,16 +100,6 @@ export default function VendorsAnalyzeStep({
           ai: json,
         },
       }));
-
-      // Cockpit animation trigger
-      await fetch("/api/onboarding/launch-system", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${session.access_token}`,
-        },
-        body: JSON.stringify({ orgId }),
-      });
     } catch (err) {
       setError(err.message || "AI analysis failed.");
     } finally {
@@ -133,10 +126,7 @@ export default function VendorsAnalyzeStep({
 
       const payload = Object.entries(editedEmails)
         .filter(([_, email]) => email && email.includes("@"))
-        .map(([vendorName, email]) => ({
-          vendorName,
-          email,
-        }));
+        .map(([vendorName, email]) => ({ vendorName, email }));
 
       if (!payload.length) {
         throw new Error("No valid emails to save.");
@@ -148,19 +138,14 @@ export default function VendorsAnalyzeStep({
           "Content-Type": "application/json",
           Authorization: `Bearer ${session.access_token}`,
         },
-        body: JSON.stringify({
-          orgId,
-          vendors: payload,
-        }),
+        body: JSON.stringify({ orgId, vendors: payload }),
       });
 
       const json = await res.json();
       if (!json.ok) throw new Error(json.error || "Failed to save emails.");
 
       const updatedVendors = vendors.map((v) =>
-        editedEmails[v.id]
-          ? { ...v, email: editedEmails[v.id] }
-          : v
+        editedEmails[v.id] ? { ...v, email: editedEmails[v.id] } : v
       );
 
       setVendors(updatedVendors);
@@ -169,19 +154,18 @@ export default function VendorsAnalyzeStep({
       setWizardState((prev) => ({
         ...prev,
         vendorsAnalyzed: {
+          ...(prev.vendorsAnalyzed || {}),
           transformed: updatedVendors,
           missingEmailCount: updatedVendors.filter((v) => !v.email).length,
         },
       }));
 
       setSuccessMsg(
-        `Automation enabled for ${json.updated} vendor${
-          json.updated === 1 ? "" : "s"
-        }.`
+        `Emails saved for ${json.updated} vendor${json.updated === 1 ? "" : "s"}.`
       );
 
-      // 🔥 AUTO-RUN AI AFTER FIX
-      await runAiAnalysis();
+      // ✅ Immediately re-run AI using the updated vendors list
+      await runAiAnalysis(updatedVendors);
     } catch (err) {
       setError(err.message || "Failed to save emails.");
     } finally {
@@ -206,8 +190,7 @@ export default function VendorsAnalyzeStep({
       </h2>
 
       <p style={{ fontSize: 13, color: "#9ca3af" }}>
-        AI has analyzed your vendors. Fix missing contact info to enable
-        automated reminders.
+        AI has analyzed your vendors. Fix missing contact info to enable automated reminders.
       </p>
 
       {successMsg && (
@@ -226,7 +209,12 @@ export default function VendorsAnalyzeStep({
         </div>
       )}
 
-      {/* 🔥 OPTION A — ALWAYS SHOW FIX UI */}
+      {aiRan && aiResult?.summary && (
+        <div style={{ marginTop: 10, fontSize: 12, color: "#a5b4fc" }}>
+          AI ran: {aiResult.summary.totalVendors} vendors • {aiResult.summary.highRisk} high risk
+        </div>
+      )}
+
       {vendorsMissingEmail.length > 0 && (
         <div
           style={{
@@ -236,6 +224,20 @@ export default function VendorsAnalyzeStep({
             overflow: "hidden",
           }}
         >
+          <div
+            style={{
+              padding: 12,
+              background: "rgba(234,179,8,0.10)",
+              color: "#fde68a",
+              fontSize: 13,
+              borderBottom: "1px solid rgba(234,179,8,0.25)",
+            }}
+          >
+            {vendorsMissingEmail.length} vendor
+            {vendorsMissingEmail.length > 1 ? "s are" : " is"} missing an email address.
+            Add emails to enable automated reminders.
+          </div>
+
           <table style={{ width: "100%", fontSize: 13 }}>
             <thead>
               <tr>
@@ -247,7 +249,7 @@ export default function VendorsAnalyzeStep({
             <tbody>
               {vendorsMissingEmail.map((v) => (
                 <tr key={v.id}>
-                  <td style={{ padding: 10 }}>{v.name}</td>
+                  <td style={{ padding: 10, color: "#e5e7eb" }}>{v.name}</td>
                   <td style={{ padding: 10, color: "#9ca3af" }}>
                     {v.category || "—"}
                   </td>
@@ -257,10 +259,7 @@ export default function VendorsAnalyzeStep({
                       placeholder="email@vendor.com"
                       value={editedEmails[v.id] || ""}
                       onChange={(e) =>
-                        setEditedEmails((prev) => ({
-                          ...prev,
-                          [v.id]: e.target.value,
-                        }))
+                        setEditedEmails((prev) => ({ ...prev, [v.id]: e.target.value }))
                       }
                       style={{
                         width: "100%",
@@ -277,13 +276,7 @@ export default function VendorsAnalyzeStep({
             </tbody>
           </table>
 
-          <div
-            style={{
-              padding: 12,
-              display: "flex",
-              justifyContent: "flex-end",
-            }}
-          >
+          <div style={{ padding: 12, display: "flex", justifyContent: "flex-end" }}>
             <button
               onClick={saveEmails}
               disabled={!hasEdits || savingEmails}
@@ -297,20 +290,17 @@ export default function VendorsAnalyzeStep({
                     : "rgba(34,197,94,0.2)",
                 color: "#022c22",
                 fontWeight: 700,
-                cursor:
-                  hasEdits && !savingEmails ? "pointer" : "not-allowed",
+                cursor: hasEdits && !savingEmails ? "pointer" : "not-allowed",
               }}
             >
-              {savingEmails
-                ? "Saving…"
-                : "Save Emails & Enable Automation"}
+              {savingEmails ? "Saving…" : "Save Emails & Re-Analyze"}
             </button>
           </div>
         </div>
       )}
 
       <button
-        onClick={runAiAnalysis}
+        onClick={() => runAiAnalysis()}
         disabled={aiLoading || vendors.length === 0}
         style={{
           marginTop: 18,
