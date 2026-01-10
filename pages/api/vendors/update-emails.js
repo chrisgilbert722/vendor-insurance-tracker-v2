@@ -1,12 +1,15 @@
 // pages/api/vendors/update-emails.js
 // STEP 3 — Save Missing Vendor Emails (Fix Mode)
 // Enables automation without CSV re-upload
+// SAFE UPDATE — backward compatible, no schema changes
 
 import { createClient } from "@supabase/supabase-js";
 import { sql } from "../../../lib/db";
 
+// Force Node runtime (Vercel + Turbopack safe)
 export const runtime = "nodejs";
 
+// Supabase service-role client (SERVER ONLY)
 const supabaseAdmin = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL,
   process.env.SUPABASE_SERVICE_ROLE_KEY
@@ -15,6 +18,10 @@ const supabaseAdmin = createClient(
 function getBearerToken(req) {
   const auth = req.headers.authorization || "";
   return auth.startsWith("Bearer ") ? auth.slice(7) : null;
+}
+
+function isValidEmail(email) {
+  return typeof email === "string" && email.includes("@");
 }
 
 export default async function handler(req, res) {
@@ -36,7 +43,10 @@ export default async function handler(req, res) {
 
     const { data, error } = await supabaseAdmin.auth.getUser(token);
     if (error || !data?.user) {
-      return res.status(401).json({ ok: false, error: "Invalid session" });
+      return res.status(401).json({
+        ok: false,
+        error: "Invalid session",
+      });
     }
 
     const userId = data.user.id;
@@ -76,32 +86,37 @@ export default async function handler(req, res) {
     const orgIdInt = orgRows[0].id;
 
     /* -------------------------------------------------
-       4) UPDATE VENDOR EMAILS
-       (vendorName is used as stable key for now)
+       4) UPDATE VENDOR EMAILS (IDEMPOTENT)
+       vendorName is treated as stable identifier (PM-safe)
     -------------------------------------------------- */
     let updated = 0;
 
     for (const v of vendors) {
-      if (!v.vendorName || !v.email) continue;
+      if (!v?.vendorName || !isValidEmail(v.email)) continue;
 
       const result = await sql`
         UPDATE vendors
         SET email = ${v.email},
             updated_at = now()
         WHERE org_id = ${orgIdInt}
-          AND name = ${v.vendorName}
-          AND (email IS NULL OR email = '');
+          AND name = ${v.vendorName};
       `;
 
-      if (result.count > 0) updated += result.count;
+      if (result?.count) {
+        updated += result.count;
+      }
     }
 
     /* -------------------------------------------------
-       5) RETURN RESULT
+       5) RETURN RESULT (UI-SAFE)
     -------------------------------------------------- */
     return res.status(200).json({
       ok: true,
       updated,
+      message:
+        updated > 0
+          ? `Updated ${updated} vendor email${updated === 1 ? "" : "s"}.`
+          : "No vendor emails were updated.",
     });
   } catch (err) {
     console.error("[vendors/update-emails]", err);
