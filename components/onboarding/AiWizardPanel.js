@@ -2,6 +2,7 @@
 // Property Management copy pass (Day 3)
 // ✅ Autonomous mapping + auto-skip + persistence + reuse toast
 // ✅ FIX: Normalize AI mapping shape for Step 4
+// ✅ LOCK: Step 4 includes “Activate Automation” paywall CTA
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/router";
@@ -185,11 +186,71 @@ export default function AiWizardPanel({ orgId }) {
 
       case 4:
         content = (
-          <VendorsAnalyzeStep
-            orgId={orgUuid}
-            wizardState={wizardState}
-            setWizardState={setWizardState}
-          />
+          <>
+            <VendorsAnalyzeStep
+              orgId={orgUuid}
+              wizardState={wizardState}
+              setWizardState={setWizardState}
+            />
+
+            {/* ============================================================
+               LOCKED PAYWALL HANDOFF (STEP 4 TERMINAL)
+               - Do NOT auto-redirect
+               - Explicit CTA converts best
+            ============================================================ */}
+            <div
+              style={{
+                marginTop: 22,
+                padding: 18,
+                borderRadius: 18,
+                background: "rgba(2,6,23,0.55)",
+                border: "1px solid rgba(56,189,248,0.25)",
+              }}
+            >
+              <div style={{ color: "#e5e7eb", fontWeight: 800, fontSize: 14 }}>
+                Preview complete
+              </div>
+              <div style={{ color: "#9ca3af", fontSize: 13, marginTop: 6 }}>
+                Automation is locked in preview mode. Activate to start your 14-day
+                trial and enable execution.
+              </div>
+
+              <div
+                style={{
+                  display: "flex",
+                  justifyContent: "flex-end",
+                  marginTop: 14,
+                }}
+              >
+                <button
+                  onClick={() => router.push("/billing/activate")}
+                  style={{
+                    padding: "12px 16px",
+                    borderRadius: 999,
+                    border: "1px solid rgba(56,189,248,0.9)",
+                    background:
+                      "linear-gradient(90deg,rgba(56,189,248,0.95),rgba(99,102,241,0.95))",
+                    color: "#020617",
+                    fontWeight: 900,
+                    cursor: "pointer",
+                  }}
+                >
+                  Activate Automation
+                </button>
+              </div>
+
+              <div
+                style={{
+                  color: "#9ca3af",
+                  fontSize: 12,
+                  marginTop: 8,
+                  textAlign: "right",
+                }}
+              >
+                14-day trial • $499/mo after • Cancel anytime • Card required
+              </div>
+            </div>
+          </>
         );
         break;
 
