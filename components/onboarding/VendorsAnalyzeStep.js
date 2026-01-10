@@ -1,5 +1,5 @@
 // components/onboarding/VendorsAnalyzeStep.js
-// STEP 4 — AI Vendor Analysis (after CSV upload + AI mapping)
+// STEP 4 — AI Vendor Analysis (AI-first, Fix Mode enabled)
 
 import { useEffect, useState } from "react";
 import { supabase } from "../../lib/supabaseClient";
@@ -32,15 +32,15 @@ export default function VendorsAnalyzeStep({
   );
 
   /* -------------------------------------------------
-     BUILD VENDOR OBJECTS (SAFE)
+     BUILD VENDOR OBJECTS (EMAIL OPTIONAL)
   -------------------------------------------------- */
   useEffect(() => {
-    if (!rows.length || !mapping.vendorName || !mapping.email) return;
+    if (!rows.length || !mapping.vendorName) return;
 
     try {
       const transformed = rows.map((row) => ({
         name: row[mapping.vendorName] || "",
-        email: row[mapping.email] || "",
+        email: mapping.email ? row[mapping.email] || "" : "",
         phone: mapping.phone ? row[mapping.phone] || "" : "",
         category: mapping.category ? row[mapping.category] || "" : "",
         carrier: mapping.carrier ? row[mapping.carrier] || "" : "",
@@ -63,7 +63,10 @@ export default function VendorsAnalyzeStep({
 
       setWizardState((prev) => ({
         ...prev,
-        vendorsAnalyzed: { transformed },
+        vendorsAnalyzed: {
+          transformed,
+          missingEmailCount: transformed.filter((v) => !v.email).length,
+        },
       }));
     } catch (err) {
       console.error("Vendor transformation error:", err);
@@ -72,7 +75,7 @@ export default function VendorsAnalyzeStep({
   }, [rows, mapping, setWizardState]);
 
   /* -------------------------------------------------
-     RUN AI ANALYSIS
+     RUN AI ANALYSIS (NEVER BLOCKED BY EMAIL)
   -------------------------------------------------- */
   async function runAiAnalysis() {
     setError("");
@@ -108,7 +111,7 @@ export default function VendorsAnalyzeStep({
       setWizardState((prev) => ({
         ...prev,
         vendorsAnalyzed: {
-          transformed: vendors,
+          ...(prev.vendorsAnalyzed || {}),
           ai: json,
         },
       }));
@@ -120,10 +123,9 @@ export default function VendorsAnalyzeStep({
     }
   }
 
-  const canRun =
-    vendors.length > 0 &&
-    Boolean(mapping.vendorName) &&
-    Boolean(mapping.email);
+  const canRun = vendors.length > 0 && Boolean(mapping.vendorName);
+  const missingEmails =
+    vendors.filter((v) => !v.email).length || 0;
 
   return (
     <div
@@ -146,23 +148,26 @@ export default function VendorsAnalyzeStep({
       </h2>
 
       <p style={{ fontSize: 13, color: "#9ca3af" }}>
-        The system analyzes vendors for missing data, coverage gaps, risk
-        patterns, and compliance issues.
+        The system analyzes vendors for coverage gaps, risk patterns, and
+        compliance issues.
       </p>
 
-      {!canRun && (
+      {/* ⚠️ Fix Mode Notice (NOT A BLOCKER) */}
+      {missingEmails > 0 && (
         <div
           style={{
             marginTop: 12,
             padding: "10px 14px",
             borderRadius: 10,
-            background: "rgba(127,29,29,0.9)",
-            border: "1px solid rgba(248,113,113,0.8)",
-            color: "#fecaca",
+            background: "rgba(234,179,8,0.15)",
+            border: "1px solid rgba(234,179,8,0.6)",
+            color: "#fde68a",
             fontSize: 13,
           }}
         >
-          Vendor Name and Email are required to run analysis.
+          {missingEmails} vendor{missingEmails > 1 ? "s are" : " is"} missing an
+          email address. Automated reminders are paused for these vendors until
+          contact info is added.
         </div>
       )}
 
@@ -195,4 +200,3 @@ export default function VendorsAnalyzeStep({
     </div>
   );
 }
- 
