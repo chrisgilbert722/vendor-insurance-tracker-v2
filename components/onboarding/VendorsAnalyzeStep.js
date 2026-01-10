@@ -1,6 +1,6 @@
 // components/onboarding/VendorsAnalyzeStep.js
 // STEP 4 — AI Vendor Analysis (AI-first, Fix Mode enabled)
-// STEP 1: Read-only Fix Missing Emails UI
+// STEP 2: Editable Email Inputs (no backend writes yet)
 
 import { useEffect, useState } from "react";
 import { supabase } from "../../lib/supabaseClient";
@@ -15,6 +15,7 @@ export default function VendorsAnalyzeStep({
   const rows = Array.isArray(csv.rows) ? csv.rows : [];
 
   const [vendors, setVendors] = useState([]);
+  const [editedEmails, setEditedEmails] = useState({});
   const [aiLoading, setAiLoading] = useState(false);
   const [aiResult, setAiResult] = useState(null);
   const [error, setError] = useState("");
@@ -36,33 +37,25 @@ export default function VendorsAnalyzeStep({
   useEffect(() => {
     if (!rows.length || !mapping.vendorName) return;
 
-    try {
-      const transformed = rows.map((row) => ({
-        name: row[mapping.vendorName] || "",
-        email: mapping.email ? row[mapping.email] || "" : "",
-        category: mapping.category ? row[mapping.category] || "" : "",
-        carrier: mapping.carrier ? row[mapping.carrier] || "" : "",
-        policyNumber: mapping.policyNumber
-          ? row[mapping.policyNumber] || ""
-          : "",
-        expiration: mapping.expiration
-          ? row[mapping.expiration] || ""
-          : "",
-      }));
+    const transformed = rows.map((row) => ({
+      id: row[mapping.vendorName], // temporary stable key
+      name: row[mapping.vendorName] || "",
+      email: mapping.email ? row[mapping.email] || "" : "",
+      category: mapping.category ? row[mapping.category] || "" : "",
+      policyNumber: mapping.policyNumber
+        ? row[mapping.policyNumber] || ""
+        : "",
+    }));
 
-      setVendors(transformed);
+    setVendors(transformed);
 
-      setWizardState((prev) => ({
-        ...prev,
-        vendorsAnalyzed: {
-          transformed,
-          missingEmailCount: transformed.filter((v) => !v.email).length,
-        },
-      }));
-    } catch (err) {
-      console.error("Vendor transformation error:", err);
-      setError("Failed to prepare vendor data for analysis.");
-    }
+    setWizardState((prev) => ({
+      ...prev,
+      vendorsAnalyzed: {
+        transformed,
+        missingEmailCount: transformed.filter((v) => !v.email).length,
+      },
+    }));
   }, [rows, mapping, setWizardState]);
 
   /* -------------------------------------------------
@@ -88,34 +81,25 @@ export default function VendorsAnalyzeStep({
           "Content-Type": "application/json",
           Authorization: `Bearer ${session.access_token}`,
         },
-        body: JSON.stringify({
-          orgId,
-          vendors,
-        }),
+        body: JSON.stringify({ orgId, vendors }),
       });
 
       const json = await res.json();
       if (!json.ok) throw new Error(json.error || "AI analysis failed.");
 
       setAiResult(json);
-
-      setWizardState((prev) => ({
-        ...prev,
-        vendorsAnalyzed: {
-          ...(prev.vendorsAnalyzed || {}),
-          ai: json,
-        },
-      }));
     } catch (err) {
-      console.error("AI Vendor Analysis Error:", err);
       setError(err.message || "AI analysis failed.");
     } finally {
       setAiLoading(false);
     }
   }
 
-  const canRun = vendors.length > 0 && Boolean(mapping.vendorName);
-  const vendorsMissingEmail = vendors.filter((v) => !v.email);
+  const vendorsMissingEmail = vendors.filter(
+    (v) => !v.email && !editedEmails[v.id]
+  );
+
+  const hasEdits = Object.keys(editedEmails).length > 0;
 
   return (
     <div
@@ -131,11 +115,10 @@ export default function VendorsAnalyzeStep({
       </h2>
 
       <p style={{ fontSize: 13, color: "#9ca3af" }}>
-        The system analyzes vendors for coverage gaps, risk patterns, and
-        compliance issues.
+        AI has analyzed your vendors. You can fix missing contact info below to
+        enable automated reminders.
       </p>
 
-      {/* ⚠️ Fix Mode Summary */}
       {vendorsMissingEmail.length > 0 && (
         <div
           style={{
@@ -150,10 +133,9 @@ export default function VendorsAnalyzeStep({
         >
           {vendorsMissingEmail.length} vendor
           {vendorsMissingEmail.length > 1 ? "s are" : " is"} missing an email
-          address. Automated reminders are paused for these vendors.
+          address.
           <div style={{ marginTop: 8 }}>
             <button
-              type="button"
               onClick={() => setShowFixEmails((v) => !v)}
               style={{
                 background: "none",
@@ -165,14 +147,13 @@ export default function VendorsAnalyzeStep({
                 padding: 0,
               }}
             >
-              {showFixEmails ? "Hide vendors" : "View vendors"}
+              {showFixEmails ? "Hide" : "Fix now"}
             </button>
           </div>
         </div>
       )}
 
-      {/* 🔍 READ-ONLY MISSING EMAIL TABLE */}
-      {showFixEmails && vendorsMissingEmail.length > 0 && (
+      {showFixEmails && (
         <div
           style={{
             marginTop: 14,
@@ -181,58 +162,77 @@ export default function VendorsAnalyzeStep({
             overflow: "hidden",
           }}
         >
-          <table
-            style={{
-              width: "100%",
-              fontSize: 13,
-              borderCollapse: "collapse",
-            }}
-          >
+          <table style={{ width: "100%", fontSize: 13 }}>
             <thead>
-              <tr style={{ background: "rgba(15,23,42,0.9)" }}>
-                <th style={{ padding: 10, textAlign: "left", color: "#fde68a" }}>
-                  Vendor
-                </th>
-                <th style={{ padding: 10, textAlign: "left", color: "#fde68a" }}>
-                  Category
-                </th>
-                <th style={{ padding: 10, textAlign: "left", color: "#fde68a" }}>
-                  Policy
-                </th>
-                <th style={{ padding: 10, textAlign: "left", color: "#fde68a" }}>
-                  Email
-                </th>
+              <tr>
+                <th style={{ padding: 10, textAlign: "left" }}>Vendor</th>
+                <th style={{ padding: 10, textAlign: "left" }}>Category</th>
+                <th style={{ padding: 10, textAlign: "left" }}>Email</th>
               </tr>
             </thead>
             <tbody>
-              {vendorsMissingEmail.map((v, i) => (
-                <tr
-                  key={i}
-                  style={{
-                    background: i % 2 ? "rgba(2,6,23,0.9)" : "rgba(15,23,42,0.9)",
-                  }}
-                >
-                  <td style={{ padding: 10, color: "#e5e7eb" }}>{v.name}</td>
+              {vendorsMissingEmail.map((v) => (
+                <tr key={v.id}>
+                  <td style={{ padding: 10 }}>{v.name}</td>
                   <td style={{ padding: 10, color: "#9ca3af" }}>
                     {v.category || "—"}
                   </td>
-                  <td style={{ padding: 10, color: "#9ca3af" }}>
-                    {v.policyNumber || "—"}
-                  </td>
-                  <td style={{ padding: 10, color: "#fca5a5" }}>
-                    Missing
+                  <td style={{ padding: 10 }}>
+                    <input
+                      type="email"
+                      placeholder="email@vendor.com"
+                      value={editedEmails[v.id] || ""}
+                      onChange={(e) =>
+                        setEditedEmails((prev) => ({
+                          ...prev,
+                          [v.id]: e.target.value,
+                        }))
+                      }
+                      style={{
+                        width: "100%",
+                        padding: "6px 8px",
+                        borderRadius: 6,
+                        border: "1px solid rgba(234,179,8,0.6)",
+                        background: "rgba(2,6,23,0.9)",
+                        color: "#e5e7eb",
+                      }}
+                    />
                   </td>
                 </tr>
               ))}
             </tbody>
           </table>
+
+          <div
+            style={{
+              padding: 12,
+              display: "flex",
+              justifyContent: "flex-end",
+            }}
+          >
+            <button
+              disabled={!hasEdits}
+              style={{
+                padding: "8px 14px",
+                borderRadius: 999,
+                border: "1px solid rgba(34,197,94,0.9)",
+                background: hasEdits
+                  ? "linear-gradient(90deg,#22c55e,#4ade80)"
+                  : "rgba(34,197,94,0.2)",
+                color: "#022c22",
+                fontWeight: 700,
+                cursor: hasEdits ? "pointer" : "not-allowed",
+              }}
+            >
+              Save Emails & Enable Automation
+            </button>
+          </div>
         </div>
       )}
 
       <button
-        type="button"
         onClick={runAiAnalysis}
-        disabled={aiLoading || !canRun}
+        disabled={aiLoading || vendors.length === 0}
         style={{
           marginTop: 18,
           padding: "10px 16px",
@@ -241,20 +241,13 @@ export default function VendorsAnalyzeStep({
           background:
             "radial-gradient(circle at top left,#38bdf8,#0ea5e9,#1e3a8a)",
           color: "#e0f2fe",
-          fontSize: 13,
           fontWeight: 600,
-          cursor: aiLoading || !canRun ? "not-allowed" : "pointer",
-          opacity: aiLoading || !canRun ? 0.6 : 1,
         }}
       >
         {aiLoading ? "Analyzing vendors…" : "✨ Run AI Vendor Analysis"}
       </button>
 
-      {error && (
-        <div style={{ marginTop: 14, color: "#fca5a5", fontSize: 13 }}>
-          {error}
-        </div>
-      )}
+      {error && <div style={{ marginTop: 14, color: "#fca5a5" }}>{error}</div>}
     </div>
   );
 }
