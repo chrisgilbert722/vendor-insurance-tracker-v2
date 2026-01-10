@@ -1,5 +1,5 @@
 // components/onboarding/VendorsAnalyzeStep.js
-// STEP 4 — AI Vendor Analysis (AI-first, Fix Mode fully wired)
+// STEP 4 — AI Vendor Analysis (AI-first, Fix Mode fully wired + auto-run)
 
 import { useEffect, useState } from "react";
 import { supabase } from "../../lib/supabaseClient";
@@ -39,7 +39,7 @@ export default function VendorsAnalyzeStep({
     if (!rows.length || !mapping.vendorName) return;
 
     const transformed = rows.map((row) => ({
-      id: row[mapping.vendorName], // stable-enough key for Fix Mode
+      id: row[mapping.vendorName],
       name: row[mapping.vendorName] || "",
       email: mapping.email ? row[mapping.email] || "" : "",
       category: mapping.category ? row[mapping.category] || "" : "",
@@ -60,7 +60,7 @@ export default function VendorsAnalyzeStep({
   }, [rows, mapping, setWizardState]);
 
   /* -------------------------------------------------
-     RUN AI ANALYSIS (NEVER BLOCKED)
+     RUN AI ANALYSIS
   -------------------------------------------------- */
   async function runAiAnalysis() {
     setError("");
@@ -90,6 +90,14 @@ export default function VendorsAnalyzeStep({
       if (!json.ok) throw new Error(json.error || "AI analysis failed.");
 
       setAiResult(json);
+
+      setWizardState((prev) => ({
+        ...prev,
+        vendorsAnalyzed: {
+          ...(prev.vendorsAnalyzed || {}),
+          ai: json,
+        },
+      }));
     } catch (err) {
       setError(err.message || "AI analysis failed.");
     } finally {
@@ -98,7 +106,7 @@ export default function VendorsAnalyzeStep({
   }
 
   /* -------------------------------------------------
-     SAVE EMAILS → ENABLE AUTOMATION
+     SAVE EMAILS → AUTO-RUN AI
   -------------------------------------------------- */
   async function saveEmails() {
     setError("");
@@ -140,7 +148,7 @@ export default function VendorsAnalyzeStep({
       const json = await res.json();
       if (!json.ok) throw new Error(json.error || "Failed to save emails.");
 
-      // Update local state
+      // Update local vendors
       const updatedVendors = vendors.map((v) =>
         editedEmails[v.id]
           ? { ...v, email: editedEmails[v.id] }
@@ -164,6 +172,9 @@ export default function VendorsAnalyzeStep({
           json.updated === 1 ? "" : "s"
         }.`
       );
+
+      // 🔥 THIS IS THE KEY FIX
+      await runAiAnalysis();
     } catch (err) {
       setError(err.message || "Failed to save emails.");
     } finally {
@@ -192,7 +203,6 @@ export default function VendorsAnalyzeStep({
         automated reminders.
       </p>
 
-      {/* SUCCESS BANNER */}
       {successMsg && (
         <div
           style={{
@@ -209,7 +219,6 @@ export default function VendorsAnalyzeStep({
         </div>
       )}
 
-      {/* FIX MODE SUMMARY */}
       {vendorsMissingEmail.length > 0 && (
         <div
           style={{
@@ -244,7 +253,6 @@ export default function VendorsAnalyzeStep({
         </div>
       )}
 
-      {/* EDITABLE EMAIL TABLE */}
       {showFixEmails && vendorsMissingEmail.length > 0 && (
         <div
           style={{
@@ -272,7 +280,6 @@ export default function VendorsAnalyzeStep({
                   <td style={{ padding: 10 }}>
                     <input
                       type="email"
-                      placeholder="email@vendor.com"
                       value={editedEmails[v.id] || ""}
                       onChange={(e) =>
                         setEditedEmails((prev) => ({
@@ -280,6 +287,7 @@ export default function VendorsAnalyzeStep({
                           [v.id]: e.target.value,
                         }))
                       }
+                      placeholder="email@vendor.com"
                       style={{
                         width: "100%",
                         padding: "6px 8px",
