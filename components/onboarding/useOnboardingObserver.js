@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { useRouter } from "next/router";
 import { supabase } from "../../lib/supabaseClient";
 
 function clamp(n, min, max) {
@@ -11,9 +12,14 @@ function clamp(n, min, max) {
  * - Mirrors organizations.onboarding_step (INT)
  * - NEVER mutates backend
  * - Forward-only UI progression
+ *
+ * IMPORTANT:
+ * - Billing routes MUST bypass onboarding enforcement
  */
 export function useOnboardingObserver({ orgId, pollMs = 1200 }) {
-  const [uiStep, setUiStep] = useState(1); // Wizard is 1-based
+  const router = useRouter();
+
+  const [uiStep, setUiStep] = useState(1);
   const [status, setStatus] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -23,6 +29,11 @@ export function useOnboardingObserver({ orgId, pollMs = 1200 }) {
 
   useEffect(() => {
     if (!orgId) return;
+
+    // 🚫 HARD BYPASS: Billing routes are allowed to escape onboarding
+    if (router.pathname.startsWith("/billing")) {
+      return;
+    }
 
     let alive = true;
 
@@ -78,7 +89,6 @@ export function useOnboardingObserver({ orgId, pollMs = 1200 }) {
           lastStepRef.current = nextUiStep;
           setUiStep(nextUiStep);
         } else if (lastStepRef.current === 1) {
-          // Initial sync if backend already advanced
           lastStepRef.current = nextUiStep;
           setUiStep(nextUiStep);
         }
@@ -101,10 +111,10 @@ export function useOnboardingObserver({ orgId, pollMs = 1200 }) {
       clearInterval(t);
       if (abortRef.current) abortRef.current.abort();
     };
-  }, [orgId, pollMs]);
+  }, [orgId, pollMs, router.pathname]);
 
   return {
-    uiStep, // 🔑 THIS replaces local step state
+    uiStep,
     status,
     loading,
     error,
