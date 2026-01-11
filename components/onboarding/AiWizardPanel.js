@@ -5,7 +5,7 @@
 // ✅ Activity feed hidden at Step 4
 // ✅ Step 4 is STICKY (UI never goes backwards once reached)
 // ✅ Step 4 lock is persisted per-org (sessionStorage) to survive remounts
-// ✅ Step 1 now renders a visible panel (prevents "blank gradient" confusion)
+// ✅ FIX: Never downgrade to loading once Step 4 is locked
 
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/router";
@@ -45,7 +45,6 @@ function extractConfidence(rawMapping = {}) {
   return out;
 }
 
-// sessionStorage key per org
 function step4Key(orgUuid) {
   return `verivo:onboarding:lockStep4:${orgUuid}`;
 }
@@ -58,8 +57,6 @@ export default function AiWizardPanel({ orgId }) {
   const [wizardState, setWizardState] = useState({});
   const [forceUiStep, setForceUiStep] = useState(null);
   const [showMappingToast, setShowMappingToast] = useState(false);
-
-  // 🔒 Once Step 4 is reached, the UI must never show Steps 1–3 again
   const [lockStep4, setLockStep4] = useState(false);
 
   const orgUuid =
@@ -70,7 +67,6 @@ export default function AiWizardPanel({ orgId }) {
   -------------------------------------------------- */
   useEffect(() => {
     if (!orgUuid) return;
-
     let mounted = true;
 
     async function loadSavedMapping() {
@@ -90,9 +86,7 @@ export default function AiWizardPanel({ orgId }) {
 
         setShowMappingToast(true);
         setTimeout(() => setShowMappingToast(false), 3000);
-      } catch {
-        // silent
-      }
+      } catch {}
     }
 
     loadSavedMapping();
@@ -100,31 +94,31 @@ export default function AiWizardPanel({ orgId }) {
   }, [orgUuid]);
 
   /* -------------------------------------------------
-     PERSISTED STEP 4 LOCK (SESSION)
+     RESTORE STEP 4 LOCK
   -------------------------------------------------- */
   useEffect(() => {
     if (!orgUuid) return;
     try {
-      const v = sessionStorage.getItem(step4Key(orgUuid));
-      if (v === "1") setLockStep4(true);
-    } catch {
-      // ignore
-    }
+      if (sessionStorage.getItem(step4Key(orgUuid)) === "1") {
+        setLockStep4(true);
+      }
+    } catch {}
   }, [orgUuid]);
 
-  // If org is invalid, show safe message
   if (!orgUuid) {
     return <div style={{ color: "#fecaca" }}>Organization not found.</div>;
   }
 
-  const { uiStep: observedStep, status } = useOnboardingObserver({ orgId: orgUuid });
+  const { uiStep: observedStep, status } = useOnboardingObserver({
+    orgId: orgUuid,
+  });
 
-  // backend onboarding_step is 0-based; UI is 1-based.
   const backendStepRaw = Number(status?.onboardingStep ?? NaN);
   const statusUiStep =
-    Number.isFinite(backendStepRaw) ? Math.max(1, Math.min(10, backendStepRaw + 1)) : null;
+    Number.isFinite(backendStepRaw)
+      ? Math.max(1, Math.min(10, backendStepRaw + 1))
+      : null;
 
-  // ✅ Always take the highest step we know about (prevents UI regressions)
   const computedStep = useMemo(() => {
     const a = typeof forceUiStep === "number" ? forceUiStep : 0;
     const b = typeof observedStep === "number" ? observedStep : 1;
@@ -132,50 +126,37 @@ export default function AiWizardPanel({ orgId }) {
     return Math.max(a, b, c, 1);
   }, [forceUiStep, observedStep, statusUiStep]);
 
-  // 🔒 Step 4 stickiness: once reached, lock UI to >= 4 for this session
   useEffect(() => {
     if (computedStep >= 4 && !lockStep4) {
       setLockStep4(true);
       try {
         sessionStorage.setItem(step4Key(orgUuid), "1");
-      } catch {
-        // ignore
-      }
+      } catch {}
     }
   }, [computedStep, lockStep4, orgUuid]);
 
   const effectiveStep = lockStep4 ? Math.max(computedStep, 4) : computedStep;
-
-  // Don't show mapping toast once we're on the activation wall
   const shouldShowToast = showMappingToast && effectiveStep < 4;
 
   let content = null;
 
   /* ============================================================
-     STEP ROUTER
+     🔒 CRITICAL FIX — HOLD STEP 4 IF OBSERVER BLIPS
   ============================================================ */
 
-  // Visible panel wrapper used for Step 1 + fallback
-  const panelShell = (inner) => (
-    <div
-      style={{
-        borderRadius: 22,
-        padding: 22,
-        background:
-          "radial-gradient(circle at top left,rgba(15,23,42,0.98),rgba(15,23,42,0.94))",
-        border: "1px solid rgba(148,163,184,0.45)",
-        boxShadow: "0 0 60px rgba(15,23,42,0.75)",
-        color: "#e5e7eb",
-      }}
-    >
-      {inner}
-    </div>
-  );
-
-  // If the observer hasn't stabilized yet, show a real loading panel (prevents "blank")
-  if (!Number.isFinite(effectiveStep) || effectiveStep < 1) {
-    content = panelShell(
-      <div style={{ color: "#9ca3af" }}>Resolving onboarding state…</div>
+  if ((!Number.isFinite(effectiveStep) || effectiveStep < 1) && lockStep4) {
+    content = (
+      <VendorsAnalyzeStep
+        orgId={orgUuid}
+        wizardState={wizardState}
+        setWizardState={setWizardState}
+      />
+    );
+  } else if (!Number.isFinite(effectiveStep) || effectiveStep < 1) {
+    content = (
+      <div style={{ color: "#9ca3af", padding: 16 }}>
+        Loading onboarding step…
+      </div>
     );
   } else if (effectiveStep === 1) {
     const startAutopilot = async () => {
@@ -192,7 +173,6 @@ export default function AiWizardPanel({ orgId }) {
 
         const json = await res.json();
         if (!json.ok) throw new Error(json.error);
-
         setForceUiStep(2);
       } catch {
         setError("Could not start onboarding.");
@@ -201,51 +181,10 @@ export default function AiWizardPanel({ orgId }) {
       }
     };
 
-    content = panelShell(
-      <>
-        <div
-          style={{
-            fontSize: 12,
-            letterSpacing: "0.18em",
-            textTransform: "uppercase",
-            color: "rgba(148,163,184,0.75)",
-            marginBottom: 8,
-          }}
-        >
-          Step 1 • Compliance Setup
-        </div>
-
-        <div style={{ fontSize: 18, fontWeight: 800, marginBottom: 10 }}>
-          Start Compliance Setup
-        </div>
-
-        <div style={{ color: "#94a3b8", fontSize: 13, marginBottom: 14 }}>
-          We’ll prepare your vendor compliance system and guide you through the upload.
-        </div>
-
-        <button
-          onClick={startAutopilot}
-          disabled={starting}
-          style={{
-            padding: "12px 18px",
-            borderRadius: 999,
-            border: "1px solid rgba(56,189,248,0.75)",
-            background:
-              "radial-gradient(circle at top left,rgba(56,189,248,0.35),rgba(15,23,42,0.92))",
-            color: "#e0f2fe",
-            fontWeight: 900,
-            cursor: starting ? "not-allowed" : "pointer",
-          }}
-        >
-          {starting ? "Starting…" : "Start Compliance Setup"}
-        </button>
-
-        {error && (
-          <div style={{ marginTop: 12, color: "#fca5a5", fontSize: 13 }}>
-            {error}
-          </div>
-        )}
-      </>
+    content = (
+      <button onClick={startAutopilot}>
+        {starting ? "Starting…" : "Start Compliance Setup"}
+      </button>
     );
   } else {
     switch (effectiveStep) {
@@ -258,12 +197,7 @@ export default function AiWizardPanel({ orgId }) {
               const confidence = extractConfidence(mapping);
 
               setWizardState({
-                vendorsCsv: {
-                  headers,
-                  rows,
-                  mapping: normalized,
-                  confidence,
-                },
+                vendorsCsv: { headers, rows, mapping: normalized, confidence },
               });
 
               if (autoSkip) {
@@ -314,12 +248,7 @@ export default function AiWizardPanel({ orgId }) {
         break;
 
       default:
-        // Fallback: show a visible panel instead of "nothing"
-        content = panelShell(
-          <div style={{ color: "#9ca3af" }}>
-            Loading onboarding step…
-          </div>
-        );
+        content = null;
     }
   }
 
@@ -346,8 +275,7 @@ export default function AiWizardPanel({ orgId }) {
       )}
 
       {content}
-
-      {/* 🔒 Activity feed ONLY before Step 4 */}
+      {error && <div style={{ color: "#f87171" }}>{error}</div>}
       {effectiveStep < 4 && <OnboardingActivityFeed />}
     </>
   );
