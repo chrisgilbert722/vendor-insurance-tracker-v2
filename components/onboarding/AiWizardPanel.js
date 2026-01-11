@@ -5,6 +5,7 @@
 // ✅ Activity feed hidden at Step 4
 // ✅ Step 4 is STICKY (UI never goes backwards once reached)
 // ✅ Step 4 lock is persisted per-org (sessionStorage) to survive remounts
+// ✅ Step 1 now renders a visible panel (prevents "blank gradient" confusion)
 
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/router";
@@ -24,7 +25,6 @@ const UUID_RE =
    HELPERS
 -------------------------------------------------- */
 
-// Convert AI mapping objects → plain column strings
 function normalizeMapping(rawMapping = {}) {
   const out = {};
   for (const key in rawMapping) {
@@ -35,7 +35,6 @@ function normalizeMapping(rawMapping = {}) {
   return out;
 }
 
-// Keep confidence metadata separate (optional UI use)
 function extractConfidence(rawMapping = {}) {
   const out = {};
   for (const key in rawMapping) {
@@ -156,7 +155,29 @@ export default function AiWizardPanel({ orgId }) {
      STEP ROUTER
   ============================================================ */
 
-  if (effectiveStep === 1) {
+  // Visible panel wrapper used for Step 1 + fallback
+  const panelShell = (inner) => (
+    <div
+      style={{
+        borderRadius: 22,
+        padding: 22,
+        background:
+          "radial-gradient(circle at top left,rgba(15,23,42,0.98),rgba(15,23,42,0.94))",
+        border: "1px solid rgba(148,163,184,0.45)",
+        boxShadow: "0 0 60px rgba(15,23,42,0.75)",
+        color: "#e5e7eb",
+      }}
+    >
+      {inner}
+    </div>
+  );
+
+  // If the observer hasn't stabilized yet, show a real loading panel (prevents "blank")
+  if (!Number.isFinite(effectiveStep) || effectiveStep < 1) {
+    content = panelShell(
+      <div style={{ color: "#9ca3af" }}>Resolving onboarding state…</div>
+    );
+  } else if (effectiveStep === 1) {
     const startAutopilot = async () => {
       if (starting) return;
       setStarting(true);
@@ -180,10 +201,51 @@ export default function AiWizardPanel({ orgId }) {
       }
     };
 
-    content = (
-      <button onClick={startAutopilot}>
-        {starting ? "Starting…" : "Start Compliance Setup"}
-      </button>
+    content = panelShell(
+      <>
+        <div
+          style={{
+            fontSize: 12,
+            letterSpacing: "0.18em",
+            textTransform: "uppercase",
+            color: "rgba(148,163,184,0.75)",
+            marginBottom: 8,
+          }}
+        >
+          Step 1 • Compliance Setup
+        </div>
+
+        <div style={{ fontSize: 18, fontWeight: 800, marginBottom: 10 }}>
+          Start Compliance Setup
+        </div>
+
+        <div style={{ color: "#94a3b8", fontSize: 13, marginBottom: 14 }}>
+          We’ll prepare your vendor compliance system and guide you through the upload.
+        </div>
+
+        <button
+          onClick={startAutopilot}
+          disabled={starting}
+          style={{
+            padding: "12px 18px",
+            borderRadius: 999,
+            border: "1px solid rgba(56,189,248,0.75)",
+            background:
+              "radial-gradient(circle at top left,rgba(56,189,248,0.35),rgba(15,23,42,0.92))",
+            color: "#e0f2fe",
+            fontWeight: 900,
+            cursor: starting ? "not-allowed" : "pointer",
+          }}
+        >
+          {starting ? "Starting…" : "Start Compliance Setup"}
+        </button>
+
+        {error && (
+          <div style={{ marginTop: 12, color: "#fca5a5", fontSize: 13 }}>
+            {error}
+          </div>
+        )}
+      </>
     );
   } else {
     switch (effectiveStep) {
@@ -230,7 +292,6 @@ export default function AiWizardPanel({ orgId }) {
         break;
 
       case 4:
-        // 🔒 FINAL LOCKED STEP — activation wall lives INSIDE VendorsAnalyzeStep
         content = (
           <VendorsAnalyzeStep
             orgId={orgUuid}
@@ -253,7 +314,12 @@ export default function AiWizardPanel({ orgId }) {
         break;
 
       default:
-        content = null;
+        // Fallback: show a visible panel instead of "nothing"
+        content = panelShell(
+          <div style={{ color: "#9ca3af" }}>
+            Loading onboarding step…
+          </div>
+        );
     }
   }
 
@@ -280,7 +346,6 @@ export default function AiWizardPanel({ orgId }) {
       )}
 
       {content}
-      {error && <div style={{ color: "#f87171" }}>{error}</div>}
 
       {/* 🔒 Activity feed ONLY before Step 4 */}
       {effectiveStep < 4 && <OnboardingActivityFeed />}
