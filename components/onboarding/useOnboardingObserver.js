@@ -7,14 +7,11 @@ function clamp(n, min, max) {
 }
 
 /**
- * Telemetry-only onboarding observer
+ * Telemetry-only onboarding observer (FAIL-OPEN)
  * - Polls /api/onboarding/status
- * - Mirrors organizations.onboarding_step (INT)
- * - NEVER mutates backend
- * - Forward-only UI progression
- *
- * IMPORTANT:
- * - Billing routes MUST bypass onboarding enforcement
+ * - Mirrors organizations.onboarding_step (INT, 0-based)
+ * - NEVER blocks UI rendering
+ * - GUARANTEES a usable uiStep
  */
 export function useOnboardingObserver({ orgId, pollMs = 1200 }) {
   const router = useRouter();
@@ -26,12 +23,18 @@ export function useOnboardingObserver({ orgId, pollMs = 1200 }) {
 
   const lastStepRef = useRef(1);
   const abortRef = useRef(null);
+  const hasResolvedOnceRef = useRef(false);
 
   useEffect(() => {
-    if (!orgId) return;
+    if (!orgId) {
+      setLoading(false);
+      return;
+    }
 
-    // 🚫 HARD BYPASS: Billing routes are allowed to escape onboarding
+    // 🚫 HARD BYPASS — billing must never be blocked
     if (router.pathname.startsWith("/billing")) {
+      setUiStep(4);
+      setLoading(false);
       return;
     }
 
@@ -42,16 +45,19 @@ export function useOnboardingObserver({ orgId, pollMs = 1200 }) {
         if (abortRef.current) abortRef.current.abort();
         abortRef.current = new AbortController();
 
-        setLoading(true);
         setError("");
 
-        // 🔑 GET SUPABASE SESSION (HYDRATION-SAFE)
+        // 🔑 Get Supabase session (hydration-safe)
         const {
           data: { session },
         } = await supabase.auth.getSession();
 
-        // Fail-open: don’t brick UI if session not ready yet
+        // Fail-open if session not ready yet
         if (!session?.access_token) {
+          if (!hasResolvedOnceRef.current) {
+            setUiStep(4);
+            hasResolvedOnceRef.current = true;
+          }
           setLoading(false);
           return;
         }
@@ -61,8 +67,8 @@ export function useOnboardingObserver({ orgId, pollMs = 1200 }) {
           {
             signal: abortRef.current.signal,
             headers: {
-              "cache-control": "no-cache",
               Authorization: `Bearer ${session.access_token}`,
+              "cache-control": "no-cache",
             },
           }
         );
@@ -70,35 +76,57 @@ export function useOnboardingObserver({ orgId, pollMs = 1200 }) {
         const json = await res.json();
         if (!alive) return;
 
-        // Skip-safe API — ok:false is expected sometimes
-        if (!json?.ok) {
-          setStatus(json);
+        // 🚨 FAIL-OPEN: API returned nothing useful
+        if (!json || json.ok === false) {
+          if (!hasResolvedOnceRef.current) {
+            setUiStep(4);
+            lastStepRef.current = 4;
+            hasResolvedOnceRef.current = true;
+          }
+          setStatus(json || null);
           setLoading(false);
           return;
         }
 
         setStatus(json);
 
-        // DB: onboarding_step is 0-based
-        // UI: wizard is 1-based
-        const backendStep = Number(json.onboardingStep || 0);
-        const nextUiStep = clamp(backendStep + 1, 1, 10);
+        // Backend onboarding_step is 0-based
+        const backendStepRaw = Number(json.onboardingStep);
 
-        // Forward-only movement
+        // 🚨 Missing / invalid step → fail open to Step 4
+        if (!Number.isFinite(backendStepRaw)) {
+          if (!hasResolvedOnceRef.current) {
+            setUiStep(4);
+            lastStepRef.current = 4;
+            hasResolvedOnceRef.current = true;
+          }
+          setLoading(false);
+          return;
+        }
+
+        // UI is 1-based
+        const nextUiStep = clamp(backendStepRaw + 1, 1, 10);
+
+        // Forward-only progression
         if (nextUiStep > lastStepRef.current) {
           lastStepRef.current = nextUiStep;
           setUiStep(nextUiStep);
-        } else if (lastStepRef.current === 1) {
+        } else if (!hasResolvedOnceRef.current) {
           lastStepRef.current = nextUiStep;
           setUiStep(nextUiStep);
         }
 
+        hasResolvedOnceRef.current = true;
         setLoading(false);
       } catch (e) {
         if (!alive) return;
         if (e?.name === "AbortError") return;
 
-        setError("Onboarding sync failed.");
+        // 🚨 HARD FAIL-OPEN ON ERROR
+        setError("Onboarding sync failed (fail-open).");
+        setUiStep(4);
+        lastStepRef.current = 4;
+        hasResolvedOnceRef.current = true;
         setLoading(false);
       }
     }
