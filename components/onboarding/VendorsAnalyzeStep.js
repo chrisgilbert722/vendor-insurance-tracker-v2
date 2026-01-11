@@ -47,9 +47,9 @@ export default function VendorsAnalyzeStep({ orgId, wizardState, setWizardState 
   const emailConfirmed = Boolean(confirmedEmail) && isValidEmail(confirmedEmail);
 
   // 🔒 READY depends on confirmed email only (NOT draft)
-  const isReady = hasVendorData && emailConfirmed;
+  const isReady = emailConfirmed;
 
-  const canConfirm = hasVendorData && isValidEmail(emailDraft) && !savingEmail;
+  const canConfirm = isValidEmail(emailDraft) && !savingEmail;
 
   /* -------------------------------------------------
      RUN AI ANALYSIS (ONCE, SILENT)
