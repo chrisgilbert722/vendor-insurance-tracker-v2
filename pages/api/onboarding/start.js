@@ -75,15 +75,9 @@ async function setOrgStep(orgId, onboardingStep) {
 }
 
 // ------------------------------------------------------------
-// DATA GATE — THIS IS THE FIX
+// DATA GATE — PREVENTS STEP SKIPPING
 // ------------------------------------------------------------
-// RULES:
-// - No uploads → UI Step 1
-// - Uploads, no vendors → UI Step 2
-// - Vendors, no mappings → UI Step 3
-// - Otherwise → allow autopilot
 async function computeForcedUiStep(orgId) {
-  // Step 1: uploads
   try {
     const uploads = await sql`
       SELECT 1 FROM vendor_uploads
@@ -92,10 +86,9 @@ async function computeForcedUiStep(orgId) {
     `;
     if (!uploads.length) return 1;
   } catch {
-    return 1; // safest default
+    return 1;
   }
 
-  // Step 2: vendors
   try {
     const vendors = await sql`
       SELECT 1 FROM vendors
@@ -107,7 +100,6 @@ async function computeForcedUiStep(orgId) {
     return 2;
   }
 
-  // Step 3: column mappings
   try {
     const mappings = await sql`
       SELECT 1 FROM vendor_column_mappings
@@ -122,37 +114,42 @@ async function computeForcedUiStep(orgId) {
   return null;
 }
 
-// UI STEP → organizations.onboarding_step mapping
-// (matches what you saw in Neon)
 const UI_TO_DB_STEP = {
-  1: 0, // Start
-  2: 1, // Upload
-  3: 2, // Map CSV
+  1: 0,
+  2: 1,
+  3: 2,
 };
 
 // ------------------------------------------------------------
-// AUTOPILOT EXECUTION (SAFE)
+// AUTOPILOT EXECUTION
 // ------------------------------------------------------------
 async function runStep({ stepKey, orgId }) {
   switch (stepKey) {
     case "vendors_created":
       await import("../onboarding/create-vendors.js").catch(() => {});
       break;
+
     case "vendors_analyzed":
       await import("../onboarding-api/analyze-csv.js").catch(() => {});
       break;
+
     case "contracts_extracted":
       await import("../onboarding/ai-contract-extract.js").catch(() => {});
       break;
+
     case "requirements_assigned":
       await import("../onboarding/assign-requirements.js").catch(() => {});
       break;
+
+    // ✅ FIXED IMPORT (RENAMED FILE)
     case "rules_generated":
-      await import("../onboarding/ai-wizard.js").catch(() => {});
+      await import("../onboarding/ai-rule-engine.js").catch(() => {});
       break;
+
     case "rules_applied":
       await import("../onboarding/apply-rules-v5.js").catch(() => {});
       break;
+
     case "launch_system": {
       const org = await sql`
         SELECT legal_name, contact_email
@@ -164,6 +161,7 @@ async function runStep({ stepKey, orgId }) {
       await import("../onboarding/launch-system.js").catch(() => {});
       break;
     }
+
     case "complete":
       await sql`
         UPDATE organizations
@@ -192,7 +190,6 @@ export default async function handler(req, res) {
 
     await ensureStateRow(orgId);
 
-    // 🔒 HARD DATA GATE (THIS PREVENTS STEP 3 JUMPING)
     const forcedUiStep = await computeForcedUiStep(orgId);
 
     if (forcedUiStep !== null) {
