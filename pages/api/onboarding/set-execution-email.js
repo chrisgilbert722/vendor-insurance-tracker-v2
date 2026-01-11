@@ -16,15 +16,21 @@ export default async function handler(req, res) {
   }
 
   try {
-    // 🔑 Persist execution email
-    // 🔒 AND advance onboarding_step so Step 4 is considered complete
-    await sql`
+    const result = await sql`
       UPDATE organizations
       SET
         execution_email = ${email},
-        onboarding_step = GREATEST(onboarding_step, 3)
-      WHERE external_uuid = ${orgId};
+        onboarding_step = 3
+      WHERE external_uuid::text = ${orgId}
+      RETURNING id, onboarding_step;
     `;
+
+    if (result.length === 0) {
+      return res.status(400).json({
+        ok: false,
+        error: "Organization not found for orgId",
+      });
+    }
 
     return res.status(200).json({ ok: true });
   } catch (err) {
@@ -35,4 +41,3 @@ export default async function handler(req, res) {
     });
   }
 }
-
