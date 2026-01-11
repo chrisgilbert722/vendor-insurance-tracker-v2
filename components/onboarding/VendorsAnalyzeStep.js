@@ -1,178 +1,136 @@
 // components/onboarding/VendorsAnalyzeStep.js
-// STEP 4 — AI Vendor Analysis (LOCKED PREVIEW STATE)
-// ✅ AI runs once
-// ✅ UI locks after analysis
-// ✅ Animated blue → green dot + progress bar
-// ✅ Single CTA: Activate Automation
+// STEP 4 — SYSTEM ARMING PANEL (FINAL)
+// - One cinematic dashboard-style panel
+// - Two states only: BLOCKED → READY
+// - AI runs once, silently
+// - ONE required input: execution notification email
+// - ONE CTA: Activate Automation
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import { supabase } from "../../lib/supabaseClient";
 
 export default function VendorsAnalyzeStep({ orgId, wizardState, setWizardState }) {
   const csv = wizardState?.vendorsCsv || {};
-  const rawMapping = csv.mapping || {};
   const rows = Array.isArray(csv.rows) ? csv.rows : [];
 
-  const [vendors, setVendors] = useState([]);
-  const [editedEmails, setEditedEmails] = useState({});
-  const [aiLoading, setAiLoading] = useState(false);
-  const [savingEmails, setSavingEmails] = useState(false);
-  const [aiResult, setAiResult] = useState(
-    wizardState?.vendorsAnalyzed?.ai || null
+  const [aiRan, setAiRan] = useState(
+    Boolean(wizardState?.vendorsAnalyzed?.ai)
   );
+  const [email, setEmail] = useState(
+    wizardState?.executionEmail || ""
+  );
+  const [savingEmail, setSavingEmail] = useState(false);
   const [error, setError] = useState("");
 
-  const aiCompleted = Boolean(aiResult);
+  const hasVendorData = rows.length > 0;
+  const hasEmail = email && email.includes("@");
+
+  const isReady = hasVendorData && hasEmail;
 
   /* -------------------------------------------------
-     NORMALIZE MAPPING
-  -------------------------------------------------- */
-  const mapping = useMemo(() => {
-    return Object.fromEntries(
-      Object.entries(rawMapping).map(([key, val]) => [
-        key,
-        typeof val === "string" ? val : val?.column || null,
-      ])
-    );
-  }, [rawMapping]);
-
-  /* -------------------------------------------------
-     BUILD VENDOR OBJECTS
+     RUN AI ANALYSIS (ONCE, SILENT)
   -------------------------------------------------- */
   useEffect(() => {
-    if (!rows.length || !mapping.vendorName) return;
+    if (!orgId || aiRan || !hasVendorData) return;
 
-    const transformed = rows.map((row) => ({
-      id: row[mapping.vendorName],
-      name: row[mapping.vendorName] || "",
-      email: mapping.email ? row[mapping.email] || "" : "",
-      category: mapping.category ? row[mapping.category] || "" : "",
-      policyNumber: mapping.policyNumber ? row[mapping.policyNumber] || "" : "",
-    }));
+    let cancelled = false;
 
-    setVendors(transformed);
+    async function runAi() {
+      try {
+        const {
+          data: { session },
+        } = await supabase.auth.getSession();
 
-    setWizardState((prev) => ({
-      ...prev,
-      vendorsAnalyzed: {
-        ...(prev.vendorsAnalyzed || {}),
-        transformed,
-        missingEmailCount: transformed.filter((v) => !v.email).length,
-      },
-    }));
-  }, [rows, mapping, setWizardState]);
+        if (!session?.access_token) return;
+
+        const res = await fetch("/api/onboarding/ai-vendors-analyze", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${session.access_token}`,
+          },
+          body: JSON.stringify({ orgId }),
+        });
+
+        const json = await res.json();
+        if (!json?.ok) return;
+
+        if (!cancelled) {
+          setAiRan(true);
+          setWizardState((prev) => ({
+            ...prev,
+            vendorsAnalyzed: {
+              ...(prev.vendorsAnalyzed || {}),
+              ai: json,
+            },
+          }));
+        }
+      } catch {
+        // silent by design
+      }
+    }
+
+    runAi();
+    return () => {
+      cancelled = true;
+    };
+  }, [orgId, aiRan, hasVendorData, setWizardState]);
 
   /* -------------------------------------------------
-     RUN AI ANALYSIS (ONCE)
+     SAVE EXECUTION EMAIL
   -------------------------------------------------- */
-  async function runAiAnalysis() {
-    if (aiCompleted) return;
+  async function saveExecutionEmail() {
+    if (!hasEmail) return;
 
+    setSavingEmail(true);
     setError("");
-    setAiLoading(true);
 
     try {
-      const { data: { session } } = await supabase.auth.getSession();
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
+
       if (!session?.access_token) {
-        throw new Error("Authentication session missing.");
+        throw new Error("Authentication missing.");
       }
 
-      const res = await fetch("/api/onboarding/ai-vendors-analyze", {
+      const res = await fetch("/api/onboarding/set-execution-email", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
           Authorization: `Bearer ${session.access_token}`,
         },
-        body: JSON.stringify({ orgId, vendors }),
+        body: JSON.stringify({ orgId, email }),
       });
 
       const json = await res.json();
-      if (!json.ok) throw new Error(json.error || "AI analysis failed.");
-
-      setAiResult(json);
+      if (!json?.ok) throw new Error(json.error || "Failed to save email.");
 
       setWizardState((prev) => ({
         ...prev,
-        vendorsAnalyzed: {
-          ...(prev.vendorsAnalyzed || {}),
-          ai: json,
-        },
+        executionEmail: email,
       }));
     } catch (err) {
-      setError(err.message || "AI analysis failed.");
+      setError(err.message || "Failed to save email.");
     } finally {
-      setAiLoading(false);
+      setSavingEmail(false);
     }
   }
-
-  /* -------------------------------------------------
-     SAVE EMAILS (DOES NOT UNLOCK UI)
-  -------------------------------------------------- */
-  async function saveEmails() {
-    setError("");
-    setSavingEmails(true);
-
-    try {
-      const { data: { session } } = await supabase.auth.getSession();
-      if (!session?.access_token) {
-        throw new Error("Authentication session missing.");
-      }
-
-      const payload = Object.entries(editedEmails)
-        .filter(([_, email]) => email && email.includes("@"))
-        .map(([vendorName, email]) => ({ vendorName, email }));
-
-      if (!payload.length) {
-        throw new Error("No valid emails to save.");
-      }
-
-      const res = await fetch("/api/vendors/update-emails", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${session.access_token}`,
-        },
-        body: JSON.stringify({ orgId, vendors: payload }),
-      });
-
-      const json = await res.json();
-      if (!json.ok) throw new Error(json.error || "Failed to save emails.");
-
-      const updatedVendors = vendors.map((v) =>
-        editedEmails[v.id] ? { ...v, email: editedEmails[v.id] } : v
-      );
-
-      setVendors(updatedVendors);
-      setEditedEmails({});
-
-      setWizardState((prev) => ({
-        ...prev,
-        vendorsAnalyzed: {
-          ...(prev.vendorsAnalyzed || {}),
-          transformed: updatedVendors,
-          missingEmailCount: updatedVendors.filter((v) => !v.email).length,
-        },
-      }));
-    } catch (err) {
-      setError(err.message || "Failed to save emails.");
-    } finally {
-      setSavingEmails(false);
-    }
-  }
-
-  const vendorsMissingEmail = vendors.filter((v) => !v.email);
-  const hasEdits = Object.keys(editedEmails).length > 0;
 
   return (
     <div
       style={{
-        padding: 24,
-        borderRadius: 22,
-        background: "rgba(15,23,42,0.96)",
-        border: "1px solid rgba(51,65,85,0.9)",
+        padding: 26,
+        borderRadius: 24,
+        background:
+          "radial-gradient(circle at top left,rgba(15,23,42,0.98),rgba(15,23,42,0.95))",
+        border: "1px solid rgba(148,163,184,0.45)",
+        boxShadow:
+          "0 0 40px rgba(0,0,0,0.85),0 0 60px rgba(56,189,248,0.25)",
+        color: "#e5e7eb",
       }}
     >
-      {/* 🔥 LOCAL ANIMATION DEFINITIONS */}
+      {/* Local pulse animations */}
       <style>{`
         @keyframes pulseBlue {
           0% { box-shadow: 0 0 0 0 rgba(56,189,248,0.7); }
@@ -186,27 +144,39 @@ export default function VendorsAnalyzeStep({ orgId, wizardState, setWizardState 
         }
       `}</style>
 
-      <h2 style={{ fontSize: 20, fontWeight: 700, color: "#e5e7eb" }}>
-        Step 4 — AI Vendor Analysis
+      <div
+        style={{
+          fontSize: 11,
+          letterSpacing: "0.18em",
+          textTransform: "uppercase",
+          color: "rgba(148,163,184,0.7)",
+          marginBottom: 6,
+        }}
+      >
+        STEP 4 • SYSTEM ARMING
+      </div>
+
+      <h2 style={{ fontSize: 22, fontWeight: 700, margin: 0 }}>
+        AI Vendor Automation
       </h2>
 
       {/* STATUS LINE */}
-      <div style={{ marginTop: 14, display: "flex", alignItems: "center", gap: 10 }}>
+      <div style={{ marginTop: 14, display: "flex", alignItems: "center", gap: 12 }}>
         <span
           style={{
-            width: 10,
-            height: 10,
+            width: 12,
+            height: 12,
             borderRadius: "50%",
-            background: aiCompleted ? "#22c55e" : "#38bdf8",
-            animation: aiCompleted
+            background: isReady ? "#22c55e" : "#38bdf8",
+            animation: isReady
               ? "pulseGreen 0.9s infinite"
               : "pulseBlue 1.4s infinite",
           }}
         />
         <span style={{ fontSize: 14, color: "#c7d2fe" }}>
-          {aiCompleted
-            ? "System ready for automation"
-            : "Analyzing vendor risk…"}
+          {isReady
+            ? "System armed for automation"
+            : "System paused — required input missing"}
         </span>
       </div>
 
@@ -222,9 +192,9 @@ export default function VendorsAnalyzeStep({ orgId, wizardState, setWizardState 
       >
         <div
           style={{
-            width: aiCompleted ? "90%" : "45%",
+            width: isReady ? "90%" : "70%",
             height: "100%",
-            background: aiCompleted
+            background: isReady
               ? "linear-gradient(90deg,#22c55e,#4ade80)"
               : "linear-gradient(90deg,#38bdf8,#6366f1)",
             transition: "width 600ms ease",
@@ -232,57 +202,81 @@ export default function VendorsAnalyzeStep({ orgId, wizardState, setWizardState 
         />
       </div>
 
-      {/* RUN AI BUTTON */}
-      {!aiCompleted && (
-        <button
-          onClick={runAiAnalysis}
-          disabled={aiLoading || vendors.length === 0}
-          style={{
-            marginTop: 20,
-            padding: "10px 18px",
-            borderRadius: 999,
-            border: "1px solid rgba(56,189,248,0.9)",
-            background:
-              "radial-gradient(circle at top left,#38bdf8,#0ea5e9,#1e3a8a)",
-            color: "#e0f2fe",
-            fontWeight: 700,
-          }}
-        >
-          {aiLoading ? "Analyzing…" : "Run AI Analysis"}
-        </button>
-      )}
+      {/* BLOCKER — EXECUTION EMAIL */}
+      {!isReady && (
+        <div style={{ marginTop: 22 }}>
+          <label
+            style={{
+              display: "block",
+              fontSize: 13,
+              fontWeight: 600,
+              marginBottom: 6,
+            }}
+          >
+            Execution Notification Email
+          </label>
 
-      {/* FIX EMAILS */}
-      {vendorsMissingEmail.length > 0 && (
-        <div style={{ marginTop: 20 }}>
-          {/* unchanged fix email table */}
+          <input
+            type="email"
+            placeholder="ops@company.com"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            style={{
+              width: "100%",
+              padding: "10px 14px",
+              borderRadius: 14,
+              border: "1px solid rgba(51,65,85,0.9)",
+              background: "rgba(15,23,42,0.96)",
+              color: "#e5e7eb",
+              fontSize: 14,
+              outline: "none",
+            }}
+          />
+
+          <div
+            style={{
+              marginTop: 6,
+              fontSize: 12,
+              color: "rgba(148,163,184,0.8)",
+            }}
+          >
+            Alerts, renewals, and enforcement notices are sent here.
+          </div>
+
+          <button
+            onClick={saveExecutionEmail}
+            disabled={savingEmail || !hasEmail}
+            style={{
+              marginTop: 14,
+              padding: "8px 16px",
+              borderRadius: 999,
+              border: "1px solid rgba(56,189,248,0.7)",
+              background:
+                "linear-gradient(90deg,rgba(15,23,42,0.95),rgba(15,23,42,0.85))",
+              color: "#38bdf8",
+              fontWeight: 600,
+              fontSize: 13,
+            }}
+          >
+            {savingEmail ? "Saving…" : "Confirm Email"}
+          </button>
         </div>
       )}
 
-      {/* FINAL CTA */}
-      {aiCompleted && (
-        <div
-          style={{
-            marginTop: 28,
-            padding: 20,
-            borderRadius: 20,
-            background:
-              "linear-gradient(180deg, rgba(15,23,42,0.9), rgba(15,23,42,0.98))",
-            border: "1px solid rgba(56,189,248,0.35)",
-            textAlign: "center",
-          }}
-        >
+      {/* READY CTA */}
+      {isReady && (
+        <div style={{ marginTop: 26, textAlign: "center" }}>
           <button
             onClick={() => (window.location.href = "/billing/activate")}
             style={{
-              padding: "14px 28px",
+              padding: "14px 30px",
               borderRadius: 999,
               border: "none",
-              background:
-                "linear-gradient(90deg,#22c55e,#4ade80)",
+              background: "linear-gradient(90deg,#22c55e,#4ade80)",
               color: "#022c22",
               fontWeight: 900,
               fontSize: 16,
+              boxShadow: "0 0 28px rgba(34,197,94,0.45)",
             }}
           >
             Activate Automation
@@ -294,7 +288,11 @@ export default function VendorsAnalyzeStep({ orgId, wizardState, setWizardState 
         </div>
       )}
 
-      {error && <div style={{ marginTop: 14, color: "#fca5a5" }}>{error}</div>}
+      {error && (
+        <div style={{ marginTop: 14, color: "#fca5a5", fontSize: 13 }}>
+          {error}
+        </div>
+      )}
     </div>
   );
 }
