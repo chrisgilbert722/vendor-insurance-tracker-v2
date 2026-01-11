@@ -1,5 +1,5 @@
 // pages/api/onboarding/set-execution-email.js
-import { createClient } from "@supabase/supabase-js";
+import { sql } from "../../../lib/db";
 
 export default async function handler(req, res) {
   if (req.method !== "POST") {
@@ -16,25 +16,18 @@ export default async function handler(req, res) {
       });
     }
 
-    const supabase = createClient(
-      process.env.NEXT_PUBLIC_SUPABASE_URL,
-      process.env.SUPABASE_SERVICE_ROLE_KEY
-    );
-
-    const { error } = await supabase
-      .from("orgs")          // ✅ correct table
-      .update({ execution_email: email })
-      .eq("id", orgId);      // ✅ correct column (verify)
-
-    if (error) {
-      return res.status(500).json({ ok: false, error: error.message });
-    }
+    await sql`
+      UPDATE organizations
+      SET execution_email = ${email}
+      WHERE id = ${orgId};
+    `;
 
     return res.status(200).json({ ok: true });
   } catch (err) {
+    console.error("[set-execution-email]", err);
     return res.status(500).json({
       ok: false,
-      error: err.message || "Server error",
+      error: "Failed to save execution email",
     });
   }
 }
