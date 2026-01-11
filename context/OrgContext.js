@@ -5,9 +5,12 @@ const OrgContext = createContext(null);
 
 export function OrgProvider({ children }) {
   const [orgs, setOrgs] = useState([]);
-  const [activeOrgId, setActiveOrgId] = useState(null); // internal INT
+  const [activeOrgId, setActiveOrgId] = useState(null); // ✅ external_uuid (STRING)
   const [loading, setLoading] = useState(true);
 
+  /* -------------------------------------------------
+     LOAD ORGS FOR USER
+  -------------------------------------------------- */
   useEffect(() => {
     let cancelled = false;
 
@@ -15,12 +18,11 @@ export function OrgProvider({ children }) {
       try {
         setLoading(true);
 
-        // 🔑 ALWAYS read the Supabase session
+        // 🔑 ALWAYS read Supabase session
         const {
           data: { session },
         } = await supabase.auth.getSession();
 
-        // Not logged in
         if (!session?.access_token) {
           if (!cancelled) {
             setOrgs([]);
@@ -30,7 +32,6 @@ export function OrgProvider({ children }) {
           return;
         }
 
-        // 🔐 AUTH HEADER — REQUIRED
         const res = await fetch("/api/orgs/for-user", {
           headers: {
             Authorization: `Bearer ${session.access_token}`,
@@ -48,7 +49,7 @@ export function OrgProvider({ children }) {
         }
 
         const json = await res.json();
-        if (!json.ok) {
+        if (!json?.ok) {
           if (!cancelled) {
             setOrgs([]);
             setActiveOrgId(null);
@@ -61,11 +62,6 @@ export function OrgProvider({ children }) {
 
         const loadedOrgs = json.orgs || [];
         setOrgs(loadedOrgs);
-
-        // Default org selection (INT)
-        if (!activeOrgId && loadedOrgs.length > 0) {
-          setActiveOrgId(loadedOrgs[0].id);
-        }
       } catch (err) {
         console.error("[OrgContext] load error:", err);
         if (!cancelled) {
@@ -83,11 +79,39 @@ export function OrgProvider({ children }) {
     };
   }, []);
 
-  // Canonical active org object
-  const activeOrg = useMemo(
-    () => orgs.find((o) => o.id === activeOrgId) || null,
-    [orgs, activeOrgId]
-  );
+  /* -------------------------------------------------
+     ✅ AUTO-SELECT ORG IF ONLY ONE EXISTS
+     (THIS IS THE CRITICAL FIX)
+  -------------------------------------------------- */
+  useEffect(() => {
+    if (loading) return;
+    if (activeOrgId) return;
+
+    if (Array.isArray(orgs) && orgs.length === 1) {
+      const onlyOrg = orgs[0];
+      setActiveOrgId(
+        onlyOrg.external_uuid ||
+        onlyOrg.externalUuid ||
+        onlyOrg.uuid ||
+        null
+      );
+    }
+  }, [loading, activeOrgId, orgs]);
+
+  /* -------------------------------------------------
+     DERIVED ACTIVE ORG
+  -------------------------------------------------- */
+  const activeOrg = useMemo(() => {
+    if (!activeOrgId) return null;
+    return (
+      orgs.find(
+        (o) =>
+          o.external_uuid === activeOrgId ||
+          o.externalUuid === activeOrgId ||
+          o.uuid === activeOrgId
+      ) || null
+    );
+  }, [orgs, activeOrgId]);
 
   return (
     <OrgContext.Provider
@@ -97,14 +121,10 @@ export function OrgProvider({ children }) {
 
         // active org
         activeOrg,
-        activeOrgId, // internal INT
+        activeOrgId, // ✅ external_uuid
 
-        // 🔑 PUBLIC UUID — SAFE AGAINST NAMING MISMATCHES
-        activeOrgUuid:
-          activeOrg?.external_uuid ||
-          activeOrg?.externalUuid ||
-          activeOrg?.uuid ||
-          null,
+        // convenience alias (kept for safety)
+        activeOrgUuid: activeOrgId,
 
         // setters
         setActiveOrgId,
