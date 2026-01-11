@@ -6,8 +6,10 @@
 import Stripe from "stripe";
 import { createClient } from "@supabase/supabase-js";
 
+// ✅ Force Node runtime (env vars required)
 export const runtime = "nodejs";
 
+// Stripe client (server-only)
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
 
 // Supabase admin (server-only)
@@ -35,9 +37,11 @@ export default async function handler(req, res) {
   }
 
   try {
-    // 1) Auth
+    // 1) Auth — Supabase session required
     const token = getBearerToken(req);
-    if (!token) return res.status(401).json({ ok: false, error: "Missing session" });
+    if (!token) {
+      return res.status(401).json({ ok: false, error: "Missing session" });
+    }
 
     const { data, error } = await supabaseAdmin.auth.getUser(token);
     if (error || !data?.user) {
@@ -47,18 +51,23 @@ export default async function handler(req, res) {
     const user = data.user;
     const email = user.email;
 
-    // 2) Required env
-    const priceId = process.env.STRIPE_PRICE_ID_499;
+    // 2) Required env vars
     if (!process.env.STRIPE_SECRET_KEY) {
-      return res.status(500).json({ ok: false, error: "Missing STRIPE_SECRET_KEY" });
+      return res
+        .status(500)
+        .json({ ok: false, error: "Missing STRIPE_SECRET_KEY" });
     }
+
+    const priceId = process.env.STRIPE_PRICE_ID;
     if (!priceId) {
-      return res.status(500).json({ ok: false, error: "Missing STRIPE_PRICE_ID_499" });
+      return res
+        .status(500)
+        .json({ ok: false, error: "Missing STRIPE_PRICE_ID" });
     }
 
     const base = siteUrl();
 
-    // 3) Create Checkout Session
+    // 3) Create Stripe Checkout Session
     // ✅ Card required
     // ✅ 14-day trial
     // ✅ Auto-charge afterwards unless canceled
@@ -81,6 +90,9 @@ export default async function handler(req, res) {
     return res.status(200).json({ ok: true, url: session.url });
   } catch (err) {
     console.error("[billing/create-checkout]", err);
-    return res.status(500).json({ ok: false, error: err.message || "Checkout failed" });
+    return res.status(500).json({
+      ok: false,
+      error: err.message || "Checkout failed",
+    });
   }
 }
