@@ -16,22 +16,18 @@ export default async function handler(req, res) {
       });
     }
 
-    // 🔐 Server-side Supabase (service role)
     const supabase = createClient(
       process.env.NEXT_PUBLIC_SUPABASE_URL,
       process.env.SUPABASE_SERVICE_ROLE_KEY
     );
 
     const { error } = await supabase
-      .from("organizations")
+      .from("orgs")          // ✅ correct table
       .update({ execution_email: email })
-      .eq("uuid", orgId);
+      .eq("id", orgId);      // ✅ correct column (verify)
 
     if (error) {
-      return res.status(500).json({
-        ok: false,
-        error: error.message,
-      });
+      return res.status(500).json({ ok: false, error: error.message });
     }
 
     return res.status(200).json({ ok: true });
