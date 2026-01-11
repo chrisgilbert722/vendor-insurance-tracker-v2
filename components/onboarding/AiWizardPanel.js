@@ -3,8 +3,9 @@
 // ✅ Autonomous mapping + auto-skip + persistence + reuse toast
 // ✅ LOCKED FUNNEL: Step 4 is activation wall
 // ✅ Activity feed hidden at Step 4
+// ✅ Step 4 is STICKY (UI never goes backwards once reached)
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/router";
 import { useOnboardingObserver } from "./useOnboardingObserver";
 import OnboardingActivityFeed from "./OnboardingActivityFeed";
@@ -53,6 +54,9 @@ export default function AiWizardPanel({ orgId }) {
   const [forceUiStep, setForceUiStep] = useState(null);
   const [showMappingToast, setShowMappingToast] = useState(false);
 
+  // 🔒 Once Step 4 is reached, the UI must never show Steps 1–3 again
+  const [lockStep4, setLockStep4] = useState(false);
+
   const orgUuid =
     typeof orgId === "string" && UUID_RE.test(orgId) ? orgId : null;
 
@@ -95,7 +99,23 @@ export default function AiWizardPanel({ orgId }) {
   }
 
   const { uiStep: observedStep } = useOnboardingObserver({ orgId: orgUuid });
-  const effectiveStep = forceUiStep ?? observedStep ?? 1;
+
+  // ✅ Always take the highest step we know about (prevents UI regressions)
+  const computedStep = useMemo(() => {
+    const a = typeof forceUiStep === "number" ? forceUiStep : 0;
+    const b = typeof observedStep === "number" ? observedStep : 1;
+    return Math.max(a, b, 1);
+  }, [forceUiStep, observedStep]);
+
+  // 🔒 Step 4 stickiness: once reached, lock UI to >= 4 for this session
+  useEffect(() => {
+    if (computedStep >= 4 && !lockStep4) setLockStep4(true);
+  }, [computedStep, lockStep4]);
+
+  const effectiveStep = lockStep4 ? Math.max(computedStep, 4) : computedStep;
+
+  // Don't show mapping toast once we're on the activation wall
+  const shouldShowToast = showMappingToast && effectiveStep < 4;
 
   let content = null;
 
@@ -206,8 +226,22 @@ export default function AiWizardPanel({ orgId }) {
 
   return (
     <>
-      {showMappingToast && (
-        <div style={{ position: "fixed", top: 20, right: 20 }}>
+      {shouldShowToast && (
+        <div
+          style={{
+            position: "fixed",
+            top: 20,
+            right: 20,
+            padding: "10px 14px",
+            borderRadius: 14,
+            border: "1px solid rgba(56,189,248,0.55)",
+            background: "rgba(15,23,42,0.96)",
+            color: "#e0f2fe",
+            fontSize: 12,
+            boxShadow: "0 0 20px rgba(56,189,248,0.25)",
+            zIndex: 9999,
+          }}
+        >
           Using your previous vendor mapping
         </div>
       )}
