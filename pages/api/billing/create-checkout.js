@@ -1,12 +1,12 @@
 // pages/api/billing/create-checkout.js
 // LOCKED: Create Stripe Checkout Session (trial + card required)
 // - Requires Bearer token (Supabase session)
+// - Advances onboarding_step to 4 (locks activation wall)
 // - Returns { ok: true, url } for redirect to Stripe Checkout
 
 import Stripe from "stripe";
 import { createClient } from "@supabase/supabase-js";
 
-// ✅ Force Node runtime (env vars required)
 export const runtime = "nodejs";
 
 // Stripe client (server-only)
@@ -24,9 +24,7 @@ function getBearerToken(req) {
 }
 
 function siteUrl() {
-  // Prefer explicit site URL
   if (process.env.NEXT_PUBLIC_SITE_URL) return process.env.NEXT_PUBLIC_SITE_URL;
-  // Fallback for Vercel
   if (process.env.VERCEL_URL) return `https://${process.env.VERCEL_URL}`;
   return "http://localhost:3000";
 }
@@ -68,9 +66,6 @@ export default async function handler(req, res) {
     const base = siteUrl();
 
     // 3) Create Stripe Checkout Session
-    // ✅ Card required
-    // ✅ 14-day trial
-    // ✅ Auto-charge afterwards unless canceled
     const session = await stripe.checkout.sessions.create({
       mode: "subscription",
       customer_email: email,
@@ -86,6 +81,12 @@ export default async function handler(req, res) {
       success_url: `${base}/billing/success`,
       cancel_url: `${base}/onboarding/ai-wizard`,
     });
+
+    // 4) 🔒 LOCK STEP 4 — prevent observer rewind
+    await supabaseAdmin
+      .from("organizations")
+      .update({ onboarding_step: 4 })
+      .eq("external_uuid", user.user_metadata?.org_external_uuid);
 
     return res.status(200).json({ ok: true, url: session.url });
   } catch (err) {
