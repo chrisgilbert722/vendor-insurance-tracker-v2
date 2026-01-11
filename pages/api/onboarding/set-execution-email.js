@@ -16,9 +16,13 @@ export default async function handler(req, res) {
   }
 
   try {
+    // 🔑 Persist execution email
+    // 🔒 AND advance onboarding_step so Step 4 is considered complete
     await sql`
       UPDATE organizations
-      SET execution_email = ${email}
+      SET
+        execution_email = ${email},
+        onboarding_step = GREATEST(onboarding_step, 3)
       WHERE external_uuid = ${orgId};
     `;
 
@@ -31,3 +35,4 @@ export default async function handler(req, res) {
     });
   }
 }
+
