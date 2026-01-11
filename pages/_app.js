@@ -9,24 +9,26 @@ import { OrgProvider, useOrg } from "../context/OrgContext";
 import Layout from "../components/Layout";
 
 /* ============================================================
-   GLOBAL APP GUARD — ROUTING ONLY
-   - Public-first
-   - Onboarding enforced post-login
-   - No render blocking
-   - No loops
+   GLOBAL APP GUARD — SAFE VERSION
+   - NO redirects during async loading
+   - NO org enforcement here
+   - Onboarding page owns onboarding logic
+   - Prevents hydration loops
 ============================================================ */
 function AppGuard({ children }) {
   const router = useRouter();
   const { initializing, isLoggedIn } = useUser();
-  const { loading, activeOrg } = useOrg();
+  const { loading } = useOrg();
 
   useEffect(() => {
+    // 🚫 NEVER redirect while resolving auth or orgs
     if (initializing || loading) return;
 
     const path = router.pathname;
 
     const isAuth = path.startsWith("/auth");
     const isOnboarding = path.startsWith("/onboarding");
+    const isBilling = path.startsWith("/billing");
 
     const isPublic =
       path === "/" ||
@@ -37,8 +39,6 @@ function AppGuard({ children }) {
 
     /* ------------------------------------------------------------
        LOGGED OUT USERS
-       - Always allowed on public pages
-       - Never forced to login
     ------------------------------------------------------------ */
     if (!isLoggedIn) {
       if (!isPublic && !isAuth) {
@@ -49,39 +49,14 @@ function AppGuard({ children }) {
 
     /* ------------------------------------------------------------
        LOGGED IN USERS
+       (NO onboarding enforcement here)
     ------------------------------------------------------------ */
 
-    // No org yet → onboarding
-    if (!activeOrg && !isOnboarding) {
-      router.replace("/onboarding/ai-wizard");
-      return;
-    }
+    // Logged-in users can access onboarding freely
+    if (isOnboarding || isBilling) return;
 
-    // Onboarding incomplete → force onboarding
-    if (
-      activeOrg &&
-      !activeOrg.onboarding_completed &&
-      !isOnboarding
-    ) {
-      router.replace("/onboarding/ai-wizard");
-      return;
-    }
-
-    // Onboarding complete → escape onboarding
-    if (
-      activeOrg?.onboarding_completed &&
-      isOnboarding
-    ) {
-      router.replace("/dashboard");
-    }
-  }, [
-    initializing,
-    loading,
-    isLoggedIn,
-    activeOrg,
-    router.pathname,
-    router,
-  ]);
+    // Everything else allowed
+  }, [initializing, loading, isLoggedIn, router.pathname, router]);
 
   return children;
 }
