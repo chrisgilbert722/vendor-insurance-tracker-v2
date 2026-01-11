@@ -1,8 +1,7 @@
-// pages/api/orgs/for-user.js
 import { createClient } from "@supabase/supabase-js";
 import { sql } from "../../../lib/db";
 
-// Service-role Supabase client (server only)
+// Service-role Supabase client (AUTH ONLY)
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL,
   process.env.SUPABASE_SERVICE_ROLE_KEY
@@ -10,7 +9,7 @@ const supabase = createClient(
 
 export default async function handler(req, res) {
   try {
-    // 🔐 Read auth token (Authorization header)
+    // 🔐 Read auth token
     const authHeader = req.headers.authorization || "";
     const token = authHeader.replace("Bearer ", "");
 
@@ -27,13 +26,13 @@ export default async function handler(req, res) {
     const authUserId = data.user.id;
     const email = data.user.email || null;
 
-    // 🔎 Fetch orgs for this user (INCLUDES onboarding flag)
+    // 🔎 Fetch orgs INCLUDING onboarding_step (CRITICAL)
     let orgs = await sql`
       SELECT
         o.id,
         o.name,
         o.external_uuid,
-        o.onboarding_completed
+        o.onboarding_step
       FROM organization_members om
       JOIN organizations o ON o.id = om.org_id
       WHERE om.user_id = ${authUserId}
@@ -41,15 +40,14 @@ export default async function handler(req, res) {
     `;
 
     // ✅ SELF-SERVE GUARANTEE
-    // If user has NO org → create one automatically
     if (!orgs || orgs.length === 0) {
       const [org] = await sql`
-        INSERT INTO organizations (name, onboarding_completed)
+        INSERT INTO organizations (name, onboarding_step)
         VALUES (
           ${email ? `${email.split("@")[0]}'s Organization` : "My Organization"},
-          false
+          1
         )
-        RETURNING id, name, external_uuid, onboarding_completed
+        RETURNING id, name, external_uuid, onboarding_step
       `;
 
       await sql`
@@ -60,7 +58,6 @@ export default async function handler(req, res) {
       orgs = [org];
     }
 
-    // 🚀 Always returns orgs WITH onboarding state
     return res.status(200).json({
       ok: true,
       orgs,
