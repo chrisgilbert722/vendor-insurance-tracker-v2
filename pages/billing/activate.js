@@ -1,18 +1,28 @@
 // pages/billing/activate.js
 // LOCKED: Start Stripe Checkout for "Activate Automation"
 // - Requires logged-in Supabase session
+// - Sends orgId explicitly
 // - Redirects to Stripe Checkout URL returned by API
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/router";
 import { supabase } from "../../lib/supabaseClient";
+import { useOrg } from "../../context/OrgContext"; // 🔑 REQUIRED
 
 export default function BillingActivate() {
   const router = useRouter();
+  const { activeOrgId: orgId, loadingOrgs } = useOrg();
+
   const [msg, setMsg] = useState("Preparing secure checkout…");
   const [error, setError] = useState("");
 
   useEffect(() => {
+    if (loadingOrgs) return;
+    if (!orgId) {
+      setError("No organization selected.");
+      return;
+    }
+
     let cancelled = false;
 
     async function start() {
@@ -37,7 +47,7 @@ export default function BillingActivate() {
             "Content-Type": "application/json",
             Authorization: `Bearer ${session.access_token}`,
           },
-          body: JSON.stringify({}),
+          body: JSON.stringify({ orgId }), // ✅ THIS WAS MISSING
         });
 
         const json = await res.json();
@@ -59,7 +69,7 @@ export default function BillingActivate() {
     return () => {
       cancelled = true;
     };
-  }, [router]);
+  }, [router, orgId, loadingOrgs]);
 
   return (
     <div
