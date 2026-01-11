@@ -4,6 +4,7 @@
 // ✅ LOCKED FUNNEL: Step 4 is activation wall
 // ✅ Activity feed hidden at Step 4
 // ✅ Step 4 is STICKY (UI never goes backwards once reached)
+// ✅ Step 4 lock is persisted per-org (sessionStorage) to survive remounts
 
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/router";
@@ -43,6 +44,11 @@ function extractConfidence(rawMapping = {}) {
     }
   }
   return out;
+}
+
+// sessionStorage key per org
+function step4Key(orgUuid) {
+  return `verivo:onboarding:lockStep4:${orgUuid}`;
 }
 
 export default function AiWizardPanel({ orgId }) {
@@ -94,23 +100,50 @@ export default function AiWizardPanel({ orgId }) {
     return () => (mounted = false);
   }, [orgUuid]);
 
+  /* -------------------------------------------------
+     PERSISTED STEP 4 LOCK (SESSION)
+  -------------------------------------------------- */
+  useEffect(() => {
+    if (!orgUuid) return;
+    try {
+      const v = sessionStorage.getItem(step4Key(orgUuid));
+      if (v === "1") setLockStep4(true);
+    } catch {
+      // ignore
+    }
+  }, [orgUuid]);
+
+  // If org is invalid, show safe message
   if (!orgUuid) {
     return <div style={{ color: "#fecaca" }}>Organization not found.</div>;
   }
 
-  const { uiStep: observedStep } = useOnboardingObserver({ orgId: orgUuid });
+  const { uiStep: observedStep, status } = useOnboardingObserver({ orgId: orgUuid });
+
+  // backend onboarding_step is 0-based; UI is 1-based.
+  const backendStepRaw = Number(status?.onboardingStep ?? NaN);
+  const statusUiStep =
+    Number.isFinite(backendStepRaw) ? Math.max(1, Math.min(10, backendStepRaw + 1)) : null;
 
   // ✅ Always take the highest step we know about (prevents UI regressions)
   const computedStep = useMemo(() => {
     const a = typeof forceUiStep === "number" ? forceUiStep : 0;
     const b = typeof observedStep === "number" ? observedStep : 1;
-    return Math.max(a, b, 1);
-  }, [forceUiStep, observedStep]);
+    const c = typeof statusUiStep === "number" ? statusUiStep : 1;
+    return Math.max(a, b, c, 1);
+  }, [forceUiStep, observedStep, statusUiStep]);
 
   // 🔒 Step 4 stickiness: once reached, lock UI to >= 4 for this session
   useEffect(() => {
-    if (computedStep >= 4 && !lockStep4) setLockStep4(true);
-  }, [computedStep, lockStep4]);
+    if (computedStep >= 4 && !lockStep4) {
+      setLockStep4(true);
+      try {
+        sessionStorage.setItem(step4Key(orgUuid), "1");
+      } catch {
+        // ignore
+      }
+    }
+  }, [computedStep, lockStep4, orgUuid]);
 
   const effectiveStep = lockStep4 ? Math.max(computedStep, 4) : computedStep;
 
