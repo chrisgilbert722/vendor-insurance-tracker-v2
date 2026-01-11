@@ -5,7 +5,7 @@ const OrgContext = createContext(null);
 
 export function OrgProvider({ children }) {
   const [orgs, setOrgs] = useState([]);
-  const [activeOrgId, setActiveOrgId] = useState(null); // ✅ external_uuid (STRING)
+  const [activeOrgId, setActiveOrgId] = useState(null); // external_uuid (STRING)
   const [loading, setLoading] = useState(true);
 
   /* -------------------------------------------------
@@ -62,6 +62,17 @@ export function OrgProvider({ children }) {
 
         const loadedOrgs = json.orgs || [];
         setOrgs(loadedOrgs);
+
+        // 🔒 AUTO-SELECT IF ONLY ONE ORG
+        if (loadedOrgs.length === 1) {
+          const onlyOrg =
+            loadedOrgs[0].external_uuid ||
+            loadedOrgs[0].externalUuid ||
+            loadedOrgs[0].uuid ||
+            null;
+
+          setActiveOrgId(onlyOrg);
+        }
       } catch (err) {
         console.error("[OrgContext] load error:", err);
         if (!cancelled) {
@@ -69,7 +80,11 @@ export function OrgProvider({ children }) {
           setActiveOrgId(null);
         }
       } finally {
-        if (!cancelled) setLoading(false);
+        if (!cancelled) {
+          // ⚠️ IMPORTANT:
+          // Only stop loading AFTER org auto-selection logic has run
+          setLoading(false);
+        }
       }
     }
 
@@ -80,26 +95,7 @@ export function OrgProvider({ children }) {
   }, []);
 
   /* -------------------------------------------------
-     ✅ AUTO-SELECT ORG IF ONLY ONE EXISTS
-     (THIS IS THE CRITICAL FIX)
-  -------------------------------------------------- */
-  useEffect(() => {
-    if (loading) return;
-    if (activeOrgId) return;
-
-    if (Array.isArray(orgs) && orgs.length === 1) {
-      const onlyOrg = orgs[0];
-      setActiveOrgId(
-        onlyOrg.external_uuid ||
-        onlyOrg.externalUuid ||
-        onlyOrg.uuid ||
-        null
-      );
-    }
-  }, [loading, activeOrgId, orgs]);
-
-  /* -------------------------------------------------
-     DERIVED ACTIVE ORG
+     DERIVED ACTIVE ORG (UUID SAFE)
   -------------------------------------------------- */
   const activeOrg = useMemo(() => {
     if (!activeOrgId) return null;
@@ -121,9 +117,9 @@ export function OrgProvider({ children }) {
 
         // active org
         activeOrg,
-        activeOrgId, // ✅ external_uuid
+        activeOrgId, // external_uuid
 
-        // convenience alias (kept for safety)
+        // canonical UUID alias (used by ai-wizard)
         activeOrgUuid: activeOrgId,
 
         // setters
