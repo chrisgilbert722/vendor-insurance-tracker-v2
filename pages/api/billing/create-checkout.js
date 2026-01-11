@@ -1,8 +1,8 @@
 // pages/api/billing/create-checkout.js
-// FINAL FIX — Stripe checkout + Neon onboarding lock
+// FINAL FIX — Stripe checkout + Neon onboarding lock (RACE-SAFE)
 // - Supabase used ONLY for auth
 // - Neon used for org state
-// - Prevents onboarding observer rewind
+// - Idempotent onboarding lock (prevents observer rewind)
 
 import Stripe from "stripe";
 import { createClient } from "@supabase/supabase-js";
@@ -13,7 +13,7 @@ export const runtime = "nodejs";
 // Stripe (server-only)
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
 
-// Supabase admin (AUTH ONLY — NO DB TABLES)
+// Supabase admin (AUTH ONLY)
 const supabaseAdmin = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL,
   process.env.SUPABASE_SERVICE_ROLE_KEY
@@ -50,7 +50,7 @@ export default async function handler(req, res) {
     const user = data.user;
     const email = user.email;
 
-    // 2) Org ID (external_uuid)
+    // 2) Org
     const { orgId } = req.body;
     if (!orgId) {
       return res.status(400).json({ ok: false, error: "Missing orgId" });
@@ -64,7 +64,15 @@ export default async function handler(req, res) {
 
     const base = siteUrl();
 
-    // 4) Create Stripe checkout
+    // 4) 🔒 HARD LOCK FIRST (RACE SAFE)
+    await sql`
+      UPDATE organizations
+      SET onboarding_step = 4
+      WHERE external_uuid = ${orgId}
+        AND onboarding_step < 4;
+    `;
+
+    // 5) Create Stripe checkout
     const session = await stripe.checkout.sessions.create({
       mode: "subscription",
       customer_email: email,
@@ -81,13 +89,6 @@ export default async function handler(req, res) {
       success_url: `${base}/billing/success`,
       cancel_url: `${base}/onboarding/ai-wizard`,
     });
-
-    // 5) 🔒 LOCK onboarding step IN NEON (correct DB)
-    await sql`
-      UPDATE organizations
-      SET onboarding_step = 4
-      WHERE external_uuid = ${orgId};
-    `;
 
     return res.status(200).json({ ok: true, url: session.url });
   } catch (err) {
