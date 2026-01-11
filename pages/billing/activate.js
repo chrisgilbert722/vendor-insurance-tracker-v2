@@ -1,45 +1,54 @@
 // pages/billing/activate.js
 // LOCKED: Start Stripe Checkout for "Activate Automation"
 // - Requires logged-in Supabase session
+// - Requires active Neon organization (external_uuid)
 // - Sends orgId explicitly
-// - Redirects to Stripe Checkout URL returned by API
+// - Fires ONCE and never silently redirects back to onboarding
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/router";
 import { supabase } from "../../lib/supabaseClient";
-import { useOrg } from "../../context/OrgContext"; // 🔑 REQUIRED
+import { useOrg } from "../../context/OrgContext";
 
 export default function BillingActivate() {
   const router = useRouter();
   const { activeOrgId: orgId, loadingOrgs } = useOrg();
 
+  const startedRef = useRef(false);
+
   const [msg, setMsg] = useState("Preparing secure checkout…");
   const [error, setError] = useState("");
 
   useEffect(() => {
+    // 🚫 Wait until org context is fully loaded
     if (loadingOrgs) return;
+
+    // 🚫 Prevent double-run (React strict mode / rerenders)
+    if (startedRef.current) return;
+
+    // 🚫 Must have org
     if (!orgId) {
-      setError("No organization selected.");
+      setError("No organization selected. Please select an organization first.");
+      setMsg("Activation blocked.");
       return;
     }
 
-    let cancelled = false;
+    startedRef.current = true;
 
-    async function start() {
+    async function startCheckout() {
       try {
         setError("");
+        setMsg("Opening Stripe checkout…");
 
         const {
           data: { session },
         } = await supabase.auth.getSession();
 
         if (!session?.access_token) {
-          setMsg("Please log in to activate automation…");
+          setMsg("Please log in to continue…");
           router.replace("/auth/login");
           return;
         }
-
-        setMsg("Opening Stripe checkout…");
 
         const res = await fetch("/api/billing/create-checkout", {
           method: "POST",
@@ -47,29 +56,26 @@ export default function BillingActivate() {
             "Content-Type": "application/json",
             Authorization: `Bearer ${session.access_token}`,
           },
-          body: JSON.stringify({ orgId }), // ✅ THIS WAS MISSING
+          body: JSON.stringify({ orgId }), // ✅ REQUIRED
         });
 
         const json = await res.json();
+
         if (!json?.ok || !json?.url) {
-          throw new Error(json?.error || "Could not start checkout.");
+          throw new Error(json?.error || "Could not start Stripe checkout.");
         }
 
-        if (cancelled) return;
+        // ✅ Redirect to Stripe (NO other navigation allowed)
         window.location.href = json.url;
-      } catch (e) {
-        console.error("[billing/activate]", e);
-        if (cancelled) return;
-        setError(e.message || "Checkout failed.");
-        setMsg("Could not open checkout.");
+      } catch (err) {
+        console.error("[billing/activate]", err);
+        setError(err.message || "Checkout failed.");
+        setMsg("Activation failed.");
       }
     }
 
-    start();
-    return () => {
-      cancelled = true;
-    };
-  }, [router, orgId, loadingOrgs]);
+    startCheckout();
+  }, [orgId, loadingOrgs, router]);
 
   return (
     <div
@@ -100,6 +106,7 @@ export default function BillingActivate() {
         <div style={{ fontSize: 18, fontWeight: 900, marginBottom: 6 }}>
           Activate Automation
         </div>
+
         <div style={{ color: "#9ca3af", fontSize: 13, marginBottom: 14 }}>
           14-day trial • $499/mo after • Cancel anytime • Card required
         </div>
