@@ -6,8 +6,8 @@
 // - Resumes autopilot
 // ============================================================
 
-import { sql } from "@db";
-import { resolveOrg } from "@resolveOrg";
+import { sql } from "../../../lib/db";
+import { resolveOrg } from "../../../lib/server/resolveOrg";
 
 export default async function handler(req, res) {
   if (req.method !== "POST") {
