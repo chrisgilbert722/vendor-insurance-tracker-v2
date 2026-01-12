@@ -2,7 +2,8 @@
   "compilerOptions": {
     "baseUrl": ".",
     "paths": {
-      "@/*": ["./*"]
+      "@db": ["src/lib/db.js"],
+      "@resolveOrg": ["lib/server/resolveOrg.js"]
     }
   }
 }
