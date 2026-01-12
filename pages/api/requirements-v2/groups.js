@@ -1,6 +1,6 @@
 // pages/api/requirements-v2/groups.js
-import { sql } from "../../../lib/db";
-import { resolveOrg } from "../../../lib/resolveOrg";
+import { sql } from "@db";
+import { resolveOrg } from "@resolveOrg";
 
 export const config = {
   api: {
