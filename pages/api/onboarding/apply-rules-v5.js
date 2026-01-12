@@ -6,7 +6,7 @@
 // ============================================================
 
 import { sql } from "../../../lib/db";
-import { resolveOrg } from "../../../lib/resolveOrg";
+import { resolveOrg } from "@resolveOrg";
 
 export const config = {
   api: {
