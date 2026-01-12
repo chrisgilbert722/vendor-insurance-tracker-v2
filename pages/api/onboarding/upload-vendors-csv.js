@@ -1,10 +1,5 @@
 // pages/api/onboarding/upload-vendors-csv.js
-// PHASE 1 — CSV INGEST + VENDOR CREATION (FINAL)
-// ✅ Parses CSV / Excel
-// ✅ Resolves org_id safely
-// ✅ INSERTS vendors immediately
-// ✅ Dedupes by (org_id, name)
-// ✅ Never bricks onboarding
+// PHASE 1 — CSV INGEST + VENDOR INSERT (AUTHORITATIVE WRITE)
 
 import formidable from "formidable";
 import fs from "fs";
@@ -17,7 +12,7 @@ export const config = {
   api: { bodyParser: false },
 };
 
-// Supabase admin (server-only)
+// Supabase admin (server only)
 const supabaseAdmin = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL,
   process.env.SUPABASE_SERVICE_ROLE_KEY
@@ -28,19 +23,15 @@ function getBearerToken(req) {
   return auth.startsWith("Bearer ") ? auth.slice(7) : null;
 }
 
-function normalize(v) {
-  return String(v || "").trim();
-}
-
 export default async function handler(req, res) {
   if (req.method !== "POST") {
     return res.status(405).json({ ok: false, error: "POST only" });
   }
 
   try {
-    /* -------------------------------------------
+    /* -------------------------------------------------
        AUTH
-    ------------------------------------------- */
+    -------------------------------------------------- */
     const token = getBearerToken(req);
     if (!token) {
       return res.status(401).json({ ok: false, error: "Missing session" });
@@ -53,9 +44,9 @@ export default async function handler(req, res) {
 
     const userId = data.user.id;
 
-    /* -------------------------------------------
-       PARSE FORM
-    ------------------------------------------- */
+    /* -------------------------------------------------
+       PARSE MULTIPART
+    -------------------------------------------------- */
     const form = formidable({ multiples: false });
     const [fields, files] = await form.parse(req);
 
@@ -72,9 +63,9 @@ export default async function handler(req, res) {
       return res.status(400).json({ ok: false, error: "Missing orgId" });
     }
 
-    /* -------------------------------------------
-       RESOLVE org_id (INT)
-    ------------------------------------------- */
+    /* -------------------------------------------------
+       RESOLVE ORG (UUID → INT)
+    -------------------------------------------------- */
     const orgRows = await sql`
       SELECT o.id
       FROM organizations o
@@ -92,71 +83,57 @@ export default async function handler(req, res) {
       });
     }
 
-    const orgId = orgRows[0].id;
+    const orgIdInt = orgRows[0].id;
 
-    /* -------------------------------------------
-       PARSE FILE CONTENT
-    ------------------------------------------- */
-    const filename = file.originalFilename || "vendors.csv";
-    const ext = filename.split(".").pop().toLowerCase();
+    /* -------------------------------------------------
+       PARSE CSV
+    -------------------------------------------------- */
+    const text = fs.readFileSync(file.filepath, "utf8");
+    const lines = text
+      .split(/\r?\n/)
+      .map((l) => l.trim())
+      .filter(Boolean);
 
-    let headers = [];
-    let rows = [];
-
-    if (ext === "csv") {
-      const text = fs.readFileSync(file.filepath, "utf8");
-      const lines = text
-        .split(/\r?\n/)
-        .map((l) => l.trim())
-        .filter(Boolean);
-
-      headers = lines[0]?.split(",").map((h) => h.trim()) || [];
-
-      rows = lines.slice(1).map((line) => {
-        const cols = line.split(",");
-        const obj = {};
-        headers.forEach((h, i) => {
-          obj[h] = cols[i] || "";
-        });
-        return obj;
-      });
-    } else if (ext === "xls" || ext === "xlsx") {
-      const mod = await import("xlsx");
-      const XLSX = mod.default || mod;
-
-      const workbook = XLSX.read(fs.readFileSync(file.filepath));
-      const sheet = workbook.Sheets[workbook.SheetNames[0]];
-      rows = XLSX.utils.sheet_to_json(sheet, { defval: "" });
-      headers = Object.keys(rows[0] || {});
-    } else {
-      return res.status(400).json({
-        ok: false,
-        error: "Unsupported file type",
-      });
+    if (!lines.length) {
+      return res.status(200).json({ ok: true, headers: [], rows: [] });
     }
 
-    /* -------------------------------------------
-       INSERT VENDORS (DEDUPED)
-    ------------------------------------------- */
+    const headers = lines[0].split(",").map((h) => h.trim());
+
+    const rows = lines.slice(1).map((line) => {
+      const cols = line.split(",");
+      const obj = {};
+      headers.forEach((h, i) => {
+        obj[h] = (cols[i] || "").trim();
+      });
+      return obj;
+    });
+
+    /* -------------------------------------------------
+       INSERT VENDORS (AUTHORITATIVE)
+    -------------------------------------------------- */
     let inserted = 0;
 
     for (const r of rows) {
       const name =
-        normalize(r.name) ||
-        normalize(r.vendor_name) ||
-        normalize(r.vendor);
+        r.vendor_name ||
+        r.vendor ||
+        r.company ||
+        r.name ||
+        "";
 
       if (!name) continue;
 
-      const email = normalize(r.email);
-      const phone = normalize(r.phone);
-      const address = normalize(r.address);
+      const email = r.email || null;
+      const phone = r.phone || null;
+      const address = r.address || null;
 
-      // Deduplicate per org
+      // Prevent duplicates per org by name
       const exists = await sql`
-        SELECT id FROM vendors
-        WHERE org_id = ${orgId}
-          AND lower(name) = lower(${name})
+        SELECT 1
+        FROM vendors
+        WHERE org_id = ${orgIdInt}
+          AND name = ${name}
         LIMIT 1;
       `;
 
@@ -171,28 +148,31 @@ export default async function handler(req, res) {
           address
         )
         VALUES (
-          ${orgId},
+          ${orgIdInt},
           ${name},
-          ${email || null},
-          ${phone || null},
-          ${address || null}
+          ${email},
+          ${phone},
+          ${address}
         );
       `;
 
       inserted++;
     }
 
-    /* -------------------------------------------
-       MARK ONBOARDING COMPLETE (SAFE)
-    ------------------------------------------- */
+    /* -------------------------------------------------
+       RECORD UPLOAD (NON-BLOCKING)
+    -------------------------------------------------- */
     await sql`
-      UPDATE org_onboarding_state
-      SET
-        status = 'completed',
-        completed_at = now(),
-        finished_at = now(),
-        updated_at = now()
-      WHERE org_id = ${orgId};
+      INSERT INTO vendor_uploads (
+        org_id,
+        filename,
+        uploaded_by
+      )
+      VALUES (
+        ${orgIdInt},
+        ${file.originalFilename || "vendors.csv"},
+        ${userId}
+      );
     `;
 
     return res.status(200).json({
