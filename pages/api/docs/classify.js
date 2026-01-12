@@ -2,24 +2,13 @@
 // ==========================================================
 // MULTI-DOCUMENT INTELLIGENCE V2 — STEP 1
 // AI Document Classifier
-//
-// Accepts a PDF (any vendor document) and classifies it as:
-//  - coi
-//  - w9
-//  - business_license
-//  - endorsement
-//  - contract
-//  - waiver
-//  - safety_document
-//  - other
-// Returns type, subtype, confidence, and reasoning.
 // ==========================================================
 
 import formidable from "formidable";
 import fs from "fs";
 import pdfParse from "pdf-parse";
-import { openai } from "../../../lib/openaiClient";
-import { supabase } from "../../../lib/supabaseClient";
+import { openai } from "@/lib/openaiClient";
+import { supabaseServer } from "@/lib/supabaseServer";
 
 export const config = {
   api: {
@@ -45,6 +34,8 @@ export default async function handler(req, res) {
   }
 
   try {
+    const supabase = supabaseServer();
+
     const { fields, files } = await parseForm(req);
 
     const file =
@@ -85,37 +76,35 @@ export default async function handler(req, res) {
 
     let fileUrl = null;
 
-    if (supabase) {
-      const originalName =
-        file.originalFilename ||
-        file.newFilename ||
-        file.filepath.split("/").pop() ||
-        "document.pdf";
+    const originalName =
+      file.originalFilename ||
+      file.newFilename ||
+      file.filepath.split("/").pop() ||
+      "document.pdf";
 
-      const safeName = originalName.replace(/[^a-zA-Z0-9.\-_]/g, "_");
+    const safeName = originalName.replace(/[^a-zA-Z0-9.\-_]/g, "_");
 
-      const path = `docs/${orgId || "no-org"}/vendors/${
-        vendorId || "no-vendor"
-      }/${Date.now()}-${safeName}`;
+    const path = `docs/${orgId || "no-org"}/vendors/${
+      vendorId || "no-vendor"
+    }/${Date.now()}-${safeName}`;
 
-      const { error: uploadError } = await supabase.storage
-        .from("uploads")
-        .upload(path, buffer, {
-          contentType: "application/pdf",
-          upsert: false,
-        });
+    const { error: uploadError } = await supabase.storage
+      .from("uploads")
+      .upload(path, buffer, {
+        contentType: "application/pdf",
+        upsert: false,
+      });
 
-      if (uploadError) {
-        console.error("[docs/classify] Supabase upload error:", uploadError);
-        throw new Error("Supabase upload failed.");
-      }
-
-      const { data: publicUrlData } = supabase.storage
-        .from("uploads")
-        .getPublicUrl(path);
-
-      fileUrl = publicUrlData?.publicUrl || null;
+    if (uploadError) {
+      console.error("[docs/classify] Supabase upload error:", uploadError);
+      throw new Error("Supabase upload failed.");
     }
+
+    const { data: publicUrlData } = supabase.storage
+      .from("uploads")
+      .getPublicUrl(path);
+
+    fileUrl = publicUrlData?.publicUrl || null;
 
     // ==========================================================
     // 2️⃣ Extract text from PDF (limited for prompt size)
@@ -154,11 +143,6 @@ Return ONLY valid JSON with this shape:
   "reason": "short explanation (1-3 sentences)"
 }
 
-Where:
-- "subtype" could be something like "ACORD 25", "State contractor license", "Master services agreement", etc.
-- "confidence" should reflect how sure you are based on layout + textual clues.
-- "doc_type" must be one of the allowed values above.
-
 Here is the text:
 
 ${textSnippet}
@@ -183,20 +167,16 @@ ${textSnippet}
 
     const parsed = JSON.parse(raw.slice(first, last + 1));
 
-    const docType = parsed.doc_type || "other";
-    const subtype = parsed.subtype || null;
-    const confidence = typeof parsed.confidence === "number" ? parsed.confidence : null;
-    const reason = parsed.reason || "";
-
     return res.status(200).json({
       ok: true,
       fileUrl,
       vendorId: vendorId || null,
       orgId: orgId || null,
-      docType,
-      subtype,
-      confidence,
-      reason,
+      docType: parsed.doc_type || "other",
+      subtype: parsed.subtype || null,
+      confidence:
+        typeof parsed.confidence === "number" ? parsed.confidence : null,
+      reason: parsed.reason || "",
     });
   } catch (err) {
     console.error("[docs/classify ERROR]", err);
