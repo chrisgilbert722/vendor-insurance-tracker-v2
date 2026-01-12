@@ -12,7 +12,7 @@ export default async function handler(req, res) {
     if (!orgId) return;
 
     const {
-      vendorId,
+      vendorId, 
       severity,
       source = "all",
       start,
