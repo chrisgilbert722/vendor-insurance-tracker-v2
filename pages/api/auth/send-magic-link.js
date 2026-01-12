@@ -1,7 +1,7 @@
 // pages/api/auth/send-magic-link.js
 // Server-side Magic Link Sender (used for auto-invites during onboarding)
 
-import { supabase } from "../../../lib/supabaseClient";
+import { supabaseServer } from "@/lib/supabaseServer";
 
 export const config = {
   api: {
@@ -20,6 +20,8 @@ export default async function handler(req, res) {
     if (!email || !email.includes("@")) {
       return res.status(400).json({ ok: false, error: "Invalid email." });
     }
+
+    const supabase = supabaseServer();
 
     const { error } = await supabase.auth.signInWithOtp({
       email,
