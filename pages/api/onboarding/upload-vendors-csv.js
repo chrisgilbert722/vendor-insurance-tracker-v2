@@ -1,9 +1,10 @@
 // pages/api/onboarding/upload-vendors-csv.js
-// PHASE 1 — Stable Ingest (CSV + Excel) + CREATE VENDORS (NEON)
-// ✅ Creates vendors immediately on upload (Option A)
-// ✅ UUID-safe (external_uuid -> internal org_id INT)
-// ✅ Membership-checked (organization_members)
-// ✅ Fail-open storage + vendor_uploads logging (never blocks vendor creation)
+// PHASE 1 — CSV INGEST + VENDOR CREATION (FINAL)
+// ✅ Parses CSV / Excel
+// ✅ Resolves org_id safely
+// ✅ INSERTS vendors immediately
+// ✅ Dedupes by (org_id, name)
+// ✅ Never bricks onboarding
 
 import formidable from "formidable";
 import fs from "fs";
@@ -16,7 +17,7 @@ export const config = {
   api: { bodyParser: false },
 };
 
-// Supabase service-role client (SERVER ONLY)
+// Supabase admin (server-only)
 const supabaseAdmin = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL,
   process.env.SUPABASE_SERVICE_ROLE_KEY
@@ -27,59 +28,8 @@ function getBearerToken(req) {
   return auth.startsWith("Bearer ") ? auth.slice(7) : null;
 }
 
-/* -------------------------------------------------
-   Helpers
--------------------------------------------------- */
-function norm(s) {
-  return String(s || "")
-    .toLowerCase()
-    .replace(/[^a-z0-9]/g, "");
-}
-
-function pickColumn(headers = [], candidates = []) {
-  const map = new Map(headers.map((h) => [norm(h), h]));
-  for (const c of candidates) {
-    const hit = map.get(norm(c));
-    if (hit) return hit;
-  }
-  // fuzzy contains
-  for (const h of headers) {
-    const nh = norm(h);
-    for (const c of candidates) {
-      const nc = norm(c);
-      if (nc && nh.includes(nc)) return h;
-    }
-  }
-  return null;
-}
-
-function getCell(row, header) {
-  if (!row || !header) return "";
-  const v = row[header];
-  return v == null ? "" : String(v).trim();
-}
-
-function parseCsv(text) {
-  const lines = String(text || "")
-    .split(/\r?\n/)
-    .map((l) => l.trim())
-    .filter(Boolean);
-
-  if (lines.length < 2) return { headers: [], rows: [] };
-
-  const headers = lines[0].split(",").map((h) => h.trim()).filter(Boolean);
-
-  const rows = lines.slice(1).map((line) => {
-    // NOTE: simple CSV split (works for your test CSVs; no quoted comma support)
-    const cols = line.split(",");
-    const obj = {};
-    headers.forEach((h, i) => {
-      obj[h] = (cols[i] || "").trim();
-    });
-    return obj;
-  });
-
-  return { headers, rows };
+function normalize(v) {
+  return String(v || "").trim();
 }
 
 export default async function handler(req, res) {
@@ -87,18 +37,13 @@ export default async function handler(req, res) {
     return res.status(405).json({ ok: false, error: "POST only" });
   }
 
-  let tempFilepath = null;
-
   try {
-    /* -------------------------------------------------
-       1) AUTH — verify Supabase session
-    -------------------------------------------------- */
+    /* -------------------------------------------
+       AUTH
+    ------------------------------------------- */
     const token = getBearerToken(req);
     if (!token) {
-      return res.status(401).json({
-        ok: false,
-        error: "Authentication session missing. Please refresh.",
-      });
+      return res.status(401).json({ ok: false, error: "Missing session" });
     }
 
     const { data, error } = await supabaseAdmin.auth.getUser(token);
@@ -108,9 +53,9 @@ export default async function handler(req, res) {
 
     const userId = data.user.id;
 
-    /* -------------------------------------------------
-       2) PARSE MULTIPART FORM
-    -------------------------------------------------- */
+    /* -------------------------------------------
+       PARSE FORM
+    ------------------------------------------- */
     const form = formidable({ multiples: false });
     const [fields, files] = await form.parse(req);
 
@@ -119,16 +64,17 @@ export default async function handler(req, res) {
       return res.status(400).json({ ok: false, error: "No file uploaded" });
     }
 
-    tempFilepath = file.filepath;
+    const orgUuid = Array.isArray(fields.orgId)
+      ? fields.orgId[0]
+      : fields.orgId;
 
-    const orgUuid = Array.isArray(fields.orgId) ? fields.orgId[0] : fields.orgId;
     if (!orgUuid) {
       return res.status(400).json({ ok: false, error: "Missing orgId" });
     }
 
-    /* -------------------------------------------------
-       3) RESOLVE ORG + MEMBERSHIP (external_uuid -> org_id INT)
-    -------------------------------------------------- */
+    /* -------------------------------------------
+       RESOLVE org_id (INT)
+    ------------------------------------------- */
     const orgRows = await sql`
       SELECT o.id
       FROM organizations o
@@ -139,30 +85,41 @@ export default async function handler(req, res) {
       LIMIT 1;
     `;
 
-    if (!orgRows?.length) {
+    if (!orgRows.length) {
       return res.status(400).json({
         ok: false,
-        error: "Organization not found for orgId (or not a member).",
+        error: "Organization not found for user",
       });
     }
 
-    const orgIdInt = orgRows[0].id;
+    const orgId = orgRows[0].id;
 
-    /* -------------------------------------------------
-       4) PARSE FILE CONTENT (CSV OR EXCEL)
-    -------------------------------------------------- */
-    const filename = file.originalFilename || "vendors";
-    const safeFilename = filename.replace(/\s+/g, "_");
-    const ext = safeFilename.split(".").pop().toLowerCase();
+    /* -------------------------------------------
+       PARSE FILE CONTENT
+    ------------------------------------------- */
+    const filename = file.originalFilename || "vendors.csv";
+    const ext = filename.split(".").pop().toLowerCase();
 
     let headers = [];
     let rows = [];
 
     if (ext === "csv") {
       const text = fs.readFileSync(file.filepath, "utf8");
-      const parsed = parseCsv(text);
-      headers = parsed.headers;
-      rows = parsed.rows;
+      const lines = text
+        .split(/\r?\n/)
+        .map((l) => l.trim())
+        .filter(Boolean);
+
+      headers = lines[0]?.split(",").map((h) => h.trim()) || [];
+
+      rows = lines.slice(1).map((line) => {
+        const cols = line.split(",");
+        const obj = {};
+        headers.forEach((h, i) => {
+          obj[h] = cols[i] || "";
+        });
+        return obj;
+      });
     } else if (ext === "xls" || ext === "xlsx") {
       const mod = await import("xlsx");
       const XLSX = mod.default || mod;
@@ -174,109 +131,36 @@ export default async function handler(req, res) {
     } else {
       return res.status(400).json({
         ok: false,
-        error: "Unsupported file type (use .csv, .xls, .xlsx).",
+        error: "Unsupported file type",
       });
     }
 
-    if (!headers.length || !rows.length) {
-      return res.status(400).json({
-        ok: false,
-        error: "No usable rows found in this file.",
-      });
-    }
-
-    /* -------------------------------------------------
-       5) BEST-EFFORT: Upload original file to Supabase Storage
-       (FAIL-OPEN — never blocks vendor creation)
-    -------------------------------------------------- */
-    try {
-      const objectPath = `vendors-csv/${orgUuid}/${Date.now()}-${safeFilename}`;
-      await supabaseAdmin.storage
-        .from("vendor-uploads")
-        .upload(objectPath, fs.createReadStream(file.filepath), {
-          contentType: file.mimetype || "application/octet-stream",
-          duplex: "half",
-        });
-    } catch (e) {
-      console.warn("[upload-vendors-csv] storage upload skipped:", e?.message);
-    }
-
-    /* -------------------------------------------------
-       6) BEST-EFFORT: Log vendor_uploads row
-       (FAIL-OPEN — never blocks vendor creation)
-    -------------------------------------------------- */
-    try {
-      await sql`
-        INSERT INTO vendor_uploads (
-          org_id,
-          filename,
-          mime_type,
-          uploaded_by
-        )
-        VALUES (
-          ${orgIdInt},
-          ${safeFilename},
-          ${file.mimetype || "application/octet-stream"},
-          ${userId}
-        );
-      `;
-    } catch (e) {
-      console.warn("[upload-vendors-csv] vendor_uploads insert skipped:", e?.message);
-    }
-
-    /* -------------------------------------------------
-       7) INSERT VENDORS (THIS IS THE FIX)
-       Matches your Neon vendors schema:
-       - org_id (int)
-       - name (text, NOT NULL)
-       - email/phone/address optional
-       - requirements_json jsonb
-    -------------------------------------------------- */
-    const nameCol =
-      pickColumn(headers, ["vendor_name", "vendor name", "name", "company", "insured name", "insured"]) ||
-      headers[0]; // fallback: first column
-
-    const emailCol = pickColumn(headers, ["email", "contact_email", "contact email"]);
-    const phoneCol = pickColumn(headers, ["phone", "mobile", "tel"]);
-    const addressCol = pickColumn(headers, ["address", "street", "street_address", "street address"]);
-
+    /* -------------------------------------------
+       INSERT VENDORS (DEDUPED)
+    ------------------------------------------- */
     let inserted = 0;
-    let skipped = 0;
-
-    // Avoid duplicate inserts within same upload
-    const seen = new Set();
 
     for (const r of rows) {
-      const name = getCell(r, nameCol);
-      if (!name) {
-        skipped++;
-        continue;
-      }
+      const name =
+        normalize(r.name) ||
+        normalize(r.vendor_name) ||
+        normalize(r.vendor);
 
-      const key = norm(name);
-      if (seen.has(key)) {
-        skipped++;
-        continue;
-      }
-      seen.add(key);
+      if (!name) continue;
 
-      const email = emailCol ? getCell(r, emailCol) : "";
-      const phone = phoneCol ? getCell(r, phoneCol) : "";
-      const address = addressCol ? getCell(r, addressCol) : "";
+      const email = normalize(r.email);
+      const phone = normalize(r.phone);
+      const address = normalize(r.address);
 
-      // DB-level duplicate check (org + name)
-      const existing = await sql`
-        SELECT id
-        FROM vendors
-        WHERE org_id = ${orgIdInt}
-          AND name = ${name}
+      // Deduplicate per org
+      const exists = await sql`
+        SELECT id FROM vendors
+        WHERE org_id = ${orgId}
+          AND lower(name) = lower(${name})
         LIMIT 1;
       `;
 
-      if (existing?.length) {
-        skipped++;
-        continue;
-      }
+      if (exists.length) continue;
 
       await sql`
         INSERT INTO vendors (
@@ -284,42 +168,44 @@ export default async function handler(req, res) {
           name,
           email,
           phone,
-          address,
-          requirements_json
+          address
         )
         VALUES (
-          ${orgIdInt},
+          ${orgId},
           ${name},
           ${email || null},
           ${phone || null},
-          ${address || null},
-          ${JSON.stringify({})}::jsonb
+          ${address || null}
         );
       `;
 
       inserted++;
     }
 
-    /* -------------------------------------------------
-       8) RESPONSE (UI NEEDS headers + rows)
-    -------------------------------------------------- */
+    /* -------------------------------------------
+       MARK ONBOARDING COMPLETE (SAFE)
+    ------------------------------------------- */
+    await sql`
+      UPDATE org_onboarding_state
+      SET
+        status = 'completed',
+        completed_at = now(),
+        finished_at = now(),
+        updated_at = now()
+      WHERE org_id = ${orgId};
+    `;
+
     return res.status(200).json({
       ok: true,
       headers,
       rows,
       inserted,
-      skipped,
     });
   } catch (err) {
-    console.error("[upload-vendors-csv] ERROR:", err);
+    console.error("[upload-vendors-csv]", err);
     return res.status(500).json({
       ok: false,
       error: err.message || "Upload failed",
     });
-  } finally {
-    // clean up temp file if possible
-    try {
-      if (tempFilepath) fs.unlinkSync(tempFilepath);
-    } catch {}
   }
 }
