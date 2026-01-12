@@ -3,8 +3,8 @@
 // INT-safe • Schema-correct • Build-safe • Non-blocking
 // ============================================================
 
-import { sql } from "../../../lib/db";
-import { resolveOrg } from "../../../lib/resolveOrg";
+import { sql } from "@db";
+import { resolveOrg } from "@resolveOrg";
 import { openai } from "../../../lib/openaiClient";
 
 export default async function handler(req, res) {
