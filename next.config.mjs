@@ -3,18 +3,17 @@ import path from "path";
 
 const nextConfig = {
   reactStrictMode: true,
-
   output: "standalone",
 
   experimental: {
     optimizePackageImports: [],
   },
 
-  // ❌ REMOVE TURBOPACK — it ignores webpack aliases
-  // turbopack: {},
+  // 🚫 Disable Turbopack (Webpack-only build)
+  turbopack: false,
 
   webpack: (config) => {
-    // Required fallbacks (xlsx, etc.)
+    // Required fallbacks (xlsx, pdf, etc.)
     config.resolve.fallback = {
       ...config.resolve.fallback,
       fs: false,
@@ -22,7 +21,7 @@ const nextConfig = {
       crypto: false,
     };
 
-    // ✅ Webpack aliases (NOW ACTUALLY USED)
+    // ✅ Absolute aliases (server-safe)
     config.resolve.alias = {
       ...config.resolve.alias,
       "@db": path.resolve(process.cwd(), "src/lib/db.js"),
