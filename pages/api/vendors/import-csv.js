@@ -2,8 +2,8 @@
 // GOD MODE — CSV Vendor Import (V2, UUID-SAFE)
 // Internal CSV parser (no papaparse) for maximum stability.
 
-import { sql } from "../../../lib/db";
-import { resolveOrg } from "../../../lib/resolveOrg";
+import { sql } from "@db";
+import { resolveOrg } from "@resolveOrg";
 
 export const config = {
   api: {
