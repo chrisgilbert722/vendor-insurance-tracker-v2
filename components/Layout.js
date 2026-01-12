@@ -16,9 +16,23 @@ function extractVendorId(path) {
 
 export default function Layout({ children }) {
   const router = useRouter();
-
-  // Use asPath for active highlighting + vendor id parsing
   const pathname = router.asPath || router.pathname || "";
+
+  // 🔥 HARD KILL SWITCH — NO APP CHROME DURING ONBOARDING
+  if (pathname.startsWith("/onboarding")) {
+    return (
+      <div
+        style={{
+          minHeight: "100vh",
+          width: "100vw",
+          background:
+            "radial-gradient(circle at top left,#020617 0,#020617 45%,#000 100%)",
+        }}
+      >
+        {children}
+      </div>
+    );
+  }
 
   const { activeOrg, activeOrgId } = useOrg() || {};
 
@@ -94,7 +108,6 @@ export default function Layout({ children }) {
       >
         <Header />
 
-        {/* Optional role-loading hint */}
         {loadingRole && (
           <div
             style={{
@@ -151,7 +164,7 @@ export default function Layout({ children }) {
         ❓
       </button>
 
-      {/* Global Chat (safe during onboarding) */}
+      {/* Global Chat */}
       <SupportChatPanel
         orgId={activeOrgId || null}
         vendorId={vendorId}
