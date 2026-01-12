@@ -3,7 +3,28 @@ import { useOrg } from "../../context/OrgContext";
 import GlobalVendorTable from "../../components/vendors/GlobalVendorTable";
 
 export default function VendorsIndexPage() {
-  const { activeOrgId: orgId } = useOrg();
+  const { activeOrgId: orgId, loading } = useOrg();
+
+  // 🔒 CRITICAL GUARD:
+  // Do NOT render vendors table until org auto-selection is complete
+  if (loading || !orgId) {
+    return (
+      <div
+        style={{
+          minHeight: "100vh",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          color: "#9ca3af",
+          fontSize: 14,
+          background:
+            "radial-gradient(circle at top left,#020617 0,#020617 45%,#000 100%)",
+        }}
+      >
+        Loading organization…
+      </div>
+    );
+  }
 
   return (
     <div
@@ -142,7 +163,7 @@ export default function VendorsIndexPage() {
           </div>
         </div>
 
-        {/* GVI TABLE */}
+        {/* GVI TABLE — orgId is GUARANTEED here */}
         <GlobalVendorTable orgId={orgId} />
       </div>
     </div>
