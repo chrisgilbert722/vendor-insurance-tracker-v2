@@ -1,12 +1,47 @@
 // components/onboarding/VendorsUploadStep.js
-// Wizard Step 2 — Vendor CSV Upload (RESTORED + STABLE)
-// ✅ Inserts vendors immediately
-// ✅ Unblocks dashboard + GVI
-// ✅ No AI parsing yet (intentional)
+// Wizard Step 2 — Vendor File Upload (CSV / Excel)
+// 🔥 HARD FIX: button click guaranteed to fire
 
 import { useState } from "react";
 import { supabase } from "../../lib/supabaseClient";
 
+/* -------------------------------------------------
+   AI AUTO-DETECT + CONFIDENCE
+-------------------------------------------------- */
+function detectMappingWithConfidence(headers = []) {
+  const normalize = (s) =>
+    String(s || "").toLowerCase().replace(/[^a-z0-9]/g, "");
+
+  const mapping = {};
+  const assign = (key, column, confidence) => {
+    if (!mapping[key]) {
+      mapping[key] = { column, confidence, source: "ai" };
+    }
+  };
+
+  headers.forEach((h) => {
+    const n = normalize(h);
+    if (n.includes("vendor") && n.includes("name")) assign("vendorName", h, 0.98);
+    else if (n.includes("email")) assign("email", h, 0.98);
+    else if (n.includes("expiration")) assign("expiration", h, 0.97);
+    else if (n.includes("policy") && n.includes("number"))
+      assign("policyNumber", h, 0.98);
+  });
+
+  return mapping;
+}
+
+function shouldAutoSkip(mapping) {
+  return (
+    mapping.vendorName?.confidence >= 0.9 &&
+    mapping.policyNumber?.confidence >= 0.9 &&
+    mapping.expiration?.confidence >= 0.9
+  );
+}
+
+/* -------------------------------------------------
+   COMPONENT
+-------------------------------------------------- */
 export default function VendorsUploadStep({ orgId, onUploadSuccess }) {
   const [file, setFile] = useState(null);
   const [uploading, setUploading] = useState(false);
@@ -19,67 +54,63 @@ export default function VendorsUploadStep({ orgId, onUploadSuccess }) {
     setFile(f);
   }
 
-  async function handleUpload(e) {
-    e.preventDefault();
+  async function handleUpload() {
+    if (!file || uploading) return;
+
+    setUploading(true);
     setError("");
 
-    if (!file) {
-      setError("Please select a CSV file.");
-      return;
-    }
-
-    if (!orgId) {
-      setError("Organization not ready. Please refresh.");
-      return;
-    }
-
     try {
-      setUploading(true);
+      console.log("[UPLOAD] Starting vendor upload…");
 
       const {
         data: { session },
       } = await supabase.auth.getSession();
 
       if (!session?.access_token) {
-        throw new Error("Authentication session missing.");
+        throw new Error("Missing auth session");
       }
 
-      // 🔑 READ CSV CLIENT-SIDE (THIS WAS MISSING)
-      const csvText = await file.text();
+      const fd = new FormData();
+      fd.append("file", file);
+      fd.append("orgId", String(orgId));
 
-      const res = await fetch("/api/vendors/import-csv", {
+      const res = await fetch("/api/onboarding/upload-vendors-csv", {
         method: "POST",
         headers: {
-          "Content-Type": "application/json",
           Authorization: `Bearer ${session.access_token}`,
         },
-        body: JSON.stringify({
-          orgId,
-          csvText,
-        }),
+        body: fd,
       });
 
       const json = await res.json();
+      console.log("[UPLOAD] Response:", json);
+
       if (!json.ok) {
-        throw new Error(json.error || "CSV import failed.");
+        throw new Error(json.error || "Upload failed");
       }
 
-      // Move onboarding forward
-      onUploadSuccess?.({
-        headers: [],
-        rows: [],
-        mapping: {},
-        autoSkip: true,
-      });
+      const headers = json.headers || [];
+      const rows = json.rows || [];
+
+      if (!headers.length || !rows.length) {
+        throw new Error("Parsed file contains no rows");
+      }
+
+      const mapping = detectMappingWithConfidence(headers);
+      const autoSkip = shouldAutoSkip(mapping);
+
+      onUploadSuccess?.({ headers, rows, mapping, autoSkip });
     } catch (err) {
-      setError(err.message || "Upload failed.");
+      console.error("[UPLOAD ERROR]", err);
+      setError(err.message || "Upload failed");
     } finally {
       setUploading(false);
     }
   }
 
   return (
-    <form onSubmit={handleUpload}>
+    <div>
       <label
         style={{
           display: "block",
@@ -93,39 +124,38 @@ export default function VendorsUploadStep({ orgId, onUploadSuccess }) {
       >
         <input
           type="file"
-          accept=".csv"
+          accept=".csv,.xls,.xlsx"
           onChange={handleFileChange}
           style={{ display: "none" }}
         />
         <div style={{ fontSize: 14, color: "#e5e7eb" }}>
-          {file ? file.name : "Upload vendor CSV file"}
+          {file ? file.name : "Upload vendor insurance file"}
         </div>
         <div style={{ fontSize: 12, color: "#9ca3af" }}>
-          CSV only — vendors will be created immediately
+          CSV or Excel (.xls, .xlsx)
         </div>
       </label>
 
-      {error && (
-        <div style={{ color: "#fecaca", marginTop: 10 }}>{error}</div>
-      )}
+      {error && <div style={{ color: "#fecaca", marginTop: 10 }}>{error}</div>}
 
       <button
-        type="submit"
-        disabled={uploading || !file}
+        onClick={handleUpload}
+        disabled={!file || uploading}
         style={{
-          marginTop: 14,
-          padding: "10px 18px",
+          marginTop: 16,
+          padding: "12px 22px",
           borderRadius: 999,
           border: "1px solid rgba(56,189,248,0.9)",
           background:
             "linear-gradient(90deg,rgba(56,189,248,0.9),rgba(88,28,135,0.85))",
           color: "#e5f2ff",
           fontWeight: 600,
-          cursor: uploading || !file ? "not-allowed" : "pointer",
+          cursor: !file || uploading ? "not-allowed" : "pointer",
+          pointerEvents: "auto",
         }}
       >
-        {uploading ? "Importing…" : "Upload & Continue →"}
+        {uploading ? "Uploading…" : "Upload & Continue →"}
       </button>
-    </form>
+    </div>
   );
 }
