@@ -1,8 +1,9 @@
 // pages/api/onboarding/status.js
 // ============================================================
-// UUID-safe onboarding status — HARDENED
-// - ALWAYS returns a step for valid orgs
-// - NEVER leaves UI in loading limbo
+// UUID-safe onboarding status — FINAL FIX
+// - Accepts orgId from query string (UI observer)
+// - Falls back to resolveOrg for other callers
+// - NEVER bricks UI
 // - Backend is single source of truth
 // ============================================================
 
@@ -15,10 +16,34 @@ export default async function handler(req, res) {
   }
 
   try {
-    // 🔑 Resolve external_uuid → internal INT org id
-    const orgIdInt = await resolveOrg(req, res);
+    /* ----------------------------------------------------------
+       1) RESOLVE ORG (QUERY → FALLBACK)
+    ---------------------------------------------------------- */
+    let orgIdInt = null;
 
-    // If org truly cannot be resolved, fail-open to step 1
+    const orgUuid =
+      req.query?.orgId ||
+      req.body?.orgId ||
+      req.headers["x-org-id"] ||
+      null;
+
+    // 🔑 PRIMARY PATH — observer sends orgId via query
+    if (orgUuid) {
+      const rows = await sql`
+        SELECT id
+        FROM organizations
+        WHERE external_uuid = ${orgUuid}
+        LIMIT 1;
+      `;
+      orgIdInt = rows?.[0]?.id ?? null;
+    }
+
+    // 🔁 FALLBACK — legacy callers
+    if (!orgIdInt) {
+      orgIdInt = await resolveOrg(req, res);
+    }
+
+    // 🚨 FAIL-OPEN: org not resolvable
     if (!orgIdInt) {
       return res.status(200).json({
         ok: true,
@@ -31,9 +56,9 @@ export default async function handler(req, res) {
       });
     }
 
-    // ----------------------------------------------------------
-    // Core org state (UI driver)
-    // ----------------------------------------------------------
+    /* ----------------------------------------------------------
+       2) CORE ORG STATE (UI DRIVER)
+    ---------------------------------------------------------- */
     const [org] = await sql`
       SELECT onboarding_step, dashboard_tutorial_enabled
       FROM organizations
@@ -41,13 +66,12 @@ export default async function handler(req, res) {
       LIMIT 1;
     `;
 
-    // Org exists but row missing → default safely
     const onboardingStep = Number(org?.onboarding_step ?? 0);
     const onboardingComplete = onboardingStep >= 6;
 
-    // ----------------------------------------------------------
-    // Live onboarding telemetry (optional)
-    // ----------------------------------------------------------
+    /* ----------------------------------------------------------
+       3) LIVE TELEMETRY (BEST EFFORT)
+    ---------------------------------------------------------- */
     const [state] = await sql`
       SELECT current_step, progress, status
       FROM org_onboarding_state
@@ -55,22 +79,25 @@ export default async function handler(req, res) {
       LIMIT 1;
     `;
 
+    /* ----------------------------------------------------------
+       4) RESPONSE (ALWAYS COMPLETE)
+    ---------------------------------------------------------- */
     return res.status(200).json({
       ok: true,
 
-      // UI flow (ALWAYS PRESENT)
+      // UI flow
       onboardingStep,
       onboardingComplete,
       dashboardTutorialEnabled:
         org?.dashboard_tutorial_enabled === true,
 
-      // Telemetry (best-effort)
+      // Telemetry
       currentStep: state?.current_step ?? null,
       progress: Number(state?.progress ?? 0),
       status: state?.status ?? "idle",
     });
   } catch (err) {
-    // 🚨 LAST-RESORT FAIL-OPEN (NEVER brick UI)
+    // 🚨 LAST-RESORT FAIL-OPEN (NEVER BLOCK UI)
     console.error("[onboarding/status] fail-open:", err);
 
     return res.status(200).json({
