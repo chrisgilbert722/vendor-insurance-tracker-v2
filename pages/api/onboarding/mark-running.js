@@ -2,8 +2,8 @@
 // Lightweight status bump for the cockpit UI (SAFE)
 // Purpose: drive /api/onboarding/status → green dot + animated bar
 
-import { sql } from "@db";
-import { resolveOrg } from "@resolveOrg";
+import { sql } from "../../../lib/db";
+import { resolveOrg } from "../../../lib/server/resolveOrg";
 
 export const runtime = "nodejs";
 
@@ -25,11 +25,11 @@ export default async function handler(req, res) {
         progress = GREATEST(COALESCE(progress, 0), 65),
         updated_at = NOW()
       WHERE org_id = ${orgIdInt};
-    `.catch(async () => {
-      // If table doesn't exist, fail open
+    `.catch(() => {
+      // fail open if table missing
     });
 
-    // Also bump organizations.onboarding_step forward if you're using that
+    // Also bump organizations.onboarding_step forward if used
     await sql`
       UPDATE organizations
       SET onboarding_step = GREATEST(COALESCE(onboarding_step, 0), 4)
