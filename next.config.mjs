@@ -1,4 +1,3 @@
-/** @type {import('next').NextConfig} */
 import path from "path";
 
 const nextConfig = {
@@ -10,7 +9,6 @@ const nextConfig = {
   },
 
   webpack: (config) => {
-    // Required fallbacks (xlsx, pdf, etc.)
     config.resolve.fallback = {
       ...config.resolve.fallback,
       fs: false,
@@ -18,7 +16,6 @@ const nextConfig = {
       crypto: false,
     };
 
-    // ✅ Absolute aliases (server-safe)
     config.resolve.alias = {
       ...config.resolve.alias,
       "@db": path.resolve(process.cwd(), "src/lib/db.js"),
