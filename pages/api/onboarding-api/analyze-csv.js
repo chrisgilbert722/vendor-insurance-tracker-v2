@@ -7,7 +7,7 @@
 
 import { analyzeVendorCsv } from "../../../lib/onboardingAiBrain";
 import { sql } from "../../../lib/db";
-import { resolveOrg } from "../../../lib/resolveOrg";
+import { resolveOrg } from "@resolveOrg";
 
 export default async function handler(req, res) {
   if (req.method !== "POST") {
