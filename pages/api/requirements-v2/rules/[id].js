@@ -1,6 +1,6 @@
 // pages/api/requirements-v2/rules/[id].js
 import { sql } from "../../../../lib/db";
-import { resolveOrg } from "../../../../lib/resolveOrg";
+import { resolveOrg } from "../../../../lib/server/resolveOrg";
 
 export const config = {
   api: { bodyParser: true },
