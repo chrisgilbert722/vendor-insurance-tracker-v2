@@ -2,51 +2,14 @@
 // =============================================================
 // MULTI-DOCUMENT INTELLIGENCE V2 — STEP 2C
 // ENDORSEMENT EXTRACTOR (AI, Waiver, Primary/Noncontributory)
-//
-// Accepts a PDF (endorsement / AI / waiver form) and extracts:
-//  - formNumber       e.g. "CG 20 10", "CG 20 37"
-//  - editionDate      e.g. "12-19"
-//  - policyNumber
-//  - endorsementType  e.g. "Additional Insured", "Waiver of Subrogation"
-//  - additionalInsured: boolean
-//  - waiverOfSubrogation: boolean
-//  - primaryNonContributory: boolean
-//  - ongoingOps: boolean
-//  - completedOps: boolean
-//  - blanket: boolean
-//  - scheduled: boolean
-//  - namedParties: [ { name, role } ]
-//  - appliesToOperations: string|null
-//  - appliesToLocations: string|null
-//  - appliesToProductsCompletedOps: boolean|null
-//  - otherNotes: string|null
-//
-// If vendorId + orgId are provided, we will optionally:
-//
-//  - Load vendors.requirements_json
-//  - If it has a `requiredEndorsements` array (like ["CG2010", "CG2037"]),
-//    we will compare what was found, and create alerts if required
-//    endorsements / conditions are missing.
-//
-// Returns:
-// {
-//   ok: true,
-//   fileUrl,
-//   vendorId,
-//   orgId,
-//   data: { ...above fields },
-//   matchesRequired: { missing: [], satisfied: [] },
-//   confidence,
-//   reason
-// }
 // =============================================================
 
 import formidable from "formidable";
 import fs from "fs";
 import pdfParse from "pdf-parse";
-import { supabase } from "../../../lib/supabaseClient";
-import { openai } from "../../../lib/openaiClient";
-import { sql } from "../../../lib/db";
+import { supabaseServer } from "@/lib/supabaseServer";
+import { openai } from "@/lib/openaiClient";
+import { sql } from "@db";
 
 export const config = { api: { bodyParser: false } };
 
@@ -67,6 +30,8 @@ export default async function handler(req, res) {
       res.setHeader("Allow", ["POST"]);
       return res.status(405).json({ ok: false, error: "Use POST." });
     }
+
+    const supabase = supabaseServer();
 
     const { fields, files } = await parseForm(req);
 
@@ -98,26 +63,25 @@ export default async function handler(req, res) {
     const buffer = fs.readFileSync(file.filepath);
 
     let fileUrl = null;
-    if (supabase) {
-      const safeName = file.originalFilename.replace(/[^a-zA-Z0-9.\-_]/g, "_");
-      const path = `docs/${orgId || "no-org"}/vendors/${
-        vendorId || "no-vendor"
-      }/${Date.now()}-${safeName}`;
 
-      const { error } = await supabase.storage
-        .from("uploads")
-        .upload(path, buffer, {
-          contentType: "application/pdf",
-        });
+    const safeName = file.originalFilename.replace(/[^a-zA-Z0-9.\-_]/g, "_");
+    const path = `docs/${orgId || "no-org"}/vendors/${
+      vendorId || "no-vendor"
+    }/${Date.now()}-${safeName}`;
 
-      if (error) throw new Error("Supabase upload failed.");
+    const { error } = await supabase.storage
+      .from("uploads")
+      .upload(path, buffer, {
+        contentType: "application/pdf",
+      });
 
-      const { data: pub } = supabase.storage
-        .from("uploads")
-        .getPublicUrl(path);
+    if (error) throw new Error("Supabase upload failed.");
 
-      fileUrl = pub?.publicUrl || null;
-    }
+    const { data: pub } = supabase.storage
+      .from("uploads")
+      .getPublicUrl(path);
+
+    fileUrl = pub?.publicUrl || null;
 
     // =========================================================
     // 2️⃣ EXTRACT TEXT
@@ -133,64 +97,7 @@ export default async function handler(req, res) {
     // 3️⃣ RUN AI ENDORSEMENT EXTRACTION
     // =========================================================
     const prompt = `
-You are an expert in insurance endorsements. You will extract structured data from the OCR text of an insurance endorsement form, which may be:
-
-- ISO CG 20 10 (Additional Insured - Ongoing Operations)
-- ISO CG 20 37 (Additional Insured - Completed Operations)
-- Blanket additional insured endorsements
-- Waiver of Subrogation endorsements
-- Primary & Noncontributory endorsements
-- Combined AI + Waiver + P/NC endorsements
-- Other endorsement types
-
-Return ONLY JSON in this exact shape:
-
-{
-  "formNumber": "string|null",
-  "editionDate": "string|null",
-  "policyNumber": "string|null",
-  "endorsementType": "string|null",
-
-  "additionalInsured": boolean,
-  "waiverOfSubrogation": boolean,
-  "primaryNonContributory": boolean,
-
-  "ongoingOps": boolean,
-  "completedOps": boolean,
-
-  "blanket": boolean,
-  "scheduled": boolean,
-
-  "namedParties": [
-    {
-      "name": "string",
-      "role": "Owner / GC / Additional Insured / Lender / Other"
-    }
-  ],
-
-  "appliesToOperations": "string|null",
-  "appliesToLocations": "string|null",
-  "appliesToProductsCompletedOps": boolean|null,
-
-  "otherNotes": "string|null",
-
-  "confidence": number between 0 and 1,
-  "reason": "short explanation (1-3 sentences)"
-}
-
-Rules:
-- "formNumber" can be like "CG 20 10", "CG 20 37", "CG 24 04", etc.
-- "editionDate" is often shown as MM YY (e.g. 12 19) or similar; keep as given, or null if not sure.
-- "endorsementType" should be human readable, e.g. "Additional Insured - Ongoing Operations".
-- "additionalInsured" true if this endorsement grants AI status.
-- "waiverOfSubrogation" true if it states waiver of subrogation applies.
-- "primaryNonContributory" true if the endorsement uses "primary and noncontributory" language.
-- "ongoingOps" true if it clearly references ongoing operations.
-- "completedOps" true if it clearly references completed operations.
-- "blanket" true if wording suggests "any person or organization you are required by written contract" (i.e. not specifically scheduled).
-- "scheduled" true if specific entities are listed by name as additional insured.
-- "namedParties" should list any specific additional insured entities by name, if present.
-- If there is no clear information, use null/false but do not guess.
+You are an expert in insurance endorsements. You will extract structured data from the OCR text of an insurance endorsement form.
 
 Here is the OCR text:
 
@@ -251,8 +158,7 @@ ${text}
 
     // =========================================================
     // 4️⃣ OPTIONAL: Compare with vendor.requiredEndorsements
-    //    and create alerts if missing.
-// =========================================================
+    // =========================================================
     let matchesRequired = { missing: [], satisfied: [] };
 
     if (vendorId && orgId) {
@@ -270,9 +176,8 @@ ${text}
           ? req.requiredEndorsements
           : [];
 
-        // Normalize found formNumber
         const foundForm =
-          (data.formNumber || "").replace(/\s+/g, "").toUpperCase(); // e.g. "CG2010"
+          (data.formNumber || "").replace(/\s+/g, "").toUpperCase();
 
         for (const code of required) {
           const normReq = (code || "").replace(/\s+/g, "").toUpperCase();
@@ -283,7 +188,6 @@ ${text}
           }
         }
 
-        // If something required is still missing, log alert/timeline
         if (matchesRequired.missing.length > 0) {
           const missingLabel = matchesRequired.missing.join(", ");
 
@@ -313,7 +217,6 @@ ${text}
             );
           `;
         } else if (required.length > 0 && matchesRequired.satisfied.length > 0) {
-          // Everything satisfied: log a positive event
           await sql`
             INSERT INTO system_timeline (
               org_id, vendor_id, action, message, severity
