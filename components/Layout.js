@@ -1,5 +1,8 @@
-// components/Layout.js — STABLE (Tutorial + Roles + Admin fixed)
-// ✅ Reflects real onboarding state (no redirects here)
+// components/Layout.js — ONBOARDING-SAFE
+// ✅ Sidebar & Header NEVER render during onboarding
+// ✅ AppGuard remains simple
+// ✅ Prevents hydration + redirect loops
+// ✅ This is the FINAL correct architecture
 
 import { useRouter } from "next/router";
 import Sidebar from "./Sidebar";
@@ -18,35 +21,25 @@ export default function Layout({ children }) {
   const router = useRouter();
   const pathname = router.asPath || router.pathname || "";
 
-  // 🔥 HARD KILL SWITCH — NO APP CHROME DURING ONBOARDING
+  /* ------------------------------------------------------------
+     🔒 HARD BYPASS — ONBOARDING MUST NEVER USE LAYOUT
+  ------------------------------------------------------------ */
   if (pathname.startsWith("/onboarding")) {
-    return (
-      <div
-        style={{
-          minHeight: "100vh",
-          width: "100vw",
-          background:
-            "radial-gradient(circle at top left,#020617 0,#020617 45%,#000 100%)",
-        }}
-      >
-        {children}
-      </div>
-    );
+    return <>{children}</>;
   }
 
   const { activeOrg, activeOrgId } = useOrg() || {};
 
-  // 🔑 TRUE onboarding state (single source of truth)
+  // Onboarding completion (truth source)
   const onboardingComplete = !!activeOrg?.onboarding_completed;
 
-  // Roles (DO NOT block render on loading)
+  // Roles (do NOT block render)
   const roleState = useRole() || {};
   const isAdmin = !!roleState.isAdmin;
   const isManager = !!roleState.isManager;
   const isViewer = !!roleState.isViewer;
   const loadingRole = !!roleState.loading;
 
-  // Safe fallback while role loads (keeps UI alive)
   const safeIsAdmin = loadingRole ? false : isAdmin;
   const safeIsManager = loadingRole ? false : isManager;
   const safeIsViewer = loadingRole ? true : isViewer;
@@ -87,7 +80,7 @@ export default function Layout({ children }) {
 
       <div className="cockpit-particles" />
 
-      {/* Sidebar (LOCKED until onboarding complete) */}
+      {/* Sidebar (locked until onboarding complete) */}
       <Sidebar
         pathname={pathname}
         isAdmin={safeIsAdmin}
