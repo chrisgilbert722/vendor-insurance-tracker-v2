@@ -2,8 +2,8 @@
 // Lightweight status bump for the cockpit UI (SAFE)
 // Purpose: drive /api/onboarding/status → green dot + animated bar
 
-import { sql } from "../../../lib/db";
-import { resolveOrg } from "../../../lib/resolveOrg";
+import { sql } from "@db";
+import { resolveOrg } from "@resolveOrg";
 
 export const runtime = "nodejs";
 
