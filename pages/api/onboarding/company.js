@@ -1,5 +1,6 @@
-import { sql } from "../../../lib/db";
-import { getUserOrg } from "../../../lib/getUserOrg"; // your existing helper
+// pages/api/onboarding/company.js
+import { sql } from "@db";
+import { getUserOrg } from "@/lib/getUserOrg";
 
 export default async function handler(req, res) {
   if (req.method !== "POST") {
@@ -8,6 +9,8 @@ export default async function handler(req, res) {
 
   try {
     const { orgId } = await getUserOrg(req, res);
+    if (!orgId) return; // getUserOrg already responded
+
     const { companyName, industry, hqLocation, vendorCount } = req.body;
 
     await sql`
@@ -22,9 +25,9 @@ export default async function handler(req, res) {
       WHERE id = ${orgId};
     `;
 
-    res.json({ ok: true });
+    return res.json({ ok: true });
   } catch (err) {
-    console.error("[onboarding/company]", err);
-    res.status(500).json({ ok: false, error: "Server error" });
+    console.error("[onboarding/company] error:", err);
+    return res.status(500).json({ ok: false, error: "Server error" });
   }
 }
