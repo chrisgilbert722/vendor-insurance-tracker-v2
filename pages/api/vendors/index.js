@@ -3,7 +3,7 @@
 // Returns raw vendor list for dashboard, dropdowns, vendors page
 
 import { sql } from "../../../lib/db";
-import { resolveOrg } from "../../../lib/resolveOrg";
+import { resolveOrg } from "../../../lib/server/resolveOrg";
 
 export default async function handler(req, res) {
   if (req.method !== "GET") {
