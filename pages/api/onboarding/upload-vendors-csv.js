@@ -1,9 +1,10 @@
 // pages/api/onboarding/upload-vendors-csv.js
 // PHASE 1 — Stable Ingest (CSV + Excel)
-// ✅ ACTUALLY CREATES VENDORS + POLICIES
-// ✅ Never blocks onboarding
-// ✅ UUID-safe + membership-safe
-// ✅ Dashboard / GVI will populate immediately
+// ✅ Auth (Supabase) for user
+// ✅ Resolve org via org membership
+// ✅ Upload raw file to storage
+// ✅ Insert vendor_uploads row
+// ✅ INSERT vendors into Neon (vendors table) so dashboard/vendors populate
 
 import formidable from "formidable";
 import fs from "fs";
@@ -26,12 +27,36 @@ function getBearerToken(req) {
   return auth.startsWith("Bearer ") ? auth.slice(7) : null;
 }
 
-// Normalize common CSV headers
-function pick(row, keys) {
-  for (const k of keys) {
-    if (row[k] !== undefined && row[k] !== "") return row[k];
-  }
-  return null;
+function str(v) {
+  return v == null ? "" : String(v).trim();
+}
+
+// Heuristic extraction (handles your test CSV + most common headers)
+function extractVendorRow(row) {
+  const name =
+    str(row.vendor_name) ||
+    str(row.vendor) ||
+    str(row.vendorName) ||
+    str(row.name) ||
+    str(row.company) ||
+    str(row.company_name) ||
+    str(row.insured) ||
+    "";
+
+  const email = str(row.email) || str(row.contact_email) || str(row.contactEmail) || "";
+
+  const category =
+    str(row.category) ||
+    str(row.trade) ||
+    str(row.industry) ||
+    str(row.profession) ||
+    "General";
+
+  // optional (we are not depending on policies being inserted)
+  const policyNumber = str(row.policy_number) || str(row.policyNumber) || str(row.policy) || "";
+  const expiration = str(row.expiration_date) || str(row.expiration) || str(row.expDate) || "";
+
+  return { name, email, category, policyNumber, expiration };
 }
 
 export default async function handler(req, res) {
@@ -40,12 +65,13 @@ export default async function handler(req, res) {
   }
 
   try {
-    /* -------------------------------------------------
-       AUTH
-    -------------------------------------------------- */
+    // 1) AUTH
     const token = getBearerToken(req);
     if (!token) {
-      return res.status(401).json({ ok: false, error: "Missing session" });
+      return res.status(401).json({
+        ok: false,
+        error: "Authentication session missing. Please refresh.",
+      });
     }
 
     const { data, error } = await supabaseAdmin.auth.getUser(token);
@@ -55,9 +81,7 @@ export default async function handler(req, res) {
 
     const userId = data.user.id;
 
-    /* -------------------------------------------------
-       PARSE FORM
-    -------------------------------------------------- */
+    // 2) PARSE MULTIPART
     const form = formidable({ multiples: false });
     const [fields, files] = await form.parse(req);
 
@@ -66,17 +90,12 @@ export default async function handler(req, res) {
       return res.status(400).json({ ok: false, error: "No file uploaded" });
     }
 
-    const orgUuid = Array.isArray(fields.orgId)
-      ? fields.orgId[0]
-      : fields.orgId;
-
+    const orgUuid = Array.isArray(fields.orgId) ? fields.orgId[0] : fields.orgId;
     if (!orgUuid) {
       return res.status(400).json({ ok: false, error: "Missing orgId" });
     }
 
-    /* -------------------------------------------------
-       RESOLVE ORG + MEMBERSHIP
-    -------------------------------------------------- */
+    // 3) RESOLVE ORG + MEMBERSHIP
     const orgRows = await sql`
       SELECT o.id
       FROM organizations o
@@ -87,33 +106,44 @@ export default async function handler(req, res) {
     `;
 
     if (!orgRows.length) {
-      return res.status(403).json({ ok: false, error: "Org access denied" });
+      return res.status(400).json({
+        ok: false,
+        error: "Organization not found for orgId",
+      });
     }
 
-    const orgId = orgRows[0].id;
+    const orgIdInt = orgRows[0].id;
 
-    /* -------------------------------------------------
-       PARSE FILE
-    -------------------------------------------------- */
+    // 4) PARSE FILE CONTENT
     const filename = file.originalFilename || "vendors";
-    const ext = filename.split(".").pop().toLowerCase();
+    const safeFilename = filename.replace(/\s+/g, "_");
+    const ext = safeFilename.split(".").pop().toLowerCase();
 
     let headers = [];
     let rows = [];
 
     if (ext === "csv") {
       const text = fs.readFileSync(file.filepath, "utf8");
-      const lines = text.split(/\r?\n/).filter(Boolean);
-      headers = lines[0].split(",").map((h) => h.trim());
-      rows = lines.slice(1).map((l) => {
-        const cols = l.split(",");
-        const obj = {};
-        headers.forEach((h, i) => (obj[h] = (cols[i] || "").trim()));
-        return obj;
-      });
+      const lines = text
+        .split(/\r?\n/)
+        .map((l) => l.trim())
+        .filter(Boolean);
+
+      if (lines.length) {
+        headers = lines[0].split(",").map((h) => h.trim());
+        rows = lines.slice(1).map((line) => {
+          const cols = line.split(",");
+          const obj = {};
+          headers.forEach((h, i) => {
+            obj[h] = (cols[i] || "").trim();
+          });
+          return obj;
+        });
+      }
     } else if (ext === "xls" || ext === "xlsx") {
       const mod = await import("xlsx");
       const XLSX = mod.default || mod;
+
       const workbook = XLSX.read(fs.readFileSync(file.filepath));
       const sheet = workbook.Sheets[workbook.SheetNames[0]];
       rows = XLSX.utils.sheet_to_json(sheet, { defval: "" });
@@ -122,72 +152,75 @@ export default async function handler(req, res) {
       return res.status(400).json({ ok: false, error: "Unsupported file type" });
     }
 
-    /* -------------------------------------------------
-       INSERT VENDORS + POLICIES
-    -------------------------------------------------- */
-    let createdVendors = 0;
-
-    for (const row of rows) {
-      const name = pick(row, ["vendor_name", "vendor", "company", "name"]);
-      if (!name) continue;
-
-      const email = pick(row, ["email", "contact_email"]);
-      const category = pick(row, ["category", "trade", "industry"]) || "General";
-
-      const vendorRes = await sql`
-        INSERT INTO vendors (org_id, name, email, category)
-        VALUES (${orgId}, ${name}, ${email}, ${category})
-        RETURNING id;
-      `;
-
-      const vendorId = vendorRes[0].id;
-      createdVendors++;
-
-      const policyNumber = pick(row, ["policy_number", "policy"]);
-      const expiration = pick(row, ["expiration", "expiration_date"]);
-      const coverage = pick(row, ["coverage", "policy_type"]);
-
-      if (policyNumber || expiration) {
-        await sql`
-          INSERT INTO policies (
-            org_id,
-            vendor_id,
-            policy_number,
-            coverage_type,
-            expiration_date
-          )
-          VALUES (
-            ${orgId},
-            ${vendorId},
-            ${policyNumber},
-            ${coverage},
-            ${expiration}
-          );
-        `;
-      }
+    // 5) UPLOAD RAW FILE TO STORAGE (best-effort)
+    try {
+      const objectPath = `vendors-csv/${orgUuid}/${Date.now()}-${safeFilename}`;
+      await supabaseAdmin.storage
+        .from("vendor-uploads")
+        .upload(objectPath, fs.createReadStream(file.filepath), {
+          contentType: file.mimetype || "application/octet-stream",
+          duplex: "half",
+        });
+    } catch (e) {
+      console.warn("[upload-vendors-csv] storage upload failed (continuing):", e?.message);
     }
 
-    /* -------------------------------------------------
-       STORAGE UPLOAD (UNCHANGED)
-    -------------------------------------------------- */
-    const safeFilename = filename.replace(/\s+/g, "_");
-    const objectPath = `vendors-csv/${orgUuid}/${Date.now()}-${safeFilename}`;
+    // 6) INSERT vendor_uploads ROW (best-effort)
+    try {
+      await sql`
+        INSERT INTO vendor_uploads (org_id, filename, mime_type, uploaded_by)
+        VALUES (${orgIdInt}, ${safeFilename}, ${file.mimetype || "application/octet-stream"}, ${userId});
+      `;
+    } catch (e) {
+      console.warn("[upload-vendors-csv] vendor_uploads insert failed (continuing):", e?.message);
+    }
 
-    await supabaseAdmin.storage
-      .from("vendor-uploads")
-      .upload(objectPath, fs.createReadStream(file.filepath), {
-        contentType: file.mimetype || "application/octet-stream",
-        duplex: "half",
-      });
+    // ✅ 7) INSERT VENDORS INTO NEON (THIS IS THE MISSING PIECE)
+    let created = 0;
+    let skipped = 0;
 
-    /* -------------------------------------------------
-       RETURN
-    -------------------------------------------------- */
+    for (const r of rows) {
+      const v = extractVendorRow(r);
+      if (!v.name) {
+        skipped++;
+        continue;
+      }
+
+      // dedupe by (org_id + name) to avoid spam inserts
+      const existing = await sql`
+        SELECT id FROM vendors
+        WHERE org_id = ${orgIdInt}
+          AND name = ${v.name}
+        LIMIT 1;
+      `;
+
+      if (existing.length) {
+        skipped++;
+        continue;
+      }
+
+      await sql`
+        INSERT INTO vendors (org_id, name, email, category)
+        VALUES (${orgIdInt}, ${v.name}, ${v.email || null}, ${v.category || "General"});
+      `;
+
+      created++;
+    }
+
+    // 8) Move org step forward to at least "uploaded" (optional, safe)
+    try {
+      await sql`
+        UPDATE organizations
+        SET onboarding_step = GREATEST(onboarding_step, 1)
+        WHERE id = ${orgIdInt};
+      `;
+    } catch {}
+
     return res.status(200).json({
       ok: true,
       headers,
       rows,
-      createdVendors,
+      inserted: { created, skipped },
     });
   } catch (err) {
     console.error("[upload-vendors-csv]", err);
