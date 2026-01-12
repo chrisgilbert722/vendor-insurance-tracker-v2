@@ -1,6 +1,6 @@
 // pages/api/requirements-v2/rules.js
-import { sql } from "../../../lib/db";
-import { resolveOrg } from "../../../lib/resolveOrg";
+pages/api/vendors/gvi.js
+pages/api/vendors/import-csv.js
 
 export const config = {
   api: {
