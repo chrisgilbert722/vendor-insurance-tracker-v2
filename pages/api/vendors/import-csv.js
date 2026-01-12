@@ -1,8 +1,9 @@
 // pages/api/vendors/import-csv.js
-// GOD MODE — CSV Vendor Import (V2, Dependency-Free)
+// GOD MODE — CSV Vendor Import (V2, UUID-SAFE)
 // Internal CSV parser (no papaparse) for maximum stability.
 
 import { sql } from "../../../lib/db";
+import { resolveOrg } from "../../../lib/resolveOrg";
 
 export const config = {
   api: {
@@ -11,7 +12,7 @@ export const config = {
 };
 
 // ==============================================
-// INTERNAL CSV PARSER — Simple + perfect for vendors
+// INTERNAL CSV PARSER — Simple + stable
 // ==============================================
 function parseCSV(text) {
   if (!text) return [];
@@ -23,52 +24,47 @@ function parseCSV(text) {
 
   if (lines.length < 2) return [];
 
-  // Split header row into columns
   const headers = lines[0].split(",").map((h) => h.trim());
 
-  // Parse each row into an object
-  const rows = lines.slice(1).map((line) => {
+  return lines.slice(1).map((line) => {
     const cols = line.split(",");
     const obj = {};
-
     headers.forEach((h, i) => {
       obj[h] = (cols[i] || "").trim();
     });
-
     return obj;
   });
-
-  return rows;
 }
 
 export default async function handler(req, res) {
   if (req.method !== "POST") {
-    return res.status(405).json({
-      ok: false,
-      error: "POST only",
-    });
+    return res.status(405).json({ ok: false, error: "POST only" });
   }
 
   try {
-    const { orgId, csvText } = req.body || {};
-
+    // 🔑 RESOLVE ORG (UUID → INT)
+    const orgId = await resolveOrg(req, res);
     if (!orgId) {
-      return res.status(400).json({ ok: false, error: "Missing orgId" });
-    }
-
-    if (!csvText || typeof csvText !== "string") {
-      return res
-        .status(400)
-        .json({ ok: false, error: "Missing or invalid CSV text." });
-    }
-
-    // 🔍 Parse CSV text into objects
-    const rows = parseCSV(csvText);
-    if (!rows || rows.length === 0) {
       return res.status(400).json({
         ok: false,
-        error:
-          "CSV appears empty or unparseable. Ensure it includes a header row.",
+        error: "Organization not resolved",
+      });
+    }
+
+    const { csvText } = req.body || {};
+
+    if (!csvText || typeof csvText !== "string") {
+      return res.status(400).json({
+        ok: false,
+        error: "Missing or invalid CSV text.",
+      });
+    }
+
+    const rows = parseCSV(csvText);
+    if (!rows.length) {
+      return res.status(400).json({
+        ok: false,
+        error: "CSV appears empty or invalid.",
       });
     }
 
@@ -78,23 +74,25 @@ export default async function handler(req, res) {
 
     for (const row of rows) {
       const name = (row.vendor_name || row.name || "").trim();
-      const email = (row.email || "").trim();
+      const email = (row.email || "").trim() || null;
       const category = (row.category || "").trim() || "General";
 
       if (!name) {
         results.push({
           row,
           status: "skipped",
-          reason: "Missing vendor_name",
+          reason: "Missing vendor name",
         });
         skipped++;
         continue;
       }
 
-      // Check for duplicates
+      // 🔍 Duplicate check (CORRECT COLUMN)
       const existing = await sql`
-        SELECT id FROM vendors 
-        WHERE org_id = ${orgId} AND vendor_name = ${name}
+        SELECT id FROM vendors
+        WHERE org_id = ${orgId}
+          AND name = ${name}
+        LIMIT 1;
       `;
 
       if (existing.length > 0) {
@@ -107,11 +105,11 @@ export default async function handler(req, res) {
         continue;
       }
 
-      // Insert vendor
+      // ✅ INSERT VENDOR (CORRECT SCHEMA)
       const inserted = await sql`
-        INSERT INTO vendors (org_id, vendor_name, email, category)
-        VALUES (${orgId}, ${name}, ${email || null}, ${category})
-        RETURNING id, vendor_name
+        INSERT INTO vendors (org_id, name, email, category)
+        VALUES (${orgId}, ${name}, ${email}, ${category})
+        RETURNING id, name;
       `;
 
       createdCount++;
@@ -120,7 +118,7 @@ export default async function handler(req, res) {
         row,
         status: "created",
         vendorId: inserted[0].id,
-        name: inserted[0].vendor_name,
+        name: inserted[0].name,
       });
     }
 
@@ -135,9 +133,8 @@ export default async function handler(req, res) {
     console.error("[CSV IMPORT ERROR]", err);
     return res.status(500).json({
       ok: false,
-      error: "CSV import failed.",
+      error: "CSV import failed",
       details: err.message,
     });
   }
 }
-
