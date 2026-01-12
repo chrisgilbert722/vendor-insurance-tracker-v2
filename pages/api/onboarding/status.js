@@ -1,14 +1,10 @@
 // pages/api/onboarding/status.js
 // ============================================================
 // UUID-safe onboarding status — FINAL FIX
-// - Accepts orgId from query string (UI observer)
-// - Falls back to resolveOrg for other callers
-// - NEVER bricks UI
-// - Backend is single source of truth
 // ============================================================
 
-import { sql } from "@db";
-import { resolveOrg } from "@resolveOrg";
+import { sql } from "../../../lib/db";
+import { resolveOrg } from "../../../lib/server/resolveOrg";
 
 export default async function handler(req, res) {
   if (req.method !== "GET") {
@@ -97,7 +93,6 @@ export default async function handler(req, res) {
       status: state?.status ?? "idle",
     });
   } catch (err) {
-    // 🚨 LAST-RESORT FAIL-OPEN (NEVER BLOCK UI)
     console.error("[onboarding/status] fail-open:", err);
 
     return res.status(200).json({
