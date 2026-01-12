@@ -188,7 +188,9 @@ Return ONLY JSON:
       });
 
       const raw = completion.choices?.[0]?.message?.content || "{}";
-      const json = JSON.parse(raw.slice(raw.indexOf("{"), raw.lastIndexOf("}") + 1));
+      const json = JSON.parse(
+        raw.slice(raw.indexOf("{"), raw.lastIndexOf("}") + 1)
+      );
 
       return {
         subject: json.subject || "Insurance Requirements & COI Request",
