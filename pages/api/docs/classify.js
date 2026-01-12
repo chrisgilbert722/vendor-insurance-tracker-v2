@@ -7,8 +7,8 @@
 import formidable from "formidable";
 import fs from "fs";
 import pdfParse from "pdf-parse";
-import { openai } from "@/lib/openaiClient";
-import { supabaseServer } from "@/lib/supabaseServer";
+import { openai } from "../../../lib/openaiClient";
+import { supabaseServer } from "../../../lib/supabaseServer";
 
 export const config = {
   api: {
@@ -61,7 +61,6 @@ export default async function handler(req, res) {
       fields.org?.[0] ||
       null;
 
-    // Validate extension
     if (!file.originalFilename.toLowerCase().endsWith(".pdf")) {
       return res.status(400).json({
         ok: false,
@@ -69,9 +68,6 @@ export default async function handler(req, res) {
       });
     }
 
-    // ==========================================================
-    // 1️⃣ Read PDF buffer + upload to Supabase
-    // ==========================================================
     const buffer = fs.readFileSync(file.filepath);
 
     let fileUrl = null;
@@ -106,9 +102,6 @@ export default async function handler(req, res) {
 
     fileUrl = publicUrlData?.publicUrl || null;
 
-    // ==========================================================
-    // 2️⃣ Extract text from PDF (limited for prompt size)
-    // ==========================================================
     const pdfData = await pdfParse(buffer);
 
     if (!pdfData.text || !pdfData.text.trim()) {
@@ -117,33 +110,12 @@ export default async function handler(req, res) {
 
     const textSnippet = pdfData.text.slice(0, 20000);
 
-    // ==========================================================
-    // 3️⃣ AI CLASSIFICATION PROMPT
-    // ==========================================================
     const prompt = `
 You are an insurance/compliance document classifier.
 
-You will be given the OCR text of a single PDF file that may be any of the following:
+Return ONLY valid JSON.
 
-- Certificate of Insurance (COI)
-- W-9 tax form
-- Business license
-- Insurance endorsement form
-- Contract / agreement
-- Liability waiver / release
-- Safety plan / safety document
-- Other / unknown
-
-Return ONLY valid JSON with this shape:
-
-{
-  "doc_type": "coi" | "w9" | "business_license" | "endorsement" | "contract" | "waiver" | "safety_document" | "other",
-  "subtype": "string or null",
-  "confidence": number between 0 and 1,
-  "reason": "short explanation (1-3 sentences)"
-}
-
-Here is the text:
+Text:
 
 ${textSnippet}
     `.trim();
@@ -152,7 +124,7 @@ ${textSnippet}
       model: "gpt-4.1-mini",
       temperature: 0,
       messages: [
-        { role: "system", content: "Return ONLY valid JSON as specified." },
+        { role: "system", content: "Return ONLY valid JSON." },
         { role: "user", content: prompt },
       ],
     });
@@ -170,8 +142,8 @@ ${textSnippet}
     return res.status(200).json({
       ok: true,
       fileUrl,
-      vendorId: vendorId || null,
-      orgId: orgId || null,
+      vendorId,
+      orgId,
       docType: parsed.doc_type || "other",
       subtype: parsed.subtype || null,
       confidence:
