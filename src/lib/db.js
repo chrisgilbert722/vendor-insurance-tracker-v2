@@ -1,50 +1,16 @@
-// pages/api/vendors/[id].js
-import { sql } from "@db";
-import { resolveOrg } from "@resolveOrg";
+// src/lib/db.js
+// Neon serverless DB helper
+// Exports `sql` for tagged-template queries used across API routes
 
-export default async function handler(req, res) {
-  const { id } = req.query;
-  const vendorId = parseInt(id, 10);
+import "server-only";
+import { neon } from "@neondatabase/serverless";
 
-  if (!vendorId || Number.isNaN(vendorId)) {
-    return res
-      .status(400)
-      .json({ ok: false, error: "Invalid vendor id." });
-  }
+const DATABASE_URL = process.env.DATABASE_URL;
 
-  try {
-    // 1) Vendor
-    const vendorRows =
-      await sql`SELECT * FROM public.vendors WHERE id = ${vendorId}`;
-    if (!vendorRows || vendorRows.length === 0) {
-      return res
-        .status(404)
-        .json({ ok: false, error: "Vendor not found." });
-    }
-    const vendor = vendorRows[0];
-
-    // 2) Organization (optional)
-    let organization = null;
-    if (vendor.org_id) {
-      const orgRows =
-        await sql`SELECT * FROM public.organizations WHERE id = ${vendor.org_id}`;
-      organization = orgRows[0] || null;
-    }
-
-    // 3) Policies
-    const policyRows =
-      await sql`SELECT * FROM public.policies WHERE vendor_id = ${vendorId} ORDER BY id DESC`;
-
-    return res.status(200).json({
-      ok: true,
-      vendor,
-      organization,
-      policies: policyRows || [],
-    });
-  } catch (err) {
-    console.error("[api/vendors/[id]] error:", err);
-    return res
-      .status(500)
-      .json({ ok: false, error: err.message || "Server error" });
-  }
+if (!DATABASE_URL) {
+  throw new Error("Missing DATABASE_URL environment variable");
 }
+
+// `sql` is a tagged template function:
+//   const rows = await sql`SELECT * FROM table WHERE id = ${id}`;
+export const sql = neon(DATABASE_URL);
