@@ -1,6 +1,6 @@
 // pages/api/orgs/role.js
-import { sql } from "../../../lib/db";
-import { resolveOrg } from "../../../lib/resolveOrg";
+import { sql } from "@db";
+import { resolveOrg } from "@resolveOrg";
 import { createClient } from "@supabase/supabase-js";
 
 // 🔐 Server-side Supabase client (service role)
