@@ -1,5 +1,6 @@
 // pages/api/vendors/[id].js
-import { sql } from "../../../src/lib/db";
+import { sql } from "@db";
+import { resolveOrg } from "@resolveOrg";
 
 export default async function handler(req, res) {
   const { id } = req.query;
