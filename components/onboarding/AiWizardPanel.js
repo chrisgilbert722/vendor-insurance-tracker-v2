@@ -1,8 +1,9 @@
-// AI Onboarding Wizard V5 — HARD FAIL-SAFE
+// AI Onboarding Wizard V5 — HARD FAIL-SAFE (UPLOAD RECOVERY ENABLED)
 // ✅ NEVER renders blank
 // ✅ NEVER deadlocks on step math
-// ✅ Step 4 remains sticky
-// ✅ Observer + backend disagreements are clamped
+// ✅ Step 4 sticky ONLY after vendors exist
+// ✅ Allows re-upload when data is missing
+// ✅ Observer + backend disagreements clamped
 
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/router";
@@ -59,9 +60,9 @@ export default function AiWizardPanel({ orgId }) {
   const orgUuid =
     typeof orgId === "string" && UUID_RE.test(orgId) ? orgId : null;
 
-  // -------------------------------
-  // RESTORE STEP 4 LOCK
-  // -------------------------------
+  /* ---------------------------------------------
+     RESTORE STEP 4 LOCK (NON-DESTRUCTIVE)
+  ---------------------------------------------- */
   useEffect(() => {
     if (!orgUuid) return;
     try {
@@ -84,9 +85,9 @@ export default function AiWizardPanel({ orgId }) {
     ? backendStepRaw + 1
     : null;
 
-  // -------------------------------
-  // COMPUTE STEP (NO TRUST)
-  // -------------------------------
+  /* ---------------------------------------------
+     COMPUTE STEP (NO TRUST)
+  ---------------------------------------------- */
   const computedStep = useMemo(() => {
     return Math.max(
       1,
@@ -96,30 +97,43 @@ export default function AiWizardPanel({ orgId }) {
     );
   }, [forceUiStep, observedStep, backendUiStep]);
 
-  // -------------------------------
-  // LOCK STEP 4
-  // -------------------------------
+  /* ---------------------------------------------
+     LOCK STEP 4 — ONLY AFTER DATA EXISTS
+  ---------------------------------------------- */
   useEffect(() => {
-    if (computedStep >= 4 && !lockStep4) {
+    const hasVendors =
+      Array.isArray(wizardState?.vendorsCsv?.rows) &&
+      wizardState.vendorsCsv.rows.length > 0;
+
+    if (computedStep >= 4 && hasVendors && !lockStep4) {
       setLockStep4(true);
       try {
         sessionStorage.setItem(step4Key(orgUuid), "1");
       } catch {}
     }
-  }, [computedStep, lockStep4, orgUuid]);
+  }, [computedStep, lockStep4, orgUuid, wizardState]);
 
-  // -------------------------------
-  // 🔒 FINAL STEP DECISION (THIS FIXES EVERYTHING)
-  // -------------------------------
+  /* ---------------------------------------------
+     FINAL SAFE STEP DECISION
+  ---------------------------------------------- */
   const safeStep = useMemo(() => {
-    if (lockStep4) return 4;
-    if (VALID_STEPS.includes(computedStep)) return computedStep;
-    return 1;
-  }, [computedStep, lockStep4]);
+    const hasVendors =
+      Array.isArray(wizardState?.vendorsCsv?.rows) &&
+      wizardState.vendorsCsv.rows.length > 0;
 
-  // -------------------------------
-  // RENDER
-  // -------------------------------
+    // 🔓 Allow re-upload if no vendors exist
+    if (!hasVendors) return 2;
+
+    // 🔒 Sticky gate only AFTER vendors exist
+    if (lockStep4) return 4;
+
+    if (VALID_STEPS.includes(computedStep)) return computedStep;
+    return 2;
+  }, [computedStep, lockStep4, wizardState]);
+
+  /* ---------------------------------------------
+     RENDER
+  ---------------------------------------------- */
   let content;
 
   switch (safeStep) {
