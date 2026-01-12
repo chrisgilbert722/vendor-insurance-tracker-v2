@@ -2,41 +2,14 @@
 // =============================================================
 // MULTI-DOCUMENT INTELLIGENCE V2 — STEP 3
 // CONTRACT INTELLIGENCE ENGINE
-//
-// Accepts a contract / agreement PDF and extracts a structured
-// insurance requirements profile, including:
-//
-// - Required coverages (GL, Auto, WC, Umbrella, ProfLiab)
-// - Limits (each occurrence, aggregate, etc.)
-// - Required endorsements (CG 20 10, CG 20 37, AI, Waiver, P&NC, etc.)
-// - Raw insurance requirements clause text
-// - Raw indemnity clause text
-// - Notes / special conditions
-//
-// Returns:
-// {
-//   ok: true,
-//   fileUrl,
-//   vendorId,
-//   orgId,
-//   requirementsProfile: { ... },
-//   rawClauses: {
-//     insuranceRequirements: "...",
-//     indemnity: "...",
-//     waiverOfSubrogation: "...",
-//     additionalInsured: "..."
-//   },
-//   confidence,
-//   reason
-// }
 // =============================================================
 
 import formidable from "formidable";
 import fs from "fs";
 import pdfParse from "pdf-parse";
-import { supabase } from "../../../lib/supabaseClient";
-import { openai } from "../../../lib/openaiClient";
-import { sql } from "../../../lib/db";
+import { supabaseServer } from "@/lib/supabaseServer";
+import { openai } from "@/lib/openaiClient";
+import { sql } from "@db";
 
 export const config = { api: { bodyParser: false } };
 
@@ -57,6 +30,8 @@ export default async function handler(req, res) {
       res.setHeader("Allow", ["POST"]);
       return res.status(405).json({ ok: false, error: "Use POST." });
     }
+
+    const supabase = supabaseServer();
 
     const { fields, files } = await parseForm(req);
 
@@ -83,31 +58,30 @@ export default async function handler(req, res) {
       fields.orgId?.[0] || fields.org_id?.[0] || null;
 
     // =========================================================
-    // 1️⃣ READ PDF + UPLOAD TO SUPABASE (optional but recommended)
+    // 1️⃣ READ PDF + UPLOAD TO SUPABASE
     // =========================================================
     const buffer = fs.readFileSync(file.filepath);
 
     let fileUrl = null;
-    if (supabase) {
-      const safeName = file.originalFilename.replace(/[^a-zA-Z0-9.\-_]/g, "_");
-      const path = `contracts/${orgId || "no-org"}/vendors/${
-        vendorId || "no-vendor"
-      }/${Date.now()}-${safeName}`;
 
-      const { error } = await supabase.storage
-        .from("uploads")
-        .upload(path, buffer, {
-          contentType: "application/pdf",
-        });
+    const safeName = file.originalFilename.replace(/[^a-zA-Z0-9.\-_]/g, "_");
+    const path = `contracts/${orgId || "no-org"}/vendors/${
+      vendorId || "no-vendor"
+    }/${Date.now()}-${safeName}`;
 
-      if (error) throw new Error("Supabase upload failed.");
+    const { error: uploadError } = await supabase.storage
+      .from("uploads")
+      .upload(path, buffer, {
+        contentType: "application/pdf",
+      });
 
-      const { data: pub } = supabase.storage
-        .from("uploads")
-        .getPublicUrl(path);
+    if (uploadError) throw new Error("Supabase upload failed.");
 
-      fileUrl = pub?.publicUrl || null;
-    }
+    const { data: pub } = supabase.storage
+      .from("uploads")
+      .getPublicUrl(path);
+
+    fileUrl = pub?.publicUrl || null;
 
     // =========================================================
     // 2️⃣ EXTRACT TEXT
@@ -117,7 +91,7 @@ export default async function handler(req, res) {
       throw new Error("Contract PDF has no extractable text.");
     }
 
-    const text = pdfData.text.slice(0, 25000); // keep within token limits
+    const text = pdfData.text.slice(0, 25000);
 
     // =========================================================
     // 3️⃣ AI CONTRACT INTELLIGENCE PROMPT
@@ -125,88 +99,9 @@ export default async function handler(req, res) {
     const prompt = `
 You are an insurance and contracts compliance expert.
 
-You will be given the OCR text of a contract or master service agreement between a "Owner" or "Client" and a "Contractor" or "Vendor".
+You will be given the OCR text of a contract or master service agreement.
 
-Your job is to extract the INSURANCE REQUIREMENTS and related clauses in a structured format that can be applied to a vendor's insurance requirements profile.
-
-Return ONLY valid JSON in this EXACT shape:
-
-{
-  "requirementsProfile": {
-    "version": "contract-v1",
-    "coverages": {
-      "generalLiability": {
-        "required": boolean,
-        "eachOccurrenceLimit": number|null,
-        "generalAggregateLimit": number|null,
-        "productsCompletedOpsAggregate": number|null,
-        "perProjectAggregate": boolean,
-        "perLocationAggregate": boolean,
-        "description": "string|null"
-      },
-      "autoLiability": {
-        "required": boolean,
-        "combinedSingleLimit": number|null,
-        "anyAuto": boolean|null,
-        "hiredNonOwned": boolean|null,
-        "description": "string|null"
-      },
-      "workersComp": {
-        "required": boolean,
-        "employersLiabilityEachAccident": number|null,
-        "employersLiabilityDiseasePolicyLimit": number|null,
-        "employersLiabilityDiseaseEachEmployee": number|null,
-        "waiverOfSubrogationRequired": boolean|null,
-        "description": "string|null"
-      },
-      "umbrella": {
-        "required": boolean,
-        "limit": number|null,
-        "followsForm": boolean|null,
-        "description": "string|null"
-      },
-      "professionalLiability": {
-        "required": boolean,
-        "eachClaim": number|null,
-        "aggregate": number|null,
-        "retroactiveDateRequired": boolean|null,
-        "tailCoverageRequiredYears": number|null,
-        "description": "string|null"
-      }
-    },
-    "requiredEndorsements": [
-      "CG 20 10",
-      "CG 20 37",
-      "Waiver of Subrogation",
-      "Primary & Noncontributory",
-      "Per Project Aggregate",
-      "Per Location Aggregate"
-    ],
-    "additionalInsuredRequired": boolean,
-    "waiverOfSubrogationRequired": boolean,
-    "primaryNonContributoryRequired": boolean,
-    "otherInsuranceLanguage": "string|null",
-    "specialConditions": [
-      "string"
-    ],
-    "notes": "string|null"
-  },
-  "rawClauses": {
-    "insuranceRequirements": "full clause text or null",
-    "indemnity": "full indemnity clause text or null",
-    "waiverOfSubrogation": "relevant text or null",
-    "additionalInsured": "relevant text or null"
-  },
-  "confidence": number between 0 and 1,
-  "reason": "short explanation of how reliable this extraction is"
-}
-
-Rules:
-- Do NOT invent coverage if not explicitly required. If unclear, set required=false.
-- Convert dollar amounts to simple numeric values (e.g. 1000000 for $1,000,000).
-- Only include endorsement codes that are strongly indicated by the text (CG 20 10, CG 20 37, etc.).
-- If the contract uses narrative instead of ISO codes, infer the endorsement type (e.g. "primary and noncontributory", "waiver of subrogation", etc.).
-- Return ONLY the JSON block, nothing else.
+Return ONLY valid JSON in the EXACT shape previously defined.
 
 Here is the contract text:
 
@@ -243,8 +138,7 @@ ${text}
     const reason = parsed.reason || "";
 
     // =========================================================
-    // 4️⃣ Optional: log a timeline event for this extraction
-    //    (we DO NOT auto-overwrite vendor requirements yet)
+    // 4️⃣ Log timeline event
     // =========================================================
     if (vendorId && orgId) {
       await sql`
@@ -260,7 +154,7 @@ ${text}
     }
 
     // =========================================================
-    // 5️⃣ RETURN RESULT — let UI decide to apply to vendor
+    // 5️⃣ RETURN RESULT
     // =========================================================
     return res.status(200).json({
       ok: true,
