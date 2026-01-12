@@ -9,9 +9,6 @@ const nextConfig = {
     optimizePackageImports: [],
   },
 
-  // 🚫 Disable Turbopack (Webpack-only build)
-  turbopack: false,
-
   webpack: (config) => {
     // Required fallbacks (xlsx, pdf, etc.)
     config.resolve.fallback = {
