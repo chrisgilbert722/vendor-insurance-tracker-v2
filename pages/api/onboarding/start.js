@@ -1,13 +1,9 @@
 // ============================================================
 // ONBOARDING AUTOPILOT — START / RESUME (NEON SAFE, DATA-GATED)
-// - org_onboarding_state.org_id = INTERNAL org INT
-// - organizations.onboarding_step = UI driver (DATA-GATED)
-// - Users ALWAYS start at Step 1 until uploads exist
-// - Resume-safe for returning users
 // ============================================================
 
-import { sql } from "@db";
-import { resolveOrg } from "@resolveOrg";
+import { sql } from "../../../lib/db";
+import { resolveOrg } from "../../../lib/server/resolveOrg";
 
 export const config = {
   api: { bodyParser: { sizeLimit: "1mb" } },
@@ -141,7 +137,6 @@ async function runStep({ stepKey, orgId }) {
       await import("../onboarding/assign-requirements.js").catch(() => {});
       break;
 
-    // ✅ FIXED IMPORT (RENAMED FILE)
     case "rules_generated":
       await import("../onboarding/ai-rule-engine.js").catch(() => {});
       break;
