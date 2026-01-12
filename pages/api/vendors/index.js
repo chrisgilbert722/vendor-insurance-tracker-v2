@@ -1,7 +1,45 @@
 // pages/api/vendors/index.js
-// Compatibility shim — forwards /api/vendors → /api/vendors/gvi
-// DO NOT add logic here
+// Vendor Index — UUID SAFE
+// Returns raw vendor list for dashboard, dropdowns, vendors page
 
-import handler from "./gvi";
+import { sql } from "../../../lib/db";
+import { resolveOrg } from "../../../lib/resolveOrg";
 
-export default handler;
+export default async function handler(req, res) {
+  if (req.method !== "GET") {
+    return res.status(405).json({ ok: false, error: "GET only" });
+  }
+
+  try {
+    // 🔑 Resolve org UUID → internal INT
+    const orgId = await resolveOrg(req, res);
+    if (!orgId) {
+      return res.status(200).json({ ok: true, vendors: [] });
+    }
+
+    // Fetch vendors (RAW, no analytics)
+    const vendors = await sql`
+      SELECT
+        id,
+        name,
+        email,
+        category,
+        org_id,
+        created_at
+      FROM vendors
+      WHERE org_id = ${orgId}
+      ORDER BY name ASC;
+    `;
+
+    return res.status(200).json({
+      ok: true,
+      vendors,
+    });
+  } catch (err) {
+    console.error("[api/vendors/index]", err);
+    return res.status(500).json({
+      ok: false,
+      error: err.message,
+    });
+  }
+}
