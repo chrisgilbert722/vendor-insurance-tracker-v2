@@ -1,6 +1,6 @@
 // pages/api/vendors/upload.js
-import { sql } from "../../../lib/db";
-import { resolveOrg } from "../../../lib/server/resolveOrg";
+import { sql } from "@db";
+import { resolveOrg } from "@resolveOrg";
 import formidable from "formidable";
 import fs from "fs";
 import pdfParse from "pdf-parse";
