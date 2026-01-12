@@ -10,11 +10,11 @@ const nextConfig = {
     optimizePackageImports: [],
   },
 
-  // 🔑 Explicitly enable Turbopack (required in Next 16)
-  turbopack: {},
+  // ❌ REMOVE TURBOPACK — it ignores webpack aliases
+  // turbopack: {},
 
   webpack: (config) => {
-    // ✅ Preserve existing fallbacks (xlsx, etc.)
+    // Required fallbacks (xlsx, etc.)
     config.resolve.fallback = {
       ...config.resolve.fallback,
       fs: false,
@@ -22,7 +22,7 @@ const nextConfig = {
       crypto: false,
     };
 
-    // ✅ ABSOLUTE ALIASES — REQUIRED FOR VERCEL BUILDS
+    // ✅ Webpack aliases (NOW ACTUALLY USED)
     config.resolve.alias = {
       ...config.resolve.alias,
       "@db": path.resolve(process.cwd(), "src/lib/db.js"),
