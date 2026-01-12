@@ -5,8 +5,8 @@
 // - Logs launch_system AI activity
 // ============================================================
 
-import { sql } from "../../../lib/db";
-import { resolveOrg } from "../../../lib/resolveOrg";
+import { sql } from "@db";
+import { resolveOrg } from "@resolveOrg";
 import crypto from "crypto";
 
 // Allow JSON body
