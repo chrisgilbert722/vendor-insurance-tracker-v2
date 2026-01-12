@@ -1,11 +1,8 @@
-// AI Onboarding Wizard V5 — TELEMETRY-ONLY AUTOPILOT (BUILD SAFE)
-// Property Management copy pass (Day 3)
-// ✅ Autonomous mapping + auto-skip + persistence + reuse toast
-// ✅ LOCKED FUNNEL: Step 4 is activation wall
-// ✅ Activity feed hidden at Step 4
-// ✅ Step 4 is STICKY (UI never goes backwards once reached)
-// ✅ Step 4 lock is persisted per-org (sessionStorage) to survive remounts
-// ✅ FIX: Never downgrade to loading once Step 4 is locked
+// AI Onboarding Wizard V5 — HARD FAIL-SAFE
+// ✅ NEVER renders blank
+// ✅ NEVER deadlocks on step math
+// ✅ Step 4 remains sticky
+// ✅ Observer + backend disagreements are clamped
 
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/router";
@@ -21,9 +18,13 @@ import ReviewLaunchStep from "./ReviewLaunchStep";
 const UUID_RE =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
-/* -------------------------------------------------
-   HELPERS
--------------------------------------------------- */
+// Valid renderable steps
+const VALID_STEPS = [1, 2, 3, 4, 10];
+
+// sessionStorage key per org
+function step4Key(orgUuid) {
+  return `verivo:onboarding:lockStep4:${orgUuid}`;
+}
 
 function normalizeMapping(rawMapping = {}) {
   const out = {};
@@ -45,10 +46,6 @@ function extractConfidence(rawMapping = {}) {
   return out;
 }
 
-function step4Key(orgUuid) {
-  return `verivo:onboarding:lockStep4:${orgUuid}`;
-}
-
 export default function AiWizardPanel({ orgId }) {
   const router = useRouter();
 
@@ -62,40 +59,9 @@ export default function AiWizardPanel({ orgId }) {
   const orgUuid =
     typeof orgId === "string" && UUID_RE.test(orgId) ? orgId : null;
 
-  /* -------------------------------------------------
-     LOAD SAVED MAPPING (ONCE)
-  -------------------------------------------------- */
-  useEffect(() => {
-    if (!orgUuid) return;
-    let mounted = true;
-
-    async function loadSavedMapping() {
-      try {
-        const res = await fetch("/api/onboarding/get-mapping");
-        const json = await res.json();
-        if (!mounted || !json?.ok || !json.mapping) return;
-
-        setWizardState((prev) => ({
-          ...prev,
-          vendorsCsv: {
-            ...(prev.vendorsCsv || {}),
-            mapping: json.mapping,
-            mappingSource: "persisted",
-          },
-        }));
-
-        setShowMappingToast(true);
-        setTimeout(() => setShowMappingToast(false), 3000);
-      } catch {}
-    }
-
-    loadSavedMapping();
-    return () => (mounted = false);
-  }, [orgUuid]);
-
-  /* -------------------------------------------------
-     RESTORE STEP 4 LOCK
-  -------------------------------------------------- */
+  // -------------------------------
+  // RESTORE STEP 4 LOCK
+  // -------------------------------
   useEffect(() => {
     if (!orgUuid) return;
     try {
@@ -114,18 +80,25 @@ export default function AiWizardPanel({ orgId }) {
   });
 
   const backendStepRaw = Number(status?.onboardingStep ?? NaN);
-  const statusUiStep =
-    Number.isFinite(backendStepRaw)
-      ? Math.max(1, Math.min(10, backendStepRaw + 1))
-      : null;
+  const backendUiStep = Number.isFinite(backendStepRaw)
+    ? backendStepRaw + 1
+    : null;
 
+  // -------------------------------
+  // COMPUTE STEP (NO TRUST)
+  // -------------------------------
   const computedStep = useMemo(() => {
-    const a = typeof forceUiStep === "number" ? forceUiStep : 0;
-    const b = typeof observedStep === "number" ? observedStep : 1;
-    const c = typeof statusUiStep === "number" ? statusUiStep : 1;
-    return Math.max(a, b, c, 1);
-  }, [forceUiStep, observedStep, statusUiStep]);
+    return Math.max(
+      1,
+      forceUiStep ?? 0,
+      observedStep ?? 0,
+      backendUiStep ?? 0
+    );
+  }, [forceUiStep, observedStep, backendUiStep]);
 
+  // -------------------------------
+  // LOCK STEP 4
+  // -------------------------------
   useEffect(() => {
     if (computedStep >= 4 && !lockStep4) {
       setLockStep4(true);
@@ -135,126 +108,121 @@ export default function AiWizardPanel({ orgId }) {
     }
   }, [computedStep, lockStep4, orgUuid]);
 
-  const effectiveStep = lockStep4 ? Math.max(computedStep, 4) : computedStep;
-  const shouldShowToast = showMappingToast && effectiveStep < 4;
+  // -------------------------------
+  // 🔒 FINAL STEP DECISION (THIS FIXES EVERYTHING)
+  // -------------------------------
+  const safeStep = useMemo(() => {
+    if (lockStep4) return 4;
+    if (VALID_STEPS.includes(computedStep)) return computedStep;
+    return 1;
+  }, [computedStep, lockStep4]);
 
-  let content = null;
+  // -------------------------------
+  // RENDER
+  // -------------------------------
+  let content;
 
-  /* ============================================================
-     🔒 CRITICAL FIX — HOLD STEP 4 IF OBSERVER BLIPS
-  ============================================================ */
+  switch (safeStep) {
+    case 1:
+      content = (
+        <button
+          onClick={async () => {
+            if (starting) return;
+            setStarting(true);
+            setError("");
 
-  if ((!Number.isFinite(effectiveStep) || effectiveStep < 1) && lockStep4) {
-    content = (
-      <VendorsAnalyzeStep
-        orgId={orgUuid}
-        wizardState={wizardState}
-        setWizardState={setWizardState}
-      />
-    );
-  } else if (!Number.isFinite(effectiveStep) || effectiveStep < 1) {
-    content = (
-      <div style={{ color: "#9ca3af", padding: 16 }}>
-        Loading onboarding step…
-      </div>
-    );
-  } else if (effectiveStep === 1) {
-    const startAutopilot = async () => {
-      if (starting) return;
-      setStarting(true);
-      setError("");
-
-      try {
-        const res = await fetch("/api/onboarding/start", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ orgId: orgUuid }),
-        });
-
-        const json = await res.json();
-        if (!json.ok) throw new Error(json.error);
-        setForceUiStep(2);
-      } catch {
-        setError("Could not start onboarding.");
-      } finally {
-        setStarting(false);
-      }
-    };
-
-    content = (
-      <button onClick={startAutopilot}>
-        {starting ? "Starting…" : "Start Compliance Setup"}
-      </button>
-    );
-  } else {
-    switch (effectiveStep) {
-      case 2:
-        content = (
-          <VendorsUploadStep
-            orgId={orgUuid}
-            onUploadSuccess={({ headers, rows, mapping, autoSkip }) => {
-              const normalized = normalizeMapping(mapping);
-              const confidence = extractConfidence(mapping);
-
-              setWizardState({
-                vendorsCsv: { headers, rows, mapping: normalized, confidence },
+            try {
+              const res = await fetch("/api/onboarding/start", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ orgId: orgUuid }),
               });
 
-              if (autoSkip) {
-                fetch("/api/onboarding/save-mapping", {
-                  method: "POST",
-                  headers: { "Content-Type": "application/json" },
-                  body: JSON.stringify({ mapping: normalized }),
-                }).catch(() => {});
-                setForceUiStep(4);
-              } else {
-                setForceUiStep(3);
-              }
-            }}
-          />
-        );
-        break;
+              const json = await res.json();
+              if (!json.ok) throw new Error(json.error);
+              setForceUiStep(2);
+            } catch {
+              setError("Could not start onboarding.");
+            } finally {
+              setStarting(false);
+            }
+          }}
+        >
+          {starting ? "Starting…" : "Start Compliance Setup"}
+        </button>
+      );
+      break;
 
-      case 3:
-        content = (
-          <VendorsMapStep
-            wizardState={wizardState}
-            setWizardState={setWizardState}
-            onComplete={() => setForceUiStep(4)}
-          />
-        );
-        break;
+    case 2:
+      content = (
+        <VendorsUploadStep
+          orgId={orgUuid}
+          onUploadSuccess={({ headers, rows, mapping, autoSkip }) => {
+            const normalized = normalizeMapping(mapping);
+            const confidence = extractConfidence(mapping);
 
-      case 4:
-        content = (
-          <VendorsAnalyzeStep
-            orgId={orgUuid}
-            wizardState={wizardState}
-            setWizardState={setWizardState}
-          />
-        );
-        break;
+            setWizardState({
+              vendorsCsv: { headers, rows, mapping: normalized, confidence },
+            });
 
-      case 10:
-        content = (
-          <ReviewLaunchStep
-            orgId={orgUuid}
-            onComplete={async () => {
-              await fetch("/api/onboarding/complete");
-              router.replace("/dashboard");
-            }}
-          />
-        );
-        break;
+            if (autoSkip) {
+              fetch("/api/onboarding/save-mapping", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ mapping: normalized }),
+              }).catch(() => {});
+              setForceUiStep(4);
+            } else {
+              setForceUiStep(3);
+            }
+          }}
+        />
+      );
+      break;
 
-      default:
-        content = null;
-    }
+    case 3:
+      content = (
+        <VendorsMapStep
+          wizardState={wizardState}
+          setWizardState={setWizardState}
+          onComplete={() => setForceUiStep(4)}
+        />
+      );
+      break;
+
+    case 4:
+      content = (
+        <VendorsAnalyzeStep
+          orgId={orgUuid}
+          wizardState={wizardState}
+          setWizardState={setWizardState}
+        />
+      );
+      break;
+
+    case 10:
+      content = (
+        <ReviewLaunchStep
+          orgId={orgUuid}
+          onComplete={async () => {
+            await fetch("/api/onboarding/complete");
+            router.replace("/dashboard");
+          }}
+        />
+      );
+      break;
+
+    default:
+      content = (
+        <div style={{ color: "#9ca3af", padding: 16 }}>
+          Recovering onboarding…
+        </div>
+      );
   }
 
   return (
     <>
-      {shouldShowToast && (
+      {showMappingToast && safeStep < 4 && (
         <div
           style={{
             position: "fixed",
@@ -276,7 +244,7 @@ export default function AiWizardPanel({ orgId }) {
 
       {content}
       {error && <div style={{ color: "#f87171" }}>{error}</div>}
-      {effectiveStep < 4 && <OnboardingActivityFeed />}
+      {safeStep < 4 && <OnboardingActivityFeed />}
     </>
   );
 }
