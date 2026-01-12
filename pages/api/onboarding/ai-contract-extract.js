@@ -8,7 +8,7 @@
 import { supabase } from "../../../lib/supabaseClient";
 import OpenAI from "openai";
 import { sql } from "../../../lib/db";
-import { resolveOrg } from "../../../lib/resolveOrg";
+import { resolveOrg } from "@resolveOrg";
 
 export const config = {
   api: {
