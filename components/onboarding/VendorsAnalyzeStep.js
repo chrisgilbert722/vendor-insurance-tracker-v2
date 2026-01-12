@@ -1,8 +1,8 @@
 // components/onboarding/VendorsAnalyzeStep.js
-// STEP 4 — SYSTEM ARMING PANEL (FIXED + PREMIUM)
+// STEP 4 — SYSTEM ARMING PANEL (FIXED + FAIL-OPEN)
 // - One cinematic dashboard-style panel
 // - Two states only: BLOCKED → READY
-// - AI runs once, silently
+// - AI runs once, silently (FAIL-OPEN: never bricks UI if AI endpoint 400s)
 // - ONE required input: execution notification email (ORG-level)
 // - READY only after explicit confirmation (no auto-advance while typing)
 // - ONE CTA: Activate Automation
@@ -12,18 +12,61 @@ import { supabase } from "../../lib/supabaseClient";
 
 const isValidEmail = (v) => {
   const s = String(v || "").trim();
-  // simple + safe: good enough for gating, not RFC obsession
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(s);
 };
+
+// Normalize mapping objects → plain strings
+function normalizeMapping(raw = {}) {
+  const out = {};
+  for (const k in raw) {
+    const v = raw[k];
+    out[k] = typeof v === "string" ? v : v?.column || "";
+  }
+  return out;
+}
+
+// Safely read a mapped column off a CSV row
+function getCell(row, colName) {
+  if (!row || !colName) return "";
+  // row keys might be exact header names
+  const v = row[colName];
+  return v == null ? "" : String(v).trim();
+}
+
+// Build a small vendor list payload that most “analyze” endpoints accept.
+// (If your backend ignores it, fine. If it expects it, this fixes the 400.)
+function buildVendorCsvPayload(rows, mapping) {
+  const m = normalizeMapping(mapping);
+
+  // We support a few common mapping keys used across the app
+  const nameCol = m.vendorName || m.name || m.vendor_name || "";
+  const emailCol = m.email || "";
+  const categoryCol = m.category || "";
+  const policyCol = m.policyNumber || m.policy_number || "";
+  const expCol = m.expiration || m.expiration_date || m.expDate || "";
+
+  // Keep it light; AI just needs signal.
+  return rows.slice(0, 250).map((r) => ({
+    name: getCell(r, nameCol) || getCell(r, "vendor_name") || getCell(r, "name"),
+    email: getCell(r, emailCol) || getCell(r, "email"),
+    category:
+      getCell(r, categoryCol) ||
+      getCell(r, "category") ||
+      getCell(r, "trade") ||
+      "General",
+    policyNumber: getCell(r, policyCol) || getCell(r, "policy_number"),
+    expiration: getCell(r, expCol) || getCell(r, "expiration_date"),
+  }));
+}
 
 export default function VendorsAnalyzeStep({ orgId, wizardState, setWizardState }) {
   const csv = wizardState?.vendorsCsv || {};
   const rows = Array.isArray(csv.rows) ? csv.rows : [];
-
   const hasVendorData = rows.length > 0;
 
-  // AI: tracked but silent
+  // AI: tracked but silent (FAIL-OPEN)
   const [aiRan, setAiRan] = useState(Boolean(wizardState?.vendorsAnalyzed?.ai));
+  const [aiRunning, setAiRunning] = useState(false);
 
   // Email: split draft vs confirmed (prevents premature READY)
   const confirmedEmail = useMemo(
@@ -46,51 +89,107 @@ export default function VendorsAnalyzeStep({ orgId, wizardState, setWizardState 
 
   const emailConfirmed = Boolean(confirmedEmail) && isValidEmail(confirmedEmail);
 
-  // 🔒 READY depends on confirmed email only (NOT draft)
-  const isReady = emailConfirmed;
+  // ✅ READY depends on:
+  // - vendors uploaded (so we don’t “arm” a blank org)
+  // - confirmed email
+  const isReady = hasVendorData && emailConfirmed;
 
-  const canConfirm = isValidEmail(emailDraft) && !savingEmail;
+  const canConfirm = hasVendorData && isValidEmail(emailDraft) && !savingEmail;
 
   /* -------------------------------------------------
-     RUN AI ANALYSIS (ONCE, SILENT)
+     RUN AI ANALYSIS (ONCE, SILENT, FAIL-OPEN)
+     IMPORTANT:
+     - This MUST NEVER brick the UI if the endpoint returns 400/500.
+     - We mark aiRan after the first attempt (success OR fail).
   -------------------------------------------------- */
   useEffect(() => {
-    if (!orgId || aiRan || !hasVendorData) return;
+    if (!orgId || aiRan || aiRunning || !hasVendorData) return;
 
     let cancelled = false;
 
     async function runAi() {
+      setAiRunning(true);
+
       try {
         const {
           data: { session },
         } = await supabase.auth.getSession();
 
-        if (!session?.access_token) return;
+        if (!session?.access_token) {
+          // Fail-open: no session, just mark as ran to avoid loops
+          if (!cancelled) {
+            setAiRan(true);
+            setWizardState((prev) => ({
+              ...prev,
+              vendorsAnalyzed: {
+                ...(prev.vendorsAnalyzed || {}),
+                ai: { ok: false, skipped: true, reason: "Missing session" },
+              },
+            }));
+          }
+          return;
+        }
 
+        const mapping = csv?.mapping || {};
+        const vendorCsv = buildVendorCsvPayload(rows, mapping);
+
+        // ✅ Make request robust: include orgId AND vendorCsv
         const res = await fetch("/api/onboarding/ai-vendors-analyze", {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
             Authorization: `Bearer ${session.access_token}`,
           },
-          body: JSON.stringify({ orgId }),
+          body: JSON.stringify({
+            orgId, // some routes expect this explicitly
+            vendorCsv, // some routes expect this instead of orgId
+          }),
         });
 
-        const json = await res.json();
-        if (!json?.ok) return;
+        let json = null;
+        try {
+          json = await res.json();
+        } catch {
+          json = null;
+        }
 
+        // FAIL-OPEN:
+        // - If endpoint errors, we still mark aiRan so UI doesn’t loop.
+        // - We store the failure so you can inspect later.
         if (!cancelled) {
           setAiRan(true);
           setWizardState((prev) => ({
             ...prev,
             vendorsAnalyzed: {
               ...(prev.vendorsAnalyzed || {}),
-              ai: json,
+              ai: json?.ok
+                ? json
+                : {
+                    ok: false,
+                    skipped: true,
+                    status: res.status,
+                    error:
+                      json?.error ||
+                      json?.message ||
+                      `AI analyze failed (${res.status})`,
+                  },
             },
           }));
         }
-      } catch {
-        // silent by design
+      } catch (e) {
+        // FAIL-OPEN: swallow, but mark as ran
+        if (!cancelled) {
+          setAiRan(true);
+          setWizardState((prev) => ({
+            ...prev,
+            vendorsAnalyzed: {
+              ...(prev.vendorsAnalyzed || {}),
+              ai: { ok: false, skipped: true, error: e?.message || "AI failed" },
+            },
+          }));
+        }
+      } finally {
+        if (!cancelled) setAiRunning(false);
       }
     }
 
@@ -98,7 +197,7 @@ export default function VendorsAnalyzeStep({ orgId, wizardState, setWizardState 
     return () => {
       cancelled = true;
     };
-  }, [orgId, aiRan, hasVendorData, setWizardState]);
+  }, [orgId, aiRan, aiRunning, hasVendorData, rows, csv, setWizardState]);
 
   /* -------------------------------------------------
      SAVE / CONFIRM EXECUTION EMAIL (EXPLICIT)
@@ -201,7 +300,11 @@ export default function VendorsAnalyzeStep({ orgId, wizardState, setWizardState 
             AI Vendor Automation
           </h2>
           <div style={{ marginTop: 6, fontSize: 12, color: "rgba(148,163,184,0.9)" }}>
-            {aiRan ? "AI evaluation complete." : "AI evaluation initializing…"}
+            {aiRunning
+              ? "AI evaluation running…"
+              : aiRan
+              ? "AI evaluation complete."
+              : "AI evaluation initializing…"}
           </div>
         </div>
 
@@ -278,6 +381,13 @@ export default function VendorsAnalyzeStep({ orgId, wizardState, setWizardState 
             Required to activate
           </div>
 
+          {!hasVendorData && (
+            <div style={{ fontSize: 12, color: "#fbbf24", marginBottom: 10 }}>
+              No vendor file detected in this session. Go back and upload a CSV to
+              arm the system.
+            </div>
+          )}
+
           <label
             style={{
               display: "block",
@@ -295,7 +405,6 @@ export default function VendorsAnalyzeStep({ orgId, wizardState, setWizardState 
             placeholder="ops@company.com"
             value={emailDraft}
             onChange={(e) => setEmailDraft(e.target.value)}
-            // IMPORTANT: do not auto-submit on keypress
             onKeyDown={(e) => {
               if (e.key === "Enter") {
                 e.preventDefault();
@@ -325,7 +434,15 @@ export default function VendorsAnalyzeStep({ orgId, wizardState, setWizardState 
             Alerts, renewals, and enforcement notices are sent here.
           </div>
 
-          <div style={{ marginTop: 14, display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
+          <div
+            style={{
+              marginTop: 14,
+              display: "flex",
+              gap: 10,
+              alignItems: "center",
+              flexWrap: "wrap",
+            }}
+          >
             <button
               onClick={confirmExecutionEmail}
               disabled={!canConfirm}
@@ -349,7 +466,10 @@ export default function VendorsAnalyzeStep({ orgId, wizardState, setWizardState 
 
             {confirmedEmail ? (
               <span style={{ fontSize: 12, color: "rgba(148,163,184,0.9)" }}>
-                Current: <span style={{ color: "#38bdf8", fontWeight: 700 }}>{confirmedEmail}</span>
+                Current:{" "}
+                <span style={{ color: "#38bdf8", fontWeight: 700 }}>
+                  {confirmedEmail}
+                </span>
               </span>
             ) : (
               <span style={{ fontSize: 12, color: "rgba(148,163,184,0.85)" }}>
