@@ -1,5 +1,5 @@
-import { sql } from "../../../lib/db";
-import { resolveOrg } from "../../../lib/resolveOrg";
+import { sql } from "@db";
+import { resolveOrg } from "@resolveOrg";
 
 export default async function handler(req, res) {
   try {
