@@ -1,8 +1,8 @@
 // pages/api/vendors/gvi.js
 // Global Vendor Intelligence (GVI) — UUID SAFE (FIXED)
 
-import { sql } from "../../../lib/db";
-import { resolveOrg } from "../../../lib/resolveOrg";
+import { sql } from "@db";
+import { resolveOrg } from "@resolveOrg";
 
 /* ============================================================
    AI SCORE
