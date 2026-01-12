@@ -1,12 +1,10 @@
 // pages/api/onboarding/launch-system.js
 // ============================================================
 // FINAL ONBOARDING STEP — Auto-Launch Compliance Engine
-// - UUID safe via resolveOrg
-// - Logs launch_system AI activity
 // ============================================================
 
-import { sql } from "@db";
-import { resolveOrg } from "@resolveOrg";
+import { sql } from "../../../lib/db";
+import { resolveOrg } from "../../../lib/server/resolveOrg";
 import crypto from "crypto";
 
 // Allow JSON body
