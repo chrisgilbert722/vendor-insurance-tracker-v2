@@ -1,6 +1,9 @@
 // pages/api/onboarding/ai-vendors-analyze.js
-// STEP 4 — AI Vendor Analysis API
-// SAFE STUB (Production-ready, AI can be swapped in later)
+// STEP 4 — AI Vendor Analysis API (UUID-SAFE + FRONTEND-CONTRACT SAFE)
+// ✅ Accepts { orgId } OR { orgId, vendors: [] }
+// ✅ NEVER 400 just because vendors array is missing
+// ✅ Supabase auth required (Bearer token)
+// ✅ Returns { ok:true, summary, vendors } always
 
 import { createClient } from "@supabase/supabase-js";
 
@@ -17,6 +20,8 @@ function getBearerToken(req) {
   const auth = req.headers.authorization || "";
   return auth.startsWith("Bearer ") ? auth.slice(7) : null;
 }
+
+const isValidEmail = (v) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(v || "").trim());
 
 export default async function handler(req, res) {
   if (req.method !== "POST") {
@@ -42,44 +47,64 @@ export default async function handler(req, res) {
 
     /* -------------------------------------------------
        INPUT
+       ✅ Frontend currently sends ONLY { orgId }
+       ✅ vendors is OPTIONAL
     -------------------------------------------------- */
-    const { orgId, vendors } = req.body || {};
+    const body = req.body || {};
+    const orgId = body.orgId;
 
-    if (!orgId || !Array.isArray(vendors)) {
+    // vendors is optional — default to empty array
+    const vendors = Array.isArray(body.vendors) ? body.vendors : [];
+
+    if (!orgId) {
       return res.status(400).json({
         ok: false,
-        error: "Missing orgId or vendors array",
+        error: "Missing orgId",
       });
     }
 
     /* -------------------------------------------------
        ANALYSIS (LIGHTWEIGHT + SAFE)
-       This is where real AI will plug in later
+       - If vendors not provided, we still return ok:true
+       - This prevents Step 4 from hard failing / getting stuck
     -------------------------------------------------- */
-    const analyzed = vendors.map((v) => ({
-      ...v,
-      issues: {
-        missingEmail: !v.email,
-        missingPolicy: !v.policyNumber,
-        missingExpiration: !v.expiration,
-      },
-      riskLevel:
-        !v.policyNumber || !v.expiration
-          ? "high"
-          : v.email
-          ? "low"
-          : "medium",
-    }));
+    const analyzed = vendors.map((v) => {
+      // tolerate multiple possible shapes
+      const email =
+        v.email || v.contactEmail || v.executionEmail || v.notificationEmail || "";
+
+      const policyNumber = v.policyNumber || v.policy_number || v.policy || "";
+      const expiration = v.expiration || v.expiration_date || v.expDate || "";
+
+      const missingEmail = !email || !isValidEmail(email);
+      const missingPolicy = !policyNumber;
+      const missingExpiration = !expiration;
+
+      const riskLevel =
+        missingPolicy || missingExpiration ? "high" : missingEmail ? "medium" : "low";
+
+      return {
+        ...v,
+        email,
+        policyNumber,
+        expiration,
+        issues: {
+          missingEmail,
+          missingPolicy,
+          missingExpiration,
+        },
+        riskLevel,
+      };
+    });
 
     const summary = {
+      orgId,
       totalVendors: analyzed.length,
-      missingEmails: analyzed.filter((v) => !v.email).length,
+      missingEmails: analyzed.filter((v) => v.issues?.missingEmail).length,
       highRisk: analyzed.filter((v) => v.riskLevel === "high").length,
+      skipped: analyzed.length === 0, // important: still ok:true even if skipped
     };
 
-    /* -------------------------------------------------
-       RESPONSE (ALWAYS JSON)
-    -------------------------------------------------- */
     return res.status(200).json({
       ok: true,
       summary,
