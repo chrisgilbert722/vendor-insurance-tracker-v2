@@ -1,5 +1,5 @@
-import { sql } from "../../../lib/db";
-import { getUserOrg } from "../../../lib/getUserOrg";
+import { sql } from "@db";
+import { getUserOrg } from "@/lib/getUserOrg";
 
 export default async function handler(req, res) {
   if (req.method !== "POST") {
@@ -8,6 +8,8 @@ export default async function handler(req, res) {
 
   try {
     const { orgId } = await getUserOrg(req, res);
+    if (!orgId) return; // getUserOrg already handled response
+
     const { strictness, expirationWindow, missingSeverity } = req.body;
 
     await sql`
@@ -21,9 +23,9 @@ export default async function handler(req, res) {
       WHERE id = ${orgId};
     `;
 
-    res.json({ ok: true });
+    return res.json({ ok: true });
   } catch (err) {
     console.error("[onboarding/rules]", err);
-    res.status(500).json({ ok: false });
+    return res.status(500).json({ ok: false });
   }
 }
