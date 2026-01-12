@@ -1,6 +1,6 @@
 // pages/api/vendors/[id].js
 import { Client } from "pg";
-import { resolveOrg } from "../../../lib/resolveOrg";
+import { sql } from "@db";
 
 /**
  * Vendor API — Contract-Aware Edition (UUID SAFE)
