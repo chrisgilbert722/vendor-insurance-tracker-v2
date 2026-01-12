@@ -1,16 +1,12 @@
 // pages/api/vendors/[id].js
 import { Client } from "pg";
+import { resolveOrg } from "../../../lib/resolveOrg";
 
 /**
- * Vendor API — Contract-Aware Edition (SSL-Fixed)
- * Adds + normalizes:
- *   • contract_json
- *   • contract_score
- *   • contract_status
- *   • contract_requirements
- *   • contract_mismatches
- *   • requirements_json (merged coverage + contract reqs)
- *   • contract_issues_json
+ * Vendor API — Contract-Aware Edition (UUID SAFE)
+ * - Vendor ID remains numeric
+ * - Org resolved via resolveOrg (UUID → INT)
+ * - Prevents UUID/int mismatch crashes
  */
 
 export default async function handler(req, res) {
@@ -25,114 +21,107 @@ export default async function handler(req, res) {
     process.env.POSTGRES_URL ||
     process.env.DATABASE_URL;
 
-  // ⭐ FIX: Force SSL for Neon + Vercel
   const client = new Client({
     connectionString,
     ssl: { rejectUnauthorized: false },
   });
 
   try {
-    await client.connect();
+    // 🔑 Resolve org FIRST (UUID → internal INT)
+    const orgId = await resolveOrg(req, res);
 
-    let vendor = null;
-    let organization = null;
-    let policies = [];
-
-    const numericId = Number(id);
-
-    /* ============================================================
-       CASE 1 — Numeric Vendor ID
-    ============================================================ */
-    if (!Number.isNaN(numericId) && numericId > 0) {
-      const vendorResult = await client.query(
-        `SELECT * FROM vendors WHERE id = $1 LIMIT 1`,
-        [numericId]
-      );
-
-      if (vendorResult.rows.length === 0) {
-        return res.status(404).json({ ok: false, error: "Vendor not found" });
-      }
-
-      vendor = vendorResult.rows[0];
-
-      /* -------------------------------------------
-         Load organization (FIX: use correct table name)
-      ------------------------------------------- */
-      if (vendor.org_id) {
-        const orgResult = await client.query(
-          `SELECT * FROM organizations WHERE id = $1 LIMIT 1`,
-          [vendor.org_id]
-        );
-        organization = orgResult.rows[0] || null;
-      }
-
-      /* -------------------------------------------
-         Load policies
-      ------------------------------------------- */
-      const policiesResult = await client.query(
-        `
-        SELECT *
-        FROM policies
-        WHERE vendor_id = $1
-        ORDER BY created_at DESC
-        `,
-        [numericId]
-      );
-
-      policies = policiesResult.rows;
-
-      /* -------------------------------------------
-         Load Contract Intelligence V3 Fields
-      ------------------------------------------- */
-
-      vendor.contract_json = vendor.contract_json || null;
-      vendor.contract_score = vendor.contract_score || null;
-      vendor.contract_status = vendor.contract_status || "unknown";
-      vendor.contract_mismatches = vendor.contract_mismatches || [];
-      vendor.contract_requirements = vendor.contract_requirements || [];
-      vendor.contract_issues_json = vendor.contract_issues_json || [];
-
-      /* -------------------------------------------
-         requirements_json for Fix Cockpit
-         Merge coverage + contract requirements
-      ------------------------------------------- */
-      const coverageReqs = vendor.requirements_json || [];
-
-      vendor.requirements_json = [
-        ...(Array.isArray(coverageReqs) ? coverageReqs : []),
-        ...vendor.contract_requirements.map((r) => ({
-          name: r.label,
-          limit: r.value,
-          source: "contract",
-        })),
-      ];
-    }
-
-    /* ============================================================
-       CASE 2 — Slug fallback (demo mode)
-    ============================================================ */
-    else {
+    if (!orgId) {
       return res.status(200).json({
         ok: true,
-        vendor: {
-          id: "demo-vendor",
-          name: "Demo Vendor",
-          contract_json: null,
-          contract_score: null,
-          contract_requirements: [],
-          contract_mismatches: [],
-          contract_status: "unknown",
-          requirements_json: [],
-        },
-        organization: { id: "demo-org", name: "Demo Organization" },
+        vendor: null,
+        organization: null,
         policies: [],
       });
     }
 
+    const vendorId = Number(id);
+    if (!Number.isInteger(vendorId)) {
+      return res.status(400).json({
+        ok: false,
+        error: "Invalid vendor id",
+      });
+    }
+
+    await client.connect();
+
+    /* ============================================================
+       LOAD VENDOR (SCOPED TO ORG)
+    ============================================================ */
+    const vendorResult = await client.query(
+      `
+      SELECT *
+      FROM vendors
+      WHERE id = $1
+        AND org_id = $2
+      LIMIT 1
+      `,
+      [vendorId, orgId]
+    );
+
+    if (vendorResult.rows.length === 0) {
+      return res.status(404).json({
+        ok: false,
+        error: "Vendor not found",
+      });
+    }
+
+    const vendor = vendorResult.rows[0];
+
+    /* ============================================================
+       LOAD ORGANIZATION
+    ============================================================ */
+    const orgResult = await client.query(
+      `SELECT * FROM organizations WHERE id = $1 LIMIT 1`,
+      [orgId]
+    );
+
+    const organization = orgResult.rows[0] || null;
+
+    /* ============================================================
+       LOAD POLICIES
+    ============================================================ */
+    const policiesResult = await client.query(
+      `
+      SELECT *
+      FROM policies
+      WHERE vendor_id = $1
+      ORDER BY created_at DESC
+      `,
+      [vendorId]
+    );
+
+    const policies = policiesResult.rows;
+
+    /* ============================================================
+       CONTRACT + REQUIREMENTS NORMALIZATION
+    ============================================================ */
+    vendor.contract_json = vendor.contract_json || null;
+    vendor.contract_score = vendor.contract_score || null;
+    vendor.contract_status = vendor.contract_status || "unknown";
+    vendor.contract_mismatches = vendor.contract_mismatches || [];
+    vendor.contract_requirements = vendor.contract_requirements || [];
+    vendor.contract_issues_json = vendor.contract_issues_json || [];
+
+    const coverageReqs = vendor.requirements_json || [];
+
+    vendor.requirements_json = [
+      ...(Array.isArray(coverageReqs) ? coverageReqs : []),
+      ...vendor.contract_requirements.map((r) => ({
+        name: r.label,
+        limit: r.value,
+        source: "contract",
+      })),
+    ];
+
     /* ============================================================
        SAFE NORMALIZATION
     ============================================================ */
-    vendor.contactEmail = vendor.email || vendor.contactEmail || "";
+    vendor.contactEmail = vendor.email || "";
     vendor.resolved_name = vendor.name;
 
     vendor.documents = vendor.documents || [];
@@ -152,6 +141,6 @@ export default async function handler(req, res) {
   } finally {
     try {
       await client.end();
-    } catch (e) {}
+    } catch {}
   }
 }
