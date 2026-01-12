@@ -3,6 +3,7 @@
 // - Supabase used ONLY for auth
 // - Neon used for org state
 // - Idempotent onboarding lock (prevents observer rewind)
+// - 🔒 Canonical domain ONLY (no Vercel preview redirects)
 
 import Stripe from "stripe";
 import { createClient } from "@supabase/supabase-js";
@@ -19,16 +20,23 @@ const supabaseAdmin = createClient(
   process.env.SUPABASE_SERVICE_ROLE_KEY
 );
 
+/* -------------------------------------------------
+   HELPERS
+-------------------------------------------------- */
+
 function getBearerToken(req) {
   const auth = req.headers.authorization || "";
   return auth.startsWith("Bearer ") ? auth.slice(7) : null;
 }
 
+// 🔒 CANONICAL SITE URL — NEVER USE VERCEL_URL
 function siteUrl() {
-  if (process.env.NEXT_PUBLIC_SITE_URL) return process.env.NEXT_PUBLIC_SITE_URL;
-  if (process.env.VERCEL_URL) return `https://${process.env.VERCEL_URL}`;
-  return "http://localhost:3000";
+  return process.env.NEXT_PUBLIC_SITE_URL || "http://localhost:3000";
 }
+
+/* -------------------------------------------------
+   HANDLER
+-------------------------------------------------- */
 
 export default async function handler(req, res) {
   if (req.method !== "POST") {
@@ -36,7 +44,9 @@ export default async function handler(req, res) {
   }
 
   try {
-    // 1) Auth
+    /* ------------------------------
+       1) AUTH
+    ------------------------------ */
     const token = getBearerToken(req);
     if (!token) {
       return res.status(401).json({ ok: false, error: "Missing session" });
@@ -50,13 +60,17 @@ export default async function handler(req, res) {
     const user = data.user;
     const email = user.email;
 
-    // 2) Org
+    /* ------------------------------
+       2) ORG
+    ------------------------------ */
     const { orgId } = req.body;
     if (!orgId) {
       return res.status(400).json({ ok: false, error: "Missing orgId" });
     }
 
-    // 3) Stripe env
+    /* ------------------------------
+       3) STRIPE ENV
+    ------------------------------ */
     const priceId = process.env.STRIPE_PRICE_ID;
     if (!process.env.STRIPE_SECRET_KEY || !priceId) {
       return res.status(500).json({ ok: false, error: "Stripe env missing" });
@@ -64,7 +78,9 @@ export default async function handler(req, res) {
 
     const base = siteUrl();
 
-    // 4) 🔒 HARD LOCK FIRST (RACE SAFE)
+    /* ------------------------------
+       4) 🔒 HARD LOCK ONBOARDING (RACE SAFE)
+    ------------------------------ */
     await sql`
       UPDATE organizations
       SET onboarding_step = 4
@@ -72,7 +88,9 @@ export default async function handler(req, res) {
         AND onboarding_step < 4;
     `;
 
-    // 5) Create Stripe checkout
+    /* ------------------------------
+       5) CREATE STRIPE CHECKOUT
+    ------------------------------ */
     const session = await stripe.checkout.sessions.create({
       mode: "subscription",
       customer_email: email,
@@ -86,11 +104,16 @@ export default async function handler(req, res) {
       },
       billing_address_collection: "auto",
       allow_promotion_codes: false,
+
+      // 🔒 MUST BE PUBLIC DOMAIN
       success_url: `${base}/billing/success`,
       cancel_url: `${base}/onboarding/ai-wizard`,
     });
 
-    return res.status(200).json({ ok: true, url: session.url });
+    return res.status(200).json({
+      ok: true,
+      url: session.url,
+    });
   } catch (err) {
     console.error("[billing/create-checkout]", err);
     return res.status(500).json({
