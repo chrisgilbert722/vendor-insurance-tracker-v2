@@ -2,7 +2,7 @@
 // ✅ Sidebar & Header NEVER render during onboarding
 // ✅ AppGuard remains simple
 // ✅ Prevents hydration + redirect loops
-// ✅ This is the FINAL correct architecture
+// ✅ FINAL hardened version (path-safe)
 
 import { useRouter } from "next/router";
 import Sidebar from "./Sidebar";
@@ -19,7 +19,10 @@ function extractVendorId(path) {
 
 export default function Layout({ children }) {
   const router = useRouter();
-  const pathname = router.asPath || router.pathname || "";
+
+  // 🔒 Normalize path ONCE (handles asPath, querystrings, hydration)
+  const rawPath = router.asPath || router.pathname || "";
+  const pathname = rawPath.split("?")[0];
 
   /* ------------------------------------------------------------
      🔒 HARD BYPASS — ONBOARDING MUST NEVER USE LAYOUT
@@ -30,7 +33,7 @@ export default function Layout({ children }) {
 
   const { activeOrg, activeOrgId } = useOrg() || {};
 
-  // Onboarding completion (truth source)
+  // Onboarding completion (single source of truth)
   const onboardingComplete = !!activeOrg?.onboarding_completed;
 
   // Roles (do NOT block render)
