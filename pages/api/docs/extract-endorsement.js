@@ -7,9 +7,9 @@
 import formidable from "formidable";
 import fs from "fs";
 import pdfParse from "pdf-parse";
-import { supabaseServer } from "@/lib/supabaseServer";
-import { openai } from "@/lib/openaiClient";
-import { sql } from "@db";
+import { supabaseServer } from "../../../lib/supabaseServer";
+import { openai } from "../../../lib/openaiClient";
+import { sql } from "../../../lib/db";
 
 export const config = { api: { bodyParser: false } };
 
