@@ -1,103 +1,87 @@
-// pages/api/onboarding/ai-vendors-analyze.js
-// STEP 4 — AI Vendor Analysis API (FAIL-OPEN + SAFE)
-// ✅ No client created at import time
-// ✅ Uses supabaseServer helper
-// ✅ NEVER bricks UI
+// components/onboarding/VendorsAnalyzeStep.js
+// Wizard Step 4 — Vendor Analysis (CLIENT SAFE)
+// ✅ NO server imports
+// ✅ Uses API only
+// ✅ Fail-open UI
 
-import { supabaseServer } from "../../../lib/supabaseServer";
+import { useEffect, useState } from "react";
+import { supabase } from "../../lib/supabaseClient";
 
-export const runtime = "nodejs";
+export default function VendorsAnalyzeStep({ orgId, wizardState, setWizardState }) {
+  const [loading, setLoading] = useState(false);
+  const [summary, setSummary] = useState(null);
+  const [error, setError] = useState("");
 
-function getBearerToken(req) {
-  const auth = req.headers.authorization || "";
-  return auth.startsWith("Bearer ") ? auth.slice(7) : null;
-}
+  useEffect(() => {
+    if (!orgId) return;
 
-export default async function handler(req, res) {
-  if (req.method !== "POST") {
-    return res.status(405).json({ ok: false, error: "POST only" });
-  }
+    async function runAnalysis() {
+      try {
+        setLoading(true);
+        setError("");
 
-  try {
-    const token = getBearerToken(req);
-    if (!token) {
-      return res.status(401).json({ ok: false, error: "Missing session" });
+        const {
+          data: { session },
+        } = await supabase.auth.getSession();
+
+        if (!session?.access_token) {
+          throw new Error("Missing auth session");
+        }
+
+        const vendors =
+          wizardState?.vendorsCsv?.rows && Array.isArray(wizardState.vendorsCsv.rows)
+            ? wizardState.vendorsCsv.rows
+            : [];
+
+        const res = await fetch("/api/onboarding/ai-vendors-analyze", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${session.access_token}`,
+          },
+          body: JSON.stringify({
+            orgId,
+            vendors,
+          }),
+        });
+
+        const json = await res.json();
+
+        if (!json.ok && !json.skipped) {
+          throw new Error(json.error || "Analysis failed");
+        }
+
+        setSummary(json.summary || null);
+      } catch (err) {
+        console.error("[VendorsAnalyzeStep]", err);
+        setError(err.message || "Analysis failed");
+      } finally {
+        setLoading(false);
+      }
     }
 
-    const supabase = supabaseServer();
+    runAnalysis();
+  }, [orgId]);
 
-    const { data, error } = await supabase.auth.getUser(token);
-    if (error || !data?.user) {
-      return res.status(401).json({ ok: false, error: "Invalid session" });
-    }
+  return (
+    <div style={{ padding: 16 }}>
+      <h3 style={{ marginBottom: 12 }}>Vendor Risk Analysis</h3>
 
-    const body = req.body || {};
-    const orgId = body.orgId || null;
+      {loading && <div style={{ color: "#9ca3af" }}>Analyzing vendors…</div>}
 
-    // Accept vendors OR vendorCsv
-    const vendors =
-      Array.isArray(body.vendors)
-        ? body.vendors
-        : Array.isArray(body.vendorCsv)
-        ? body.vendorCsv
-        : [];
+      {error && <div style={{ color: "#f87171" }}>{error}</div>}
 
-    // FAIL-OPEN: nothing to analyze
-    if (!orgId || vendors.length === 0) {
-      return res.status(200).json({
-        ok: true,
-        skipped: true,
-        reason: !orgId ? "Missing orgId" : "No vendors provided",
-        summary: { totalVendors: vendors.length, missingEmails: 0, highRisk: 0 },
-        vendors: [],
-      });
-    }
+      {summary && (
+        <div style={{ marginTop: 12, fontSize: 13 }}>
+          <div>Total vendors: {summary.totalVendors}</div>
+          <div>Missing emails: {summary.missingEmails}</div>
+          <div>High risk vendors: {summary.highRisk}</div>
+        </div>
+      )}
 
-    // Lightweight deterministic analysis
-    const analyzed = vendors.map((v) => {
-      const email = v.email || v.contactEmail || "";
-      const policyNumber = v.policyNumber || v.policy_number || "";
-      const expiration = v.expiration || v.expiration_date || v.expDate || "";
-
-      const missingEmail = !String(email).trim();
-      const missingPolicy = !String(policyNumber).trim();
-      const missingExpiration = !String(expiration).trim();
-
-      const riskLevel =
-        missingPolicy || missingExpiration
-          ? "high"
-          : missingEmail
-          ? "medium"
-          : "low";
-
-      return {
-        ...v,
-        issues: { missingEmail, missingPolicy, missingExpiration },
-        riskLevel,
-      };
-    });
-
-    const summary = {
-      totalVendors: analyzed.length,
-      missingEmails: analyzed.filter((v) => v.issues?.missingEmail).length,
-      highRisk: analyzed.filter((v) => v.riskLevel === "high").length,
-    };
-
-    return res.status(200).json({
-      ok: true,
-      summary,
-      vendors: analyzed,
-    });
-  } catch (err) {
-    console.error("[ai-vendors-analyze]", err);
-
-    // 🚨 HARD FAIL-OPEN
-    return res.status(200).json({
-      ok: true,
-      skipped: true,
-      error: err.message || "AI analysis failed",
-      summary: { totalVendors: 0, missingEmails: 0, highRisk: 0 },
-      vendors: [],
-    });
-  }
+      {!loading && !summary && !error && (
+        <div style={{ color: "#9ca3af" }}>No analysis data yet.</div>
+      )}
+    </div>
+  );
 }
