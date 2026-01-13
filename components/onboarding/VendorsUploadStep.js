@@ -3,6 +3,7 @@
 // ✅ NO Supabase client
 // ✅ No env access
 // ✅ Cannot brick client render
+// ✅ FAIL-OPEN when rows are empty (allows re-upload)
 
 import { useState } from "react";
 
@@ -69,7 +70,7 @@ export default function VendorsUploadStep({ orgId, onUploadSuccess }) {
       const res = await fetch("/api/onboarding/upload-vendors-csv", {
         method: "POST",
         body: fd,
-        credentials: "include", // ✅ allow cookie/session auth
+        credentials: "include", // cookie/session auth
       });
 
       const json = await res.json();
@@ -81,8 +82,20 @@ export default function VendorsUploadStep({ orgId, onUploadSuccess }) {
       const headers = json.headers || [];
       const rows = json.rows || [];
 
-      if (!headers.length || !rows.length) {
-        throw new Error("Parsed file contains no rows");
+      // ❌ No headers = invalid file
+      if (!headers.length) {
+        throw new Error("Could not detect columns in file");
+      }
+
+      // ✅ Headers but no rows = fail-open (allow re-upload)
+      if (!rows.length) {
+        onUploadSuccess?.({
+          headers,
+          rows: [],
+          mapping: {},
+          autoSkip: false,
+        });
+        return;
       }
 
       const mapping = detectMappingWithConfidence(headers);
