@@ -9,7 +9,6 @@ export default async function handler(req, res) {
   }
 
   try {
-    // 🔐 Read Bearer token
     const authHeader = req.headers.authorization || "";
     const token = authHeader.startsWith("Bearer ")
       ? authHeader.slice(7)
@@ -22,10 +21,8 @@ export default async function handler(req, res) {
       });
     }
 
-    // 🔐 Server-side Supabase (service role)
     const supabase = supabaseServer();
 
-    // 🔍 Validate user
     const { data, error } = await supabase.auth.getUser(token);
     if (error || !data?.user) {
       return res.status(401).json({
@@ -35,10 +32,8 @@ export default async function handler(req, res) {
     }
 
     const userId = data.user.id;
-    const email = data.user.email || null;
 
-    // 🔎 Fetch orgs (INCLUDES onboarding_step)
-    let orgs = await sql`
+    const orgs = await sql`
       SELECT
         o.id,
         o.name,
@@ -50,32 +45,12 @@ export default async function handler(req, res) {
       ORDER BY o.id ASC;
     `;
 
-    // ✅ Self-serve org auto-creation
-    if (!orgs || orgs.length === 0) {
-      const [org] = await sql`
-        INSERT INTO organizations (name, onboarding_step)
-        VALUES (
-          ${email ? `${email.split("@")[0]}'s Organization` : "My Organization"},
-          1
-        )
-        RETURNING id, name, external_uuid, onboarding_step;
-      `;
-
-      await sql`
-        INSERT INTO organization_members (org_id, user_id, role)
-        VALUES (${org.id}, ${userId}, 'owner');
-      `;
-
-      orgs = [org];
-    }
-
     return res.status(200).json({
       ok: true,
-      orgs,
+      orgs: orgs || [],
     });
   } catch (err) {
-    console.error("[api/orgs/for-user] fatal error:", err);
-
+    console.error("[api/orgs/for-user] error:", err);
     return res.status(500).json({
       ok: false,
       error: "Internal server error",
