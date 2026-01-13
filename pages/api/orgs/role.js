@@ -14,6 +14,7 @@ export default async function handler(req, res) {
       ? authHeader.slice(7)
       : null;
 
+    // FAIL-SOFT: no token = viewer
     if (!token) {
       return res.status(200).json({ ok: true, role: "viewer" });
     }
@@ -26,6 +27,7 @@ export default async function handler(req, res) {
     }
 
     const userId = data.user.id;
+
     const orgId = await resolveOrg(req, res);
     if (!orgId) return;
 
