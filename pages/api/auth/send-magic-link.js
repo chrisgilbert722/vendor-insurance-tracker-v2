@@ -1,7 +1,7 @@
 // pages/api/auth/send-magic-link.js
 // Server-side Magic Link Sender (used for auto-invites during onboarding)
 
-import { supabaseServer } from "@/lib/supabaseServer";
+import { supabaseServer } from "../../../lib/supabaseServer";
 
 export const config = {
   api: {
