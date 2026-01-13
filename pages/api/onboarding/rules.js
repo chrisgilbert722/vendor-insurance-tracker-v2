@@ -1,5 +1,7 @@
-import { sql } from "@db";
-import { getUserOrg } from "@/lib/getUserOrg";
+// pages/api/onboarding/rules.js
+
+import { sql } from "../../../lib/db";
+import { getUserOrg } from "../../../lib/getUserOrg";
 
 export default async function handler(req, res) {
   if (req.method !== "POST") {
@@ -10,7 +12,7 @@ export default async function handler(req, res) {
     const { orgId } = await getUserOrg(req, res);
     if (!orgId) return; // getUserOrg already handled response
 
-    const { strictness, expirationWindow, missingSeverity } = req.body;
+    const { strictness, expirationWindow, missingSeverity } = req.body || {};
 
     await sql`
       UPDATE organizations
