@@ -1,15 +1,15 @@
-// pages/api/onboarding/ai-wizard.js
+// pages/api/onboarding/ai-rule-engine.js
 // ============================================================
-// AI ONBOARDING WIZARD — INDUSTRY + RULE GENERATION (UUID SAFE)
-// - Uses resolveOrg (external_uuid -> INT)
-// - Safe for autopilot + resume
-// - vendorCsv optional (can be stubbed)
-// - Logs AI activity for audit / timeline
+// AUTOPILOT — AI RULE ENGINE (BACKEND STEP)
+// - Called ONLY by onboarding/start.js
+// - Generates rule groups + rules
+// - Persists to DB
+// - Logs ai_activity_log
 // ============================================================
 
-import { openai } from "../../../lib/openaiClient";
 import { sql } from "../../../lib/db";
-import { resolveOrg } from "@resolveOrg";
+import { resolveOrg } from "../../../lib/server/resolveOrg";
+import { openai } from "../../../lib/openaiClient";
 
 export const config = {
   api: { bodyParser: { sizeLimit: "5mb" } },
@@ -22,95 +22,80 @@ export default async function handler(req, res) {
   }
 
   try {
-    const { vendorCsv = [] } = req.body || {};
-
-    // 🔑 Resolve external_uuid -> INTERNAL org INT
-    const orgIdInt = await resolveOrg(req, res);
-    if (!orgIdInt) {
+    // ----------------------------------------------------------
+    // 1) Resolve org (UUID → INT)
+    // ----------------------------------------------------------
+    const orgId = await resolveOrg(req, res);
+    if (!orgId) {
       return res.status(200).json({ ok: true, skipped: true });
     }
 
-    // Normalize vendor input (safe even if empty)
-    const vendorText = Array.isArray(vendorCsv)
-      ? vendorCsv
-          .map(
-            (v) =>
-              `${v.name || ""}, ${v.email || "no-email"}, ${
-                v.category || "uncategorized"
-              }`
-          )
-          .join("\n")
-      : "";
+    // ----------------------------------------------------------
+    // 2) Load vendors (context for AI)
+    // ----------------------------------------------------------
+    const vendors = await sql`
+      SELECT vendor_name, email, category
+      FROM vendors
+      WHERE org_id = ${orgId}
+      ORDER BY id ASC;
+    `;
 
-    // ---------------- AI PROMPT ----------------
-    const system = {
-      role: "system",
-      content: `
-You are the AI Onboarding Wizard for a vendor insurance compliance platform.
+    const vendorText =
+      vendors.length > 0
+        ? vendors
+            .map(
+              (v) =>
+                `${v.vendor_name || ""}, ${v.email || "no-email"}, ${
+                  v.category || "uncategorized"
+                }`
+            )
+            .join("\n")
+        : "(no vendors yet)";
 
-Your jobs:
+    // ----------------------------------------------------------
+    // 3) AI PROMPT
+    // ----------------------------------------------------------
+    const systemPrompt = `
+You are an insurance compliance engine.
 
-1) INFER INDUSTRIES
-- Analyze the vendor list.
-- Infer likely industries (Construction, Property Management, Healthcare, etc).
-- Return as array.
+Your task:
+- Design realistic insurance rule groups
+- Based on vendor industries
+- Suitable for automated compliance enforcement
 
-2) DESIGN RULE ENGINE CONFIGURATION
-- Propose realistic insurance rule groups based on industries.
-- Include GL, Auto, WC, Umbrella, endorsements.
-
-3) GENERATE COMMUNICATION TEMPLATES
-- vendorWelcome
-- brokerRequest
-- renewalReminder
-- fixRequest
-
-4) SUMMARIZE
-
-Return STRICT JSON ONLY in this shape:
+Return ONLY valid JSON in this exact shape:
 
 {
-  "detectedIndustries": [],
   "ruleGroups": [
     {
-      "label": "",
-      "description": "",
+      "label": "string",
+      "description": "string",
       "severity": "low|medium|high|critical",
       "rules": [
         {
           "type": "coverage|limit|endorsement|date",
-          "field": "",
+          "field": "string",
           "condition": "exists|missing|gte|lte|requires|before|after",
-          "value": "",
+          "value": "string",
           "severity": "low|medium|high|critical",
-          "message": ""
+          "message": "string"
         }
       ]
     }
-  ],
-  "templates": {
-    "vendorWelcome": "",
-    "brokerRequest": "",
-    "renewalReminder": "",
-    "fixRequest": ""
-  },
-  "summary": ""
+  ]
 }
-`,
-    };
-
-    const user = {
-      role: "user",
-      content: `
-Vendor list (one per line: name, email, category):
-${vendorText || "(no vendors provided yet)"}
-`,
-    };
+`;
 
     const completion = await openai.chat.completions.create({
       model: "gpt-4.1",
       temperature: 0.2,
-      messages: [system, user],
+      messages: [
+        { role: "system", content: systemPrompt },
+        {
+          role: "user",
+          content: `Vendor list:\n${vendorText}`,
+        },
+      ],
     });
 
     const raw = completion.choices?.[0]?.message?.content || "";
@@ -119,112 +104,102 @@ ${vendorText || "(no vendors provided yet)"}
     try {
       parsed = JSON.parse(raw);
     } catch (err) {
-      console.error("[ai-wizard] JSON parse error:", err, raw?.slice(0, 300));
+      console.error("[ai-rule-engine] JSON parse error:", raw);
       return res.status(200).json({
         ok: false,
-        error: "AI returned invalid JSON.",
-        raw,
+        error: "AI returned invalid JSON",
       });
     }
 
-    const detectedIndustries = Array.isArray(parsed.detectedIndustries)
-      ? parsed.detectedIndustries
-      : [];
     const ruleGroups = Array.isArray(parsed.ruleGroups)
       ? parsed.ruleGroups
       : [];
-    const templates = parsed.templates || {};
-    const summary = parsed.summary || "";
 
     if (!ruleGroups.length) {
       return res.status(200).json({
         ok: false,
-        error: "AI did not return any rule groups.",
-        detectedIndustries,
-        summary,
-        templates,
+        error: "No rule groups generated",
       });
     }
 
-    // ---------------- PERSIST RULE GROUPS ----------------
-    const savedGroups = [];
+    // ----------------------------------------------------------
+    // 4) Persist rule groups + rules
+    // ----------------------------------------------------------
     let totalRules = 0;
 
     for (const g of ruleGroups) {
-      const groupLabel = g.label || "AI Rule Group";
-      const groupDesc = g.description || "";
-      const groupSeverity = g.severity || "medium";
-
-      const insertedGroup = await sql`
-        INSERT INTO rule_groups (org_id, label, description, severity, active)
-        VALUES (${orgIdInt}, ${groupLabel}, ${groupDesc}, ${groupSeverity}, TRUE)
-        RETURNING id, label, description, severity;
+      const group = await sql`
+        INSERT INTO rule_groups (
+          org_id, label, description, severity, active
+        )
+        VALUES (
+          ${orgId},
+          ${g.label || "AI Rule Group"},
+          ${g.description || ""},
+          ${g.severity || "medium"},
+          TRUE
+        )
+        RETURNING id;
       `;
 
-      const groupId = insertedGroup[0].id;
+      const groupId = group[0].id;
       const rules = Array.isArray(g.rules) ? g.rules : [];
-      const savedRules = [];
 
       for (const r of rules) {
-        const insertedRule = await sql`
+        await sql`
           INSERT INTO rules_v3 (
-            group_id, type, field, condition, value, message, severity, active
+            group_id,
+            type,
+            field,
+            condition,
+            value,
+            message,
+            severity,
+            active
           )
           VALUES (
             ${groupId},
             ${r.type || "coverage"},
-            ${r.field || "unknown_field"},
+            ${r.field || "unknown"},
             ${r.condition || "exists"},
             ${String(r.value ?? "")},
-            ${r.message || "Requirement not met."},
+            ${r.message || "Requirement not met"},
             ${r.severity || "medium"},
             TRUE
-          )
-          RETURNING id;
+          );
         `;
-
-        savedRules.push(insertedRule[0]);
-        totalRules += 1;
+        totalRules++;
       }
-
-      savedGroups.push({
-        group: insertedGroup[0],
-        rules: savedRules,
-      });
     }
 
-    // ---------------- 🔥 AI ACTIVITY LOG ----------------
+    // ----------------------------------------------------------
+    // 5) AI ACTIVITY LOG
+    // ----------------------------------------------------------
     await sql`
-      INSERT INTO ai_activity_log (org_id, event_type, message, metadata)
+      INSERT INTO ai_activity_log (
+        org_id, event_type, message, metadata
+      )
       VALUES (
-        ${orgIdInt},
+        ${orgId},
         'rules_generated',
-        'AI generated compliance rules',
+        'AI rule engine generated compliance rules',
         ${JSON.stringify({
-          industries: detectedIndustries,
-          ruleGroups: ruleGroups.length,
-          totalRules,
+          groups: ruleGroups.length,
+          rules: totalRules,
         })}
       );
     `;
 
     return res.status(200).json({
       ok: true,
-      detectedIndustries,
-      ruleGroups: savedGroups.map((g) => ({
-        label: g.group.label,
-        description: g.group.description,
-        severity: g.group.severity,
-        rules: g.rules,
-      })),
-      templates,
-      summary,
+      ruleGroups: ruleGroups.length,
+      rules: totalRules,
     });
   } catch (err) {
-    console.error("[AI Onboarding Wizard ERROR]", err);
+    console.error("[ai-rule-engine] ERROR:", err);
     return res.status(500).json({
       ok: false,
-      error: err.message || "AI onboarding failed",
+      error: err.message || "AI rule engine failed",
     });
   }
 }
