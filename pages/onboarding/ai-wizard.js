@@ -1,29 +1,68 @@
 // pages/onboarding/ai-wizard.js
 // ============================================================
-// AI Onboarding Wizard V5 — UUID-SAFE
-// - Reads ONLY activeOrgUuid
-// - No redirects
-// - No legacy org_id assumptions
-// - No auth logic
-// - Fail-open UI (never bricks app)
+// AI Onboarding Wizard V5 — UUID-SAFE + SESSION-GATED
+// ✅ Blocks until Supabase session exists
+// ✅ Redirects to /auth/login if missing
+// ✅ Prevents "Missing session" upload errors
 // ============================================================
 
+import { useEffect, useState } from "react";
+import { useRouter } from "next/router";
+import { supabase } from "../../lib/supabaseClient";
 import { useOrg } from "../../context/OrgContext";
 import AiWizardPanel from "../../components/onboarding/AiWizardPanel";
 
 export default function AiOnboardingWizardPage() {
-  const { activeOrgUuid, loading } = useOrg();
+  const router = useRouter();
+  const { activeOrgUuid, loading: orgLoading } = useOrg();
 
-  // Still resolving org context
-  if (loading) {
+  const [checkingSession, setCheckingSession] = useState(true);
+  const [hasSession, setHasSession] = useState(false);
+
+  /* -------------------------------------------------
+     🔐 SESSION GATE (HARD)
+  -------------------------------------------------- */
+  useEffect(() => {
+    let alive = true;
+
+    async function checkSession() {
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
+
+      if (!alive) return;
+
+      if (!session?.access_token) {
+        router.replace("/auth/login?redirect=/onboarding/ai-wizard");
+        return;
+      }
+
+      setHasSession(true);
+      setCheckingSession(false);
+    }
+
+    checkSession();
+
+    return () => {
+      alive = false;
+    };
+  }, [router]);
+
+  /* -------------------------------------------------
+     ⏳ WAIT STATES
+  -------------------------------------------------- */
+  if (checkingSession || orgLoading) {
     return (
       <div style={{ padding: 40, color: "#9ca3af" }}>
-        Loading organization…
+        Loading onboarding…
       </div>
     );
   }
 
-  // Org exists but UUID missing (should be rare)
+  if (!hasSession) {
+    return null; // redirecting
+  }
+
   if (!activeOrgUuid) {
     return (
       <div
@@ -41,7 +80,9 @@ export default function AiOnboardingWizardPage() {
     );
   }
 
-  // ✅ UUID IS SOURCE OF TRUTH
+  /* -------------------------------------------------
+     ✅ RENDER WIZARD
+  -------------------------------------------------- */
   return (
     <div
       style={{
@@ -62,7 +103,6 @@ export default function AiOnboardingWizardPage() {
           boxShadow: "0 0 60px rgba(15,23,42,0.95)",
         }}
       >
-        {/* 🔒 AUTOPILOT WIZARD — UUID ONLY */}
         <AiWizardPanel orgId={activeOrgUuid} />
       </div>
     </div>
