@@ -2,34 +2,12 @@
 // =============================================================
 // MULTI-DOCUMENT INTELLIGENCE V2 — STEP 2
 // W-9 Extractor
-//
-// This endpoint extracts structured tax fields from a W-9 PDF.
-// Works with output from classifier, or standalone.
-//
-// Returns:
-// {
-//   ok: true,
-//   fileUrl,
-//   data: {
-//      name,
-//      businessName,
-//      tinType,            // "SSN" | "EIN"
-//      ssn,
-//      ein,
-//      address,
-//      cityStateZip,
-//      signature,
-//      signedDate
-//   },
-//   confidence,
-//   reasoning
-// }
 // =============================================================
 
 import formidable from "formidable";
 import fs from "fs";
 import pdfParse from "pdf-parse";
-import { supabase } from "../../../lib/supabaseClient";
+import { supabaseServer } from "../../../lib/supabaseServer";
 import { openai } from "../../../lib/openaiClient";
 
 export const config = { api: { bodyParser: false } };
@@ -52,6 +30,8 @@ export default async function handler(req, res) {
   }
 
   try {
+    const supabase = supabaseServer();
+
     const { fields, files } = await parseForm(req);
     const file =
       files.file?.[0] ||
@@ -79,26 +59,25 @@ export default async function handler(req, res) {
     const buffer = fs.readFileSync(file.filepath);
 
     let fileUrl = null;
-    if (supabase) {
-      const safeName = file.originalFilename.replace(/[^a-zA-Z0-9.\-_]/g, "_");
-      const path = `docs/${orgId || "no-org"}/vendors/${
-        vendorId || "no-vendor"
-      }/${Date.now()}-${safeName}`;
 
-      const { error } = await supabase.storage
-        .from("uploads")
-        .upload(path, buffer, {
-          contentType: "application/pdf",
-        });
+    const safeName = file.originalFilename.replace(/[^a-zA-Z0-9.\-_]/g, "_");
+    const path = `docs/${orgId || "no-org"}/vendors/${
+      vendorId || "no-vendor"
+    }/${Date.now()}-${safeName}`;
 
-      if (error) throw new Error("Supabase upload failed.");
+    const { error } = await supabase.storage
+      .from("uploads")
+      .upload(path, buffer, {
+        contentType: "application/pdf",
+      });
 
-      const { data: pub } = supabase.storage
-        .from("uploads")
-        .getPublicUrl(path);
+    if (error) throw new Error("Supabase upload failed.");
 
-      fileUrl = pub?.publicUrl || null;
-    }
+    const { data: pub } = supabase.storage
+      .from("uploads")
+      .getPublicUrl(path);
+
+    fileUrl = pub?.publicUrl || null;
 
     // =============================================================
     // 2️⃣ EXTRACT PDF TEXT
@@ -131,13 +110,6 @@ Return ONLY JSON in the EXACT shape:
   "confidence": number between 0 and 1,
   "reason": "short explanation"
 }
-
-Rules:
-- Identify whether the tax ID is SSN or EIN
-- Format SSN/EIN consistently: SSN as xxx-xx-xxxx, EIN as xx-xxxxxxx
-- For signature, capture the typed or handwritten name if present
-- For dates, use YYYY-MM-DD when possible
-- Fill missing fields with null
 
 Here is the OCR text from the PDF:
 
