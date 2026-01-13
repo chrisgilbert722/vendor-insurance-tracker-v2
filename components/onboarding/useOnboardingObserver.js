@@ -1,6 +1,5 @@
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/router";
-import { supabase } from "../../lib/supabaseClient";
 
 function clamp(n, min, max) {
   return Math.max(min, Math.min(max, n));
@@ -9,19 +8,19 @@ function clamp(n, min, max) {
 /**
  * Telemetry-only onboarding observer (FAIL-OPEN)
  * - Polls /api/onboarding/status
- * - Mirrors organizations.onboarding_step (INT, 0-based)
- * - NEVER blocks UI rendering
- * - GUARANTEES a usable uiStep
+ * - Backend handles auth
+ * - NO supabase on client
+ * - NEVER blocks UI
  */
 export function useOnboardingObserver({ orgId, pollMs = 1200 }) {
   const router = useRouter();
 
-  const [uiStep, setUiStep] = useState(1);
+  const [uiStep, setUiStep] = useState(4); // fail-open default
   const [status, setStatus] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
 
-  const lastStepRef = useRef(1);
+  const lastStepRef = useRef(4);
   const abortRef = useRef(null);
   const hasResolvedOnceRef = useRef(false);
 
@@ -31,7 +30,7 @@ export function useOnboardingObserver({ orgId, pollMs = 1200 }) {
       return;
     }
 
-    // 🚫 HARD BYPASS — billing must never be blocked
+    // Billing must never block
     if (router.pathname.startsWith("/billing")) {
       setUiStep(4);
       setLoading(false);
@@ -47,27 +46,12 @@ export function useOnboardingObserver({ orgId, pollMs = 1200 }) {
 
         setError("");
 
-        // 🔑 Get Supabase session (hydration-safe)
-        const {
-          data: { session },
-        } = await supabase.auth.getSession();
-
-        // Fail-open if session not ready yet
-        if (!session?.access_token) {
-          if (!hasResolvedOnceRef.current) {
-            setUiStep(4);
-            hasResolvedOnceRef.current = true;
-          }
-          setLoading(false);
-          return;
-        }
-
         const res = await fetch(
           `/api/onboarding/status?orgId=${encodeURIComponent(orgId)}`,
           {
             signal: abortRef.current.signal,
+            credentials: "include", // allow cookie-based auth
             headers: {
-              Authorization: `Bearer ${session.access_token}`,
               "cache-control": "no-cache",
             },
           }
@@ -76,13 +60,10 @@ export function useOnboardingObserver({ orgId, pollMs = 1200 }) {
         const json = await res.json();
         if (!alive) return;
 
-        // 🚨 FAIL-OPEN: API returned nothing useful
+        // 🚨 FAIL-OPEN: API error
         if (!json || json.ok === false) {
-          if (!hasResolvedOnceRef.current) {
-            setUiStep(4);
-            lastStepRef.current = 4;
-            hasResolvedOnceRef.current = true;
-          }
+          setUiStep(4);
+          lastStepRef.current = 4;
           setStatus(json || null);
           setLoading(false);
           return;
@@ -90,24 +71,17 @@ export function useOnboardingObserver({ orgId, pollMs = 1200 }) {
 
         setStatus(json);
 
-        // Backend onboarding_step is 0-based
         const backendStepRaw = Number(json.onboardingStep);
 
-        // 🚨 Missing / invalid step → fail open to Step 4
         if (!Number.isFinite(backendStepRaw)) {
-          if (!hasResolvedOnceRef.current) {
-            setUiStep(4);
-            lastStepRef.current = 4;
-            hasResolvedOnceRef.current = true;
-          }
+          setUiStep(4);
+          lastStepRef.current = 4;
           setLoading(false);
           return;
         }
 
-        // UI is 1-based
         const nextUiStep = clamp(backendStepRaw + 1, 1, 10);
 
-        // Forward-only progression
         if (nextUiStep > lastStepRef.current) {
           lastStepRef.current = nextUiStep;
           setUiStep(nextUiStep);
@@ -122,7 +96,7 @@ export function useOnboardingObserver({ orgId, pollMs = 1200 }) {
         if (!alive) return;
         if (e?.name === "AbortError") return;
 
-        // 🚨 HARD FAIL-OPEN ON ERROR
+        // HARD FAIL-OPEN
         setError("Onboarding sync failed (fail-open).");
         setUiStep(4);
         lastStepRef.current = 4;
