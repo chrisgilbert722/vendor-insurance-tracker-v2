@@ -14,7 +14,6 @@ export default async function handler(req, res) {
       ? authHeader.slice(7)
       : null;
 
-    // FAIL-SOFT: no token = viewer
     if (!token) {
       return res.status(200).json({ ok: true, role: "viewer" });
     }
