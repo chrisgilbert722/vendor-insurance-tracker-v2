@@ -1,7 +1,7 @@
 // pages/api/onboarding/upload-sample.js
 import formidable from "formidable";
 import fs from "fs";
-import { supabase } from "../../../lib/supabaseClient";
+import { supabaseServer } from "../../../lib/supabaseServer";
 
 export const config = {
   api: {
@@ -9,33 +9,48 @@ export const config = {
   },
 };
 
+// Proper Promise wrapper for formidable
+function parseForm(req) {
+  const form = formidable({ multiples: false });
+  return new Promise((resolve, reject) => {
+    form.parse(req, (err, fields, files) => {
+      if (err) return reject(err);
+      resolve({ fields, files });
+    });
+  });
+}
+
 export default async function handler(req, res) {
   if (req.method !== "POST") {
     return res.status(405).json({ ok: false, error: "Use POST" });
   }
 
   try {
-    // Parse file upload
-    const form = formidable({ multiples: false });
+    const supabase = supabaseServer();
 
-    const [fields, files] = await form.parse(req);
+    const { fields, files } = await parseForm(req);
 
-    const file = files.file?.[0];
+    const file = Array.isArray(files.file)
+      ? files.file[0]
+      : files.file;
+
     if (!file) {
       return res.status(400).json({ ok: false, error: "No file uploaded" });
     }
 
-    const fileBuffer = fs.readFileSync(file.filepath);
-
     const ext = file.originalFilename.split(".").pop().toLowerCase();
     if (ext !== "pdf") {
-      return res.status(400).json({ ok: false, error: "Only PDF files allowed." });
+      return res.status(400).json({
+        ok: false,
+        error: "Only PDF files allowed.",
+      });
     }
 
+    const fileBuffer = fs.readFileSync(file.filepath);
     const fileName = `sample-coi-${Date.now()}.pdf`;
 
     // Upload to Supabase Storage
-    const { data, error } = await supabase.storage
+    const { error } = await supabase.storage
       .from("uploads")
       .upload(fileName, fileBuffer, {
         contentType: "application/pdf",
