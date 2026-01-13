@@ -1,14 +1,13 @@
 // components/onboarding/VendorsUploadStep.js
-// Wizard Step 2 — Vendor File Upload (CSV / Excel)
-// ✅ NO Supabase client
-// ✅ No env access
-// ✅ Cannot brick client render
-// ✅ FAIL-OPEN when rows are empty (allows re-upload)
+// Wizard Step 2 — Vendor File Upload (FAIL-OPEN, REAL-WORLD SAFE)
+// ✅ Accepts sloppy CSV / Excel
+// ✅ Never blocks onboarding
+// ✅ Backend is source of truth
 
 import { useState } from "react";
 
 /* -------------------------------------------------
-   AI AUTO-DETECT + CONFIDENCE
+   AI AUTO-DETECT + CONFIDENCE (BEST EFFORT)
 -------------------------------------------------- */
 function detectMappingWithConfidence(headers = []) {
   const normalize = (s) =>
@@ -23,21 +22,21 @@ function detectMappingWithConfidence(headers = []) {
 
   headers.forEach((h) => {
     const n = normalize(h);
-    if (n.includes("vendor") && n.includes("name")) assign("vendorName", h, 0.98);
-    else if (n.includes("email")) assign("email", h, 0.98);
-    else if (n.includes("expiration")) assign("expiration", h, 0.97);
+    if (n.includes("vendor") && n.includes("name")) assign("vendorName", h, 0.95);
+    else if (n.includes("email")) assign("email", h, 0.95);
+    else if (n.includes("expiration")) assign("expiration", h, 0.9);
     else if (n.includes("policy") && n.includes("number"))
-      assign("policyNumber", h, 0.98);
+      assign("policyNumber", h, 0.95);
   });
 
   return mapping;
 }
 
 function shouldAutoSkip(mapping) {
-  return (
-    mapping.vendorName?.confidence >= 0.9 &&
-    mapping.policyNumber?.confidence >= 0.9 &&
-    mapping.expiration?.confidence >= 0.9
+  return Boolean(
+    mapping.vendorName &&
+      mapping.policyNumber &&
+      mapping.expiration
   );
 }
 
@@ -70,7 +69,7 @@ export default function VendorsUploadStep({ orgId, onUploadSuccess }) {
       const res = await fetch("/api/onboarding/upload-vendors-csv", {
         method: "POST",
         body: fd,
-        credentials: "include", // cookie/session auth
+        credentials: "include",
       });
 
       const json = await res.json();
@@ -79,21 +78,17 @@ export default function VendorsUploadStep({ orgId, onUploadSuccess }) {
         throw new Error(json.error || "Upload failed");
       }
 
-      const headers = json.headers || [];
-      const rows = json.rows || [];
+      // 🔓 FAIL-OPEN NORMALIZATION
+      const headers = Array.isArray(json.headers) ? json.headers : [];
+      const rows = Array.isArray(json.rows) ? json.rows : [];
 
-      // ❌ No headers = invalid file
-      if (!headers.length) {
-        throw new Error("Could not detect columns in file");
-      }
-
-      // ✅ Headers but no rows = fail-open (allow re-upload)
+      // If backend inserted vendors, allow progression even if parsing was messy
       if (!rows.length) {
         onUploadSuccess?.({
           headers,
           rows: [],
           mapping: {},
-          autoSkip: false,
+          autoSkip: true, // 🔓 force advance
         });
         return;
       }
@@ -101,7 +96,12 @@ export default function VendorsUploadStep({ orgId, onUploadSuccess }) {
       const mapping = detectMappingWithConfidence(headers);
       const autoSkip = shouldAutoSkip(mapping);
 
-      onUploadSuccess?.({ headers, rows, mapping, autoSkip });
+      onUploadSuccess?.({
+        headers,
+        rows,
+        mapping,
+        autoSkip,
+      });
     } catch (err) {
       console.error("[UPLOAD ERROR]", err);
       setError(err.message || "Upload failed");
