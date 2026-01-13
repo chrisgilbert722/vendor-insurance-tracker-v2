@@ -1,14 +1,12 @@
 // pages/api/onboarding/ai-contract-extract.js
 // ============================================================
 // AI Contract Requirement Extraction — Wizard Step
-// - Extracts insurance requirements from contracts
-// - Logs contracts_extracted AI activity
 // ============================================================
 
-import { supabase } from "../../../lib/supabaseClient";
+import { supabaseServer } from "../../../lib/supabaseServer";
 import OpenAI from "openai";
 import { sql } from "../../../lib/db";
-import { resolveOrg } from "@resolveOrg";
+import { resolveOrg } from "../../../lib/server/resolveOrg";
 
 export const config = {
   api: {
@@ -17,7 +15,7 @@ export const config = {
 };
 
 // Helper: Download PDF bytes from Supabase
-async function downloadPdf(bucket, path) {
+async function downloadPdf(supabase, bucket, path) {
   const { data, error } = await supabase.storage
     .from(bucket)
     .download(path);
@@ -50,6 +48,7 @@ export default async function handler(req, res) {
     // 🔑 Resolve external_uuid → INTERNAL org INT
     const orgIdInt = await resolveOrg(req, res);
 
+    const supabase = supabaseServer();
     const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
     let combinedRequirements = [];
@@ -67,13 +66,13 @@ export default async function handler(req, res) {
 
       processedFiles.push(name || path);
 
-      // 1. Download PDF bytes from Supabase
-      const pdfBytes = await downloadPdf(bucket, path);
+      // 1️⃣ Download PDF bytes from Supabase
+      const pdfBytes = await downloadPdf(supabase, bucket, path);
       const pdfBase64 = Buffer.from(
         await pdfBytes.arrayBuffer()
       ).toString("base64");
 
-      // 2. Ask OpenAI to extract requirements
+      // 2️⃣ Ask OpenAI to extract requirements
       const prompt = `
 You are an AI assistant that interprets insurance contract language.
 Extract ALL insurance requirements from the attached document.
