@@ -1,9 +1,10 @@
 // components/onboarding/VendorsUploadStep.js
 // Wizard Step 2 — Vendor File Upload (CSV / Excel)
-// 🔥 HARD FIX: button click guaranteed to fire
+// ✅ NO Supabase client
+// ✅ No env access
+// ✅ Cannot brick client render
 
 import { useState } from "react";
-import { supabase } from "../../lib/supabaseClient";
 
 /* -------------------------------------------------
    AI AUTO-DETECT + CONFIDENCE
@@ -61,30 +62,17 @@ export default function VendorsUploadStep({ orgId, onUploadSuccess }) {
     setError("");
 
     try {
-      console.log("[UPLOAD] Starting vendor upload…");
-
-      const {
-        data: { session },
-      } = await supabase.auth.getSession();
-
-      if (!session?.access_token) {
-        throw new Error("Missing auth session");
-      }
-
       const fd = new FormData();
       fd.append("file", file);
       fd.append("orgId", String(orgId));
 
       const res = await fetch("/api/onboarding/upload-vendors-csv", {
         method: "POST",
-        headers: {
-          Authorization: `Bearer ${session.access_token}`,
-        },
         body: fd,
+        credentials: "include", // ✅ allow cookie/session auth
       });
 
       const json = await res.json();
-      console.log("[UPLOAD] Response:", json);
 
       if (!json.ok) {
         throw new Error(json.error || "Upload failed");
@@ -151,7 +139,6 @@ export default function VendorsUploadStep({ orgId, onUploadSuccess }) {
           color: "#e5f2ff",
           fontWeight: 600,
           cursor: !file || uploading ? "not-allowed" : "pointer",
-          pointerEvents: "auto",
         }}
       >
         {uploading ? "Uploading…" : "Upload & Continue →"}
