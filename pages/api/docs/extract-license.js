@@ -2,38 +2,12 @@
 // =============================================================
 // MULTI-DOCUMENT INTELLIGENCE V2 — STEP 2B
 // BUSINESS LICENSE EXTRACTOR
-//
-// Extracts structured fields from any PDF that appears to be a:
-//  - Business license
-//  - Contractor license
-//  - State license
-//  - City/municipal license
-//
-// Returns:
-// {
-//   ok: true,
-//   fileUrl,
-//   vendorId,
-//   orgId,
-//   data: {
-//     licenseNumber,
-//     licenseType,
-//     licenseClass,
-//     issuingAuthority,
-//     issuedDate,
-//     expirationDate,
-//     address
-//   },
-//   expired,
-//   confidence,
-//   reason
-// }
 // =============================================================
 
 import formidable from "formidable";
 import fs from "fs";
 import pdfParse from "pdf-parse";
-import { supabase } from "../../../lib/supabaseClient";
+import { supabaseServer } from "../../../lib/supabaseServer";
 import { openai } from "../../../lib/openaiClient";
 import { sql } from "../../../lib/db";
 
@@ -57,6 +31,8 @@ export default async function handler(req, res) {
   }
 
   try {
+    const supabase = supabaseServer();
+
     const { fields, files } = await parseForm(req);
 
     const file =
@@ -87,26 +63,25 @@ export default async function handler(req, res) {
     const buffer = fs.readFileSync(file.filepath);
 
     let fileUrl = null;
-    if (supabase) {
-      const safeName = file.originalFilename.replace(/[^a-zA-Z0-9.\-_]/g, "_");
-      const path = `docs/${orgId || "no-org"}/vendors/${
-        vendorId || "no-vendor"
-      }/${Date.now()}-${safeName}`;
 
-      const { error } = await supabase.storage
-        .from("uploads")
-        .upload(path, buffer, {
-          contentType: "application/pdf",
-        });
+    const safeName = file.originalFilename.replace(/[^a-zA-Z0-9.\-_]/g, "_");
+    const path = `docs/${orgId || "no-org"}/vendors/${
+      vendorId || "no-vendor"
+    }/${Date.now()}-${safeName}`;
 
-      if (error) throw new Error("Supabase upload failed.");
+    const { error } = await supabase.storage
+      .from("uploads")
+      .upload(path, buffer, {
+        contentType: "application/pdf",
+      });
 
-      const { data: pub } = supabase.storage
-        .from("uploads")
-        .getPublicUrl(path);
+    if (error) throw new Error("Supabase upload failed.");
 
-      fileUrl = pub?.publicUrl || null;
-    }
+    const { data: pub } = supabase.storage
+      .from("uploads")
+      .getPublicUrl(path);
+
+    fileUrl = pub?.publicUrl || null;
 
     // =============================================================
     // 2️⃣ EXTRACT PDF TEXT
@@ -137,14 +112,6 @@ Return ONLY JSON in this exact shape:
   "confidence": number between 0 and 1,
   "reason": "short explanation"
 }
-
-Rules:
-- Accept contractor licenses, business licenses, city/county/state licenses.
-- "issuedDate" and "expirationDate" must be YYYY-MM-DD if extractable.
-- Determine expiration if possible — extremely important for compliance.
-- If multiple candidates appear, pick the most prominent one.
-- If no expiration found, set expirationDate to null (do not guess).
-- Keep reasoning short.
 
 Here is the text:
 
@@ -187,8 +154,7 @@ ${text}
     let expired = false;
     if (expirationDate) {
       const exp = new Date(expirationDate);
-      const today = new Date();
-      if (!isNaN(exp) && exp < today) expired = true;
+      if (!isNaN(exp) && exp < new Date()) expired = true;
     }
 
     // =============================================================
