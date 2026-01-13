@@ -1,6 +1,7 @@
 // pages/api/onboarding/company.js
-import { sql } from "@db";
-import { getUserOrg } from "@/lib/getUserOrg";
+
+import { sql } from "../../../lib/db";
+import { getUserOrg } from "../../../lib/getUserOrg";
 
 export default async function handler(req, res) {
   if (req.method !== "POST") {
@@ -11,7 +12,7 @@ export default async function handler(req, res) {
     const { orgId } = await getUserOrg(req, res);
     if (!orgId) return; // getUserOrg already responded
 
-    const { companyName, industry, hqLocation, vendorCount } = req.body;
+    const { companyName, industry, hqLocation, vendorCount } = req.body || {};
 
     await sql`
       UPDATE organizations
