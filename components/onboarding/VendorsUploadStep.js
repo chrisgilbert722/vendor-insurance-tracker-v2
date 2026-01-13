@@ -1,10 +1,7 @@
 // components/onboarding/VendorsUploadStep.js
-// Wizard Step 2 — Vendor File Upload (FAIL-OPEN, REAL-WORLD SAFE)
-// ✅ Accepts sloppy CSV / Excel
-// ✅ Never blocks onboarding
-// ✅ Backend is source of truth
+// Wizard Step 2 — Vendor File Upload (CLICK-SAFE, FAIL-OPEN)
 
-import { useState } from "react";
+import { useRef, useState } from "react";
 
 /* -------------------------------------------------
    AI AUTO-DETECT + CONFIDENCE (BEST EFFORT)
@@ -44,6 +41,8 @@ function shouldAutoSkip(mapping) {
    COMPONENT
 -------------------------------------------------- */
 export default function VendorsUploadStep({ orgId, onUploadSuccess }) {
+  const fileInputRef = useRef(null);
+
   const [file, setFile] = useState(null);
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState("");
@@ -56,6 +55,8 @@ export default function VendorsUploadStep({ orgId, onUploadSuccess }) {
   }
 
   async function handleUpload() {
+    console.log("[UPLOAD CLICKED]", { file, orgId });
+
     if (!file || uploading) return;
 
     setUploading(true);
@@ -73,22 +74,22 @@ export default function VendorsUploadStep({ orgId, onUploadSuccess }) {
       });
 
       const json = await res.json();
+      console.log("[UPLOAD RESPONSE]", json);
 
       if (!json.ok) {
         throw new Error(json.error || "Upload failed");
       }
 
-      // 🔓 FAIL-OPEN NORMALIZATION
       const headers = Array.isArray(json.headers) ? json.headers : [];
       const rows = Array.isArray(json.rows) ? json.rows : [];
 
-      // If backend inserted vendors, allow progression even if parsing was messy
+      // 🔓 FAIL-OPEN
       if (!rows.length) {
         onUploadSuccess?.({
           headers,
           rows: [],
           mapping: {},
-          autoSkip: true, // 🔓 force advance
+          autoSkip: true,
         });
         return;
       }
@@ -96,12 +97,7 @@ export default function VendorsUploadStep({ orgId, onUploadSuccess }) {
       const mapping = detectMappingWithConfidence(headers);
       const autoSkip = shouldAutoSkip(mapping);
 
-      onUploadSuccess?.({
-        headers,
-        rows,
-        mapping,
-        autoSkip,
-      });
+      onUploadSuccess?.({ headers, rows, mapping, autoSkip });
     } catch (err) {
       console.error("[UPLOAD ERROR]", err);
       setError(err.message || "Upload failed");
@@ -112,9 +108,19 @@ export default function VendorsUploadStep({ orgId, onUploadSuccess }) {
 
   return (
     <div>
-      <label
+      {/* Hidden file input */}
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept=".csv,.xls,.xlsx"
+        onChange={handleFileChange}
+        style={{ display: "none" }}
+      />
+
+      {/* File picker box */}
+      <div
+        onClick={() => fileInputRef.current?.click()}
         style={{
-          display: "block",
           padding: 20,
           borderRadius: 18,
           border: "1.5px dashed rgba(148,163,184,0.7)",
@@ -123,19 +129,13 @@ export default function VendorsUploadStep({ orgId, onUploadSuccess }) {
           textAlign: "center",
         }}
       >
-        <input
-          type="file"
-          accept=".csv,.xls,.xlsx"
-          onChange={handleFileChange}
-          style={{ display: "none" }}
-        />
         <div style={{ fontSize: 14, color: "#e5e7eb" }}>
           {file ? file.name : "Upload vendor insurance file"}
         </div>
         <div style={{ fontSize: 12, color: "#9ca3af" }}>
           CSV or Excel (.xls, .xlsx)
         </div>
-      </label>
+      </div>
 
       {error && <div style={{ color: "#fecaca", marginTop: 10 }}>{error}</div>}
 
