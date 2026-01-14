@@ -1,20 +1,34 @@
 // pages/api/dashboard/metrics.js
-// Dashboard metrics API — production-safe, policy-aware, and placeholder-resilient
-// Guarantees non-zero metrics when vendors + policies exist
+// Dashboard metrics API — ORG-ID LOCKED (NO FALLBACKS)
+// Production-safe, policy-aware, placeholder-resilient
+// HARD REQUIRE: orgId must be provided by client
 
 import { sql } from "../../../lib/db";
 
+/* ============================================================
+   🔒 ORG GUARD — SINGLE SOURCE OF TRUTH
+============================================================ */
+function requireOrgId(req) {
+  const raw =
+    req.query?.orgId ??
+    req.body?.orgId ??
+    null;
+
+  const orgId = Number(raw);
+
+  if (!Number.isInteger(orgId)) {
+    const err = new Error("Missing or invalid orgId");
+    err.status = 400;
+    throw err;
+  }
+
+  return orgId;
+}
+
 export default async function handler(req, res) {
   try {
-    const orgId =
-      req.query.orgId ||
-      (req.method === "POST" ? req.body?.orgId : null);
-
-    if (!orgId) {
-      return res
-        .status(400)
-        .json({ ok: false, error: "Missing orgId for metrics" });
-    }
+    // 🔒 LOCKED — no inference, no fallback
+    const orgId = requireOrgId(req);
 
     /* ============================================================
        1) Vendor count
@@ -32,8 +46,7 @@ export default async function handler(req, res) {
     }
 
     /* ============================================================
-       2) Policy awareness (CRITICAL FIX)
-       - Includes placeholder policies
+       2) Policy awareness (includes placeholders)
     ============================================================ */
     let policyCount = 0;
     let placeholderCount = 0;
@@ -107,7 +120,7 @@ export default async function handler(req, res) {
     }
 
     /* ============================================================
-       4) Risk history (policy-bootstrapped)
+       4) Risk history (6 months)
     ============================================================ */
     const monthBuckets = new Map();
 
@@ -158,7 +171,7 @@ export default async function handler(req, res) {
     }));
 
     /* ============================================================
-       5) Alert timeline (30d)
+       5) Alert timeline (30 days)
     ============================================================ */
     let alertTimeline = [];
     try {
@@ -210,11 +223,10 @@ export default async function handler(req, res) {
     }
 
     /* ============================================================
-       7) Global score (BOOTSTRAPPED)
+       7) Global score (bootstrapped)
     ============================================================ */
     let globalScore = 100;
 
-    // Penalize placeholders slightly so real COIs matter
     if (policyCount > 0 && placeholderCount > 0) {
       globalScore -= Math.min(20, placeholderCount * 5);
     }
@@ -229,22 +241,25 @@ export default async function handler(req, res) {
     /* ============================================================
        Final payload
     ============================================================ */
-    const overview = {
-      globalScore,
-      vendorCount,
-      policyCount,
-      placeholderCount,
-      alerts,
-      severityBreakdown,
-      riskHistory,
-      complianceTrajectory,
-      alertTimeline,
-      topAlertTypes,
-    };
-
-    return res.status(200).json({ ok: true, overview });
+    return res.status(200).json({
+      ok: true,
+      overview: {
+        globalScore,
+        vendorCount,
+        policyCount,
+        placeholderCount,
+        alerts,
+        severityBreakdown,
+        riskHistory,
+        complianceTrajectory,
+        alertTimeline,
+        topAlertTypes,
+      },
+    });
   } catch (err) {
     console.error("[metrics] fatal error:", err);
-    return res.status(500).json({ ok: false, error: "Server error" });
+    return res
+      .status(err.status || 500)
+      .json({ ok: false, error: err.message });
   }
 }
