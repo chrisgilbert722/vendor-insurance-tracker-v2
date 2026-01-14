@@ -580,7 +580,7 @@ function Dashboard() {
         return;
       }
 
-      // ✅ SINGLE SOURCE OF TRUTH
+      // ✅ CRITICAL: only store overview
       if (!cancelled) {
         setDashboard(json.overview);
       }
