@@ -3,29 +3,40 @@ import { supabase } from "../lib/supabaseClient";
 
 const OrgContext = createContext(null);
 
-const ACTIVE_ORG_KEY = "verivo:activeOrgUuid";
+// ✅ EXPLICIT STORAGE KEYS
+const ACTIVE_ORG_ID_KEY = "verivo:activeOrgId";       // internal int
+const ACTIVE_ORG_UUID_KEY = "verivo:activeOrgUuid";   // external uuid
 
 function pickUuid(org) {
   return org?.external_uuid || org?.externalUuid || org?.uuid || null;
 }
 
+function pickId(org) {
+  return typeof org?.id === "number" ? org.id : null;
+}
+
 export function OrgProvider({ children }) {
   const [orgs, setOrgs] = useState([]);
-  const [activeOrgId, _setActiveOrgId] = useState(null);
+  const [activeOrgId, setActiveOrgId] = useState(null);       // ✅ INTERNAL INT
+  const [activeOrgUuid, setActiveOrgUuid] = useState(null);   // ✅ UUID
   const [loading, setLoading] = useState(true);
 
   /* -------------------------------------------------
-     SINGLE SOURCE OF TRUTH SETTER (CRITICAL)
+     SINGLE SOURCE OF TRUTH — ACTIVATE ORG
   -------------------------------------------------- */
-  function setActiveOrgId(uuid) {
-    _setActiveOrgId(uuid);
+  function activateOrg(org) {
+    const id = pickId(org);
+    const uuid = pickUuid(org);
+
+    setActiveOrgId(id || null);
+    setActiveOrgUuid(uuid || null);
 
     try {
-      if (uuid) {
-        localStorage.setItem(ACTIVE_ORG_KEY, uuid);
-      } else {
-        localStorage.removeItem(ACTIVE_ORG_KEY);
-      }
+      if (id) localStorage.setItem(ACTIVE_ORG_ID_KEY, String(id));
+      else localStorage.removeItem(ACTIVE_ORG_ID_KEY);
+
+      if (uuid) localStorage.setItem(ACTIVE_ORG_UUID_KEY, uuid);
+      else localStorage.removeItem(ACTIVE_ORG_UUID_KEY);
     } catch {}
   }
 
@@ -61,35 +72,38 @@ export function OrgProvider({ children }) {
         }
 
         const json = await res.json();
-        if (!json?.ok) {
+        if (!json?.ok || !Array.isArray(json.orgs)) {
           if (!cancelled) setLoading(false);
           return;
         }
 
         if (cancelled) return;
 
-        const loadedOrgs = Array.isArray(json.orgs) ? json.orgs : [];
+        const loadedOrgs = json.orgs;
         setOrgs(loadedOrgs);
 
-        let resolvedOrgId = null;
+        // ---- resolve active org ----
+        let savedId = null;
+        let savedUuid = null;
 
-        let saved = null;
         try {
-          saved = localStorage.getItem(ACTIVE_ORG_KEY);
+          savedId = Number(localStorage.getItem(ACTIVE_ORG_ID_KEY)) || null;
+          savedUuid = localStorage.getItem(ACTIVE_ORG_UUID_KEY);
         } catch {}
 
-        const hasUuid = (uuid) =>
-          Boolean(uuid) && loadedOrgs.some((o) => pickUuid(o) === uuid);
+        let resolvedOrg = null;
 
         if (loadedOrgs.length === 1) {
-          resolvedOrgId = pickUuid(loadedOrgs[0]);
-        } else if (hasUuid(saved)) {
-          resolvedOrgId = saved;
+          resolvedOrg = loadedOrgs[0];
+        } else if (savedId) {
+          resolvedOrg = loadedOrgs.find((o) => pickId(o) === savedId);
+        } else if (savedUuid) {
+          resolvedOrg = loadedOrgs.find((o) => pickUuid(o) === savedUuid);
         } else if (loadedOrgs.length > 0) {
-          resolvedOrgId = pickUuid(loadedOrgs[0]);
+          resolvedOrg = loadedOrgs[0];
         }
 
-        setActiveOrgId(resolvedOrgId);
+        activateOrg(resolvedOrg);
       } catch (err) {
         console.error("[OrgContext] load error:", err);
       } finally {
@@ -107,8 +121,8 @@ export function OrgProvider({ children }) {
      DERIVED ACTIVE ORG (SAFE)
   -------------------------------------------------- */
   const activeOrg = useMemo(() => {
-    if (!activeOrgId || !orgs.length) return null;
-    return orgs.find((o) => pickUuid(o) === activeOrgId) || null;
+    if (!orgs.length || !activeOrgId) return null;
+    return orgs.find((o) => pickId(o) === activeOrgId) || null;
   }, [orgs, activeOrgId]);
 
   return (
@@ -116,11 +130,14 @@ export function OrgProvider({ children }) {
       value={{
         orgs,
 
+        // ✅ canonical values
         activeOrg,
-        activeOrgId,
-        activeOrgUuid: activeOrgId,
+        activeOrgId,       // INTERNAL INTEGER (Neon)
+        activeOrgUuid,     // EXTERNAL UUID
 
-        setActiveOrgId,
+        // ✅ public setter (used by org switcher)
+        setActiveOrg: activateOrg,
+
         loading,
       }}
     >
