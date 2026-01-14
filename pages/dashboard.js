@@ -576,17 +576,100 @@ function Dashboard() {
       const json = await res.json();
 
       if (!json?.ok || !json?.overview) {
-        if (!cancelled) setDashboard(null);
+        if (!cancelled) {
+          setDashboard({
+            globalScore: 0,
+            vendorCount: 0,
+            policyCount: 0,
+            placeholderCount: 0,
+            alerts: {
+              expired: 0,
+              critical30d: 0,
+              warning90d: 0,
+              eliteFails: 0,
+            },
+            severityBreakdown: {
+              critical: 0,
+              high: 0,
+              medium: 0,
+              low: 0,
+            },
+            riskHistory: [],
+            complianceTrajectory: [],
+            alertTimeline: [],
+            topAlertTypes: [],
+          });
+        }
         return;
       }
 
-      // ✅ ONLY store overview
+      // ✅ ALWAYS normalize shape so render never explodes
+      const overview = {
+        globalScore: Number(json.overview.globalScore ?? 0),
+        vendorCount: Number(json.overview.vendorCount ?? 0),
+        policyCount: Number(json.overview.policyCount ?? 0),
+        placeholderCount: Number(json.overview.placeholderCount ?? 0),
+
+        alerts: {
+          expired: Number(json.overview.alerts?.expired ?? 0),
+          critical30d: Number(json.overview.alerts?.critical30d ?? 0),
+          warning90d: Number(json.overview.alerts?.warning90d ?? 0),
+          eliteFails: Number(json.overview.alerts?.eliteFails ?? 0),
+        },
+
+        severityBreakdown: {
+          critical: Number(json.overview.severityBreakdown?.critical ?? 0),
+          high: Number(json.overview.severityBreakdown?.high ?? 0),
+          medium: Number(json.overview.severityBreakdown?.medium ?? 0),
+          low: Number(json.overview.severityBreakdown?.low ?? 0),
+        },
+
+        riskHistory: Array.isArray(json.overview.riskHistory)
+          ? json.overview.riskHistory
+          : [],
+
+        complianceTrajectory: Array.isArray(json.overview.complianceTrajectory)
+          ? json.overview.complianceTrajectory
+          : [],
+
+        alertTimeline: Array.isArray(json.overview.alertTimeline)
+          ? json.overview.alertTimeline
+          : [],
+
+        topAlertTypes: Array.isArray(json.overview.topAlertTypes)
+          ? json.overview.topAlertTypes
+          : [],
+      };
+
       if (!cancelled) {
-        setDashboard(json.overview);
+        setDashboard(overview);
       }
     } catch (err) {
       console.error("[dashboard] metrics error:", err);
-      if (!cancelled) setDashboard(null);
+      if (!cancelled) {
+        setDashboard({
+          globalScore: 0,
+          vendorCount: 0,
+          policyCount: 0,
+          placeholderCount: 0,
+          alerts: {
+            expired: 0,
+            critical30d: 0,
+            warning90d: 0,
+            eliteFails: 0,
+          },
+          severityBreakdown: {
+            critical: 0,
+            high: 0,
+            medium: 0,
+            low: 0,
+          },
+          riskHistory: [],
+          complianceTrajectory: [],
+          alertTimeline: [],
+          topAlertTypes: [],
+        });
+      }
     } finally {
       if (!cancelled) setDashboardLoading(false);
     }
