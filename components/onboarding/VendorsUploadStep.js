@@ -1,7 +1,8 @@
 // components/onboarding/VendorsUploadStep.js
-// Wizard Step 2 — Vendor File Upload (CLICK-SAFE, FAIL-OPEN)
+// Wizard Step 2 — Vendor File Upload (SESSION-AWARE, FAIL-OPEN)
 
 import { useRef, useState } from "react";
+import { supabase } from "../../lib/supabaseClient";
 
 /* -------------------------------------------------
    AI AUTO-DETECT + CONFIDENCE (BEST EFFORT)
@@ -32,8 +33,8 @@ function detectMappingWithConfidence(headers = []) {
 function shouldAutoSkip(mapping) {
   return Boolean(
     mapping.vendorName &&
-      mapping.policyNumber &&
-      mapping.expiration
+    mapping.policyNumber &&
+    mapping.expiration
   );
 }
 
@@ -63,14 +64,25 @@ export default function VendorsUploadStep({ orgId, onUploadSuccess }) {
     setError("");
 
     try {
+      // 🔑 GET SUPABASE SESSION (THIS IS THE FIX)
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
+
+      if (!session?.access_token) {
+        throw new Error("Session not ready");
+      }
+
       const fd = new FormData();
       fd.append("file", file);
       fd.append("orgId", String(orgId));
 
       const res = await fetch("/api/onboarding/upload-vendors-csv", {
         method: "POST",
+        headers: {
+          Authorization: `Bearer ${session.access_token}`,
+        },
         body: fd,
-        credentials: "include",
       });
 
       const json = await res.json();
@@ -83,7 +95,7 @@ export default function VendorsUploadStep({ orgId, onUploadSuccess }) {
       const headers = Array.isArray(json.headers) ? json.headers : [];
       const rows = Array.isArray(json.rows) ? json.rows : [];
 
-      // 🔓 FAIL-OPEN
+      // 🔓 FAIL-OPEN: still advance even if rows empty
       if (!rows.length) {
         onUploadSuccess?.({
           headers,
@@ -108,7 +120,6 @@ export default function VendorsUploadStep({ orgId, onUploadSuccess }) {
 
   return (
     <div>
-      {/* Hidden file input */}
       <input
         ref={fileInputRef}
         type="file"
@@ -117,7 +128,6 @@ export default function VendorsUploadStep({ orgId, onUploadSuccess }) {
         style={{ display: "none" }}
       />
 
-      {/* File picker box */}
       <div
         onClick={() => fileInputRef.current?.click()}
         style={{
