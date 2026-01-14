@@ -210,6 +210,7 @@ export default function AiWizardPanel({ orgId }) {
           orgId={orgUuid}
           wizardState={wizardState}
           setWizardState={setWizardState}
+          setForceUiStep={setForceUiStep} // ✅ REQUIRED so green button can advance
         />
       );
       break;
@@ -218,6 +219,7 @@ export default function AiWizardPanel({ orgId }) {
       content = (
         <ReviewLaunchStep
           orgId={orgUuid}
+          wizardState={wizardState}
           onComplete={async () => {
             await fetch("/api/onboarding/complete");
             router.replace("/dashboard");
