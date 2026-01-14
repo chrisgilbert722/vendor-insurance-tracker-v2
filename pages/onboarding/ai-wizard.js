@@ -3,7 +3,7 @@
 // AI Onboarding Wizard V5 — UUID-SAFE + SESSION-GATED
 // ✅ Blocks until Supabase session exists
 // ✅ Redirects to /auth/login if missing
-// ✅ Activates org on completion (CRITICAL FIX)
+// ✅ Activates org via API (NO supabase.from organizations)
 // ============================================================
 
 import { useEffect, useState } from "react";
@@ -15,7 +15,6 @@ import AiWizardPanel from "../../components/onboarding/AiWizardPanel";
 export default function AiOnboardingWizardPage() {
   const router = useRouter();
 
-  // 🔥 NEED setActiveOrg
   const {
     activeOrgUuid,
     setActiveOrg,
@@ -55,8 +54,7 @@ export default function AiOnboardingWizardPage() {
   }, [router]);
 
   /* -------------------------------------------------
-     🧠 ACTIVATE ORG WHEN UUID IS PRESENT
-     (THIS WAS MISSING)
+     🧠 ACTIVATE ORG VIA API (CORRECT SOURCE OF TRUTH)
   -------------------------------------------------- */
   useEffect(() => {
     if (!activeOrgUuid || orgLoading) return;
@@ -64,22 +62,46 @@ export default function AiOnboardingWizardPage() {
     let cancelled = false;
 
     async function activate() {
-      // Resolve UUID → full org (includes internal id)
-      const { data, error } = await supabase
-        .from("organizations")
-        .select("*")
-        .eq("external_uuid", activeOrgUuid)
-        .single();
+      try {
+        const {
+          data: { session },
+        } = await supabase.auth.getSession();
 
-      if (cancelled) return;
+        if (!session?.access_token) return;
 
-      if (error || !data) {
-        console.error("Failed to activate org during onboarding", error);
-        return;
+        const res = await fetch("/api/orgs/for-user", {
+          headers: {
+            Authorization: `Bearer ${session.access_token}`,
+          },
+        });
+
+        if (!res.ok) {
+          console.error("Failed to load orgs during onboarding");
+          return;
+        }
+
+        const json = await res.json();
+        if (!json?.ok || !Array.isArray(json.orgs)) return;
+
+        if (cancelled) return;
+
+        const org = json.orgs.find(
+          (o) => o.external_uuid === activeOrgUuid
+        );
+
+        if (!org) {
+          console.error(
+            "Active org UUID not found in org list:",
+            activeOrgUuid
+          );
+          return;
+        }
+
+        // 🔥 THIS IS THE LINE THAT MAKES THE APP COME ALIVE
+        setActiveOrg(org);
+      } catch (err) {
+        console.error("Failed to activate org during onboarding", err);
       }
-
-      // 🔥 THIS LINE FIXES THE ENTIRE APP
-      setActiveOrg(data);
     }
 
     activate();
