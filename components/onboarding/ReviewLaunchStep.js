@@ -1,17 +1,19 @@
 // components/onboarding/ReviewLaunchStep.js
 // STEP 4 — Finish Setup → Dashboard
 // ✅ Context-safe
-// ✅ No hard dependency on OrgContext shape
-// ✅ Never throws "is not a function"
+// ✅ Uses REAL OrgContext setter
+// ✅ Forces org hydration correctly
 
 import { useState } from "react";
 import { useRouter } from "next/router";
 import { supabase } from "../../lib/supabaseClient";
 import { useOrg } from "../../context/OrgContext";
 
+const ACTIVE_ORG_KEY = "verivo:activeOrgUuid";
+
 export default function ReviewLaunchStep({ orgId }) {
   const router = useRouter();
-  const orgCtx = useOrg(); // 👈 DO NOT destructure blindly
+  const orgCtx = useOrg();
 
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
@@ -41,18 +43,18 @@ export default function ReviewLaunchStep({ orgId }) {
         body: JSON.stringify({ orgId }),
       }).catch(() => {});
 
-      // 2️⃣ SAFELY set active org if setter exists
-      if (typeof orgCtx?.setActiveOrgUuid === "function") {
-        orgCtx.setActiveOrgUuid(orgId);
+      // 2️⃣ FORCE org selection in context (REAL setter)
+      if (typeof orgCtx?.setActiveOrgId === "function") {
+        orgCtx.setActiveOrgId(orgId);
       }
 
-      // 3️⃣ Always persist (dashboard reads this on boot)
+      // 3️⃣ Persist for hard reloads
       try {
-        localStorage.setItem("activeOrgUuid", orgId);
+        localStorage.setItem(ACTIVE_ORG_KEY, orgId);
       } catch {}
 
-      // 4️⃣ Go to dashboard
-      router.replace("/dashboard");
+      // 4️⃣ Hard navigate so dashboard hydrates clean
+      window.location.href = "/dashboard";
     } catch (err) {
       console.error("[Finish Onboarding]", err);
       setError(err.message || "Could not finish setup");
