@@ -61,7 +61,12 @@ function statusPalette(status) {
 =========================== */
 
 export default function VendorsPage() {
-  const { orgId } = useOrg();
+  // ✅ Minimal fix:
+  // We must use the INTERNAL integer org id for org_id filters.
+  // OrgContext often exposes both uuid + internal id — we use activeOrgId.
+  const { activeOrgId, activeOrgUuid } = useOrg();
+  const orgId = activeOrgId || null; // org_id columns expect this (int)
+
   const { isAdmin, isManager } = useRole();
   const canCreate = isAdmin || isManager;
 
@@ -79,11 +84,11 @@ export default function VendorsPage() {
     let cancelled = false;
 
     async function load() {
-        if (!orgId) {
-          // orgId not ready yet — skip load to prevent 400s
-          setLoading(false);
-          return;
-        }
+      if (!orgId) {
+        // orgId not ready yet — skip load to prevent 400s / empty filters
+        setLoading(false);
+        return;
+      }
 
       try {
         setLoading(true);
@@ -91,17 +96,15 @@ export default function VendorsPage() {
 
         // 1) Vendors
         let query = supabase.from("vendors").select("*");
-        if (orgId) {
-          query = query.eq("org_id", orgId);
-        }
+        query = query.eq("org_id", orgId);
+
         const { data: vendors, error: vErr } = await query;
         if (vErr) throw vErr;
 
         // 2) Compliance cache
         let cacheQuery = supabase.from("vendor_compliance_cache").select("*");
-        if (orgId) {
-          cacheQuery = cacheQuery.eq("org_id", orgId);
-        }
+        cacheQuery = cacheQuery.eq("org_id", orgId);
+
         const { data: cache, error: cErr } = await cacheQuery;
         if (cErr) throw cErr;
 
@@ -110,9 +113,9 @@ export default function VendorsPage() {
           .from("risk_history")
           .select("*")
           .order("created_at", { ascending: false });
-        if (orgId) {
-          riskQuery = riskQuery.eq("org_id", orgId);
-        }
+
+        riskQuery = riskQuery.eq("org_id", orgId);
+
         const { data: riskRows, error: rErr } = await riskQuery;
         if (rErr) throw rErr;
 
@@ -148,9 +151,7 @@ export default function VendorsPage() {
           const requirementsPassing = passing?.length || 0;
 
           const riskScore =
-            typeof riskRow.risk_score === "number"
-              ? riskRow.risk_score
-              : 0;
+            typeof riskRow.risk_score === "number" ? riskRow.risk_score : 0;
 
           // map cache.status -> human label
           let status = "Needs Review";
@@ -194,8 +195,7 @@ export default function VendorsPage() {
   async function handleQuickAddVendor() {
     if (!canCreate || !orgId) return;
 
-    const name =
-      window.prompt("Vendor name?", "New Vendor") || "New Vendor";
+    const name = window.prompt("Vendor name?", "New Vendor") || "New Vendor";
     const email = window.prompt("Vendor contact email? (optional)", "") || null;
 
     try {
@@ -247,8 +247,7 @@ export default function VendorsPage() {
       total === 0
         ? 0
         : Math.round(
-            vendors.reduce((sum, v) => sum + (v.complianceScore || 0), 0) /
-              total
+            vendors.reduce((sum, v) => sum + (v.complianceScore || 0), 0) / total
           );
 
     return { total, compliant, atRisk, needsReview, avgScore };
@@ -258,8 +257,7 @@ export default function VendorsPage() {
   const filtered = useMemo(() => {
     return rawVendors.filter((v) => {
       if (statusFilter !== "All" && v.status !== statusFilter) return false;
-      if (categoryFilter !== "All" && v.category !== categoryFilter)
-        return false;
+      if (categoryFilter !== "All" && v.category !== categoryFilter) return false;
       if (!search) return true;
       const hay = (
         v.name +
@@ -432,11 +430,7 @@ export default function VendorsPage() {
           <MetricCard label="Total vendors" value={metrics.total} tone="neutral" />
           <MetricCard label="Compliant" value={metrics.compliant} tone="good" />
           <MetricCard label="At risk" value={metrics.atRisk} tone="bad" />
-          <MetricCard
-            label="Avg. score"
-            value={`${metrics.avgScore}`}
-            tone="info"
-          />
+          <MetricCard label="Avg. score" value={`${metrics.avgScore}`} tone="info" />
         </div>
 
         {/* ACTIONS */}
@@ -606,14 +600,12 @@ export default function VendorsPage() {
               textAlign: "right",
             }}
           >
-            {loading
-              ? "Loading vendors…"
-              : `Showing ${filtered.length} of ${rawVendors.length}`}
+            {loading ? "Loading vendors…" : `Showing ${filtered.length} of ${rawVendors.length}`}
           </div>
         </div>
 
         {/* LIST */}
-{/* ORG MISSING */}
+        {/* ORG MISSING */}
         {!orgId && !loading && (
           <div
             style={{
@@ -660,8 +652,7 @@ export default function VendorsPage() {
                 color: "#9ca3af",
               }}
             >
-              No vendors found. Use “Quick add vendor” to create your first
-              vendor.
+              No vendors found. Use “Quick add vendor” to create your first vendor.
             </div>
           )}
 
@@ -795,9 +786,7 @@ function VendorRow({ vendor }) {
 
   const passPercent =
     vendor.requirementsTotal && vendor.requirementsTotal > 0
-      ? Math.round(
-          (vendor.requirementsPassing / vendor.requirementsTotal) * 100
-        )
+      ? Math.round((vendor.requirementsPassing / vendor.requirementsTotal) * 100)
       : null;
 
   return (
@@ -919,8 +908,7 @@ function VendorRow({ vendor }) {
             color: "#6b7280",
           }}
         >
-          Last evaluated {formatRelative(vendor.lastEvaluated)} ·{" "}
-          {vendor.alertsOpen} open alerts
+          Last evaluated {formatRelative(vendor.lastEvaluated)} · {vendor.alertsOpen} open alerts
         </div>
       </div>
 
@@ -956,8 +944,7 @@ function VendorRow({ vendor }) {
               borderRadius: 999,
               padding: "5px 10px",
               border: "1px solid rgba(59,130,246,0.8)",
-              background:
-                "radial-gradient(circle at top,#3b82f6,#1d4ed8,#020617)",
+              background: "radial-gradient(circle at top,#3b82f6,#1d4ed8,#020617)",
               color: "#e0f2fe",
               fontSize: 10,
               cursor: "pointer",
