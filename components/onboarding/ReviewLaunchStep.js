@@ -1,78 +1,77 @@
 // components/onboarding/ReviewLaunchStep.js
-// ============================================================
-// STEP 10 — Finish & Activate (FAIL-OPEN, NO STRIPE)
-// - Marks onboarding complete
-// - Redirects to dashboard
-// - NO dependency on AI, rules, vendors, or plans
-// ============================================================
+// STEP 4 — Finish Setup → Dashboard
+// ✅ Minimal, reliable, fail-safe
+// ✅ No Stripe yet
+// ✅ No dependency on fragile wizardState
 
 import { useState } from "react";
-import { useRouter } from "next/router";
+import { supabase } from "../../lib/supabaseClient";
 
 export default function ReviewLaunchStep({ orgId }) {
-  const router = useRouter();
-
-  const [launching, setLaunching] = useState(false);
+  const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
 
   async function finishOnboarding() {
-    if (!orgId) {
-      setError("Organization not found.");
-      return;
-    }
+    if (loading) return;
 
-    setLaunching(true);
+    setLoading(true);
     setError("");
 
     try {
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
+
+      if (!session?.access_token) {
+        throw new Error("Session expired. Please refresh.");
+      }
+
       const res = await fetch("/api/onboarding/complete", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${session.access_token}`,
+        },
         body: JSON.stringify({ orgId }),
       });
 
       const json = await res.json();
-      if (!json.ok) throw new Error(json.error || "Failed to activate system");
+      if (!json.ok) {
+        throw new Error(json.error || "Failed to complete onboarding");
+      }
 
-      // ✅ SUCCESS → DASHBOARD
-      router.replace("/dashboard");
+      // ✅ Done — go to dashboard
+      window.location.href = "/dashboard";
     } catch (err) {
       console.error("[Finish Onboarding]", err);
-      setError("Could not activate system. Please try again.");
-      setLaunching(false);
+      setError(err.message || "Could not finish setup");
+    } finally {
+      setLoading(false);
     }
   }
 
   return (
     <div
       style={{
-        padding: 28,
+        padding: 24,
         borderRadius: 20,
-        background: "rgba(15,23,42,0.96)",
-        border: "1px solid rgba(51,65,85,0.9)",
-        maxWidth: 760,
+        background: "rgba(15,23,42,0.95)",
+        border: "1px solid rgba(71,85,105,0.8)",
       }}
     >
-      <h2
-        style={{
-          marginTop: 0,
-          fontSize: 24,
-          fontWeight: 700,
-          color: "#e5e7eb",
-        }}
-      >
-        You’re ready to activate 🚀
+      <h2 style={{ color: "#e5e7eb", marginTop: 0 }}>
+        Setup Complete 🎉
       </h2>
 
-      <p style={{ fontSize: 14, color: "#9ca3af", marginBottom: 20 }}>
-        Your workspace is set up. You can now enter the dashboard and continue
-        configuring alerts, rules, and billing.
+      <p style={{ color: "#9ca3af", fontSize: 14 }}>
+        Your vendors are loaded and analyzed.  
+        You can now access your compliance dashboard.
       </p>
 
       {error && (
         <div
           style={{
-            marginBottom: 16,
+            marginTop: 12,
             padding: 10,
             borderRadius: 10,
             background: "rgba(127,29,29,0.85)",
@@ -86,24 +85,24 @@ export default function ReviewLaunchStep({ orgId }) {
       )}
 
       <button
-        type="button"
         onClick={finishOnboarding}
-        disabled={launching}
+        disabled={loading}
         style={{
-          padding: "14px 32px",
+          marginTop: 18,
+          width: "100%",
+          padding: "14px 24px",
           borderRadius: 999,
-          border: "1px solid rgba(59,130,246,0.9)",
+          border: "1px solid rgba(34,197,94,0.9)",
           background:
-            "radial-gradient(circle at top left,#3b82f6,#2563eb,#1e3a8a)",
-          color: "#e0f2fe",
+            "linear-gradient(90deg,#22c55e,#16a34a)",
+          color: "#022c22",
           fontSize: 16,
           fontWeight: 700,
-          cursor: launching ? "not-allowed" : "pointer",
-          width: "100%",
-          opacity: launching ? 0.6 : 1,
+          cursor: loading ? "not-allowed" : "pointer",
+          opacity: loading ? 0.7 : 1,
         }}
       >
-        {launching ? "Activating…" : "Finish & Go to Dashboard →"}
+        {loading ? "Finishing setup…" : "Continue → Dashboard"}
       </button>
     </div>
   );
