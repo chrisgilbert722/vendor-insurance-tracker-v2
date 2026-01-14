@@ -861,10 +861,18 @@ useEffect(() => {
   });
 
   /* ============================================================
-   DERIVED METRICS — FROM API (NOT ENGINE)
+   DERIVED METRICS — SAFE FOR SSR
 ============================================================ */
 const avgScore = dashboard?.globalScore ?? 0;
 const totalVendors = dashboard?.vendorCount ?? 0;
+
+// ⛑️ REQUIRED: engineHealth is still referenced in render
+const engineHealth = {
+  avg: avgScore,
+  fails: 0,
+  critical: 0,
+  total: totalVendors,
+};
 
 const alerts = dashboard?.alerts ?? {};
 const alertsCount =
