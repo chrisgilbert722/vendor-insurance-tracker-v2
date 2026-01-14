@@ -3,7 +3,7 @@
 // AI Onboarding Wizard V5 — UUID-SAFE + SESSION-GATED
 // ✅ Blocks until Supabase session exists
 // ✅ Redirects to /auth/login if missing
-// ✅ Prevents "Missing session" upload errors
+// ✅ Activates org on completion (CRITICAL FIX)
 // ============================================================
 
 import { useEffect, useState } from "react";
@@ -14,7 +14,13 @@ import AiWizardPanel from "../../components/onboarding/AiWizardPanel";
 
 export default function AiOnboardingWizardPage() {
   const router = useRouter();
-  const { activeOrgUuid, loading: orgLoading } = useOrg();
+
+  // 🔥 NEED setActiveOrg
+  const {
+    activeOrgUuid,
+    setActiveOrg,
+    loading: orgLoading,
+  } = useOrg();
 
   const [checkingSession, setCheckingSession] = useState(true);
   const [hasSession, setHasSession] = useState(false);
@@ -47,6 +53,41 @@ export default function AiOnboardingWizardPage() {
       alive = false;
     };
   }, [router]);
+
+  /* -------------------------------------------------
+     🧠 ACTIVATE ORG WHEN UUID IS PRESENT
+     (THIS WAS MISSING)
+  -------------------------------------------------- */
+  useEffect(() => {
+    if (!activeOrgUuid || orgLoading) return;
+
+    let cancelled = false;
+
+    async function activate() {
+      // Resolve UUID → full org (includes internal id)
+      const { data, error } = await supabase
+        .from("organizations")
+        .select("*")
+        .eq("external_uuid", activeOrgUuid)
+        .single();
+
+      if (cancelled) return;
+
+      if (error || !data) {
+        console.error("Failed to activate org during onboarding", error);
+        return;
+      }
+
+      // 🔥 THIS LINE FIXES THE ENTIRE APP
+      setActiveOrg(data);
+    }
+
+    activate();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [activeOrgUuid, orgLoading, setActiveOrg]);
 
   /* -------------------------------------------------
      ⏳ WAIT STATES
@@ -103,6 +144,7 @@ export default function AiOnboardingWizardPage() {
           boxShadow: "0 0 60px rgba(15,23,42,0.95)",
         }}
       >
+        {/* UUID is still correct for wizard */}
         <AiWizardPanel orgId={activeOrgUuid} />
       </div>
     </div>
