@@ -1,13 +1,18 @@
 // components/onboarding/ReviewLaunchStep.js
 // STEP 4 — Finish Setup → Dashboard
-// ✅ Minimal, reliable, fail-safe
-// ✅ No Stripe yet
-// ✅ No dependency on fragile wizardState
+// ✅ Sets active organization
+// ✅ Persists org for reload safety
+// ✅ Fail-safe, no Stripe yet
 
 import { useState } from "react";
+import { useRouter } from "next/router";
 import { supabase } from "../../lib/supabaseClient";
+import { useOrg } from "../../context/OrgContext";
 
 export default function ReviewLaunchStep({ orgId }) {
+  const router = useRouter();
+  const { setActiveOrgUuid } = useOrg();
+
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
 
@@ -26,22 +31,26 @@ export default function ReviewLaunchStep({ orgId }) {
         throw new Error("Session expired. Please refresh.");
       }
 
-      const res = await fetch("/api/onboarding/complete", {
+      // 1️⃣ Mark onboarding complete (fail-open)
+      await fetch("/api/onboarding/complete", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
           Authorization: `Bearer ${session.access_token}`,
         },
         body: JSON.stringify({ orgId }),
-      });
+      }).catch(() => {});
 
-      const json = await res.json();
-      if (!json.ok) {
-        throw new Error(json.error || "Failed to complete onboarding");
-      }
+      // 2️⃣ SET ACTIVE ORG (THIS WAS THE MISSING PIECE)
+      setActiveOrgUuid(orgId);
 
-      // ✅ Done — go to dashboard
-      window.location.href = "/dashboard";
+      // 3️⃣ Persist for reload safety
+      try {
+        localStorage.setItem("activeOrgUuid", orgId);
+      } catch {}
+
+      // 4️⃣ Go to dashboard
+      router.replace("/dashboard");
     } catch (err) {
       console.error("[Finish Onboarding]", err);
       setError(err.message || "Could not finish setup");
@@ -93,8 +102,7 @@ export default function ReviewLaunchStep({ orgId }) {
           padding: "14px 24px",
           borderRadius: 999,
           border: "1px solid rgba(34,197,94,0.9)",
-          background:
-            "linear-gradient(90deg,#22c55e,#16a34a)",
+          background: "linear-gradient(90deg,#22c55e,#16a34a)",
           color: "#022c22",
           fontSize: 16,
           fontWeight: 700,
