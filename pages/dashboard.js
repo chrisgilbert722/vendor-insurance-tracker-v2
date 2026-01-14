@@ -562,21 +562,36 @@ function Dashboard() {
      DASHBOARD METRICS
 ============================================================ */
   useEffect(() => {
-    if (!activeOrgId) return;
+  if (!activeOrgId) return;
 
-    (async () => {
-      try {
-        setDashboardLoading(true);
-        const res = await fetch(`/api/dashboard/metrics?orgId=${activeOrgId}`);
-        const json = await res.json();
-        if (json?.ok) setDashboard(json.overview ?? null);
-      } catch (err) {
-        console.error("[dashboard] metrics error:", err);
-      } finally {
-        setDashboardLoading(false);
+  (async () => {
+    try {
+      setDashboardLoading(true);
+      const res = await fetch(`/api/dashboard/metrics?orgId=${activeOrgId}`);
+      const json = await res.json();
+
+      if (!json?.ok) {
+        setDashboard(null);
+        return;
       }
-    })();
-  }, [activeOrgId]);
+
+      // 🔑 FIX: normalize response shape
+      const data =
+        json.overview ||
+        json.metrics ||
+        json.stats ||
+        json.data ||
+        null;
+
+      setDashboard(data);
+    } catch (err) {
+      console.error("[dashboard] metrics error:", err);
+      setDashboard(null);
+    } finally {
+      setDashboardLoading(false);
+    }
+  })();
+}, [activeOrgId]);
 
   /* ============================================================
    LOAD POLICIES (AUTH SAFE)
