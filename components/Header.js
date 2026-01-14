@@ -7,7 +7,9 @@ import { useRole } from "../lib/useRole";
 
 export default function Header() {
   const [open, setOpen] = useState(false);
-  const { orgs, activeOrgId, switchOrg, loadingOrgs } = useOrg();
+
+  // ✅ FIX: use setActiveOrg, NOT switchOrg
+  const { orgs, activeOrgId, activeOrg, setActiveOrg, loading } = useOrg();
   const { isLoadingRole } = useRole();
 
   async function handleLogout() {
@@ -15,8 +17,7 @@ export default function Header() {
     window.location.href = "/auth/login";
   }
 
-  const activeOrg = orgs.find((o) => o.id == activeOrgId);
-  const loading = loadingOrgs || isLoadingRole;
+  const isLoading = loading || isLoadingRole;
 
   return (
     <div
@@ -26,8 +27,6 @@ export default function Header() {
         display: "flex",
         justifyContent: "space-between",
         alignItems: "center",
-
-        // 🔥 CINEMATIC HUD STRIP BACKGROUND
         background:
           "linear-gradient(90deg, rgba(15,23,42,0.94), rgba(15,23,42,0.88), rgba(15,23,42,0.96))",
         borderBottom: "1px solid rgba(56,189,248,0.18)",
@@ -35,7 +34,6 @@ export default function Header() {
         position: "sticky",
         top: 0,
         zIndex: 200,
-
         boxShadow: `
           0 2px 22px rgba(0,0,0,0.7),
           0 0 24px rgba(56,189,248,0.25)
@@ -43,13 +41,7 @@ export default function Header() {
       }}
     >
       {/* LEFT — LOGO + ORG SWITCHER */}
-      <div
-        style={{
-          display: "flex",
-          alignItems: "center",
-          gap: 18,
-        }}
-      >
+      <div style={{ display: "flex", alignItems: "center", gap: 18 }}>
         {/* Verivo Logo */}
         <img
           src="/brand/verivo-light.png"
@@ -58,7 +50,7 @@ export default function Header() {
             height: 38,
             width: "auto",
             display: "block",
-            marginTop: 1, // optical centering vs org pill
+            marginTop: 1,
           }}
         />
 
@@ -66,7 +58,7 @@ export default function Header() {
         <div style={{ position: "relative" }}>
           <button
             onClick={() => {
-              if (!loading) setOpen((s) => !s);
+              if (!isLoading) setOpen((s) => !s);
             }}
             style={{
               padding: "8px 14px",
@@ -77,20 +69,20 @@ export default function Header() {
               display: "flex",
               alignItems: "center",
               gap: 6,
-              cursor: loading ? "default" : "pointer",
+              cursor: isLoading ? "default" : "pointer",
               fontSize: 13,
-              opacity: loading ? 0.6 : 1,
+              opacity: isLoading ? 0.6 : 1,
               boxShadow: open
                 ? "0 0 14px rgba(56,189,248,0.4)"
                 : "0 0 0 rgba(0,0,0,0)",
               transition: "0.16s ease",
             }}
           >
-            {loading ? "Loading…" : activeOrg?.name || "Select Organization"}
+            {isLoading ? "Loading…" : activeOrg?.name || "Select Organization"}
             <CaretDown size={14} />
           </button>
 
-          {open && !loading && (
+          {open && !isLoading && (
             <div
               style={{
                 position: "absolute",
@@ -126,7 +118,8 @@ export default function Header() {
                 <div
                   key={o.id}
                   onClick={() => {
-                    switchOrg(o.id);
+                    // ✅ FIX: pass full org object
+                    setActiveOrg(o);
                     setOpen(false);
                   }}
                   style={{
@@ -134,10 +127,11 @@ export default function Header() {
                     borderRadius: 6,
                     cursor: "pointer",
                     background:
-                      o.id == activeOrgId
+                      o.id === activeOrgId
                         ? "rgba(56,189,248,0.15)"
                         : "transparent",
-                    color: o.id == activeOrgId ? "#38bdf8" : "#e5e7eb",
+                    color:
+                      o.id === activeOrgId ? "#38bdf8" : "#e5e7eb",
                     marginBottom: 6,
                     transition: "0.16s ease",
                   }}
@@ -151,13 +145,7 @@ export default function Header() {
       </div>
 
       {/* RIGHT — AI STATUS + SIGN OUT */}
-      <div
-        style={{
-          display: "flex",
-          alignItems: "center",
-          gap: 14,
-        }}
-      >
+      <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
         {/* AI Status */}
         <div
           style={{
