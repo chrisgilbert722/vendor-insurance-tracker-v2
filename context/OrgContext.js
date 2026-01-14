@@ -11,11 +11,26 @@ function pickUuid(org) {
 
 export function OrgProvider({ children }) {
   const [orgs, setOrgs] = useState([]);
-  const [activeOrgId, setActiveOrgId] = useState(null);
+  const [activeOrgId, _setActiveOrgId] = useState(null);
   const [loading, setLoading] = useState(true);
 
   /* -------------------------------------------------
-     LOAD ORGS (SINGLE SOURCE OF TRUTH)
+     SINGLE SOURCE OF TRUTH SETTER (CRITICAL)
+  -------------------------------------------------- */
+  function setActiveOrgId(uuid) {
+    _setActiveOrgId(uuid);
+
+    try {
+      if (uuid) {
+        localStorage.setItem(ACTIVE_ORG_KEY, uuid);
+      } else {
+        localStorage.removeItem(ACTIVE_ORG_KEY);
+      }
+    } catch {}
+  }
+
+  /* -------------------------------------------------
+     LOAD ORGS (AUTHORITATIVE)
   -------------------------------------------------- */
   useEffect(() => {
     let cancelled = false;
@@ -56,22 +71,17 @@ export function OrgProvider({ children }) {
         const loadedOrgs = Array.isArray(json.orgs) ? json.orgs : [];
         setOrgs(loadedOrgs);
 
-        // ---- AUTHORITATIVE ACTIVE ORG RESOLUTION ----
         let resolvedOrgId = null;
 
-        const saved = (() => {
-          try {
-            return localStorage.getItem(ACTIVE_ORG_KEY);
-          } catch {
-            return null;
-          }
-        })();
+        let saved = null;
+        try {
+          saved = localStorage.getItem(ACTIVE_ORG_KEY);
+        } catch {}
 
         const hasUuid = (uuid) =>
           Boolean(uuid) && loadedOrgs.some((o) => pickUuid(o) === uuid);
 
         if (loadedOrgs.length === 1) {
-          // ✅ AUTO-SELECT SINGLE ORG (CRITICAL FIX)
           resolvedOrgId = pickUuid(loadedOrgs[0]);
         } else if (hasUuid(saved)) {
           resolvedOrgId = saved;
@@ -79,17 +89,7 @@ export function OrgProvider({ children }) {
           resolvedOrgId = pickUuid(loadedOrgs[0]);
         }
 
-        if (resolvedOrgId) {
-          setActiveOrgId(resolvedOrgId);
-          try {
-            localStorage.setItem(ACTIVE_ORG_KEY, resolvedOrgId);
-          } catch {}
-        } else {
-          setActiveOrgId(null);
-          try {
-            localStorage.removeItem(ACTIVE_ORG_KEY);
-          } catch {}
-        }
+        setActiveOrgId(resolvedOrgId);
       } catch (err) {
         console.error("[OrgContext] load error:", err);
       } finally {
