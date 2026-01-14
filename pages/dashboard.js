@@ -601,6 +601,15 @@ useEffect(() => {
 
   (async () => {
     try {
+      // Wait for active org
+      if (!activeOrgId) {
+        if (!cancelled) {
+          setPolicies([]);
+          setLoadingPolicies(false);
+        }
+        return;
+      }
+
       setLoadingPolicies(true);
 
       // 🔑 Get Supabase session
@@ -614,7 +623,8 @@ useEffect(() => {
         return;
       }
 
-      const res = await fetch("/api/get-policies", {
+      // ✅ FIX: pass activeOrgId so API returns policies for the selected org
+      const res = await fetch(`/api/get-policies?orgId=${activeOrgId}`, {
         headers: {
           Authorization: `Bearer ${session.access_token}`,
         },
@@ -637,59 +647,7 @@ useEffect(() => {
   return () => {
     cancelled = true;
   };
-}, []);
-
-  /* ============================================================
-     ELITE ENGINE — COI Evaluation
-============================================================ */
-  useEffect(() => {
-    const pols = safeArray(policies);
-    if (pols.length === 0) return;
-
-    const vendorIds = [...new Set(pols.map((p) => p?.vendor_id).filter(Boolean))];
-
-    vendorIds.forEach((vendorId) => {
-      const existing = eliteMap?.[vendorId];
-      if (existing && !existing.loading) return;
-
-      const primary = pols.find((p) => p?.vendor_id === vendorId);
-      if (!primary) return;
-
-      const coidata = {
-        expirationDate: primary.expiration_date,
-        generalLiabilityLimit: primary.limit_each_occurrence,
-        autoLimit: primary.auto_limit,
-        workCompLimit: primary.work_comp_limit,
-        policyType: primary.coverage_type,
-      };
-
-      setEliteMap((prev) => ({
-        ...(prev || {}),
-        [vendorId]: { loading: true },
-      }));
-
-      fetch("/api/elite/evaluate", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ coidata }),
-      })
-        .then((res) => res.json())
-        .then((json) => {
-          setEliteMap((prev) => ({
-            ...(prev || {}),
-            [vendorId]: json?.ok
-              ? { loading: false, overall: json.overall, rules: json.rules }
-              : { loading: false, error: json?.error || "Elite eval failed" },
-          }));
-        })
-        .catch(() =>
-          setEliteMap((prev) => ({
-            ...(prev || {}),
-            [vendorId]: { loading: false, error: "Failed to load" },
-          }))
-        );
-    });
-  }, [policies, eliteMap]);
+}, [activeOrgId]);
 
   /* ============================================================
      RULE ENGINE V5 — run-v3
