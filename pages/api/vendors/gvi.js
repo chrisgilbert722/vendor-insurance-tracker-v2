@@ -1,5 +1,5 @@
 // pages/api/vendors/gvi.js
-// Global Vendor Intelligence (GVI) — INT ORG ID ONLY (FINAL)
+// Global Vendor Intelligence (GVI) — INT ORG ID ONLY (NEON SAFE)
 
 import { sql } from "../../../lib/db";
 
@@ -91,9 +91,8 @@ export default async function handler(req, res) {
 
   try {
     const rawOrgId = req.query?.orgId;
-
-    // 🔒 HARD REQUIRE INT
     const orgId = Number(rawOrgId);
+
     if (!Number.isInteger(orgId)) {
       return res.status(400).json({ ok: false, error: "Invalid orgId" });
     }
@@ -127,7 +126,7 @@ export default async function handler(req, res) {
       SELECT vendor_id, failing, passing, missing, status, summary
       FROM vendor_compliance_cache
       WHERE org_id = ${orgId}
-        AND vendor_id = ANY(${vendorIds});
+        AND vendor_id = ANY(${sql.array(vendorIds, "int4")});
     `;
 
     const complianceMap = Object.fromEntries(
@@ -141,7 +140,7 @@ export default async function handler(req, res) {
       SELECT vendor_id, COUNT(*) AS count
       FROM alerts_v2
       WHERE org_id = ${orgId}
-        AND vendor_id = ANY(${vendorIds})
+        AND vendor_id = ANY(${sql.array(vendorIds, "int4")})
       GROUP BY vendor_id;
     `;
 
@@ -156,7 +155,7 @@ export default async function handler(req, res) {
       SELECT vendor_id, coverage_type, expiration_date
       FROM policies
       WHERE org_id = ${orgId}
-        AND vendor_id = ANY(${vendorIds});
+        AND vendor_id = ANY(${sql.array(vendorIds, "int4")});
     `;
 
     const policyMap = {};
@@ -220,6 +219,10 @@ export default async function handler(req, res) {
     return res.status(200).json({ ok: true, vendors: rowsOut });
   } catch (err) {
     console.error("[vendors/gvi]", err);
-    return res.status(500).json({ ok: false, error: err.message });
+    return res.status(500).json({
+      ok: false,
+      error: err.message,
+      detail: err.detail || null,
+    });
   }
 }
