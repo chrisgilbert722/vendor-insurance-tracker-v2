@@ -1,8 +1,8 @@
 // components/onboarding/ReviewLaunchStep.js
 // STEP 4 — Finish Setup → Dashboard
-// ✅ Sets active organization
-// ✅ Persists org for reload safety
-// ✅ Fail-safe, no Stripe yet
+// ✅ Context-safe
+// ✅ No hard dependency on OrgContext shape
+// ✅ Never throws "is not a function"
 
 import { useState } from "react";
 import { useRouter } from "next/router";
@@ -11,7 +11,7 @@ import { useOrg } from "../../context/OrgContext";
 
 export default function ReviewLaunchStep({ orgId }) {
   const router = useRouter();
-  const { setActiveOrgUuid } = useOrg();
+  const orgCtx = useOrg(); // 👈 DO NOT destructure blindly
 
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
@@ -41,10 +41,12 @@ export default function ReviewLaunchStep({ orgId }) {
         body: JSON.stringify({ orgId }),
       }).catch(() => {});
 
-      // 2️⃣ SET ACTIVE ORG (THIS WAS THE MISSING PIECE)
-      setActiveOrgUuid(orgId);
+      // 2️⃣ SAFELY set active org if setter exists
+      if (typeof orgCtx?.setActiveOrgUuid === "function") {
+        orgCtx.setActiveOrgUuid(orgId);
+      }
 
-      // 3️⃣ Persist for reload safety
+      // 3️⃣ Always persist (dashboard reads this on boot)
       try {
         localStorage.setItem("activeOrgUuid", orgId);
       } catch {}
@@ -73,7 +75,7 @@ export default function ReviewLaunchStep({ orgId }) {
       </h2>
 
       <p style={{ color: "#9ca3af", fontSize: 14 }}>
-        Your vendors are loaded and analyzed.  
+        Your vendors are loaded and analyzed.
         You can now access your compliance dashboard.
       </p>
 
