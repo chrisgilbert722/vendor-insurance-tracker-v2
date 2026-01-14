@@ -1,5 +1,5 @@
 // pages/api/vendors/gvi.js
-// Global Vendor Intelligence (GVI) — UUID SAFE (FIXED)
+// Global Vendor Intelligence (GVI) — ORG-ID SAFE (INT or UUID)
 
 import { sql } from "@db";
 import { resolveOrg } from "@resolveOrg";
@@ -91,8 +91,20 @@ export default async function handler(req, res) {
   }
 
   try {
-    // 🔑 FIX: Resolve UUID → INT
-    const orgId = await resolveOrg(req, res);
+    // ✅ FIX: accept internal INT orgId directly (orgId=6),
+    // and only use resolveOrg when orgId is a UUID.
+    const orgParam =
+      typeof req.query?.orgId === "string" ? req.query.orgId : null;
+
+    let orgId = null;
+
+    if (orgParam && /^\d+$/.test(orgParam)) {
+      orgId = Number(orgParam);
+    } else {
+      // UUID → INT resolver (kept for compatibility)
+      orgId = await resolveOrg(req, res);
+    }
+
     if (!orgId) {
       return res.status(200).json({ ok: true, vendors: [] });
     }
