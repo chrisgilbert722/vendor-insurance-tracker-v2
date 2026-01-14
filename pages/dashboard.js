@@ -580,7 +580,7 @@ function Dashboard() {
         return;
       }
 
-      // ✅ CRITICAL: only store overview
+      // ✅ ONLY store overview
       if (!cancelled) {
         setDashboard(json.overview);
       }
@@ -860,23 +860,18 @@ useEffect(() => {
     );
   });
 
-  /* DERIVED METRICS */
-  const engineHealth = summarizeEngineHealth(engineMap);
-  const avgScore = engineHealth.avg;
-  const totalVendors = engineHealth.total;
+  /* ============================================================
+   DERIVED METRICS — FROM API (NOT ENGINE)
+============================================================ */
+const avgScore = dashboard?.globalScore ?? 0;
+const totalVendors = dashboard?.vendorCount ?? 0;
 
-  const alertSummarySafe = safeObject(alertSummary);
-  const alertsCount = alertSummarySafe?.total || 0;
-
-  const alertVendorsList = alertSummarySafe
-    ? safeArray(Object.values(alertSummarySafe.vendors || {})).sort((a, b) => {
-        const A = a || {};
-        const B = b || {};
-        if ((B.critical || 0) !== (A.critical || 0)) return (B.critical || 0) - (A.critical || 0);
-        if ((B.high || 0) !== (A.high || 0)) return (B.high || 0) - (A.high || 0);
-        return (B.total || 0) - (A.total || 0);
-      })
-    : [];
+const alerts = dashboard?.alerts ?? {};
+const alertsCount =
+  (alerts.expired ?? 0) +
+  (alerts.critical30d ?? 0) +
+  (alerts.warning90d ?? 0) +
+  (alerts.eliteFails ?? 0);
 
   /* ============================================================
      MAIN RENDER
