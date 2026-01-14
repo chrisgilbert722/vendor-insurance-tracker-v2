@@ -564,33 +564,37 @@ function Dashboard() {
   useEffect(() => {
   if (!activeOrgId) return;
 
+  let cancelled = false;
+
   (async () => {
     try {
       setDashboardLoading(true);
-      const res = await fetch(`/api/dashboard/metrics?orgId=${activeOrgId}`);
+
+      const res = await fetch(
+        `/api/dashboard/metrics?orgId=${activeOrgId}`
+      );
       const json = await res.json();
 
-      if (!json?.ok) {
-        setDashboard(null);
+      if (!json?.ok || !json?.overview) {
+        if (!cancelled) setDashboard(null);
         return;
       }
 
-      // 🔑 FIX: normalize response shape
-      const data =
-        json.overview ||
-        json.metrics ||
-        json.stats ||
-        json.data ||
-        null;
-
-      setDashboard(data);
+      // ✅ SINGLE SOURCE OF TRUTH
+      if (!cancelled) {
+        setDashboard(json.overview);
+      }
     } catch (err) {
       console.error("[dashboard] metrics error:", err);
-      setDashboard(null);
+      if (!cancelled) setDashboard(null);
     } finally {
-      setDashboardLoading(false);
+      if (!cancelled) setDashboardLoading(false);
     }
   })();
+
+  return () => {
+    cancelled = true;
+  };
 }, [activeOrgId]);
 
   /* ============================================================
