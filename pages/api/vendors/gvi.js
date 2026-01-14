@@ -1,8 +1,7 @@
 // pages/api/vendors/gvi.js
-// Global Vendor Intelligence (GVI) — ORG-ID SAFE (INT or UUID)
+// Global Vendor Intelligence (GVI) — INT ORG ID ONLY (FINAL)
 
-import { sql } from "@db";
-import { resolveOrg } from "@resolveOrg";
+import { sql } from "../../../lib/db";
 
 /* ============================================================
    AI SCORE
@@ -91,22 +90,12 @@ export default async function handler(req, res) {
   }
 
   try {
-    // ✅ FIX: accept internal INT orgId directly (orgId=6),
-    // and only use resolveOrg when orgId is a UUID.
-    const orgParam =
-      typeof req.query?.orgId === "string" ? req.query.orgId : null;
+    const rawOrgId = req.query?.orgId;
 
-    let orgId = null;
-
-    if (orgParam && /^\d+$/.test(orgParam)) {
-      orgId = Number(orgParam);
-    } else {
-      // UUID → INT resolver (kept for compatibility)
-      orgId = await resolveOrg(req, res);
-    }
-
-    if (!orgId) {
-      return res.status(200).json({ ok: true, vendors: [] });
+    // 🔒 HARD REQUIRE INT
+    const orgId = Number(rawOrgId);
+    if (!Number.isInteger(orgId)) {
+      return res.status(400).json({ ok: false, error: "Invalid orgId" });
     }
 
     /* -------------------------------------------
@@ -142,7 +131,7 @@ export default async function handler(req, res) {
     `;
 
     const complianceMap = Object.fromEntries(
-      (complianceRows || []).map((r) => [r.vendor_id, r])
+      complianceRows.map((r) => [r.vendor_id, r])
     );
 
     /* -------------------------------------------
@@ -157,7 +146,7 @@ export default async function handler(req, res) {
     `;
 
     const alertMap = Object.fromEntries(
-      (alertRows || []).map((r) => [r.vendor_id, Number(r.count)])
+      alertRows.map((r) => [r.vendor_id, Number(r.count)])
     );
 
     /* -------------------------------------------
@@ -171,7 +160,7 @@ export default async function handler(req, res) {
     `;
 
     const policyMap = {};
-    for (const p of policyRows || []) {
+    for (const p of policyRows) {
       if (
         !policyMap[p.vendor_id] ||
         new Date(p.expiration_date) <
@@ -206,15 +195,6 @@ export default async function handler(req, res) {
       return {
         id: v.id,
         name: v.name,
-
-        compliance: {
-          status: comp.status || "unknown",
-          summary: comp.summary || "No evaluation yet.",
-          totalRules: failing.length + passing.length + missing.length,
-          fixedRules: passing.length,
-          remainingRules: failing.length + missing.length,
-        },
-
         alertsCount: alertMap[v.id] || 0,
         aiScore: computeAiScore(
           expDays,
@@ -222,13 +202,11 @@ export default async function handler(req, res) {
           failing.length,
           missing.length
         ),
-
         primaryPolicy: {
           coverage_type: coverage,
           expiration_date: expDate,
           daysLeft: expDays,
         },
-
         renewal: {
           stage: renewalStage,
           stage_label: stageLabel(renewalStage),
@@ -236,12 +214,6 @@ export default async function handler(req, res) {
           urgency_score: computeRenewalUrgencyScore(expDays),
           next_action: computeNextRenewalAction(renewalStage),
         },
-
-        contractStatus: v.contract_status || "missing",
-        contractRiskScore: v.contract_risk_score ?? null,
-        contractIssuesCount: Array.isArray(v.contract_issues_json)
-          ? v.contract_issues_json.length
-          : 0,
       };
     });
 
