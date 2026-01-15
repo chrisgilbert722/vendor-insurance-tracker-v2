@@ -1,10 +1,11 @@
 // pages/api/vendors/gvi.js
 // Global Vendor Intelligence (GVI)
 // ✅ NEON SAFE
+// ✅ Correct imports
 // ❌ NO sql.join
 // ❌ NO sql.array
 
-import { sql } from "../../lib/db";
+import { sql } from "@db";
 
 export default async function handler(req, res) {
   if (req.method !== "GET") {
@@ -18,13 +19,10 @@ export default async function handler(req, res) {
     }
 
     /* ============================================================
-       1) Vendors (base)
+       1) Vendors
     ============================================================ */
     const vendors = await sql`
-      SELECT
-        id,
-        name,
-        contract_status
+      SELECT id, name, contract_status
       FROM vendors
       WHERE org_id = ${orgId}
       ORDER BY name ASC;
@@ -35,26 +33,24 @@ export default async function handler(req, res) {
     }
 
     /* ============================================================
-       2) Alerts count per vendor
+       2) Alerts per vendor
     ============================================================ */
-    const alerts = await sql`
-      SELECT
-        vendor_id,
-        COUNT(*)::int AS count
+    const alertRows = await sql`
+      SELECT vendor_id, COUNT(*)::int AS count
       FROM alerts_v2
       WHERE org_id = ${orgId}
       GROUP BY vendor_id;
     `;
 
     const alertMap = {};
-    for (const a of alerts) {
-      alertMap[a.vendor_id] = a.count;
+    for (const r of alertRows) {
+      alertMap[r.vendor_id] = r.count;
     }
 
     /* ============================================================
        3) Earliest policy per vendor
     ============================================================ */
-    const policies = await sql`
+    const policyRows = await sql`
       SELECT DISTINCT ON (vendor_id)
         vendor_id,
         coverage_type,
@@ -65,14 +61,14 @@ export default async function handler(req, res) {
     `;
 
     const policyMap = {};
-    for (const p of policies) {
+    for (const p of policyRows) {
       policyMap[p.vendor_id] = p;
     }
 
     const now = Date.now();
 
     /* ============================================================
-       4) Final output
+       4) Output
     ============================================================ */
     const output = vendors.map((v) => {
       const policy = policyMap[v.id] || null;
