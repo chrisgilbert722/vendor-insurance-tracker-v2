@@ -270,21 +270,24 @@ export default function VendorsPage() {
 
   // METRICS
   const metrics = useMemo(() => {
-    const vendors = Array.isArray(rawVendors) ? rawVendors.map(normalizeVendor) : [];
-    const total = vendors.length;
-    const compliant = vendors.filter((v) => v.status === "Compliant").length;
-    const atRisk = vendors.filter((v) => v.status === "At Risk").length;
-    const needsReview = vendors.filter((v) => v.status === "Needs Review").length;
+  const vendors = Array.isArray(rawVendors)
+    ? rawVendors.map(normalizeVendor)
+    : [];
 
-    const avgScore =
-      total === 0
-        ? 0
-        : Math.round(
-            vendors.reduce((sum, v) => sum + (v.complianceScore || 0), 0) / total
-          );
+  const total = vendors.length;
+  const compliant = vendors.filter((v) => v.status === "Compliant").length;
+  const atRisk = vendors.filter((v) => v.status === "At Risk").length;
+  const needsReview = vendors.filter((v) => v.status === "Needs Review").length;
 
-    return { total, compliant, atRisk, needsReview, avgScore };
-  }, [rawVendors]);
+  const avgScore =
+    total === 0
+      ? 0
+      : Math.round(
+          vendors.reduce((sum, v) => sum + (v.complianceScore || 0), 0) / total
+        );
+
+  return { total, compliant, atRisk, needsReview, avgScore };
+}, [rawVendors]);
 
   // Filters & search
   const filtered = useMemo(() => {
