@@ -1,39 +1,10 @@
 // pages/api/vendors/gvi.js
-// Global Vendor Intelligence (GVI) — NEON SAFE, NO sql.array, NO ALIASES
+// Global Vendor Intelligence (GVI)
+// ✅ NEON SAFE
+// ❌ NO sql.join
+// ❌ NO sql.array
 
-import { sql } from "../../../lib/db";
-
-/* ===================== HELPERS ===================== */
-
-function computeAiScore(expDays, status, failingCount, missingCount) {
-  let base = 95;
-  if (expDays === null) base = 70;
-  else if (expDays < 0) base = 20;
-  else if (expDays <= 30) base = 40;
-  else if (expDays <= 90) base = 70;
-
-  let factor = 1;
-  if (status === "fail") factor *= 0.4;
-  else if (status === "warn") factor *= 0.7;
-
-  if (failingCount > 0) factor *= 0.6;
-  else if (missingCount > 0) factor *= 0.8;
-
-  return Math.max(0, Math.min(Math.round(base * factor), 100));
-}
-
-function computeRenewalStage(daysLeft) {
-  if (daysLeft === null) return null;
-  if (daysLeft < 0) return 0;
-  if (daysLeft <= 1) return 1;
-  if (daysLeft <= 3) return 3;
-  if (daysLeft <= 7) return 7;
-  if (daysLeft <= 30) return 30;
-  if (daysLeft <= 90) return 90;
-  return 999;
-}
-
-/* ===================== HANDLER ===================== */
+import { sql } from "../../lib/db";
 
 export default async function handler(req, res) {
   if (req.method !== "GET") {
@@ -46,8 +17,14 @@ export default async function handler(req, res) {
       return res.status(400).json({ ok: false, error: "Invalid orgId" });
     }
 
+    /* ============================================================
+       1) Vendors (base)
+    ============================================================ */
     const vendors = await sql`
-      SELECT id, name, contract_status AS status
+      SELECT
+        id,
+        name,
+        contract_status
       FROM vendors
       WHERE org_id = ${orgId}
       ORDER BY name ASC;
@@ -57,49 +34,80 @@ export default async function handler(req, res) {
       return res.status(200).json({ ok: true, vendors: [] });
     }
 
-    const vendorIds = vendors.map(v => v.id);
+    /* ============================================================
+       2) Alerts count per vendor
+    ============================================================ */
+    const alerts = await sql`
+      SELECT
+        vendor_id,
+        COUNT(*)::int AS count
+      FROM alerts_v2
+      WHERE org_id = ${orgId}
+      GROUP BY vendor_id;
+    `;
 
+    const alertMap = {};
+    for (const a of alerts) {
+      alertMap[a.vendor_id] = a.count;
+    }
+
+    /* ============================================================
+       3) Earliest policy per vendor
+    ============================================================ */
     const policies = await sql`
-      SELECT vendor_id, coverage_type, expiration_date
+      SELECT DISTINCT ON (vendor_id)
+        vendor_id,
+        coverage_type,
+        expiration_date
       FROM policies
       WHERE org_id = ${orgId}
-        AND vendor_id IN (${sql.join(vendorIds)});
+      ORDER BY vendor_id, expiration_date ASC;
     `;
 
     const policyMap = {};
     for (const p of policies) {
-      if (
-        !policyMap[p.vendor_id] ||
-        new Date(p.expiration_date) <
-          new Date(policyMap[p.vendor_id].expiration_date)
-      ) {
-        policyMap[p.vendor_id] = p;
-      }
+      policyMap[p.vendor_id] = p;
     }
 
-    const now = new Date();
+    const now = Date.now();
 
-    const output = vendors.map(v => {
-      const policy = policyMap[v.id];
-      let expDays = null;
+    /* ============================================================
+       4) Final output
+    ============================================================ */
+    const output = vendors.map((v) => {
+      const policy = policyMap[v.id] || null;
 
+      let daysLeft = null;
       if (policy?.expiration_date) {
-        expDays = Math.floor(
-          (new Date(policy.expiration_date) - now) / 86400000
+        daysLeft = Math.floor(
+          (new Date(policy.expiration_date).getTime() - now) / 86400000
         );
       }
 
-      const stage = computeRenewalStage(expDays);
+      let aiScore = 95;
+      if (daysLeft === null) aiScore = 70;
+      else if (daysLeft < 0) aiScore = 20;
+      else if (daysLeft <= 30) aiScore = 40;
+      else if (daysLeft <= 90) aiScore = 70;
 
       return {
         id: v.id,
         name: v.name,
-        status: v.status,
-        aiScore: computeAiScore(expDays, v.status, 0, 0),
-        primaryPolicy: policy || null,
+        alertsCount: alertMap[v.id] || 0,
+        aiScore,
+        primaryPolicy: policy,
         renewal: {
-          stage,
-          daysLeft: expDays,
+          daysLeft,
+          stage:
+            daysLeft === null
+              ? "unknown"
+              : daysLeft < 0
+              ? "expired"
+              : daysLeft <= 30
+              ? "critical"
+              : daysLeft <= 90
+              ? "warning"
+              : "ok",
         },
       };
     });
