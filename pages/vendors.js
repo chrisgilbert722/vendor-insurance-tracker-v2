@@ -1,10 +1,10 @@
 // ============================================================
-// VENDORS PAGE — STABLE, DEFENSIVE, CLIENT-ONLY
+// VENDORS — V4 HARD RESET (STABLE FOUNDATION)
 // - Next.js pages router
-// - Supabase client ONLY (no API routes)
+// - Supabase client ONLY
 // - org_id is INTEGER
 // - useOrg() provides activeOrgId (int)
-// - Metrics & filters NEVER crash
+// - ZERO client-side crash vectors
 // ============================================================
 
 import { useEffect, useMemo, useState } from "react";
@@ -16,30 +16,66 @@ import { useOrg } from "../context/OrgContext";
    SAFE HELPERS (NEVER THROW)
 ============================================================ */
 
-function safeArray(value) {
-  return Array.isArray(value) ? value : [];
-}
+const safeArray = (v) => (Array.isArray(v) ? v : []);
+const safeString = (v, fallback = "") =>
+  typeof v === "string" ? v : v == null ? fallback : String(v);
+const safeNumber = (v, fallback = 0) =>
+  typeof v === "number" && Number.isFinite(v) ? v : fallback;
 
-function safeString(value, fallback = "") {
-  return typeof value === "string" ? value : fallback;
-}
-
-function safeNumber(value, fallback = 0) {
-  return typeof value === "number" && !Number.isNaN(value)
-    ? value
-    : fallback;
-}
-
-function parseDate(value) {
-  if (!value) return null;
-  const d = new Date(value);
+function parseDate(v) {
+  if (!v) return null;
+  const d = new Date(v);
   return Number.isNaN(d.getTime()) ? null : d;
 }
 
-function daysUntil(date) {
-  if (!date) return null;
-  const diff = date.getTime() - Date.now();
-  return Math.ceil(diff / (1000 * 60 * 60 * 24));
+function formatRelative(date) {
+  if (!date) return "—";
+  const diff = Date.now() - date.getTime();
+  const mins = Math.floor(diff / 60000);
+  if (mins < 1) return "just now";
+  if (mins < 60) return `${mins}m ago`;
+  const hrs = Math.floor(mins / 60);
+  if (hrs < 24) return `${hrs}h ago`;
+  return `${Math.floor(hrs / 24)}d ago`;
+}
+
+/* ============================================================
+   NORMALIZER — SINGLE SOURCE OF TRUTH
+============================================================ */
+
+function normalizeVendor(row) {
+  if (!row || typeof row !== "object") return null;
+
+  const expiration = parseDate(
+    row.insurance_expiration ||
+      row.policy_expiration ||
+      row.expiration_date
+  );
+
+  let computedStatus = "unknown";
+  if (expiration) {
+    const days = Math.ceil(
+      (expiration.getTime() - Date.now()) / (1000 * 60 * 60 * 24)
+    );
+    if (days < 0) computedStatus = "expired";
+    else if (days <= 30) computedStatus = "expiring";
+    else computedStatus = "active";
+  }
+
+  return {
+    id: row.id ?? null,
+    org_id: row.org_id ?? null,
+
+    name: safeString(row.name, "Unnamed Vendor"),
+    email: row.email ? safeString(row.email) : null,
+    category: safeString(row.category, "Vendor"),
+
+    status: safeString(row.status, computedStatus),
+    computedStatus,
+
+    expirationDate: expiration,
+    createdAt: parseDate(row.created_at),
+  };
 }
 
 /* ============================================================
@@ -48,6 +84,7 @@ function daysUntil(date) {
 
 export default function VendorsPage() {
   const { activeOrgId, loadingOrgs } = useOrg();
+  const orgId = Number.isInteger(activeOrgId) ? activeOrgId : null;
 
   const [vendors, setVendors] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -57,94 +94,64 @@ export default function VendorsPage() {
   const [statusFilter, setStatusFilter] = useState("all");
 
   /* ============================================================
-     DATA LOAD (CLIENT ONLY)
+     LOAD VENDORS (SUPABASE ONLY)
   ============================================================ */
 
   useEffect(() => {
     if (loadingOrgs) return;
-    if (!activeOrgId) {
-      setVendors([]);
-      setLoading(false);
-      return;
-    }
 
     let cancelled = false;
 
-    async function loadVendors() {
+    async function load() {
+      if (!orgId) {
+        setVendors([]);
+        setLoading(false);
+        return;
+      }
+
       setLoading(true);
       setError("");
 
       const { data, error } = await supabase
         .from("vendors")
         .select("*")
-        .eq("org_id", activeOrgId)
+        .eq("org_id", orgId)
         .order("created_at", { ascending: false });
 
       if (cancelled) return;
 
       if (error) {
-        console.error("[vendors] load error", error);
+        console.error("[vendors] load error:", error);
         setError("Failed to load vendors.");
         setVendors([]);
       } else {
-        setVendors(safeArray(data));
+        const normalized = safeArray(data)
+          .map(normalizeVendor)
+          .filter(Boolean); // 🔒 HARD GUARANTEE
+
+        setVendors(normalized);
       }
 
       setLoading(false);
     }
 
-    loadVendors();
-
+    load();
     return () => {
       cancelled = true;
     };
-  }, [activeOrgId, loadingOrgs]);
+  }, [orgId, loadingOrgs]);
 
   /* ============================================================
-     NORMALIZED VENDORS (SAFE SHAPE)
-  ============================================================ */
-
-  const normalizedVendors = useMemo(() => {
-    return safeArray(vendors).map((v) => {
-      const expirationDate = parseDate(
-        v?.insurance_expiration ||
-          v?.expiration_date ||
-          v?.policy_expiration
-      );
-
-      const days = daysUntil(expirationDate);
-
-      let computedStatus = "unknown";
-      if (days !== null) {
-        if (days < 0) computedStatus = "expired";
-        else if (days <= 30) computedStatus = "expiring";
-        else computedStatus = "active";
-      }
-
-      return {
-        id: v?.id ?? null,
-        name: safeString(v?.name, "Unnamed Vendor"),
-        email: safeString(v?.email),
-        status: safeString(v?.status, computedStatus),
-        computedStatus,
-        expirationDate,
-        daysRemaining: days,
-        createdAt: parseDate(v?.created_at),
-      };
-    });
-  }, [vendors]);
-
-  /* ============================================================
-     FILTERED VENDORS (NEVER CRASH)
+     FILTERED + METRICS (SAFE)
   ============================================================ */
 
   const filteredVendors = useMemo(() => {
-    let list = safeArray(normalizedVendors);
+    let list = vendors;
 
     if (search.trim()) {
       const q = search.toLowerCase();
       list = list.filter((v) =>
-        safeString(v.name).toLowerCase().includes(q)
+        v.name.toLowerCase().includes(q)
       );
     }
 
@@ -155,22 +162,16 @@ export default function VendorsPage() {
     }
 
     return list;
-  }, [normalizedVendors, search, statusFilter]);
-
-  /* ============================================================
-     METRICS (100% SAFE)
-  ============================================================ */
+  }, [vendors, search, statusFilter]);
 
   const metrics = useMemo(() => {
-    const list = safeArray(normalizedVendors);
-
     return {
-      total: list.length,
-      active: list.filter((v) => v.computedStatus === "active").length,
-      expiring: list.filter((v) => v.computedStatus === "expiring").length,
-      expired: list.filter((v) => v.computedStatus === "expired").length,
+      total: vendors.length,
+      active: vendors.filter((v) => v.computedStatus === "active").length,
+      expiring: vendors.filter((v) => v.computedStatus === "expiring").length,
+      expired: vendors.filter((v) => v.computedStatus === "expired").length,
     };
-  }, [normalizedVendors]);
+  }, [vendors]);
 
   /* ============================================================
      RENDER
@@ -182,34 +183,30 @@ export default function VendorsPage() {
 
   if (error) {
     return (
-      <div style={{ padding: 24, color: "red" }}>
+      <div style={{ padding: 24, color: "crimson" }}>
         {error}
       </div>
     );
   }
 
   return (
-    <div style={{ padding: 24 }}>
-      <h1>Vendors</h1>
+    <div style={{ padding: 28 }}>
+      <h1 style={{ marginBottom: 12 }}>Vendors</h1>
 
-      {/* =======================
-          METRICS
-      ======================= */}
-      <div style={{ display: "flex", gap: 16, marginBottom: 16 }}>
+      {/* METRICS */}
+      <div style={{ display: "flex", gap: 14, marginBottom: 18 }}>
         <Metric label="Total" value={metrics.total} />
         <Metric label="Active" value={metrics.active} />
         <Metric label="Expiring" value={metrics.expiring} />
         <Metric label="Expired" value={metrics.expired} />
       </div>
 
-      {/* =======================
-          FILTERS
-      ======================= */}
-      <div style={{ display: "flex", gap: 12, marginBottom: 16 }}>
+      {/* FILTERS */}
+      <div style={{ display: "flex", gap: 10, marginBottom: 18 }}>
         <input
-          placeholder="Search vendors…"
           value={search}
           onChange={(e) => setSearch(e.target.value)}
+          placeholder="Search vendors…"
         />
 
         <select
@@ -223,9 +220,7 @@ export default function VendorsPage() {
         </select>
       </div>
 
-      {/* =======================
-          TABLE
-      ======================= */}
+      {/* TABLE */}
       {filteredVendors.length === 0 ? (
         <div>No vendors found.</div>
       ) : (
@@ -239,16 +234,16 @@ export default function VendorsPage() {
           </thead>
           <tbody>
             {filteredVendors.map((v) => (
-              <tr key={v.id ?? Math.random()}>
+              <tr key={v.id}>
                 <td>
-                  <Link href={`/vendors/${v.id ?? ""}`}>
+                  <Link href={`/vendors/${v.id}`}>
                     {v.name}
                   </Link>
                 </td>
                 <td>{v.computedStatus}</td>
                 <td>
                   {v.expirationDate
-                    ? `${v.daysRemaining} days`
+                    ? formatRelative(v.expirationDate)
                     : "—"}
                 </td>
               </tr>
@@ -261,21 +256,21 @@ export default function VendorsPage() {
 }
 
 /* ============================================================
-   METRIC COMPONENT
+   METRIC
 ============================================================ */
 
 function Metric({ label, value }) {
   return (
     <div
       style={{
-        padding: 12,
         border: "1px solid #ddd",
-        borderRadius: 6,
-        minWidth: 80,
+        borderRadius: 8,
+        padding: "10px 14px",
+        minWidth: 90,
       }}
     >
       <div style={{ fontSize: 12, color: "#666" }}>{label}</div>
-      <div style={{ fontSize: 20, fontWeight: 600 }}>
+      <div style={{ fontSize: 22, fontWeight: 600 }}>
         {safeNumber(value)}
       </div>
     </div>
