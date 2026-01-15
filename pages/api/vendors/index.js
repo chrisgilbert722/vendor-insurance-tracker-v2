@@ -1,5 +1,5 @@
 // pages/api/vendors/index.js
-// Vendor Index — UUID SAFE, BUILD SAFE (NO ALIASES)
+// Vendor Index — STABLE, NO ALIASES, BUILD SAFE
 
 import { sql } from "../../../lib/db";
 import { resolveOrg } from "../../../lib/server/resolveOrg";
@@ -10,9 +10,8 @@ export default async function handler(req, res) {
   }
 
   try {
-    // 🔑 Resolve org UUID → internal INT
+    // Resolve org UUID → internal INT org_id
     const orgId = await resolveOrg(req, res);
-
     if (!orgId) {
       return res.status(200).json({ ok: true, vendors: [] });
     }
@@ -24,7 +23,8 @@ export default async function handler(req, res) {
         email,
         category,
         org_id,
-        created_at
+        created_at,
+        contract_status AS status
       FROM vendors
       WHERE org_id = ${orgId}
       ORDER BY name ASC;
