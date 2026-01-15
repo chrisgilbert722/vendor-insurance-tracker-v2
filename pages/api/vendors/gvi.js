@@ -103,7 +103,7 @@ export default async function handler(req, res) {
       ORDER BY name ASC
     `;
 
-    if (vendors.length === 0) {
+    if (!vendors || vendors.length === 0) {
       return res.status(200).json({ ok: true, vendors: [] });
     }
 
@@ -116,7 +116,7 @@ export default async function handler(req, res) {
       SELECT vendor_id, failing, passing, missing, status
       FROM vendor_compliance_cache
       WHERE org_id = ${orgId}
-        AND vendor_id IN (${sql.join(vendorIds)})
+        AND vendor_id IN (${sql.join(vendorIds, sql.int4)})
     `;
 
     const complianceMap = Object.fromEntries(
@@ -130,7 +130,7 @@ export default async function handler(req, res) {
       SELECT vendor_id, COUNT(*)::int AS count
       FROM alerts_v2
       WHERE org_id = ${orgId}
-        AND vendor_id IN (${sql.join(vendorIds)})
+        AND vendor_id IN (${sql.join(vendorIds, sql.int4)})
       GROUP BY vendor_id
     `;
 
@@ -145,7 +145,7 @@ export default async function handler(req, res) {
       SELECT vendor_id, coverage_type, expiration_date
       FROM policies
       WHERE org_id = ${orgId}
-        AND vendor_id IN (${sql.join(vendorIds)})
+        AND vendor_id IN (${sql.join(vendorIds, sql.int4)})
     `;
 
     const policyMap = {};
