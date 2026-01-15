@@ -1,8 +1,9 @@
 // pages/vendors/[id].js
 // ============================================================
 // VENDOR COMMAND CENTER — V4 (IRON MAN)
-// - Uses INTERNAL numeric vendor_id
-// - UUID-safe
+// - UUID-based routing (vendors.id)
+// - Matches real DB schema
+// - Crash-safe
 // ============================================================
 
 import { useRouter } from "next/router";
@@ -24,7 +25,7 @@ const safeNumber = (v, f = 0) =>
 ----------------------------- */
 export default function VendorCommandCenter() {
   const router = useRouter();
-  const { id } = router.query;
+  const { id } = router.query; // UUID
   const { activeOrgId } = useOrg();
 
   const [vendor, setVendor] = useState(null);
@@ -39,15 +40,10 @@ export default function VendorCommandCenter() {
         setLoading(true);
         setError("");
 
-        const numericId = Number(id);
-        if (!Number.isInteger(numericId)) {
-          throw new Error("Invalid vendor ID");
-        }
-
         const { data, error } = await supabase
           .from("vendors")
           .select("*")
-          .eq("vendor_id", numericId) // ✅ FIX
+          .eq("id", id) // ✅ UUID ONLY
           .eq("org_id", activeOrgId)
           .single();
 
@@ -140,12 +136,14 @@ function PageShell({ children }) {
 
 function Grid({ children }) {
   return (
-    <div style={{
-      display: "grid",
-      gridTemplateColumns: "repeat(auto-fit,minmax(320px,1fr))",
-      gap: 16,
-      marginTop: 20,
-    }}>
+    <div
+      style={{
+        display: "grid",
+        gridTemplateColumns: "repeat(auto-fit,minmax(320px,1fr))",
+        gap: 16,
+        marginTop: 20,
+      }}
+    >
       {children}
     </div>
   );
