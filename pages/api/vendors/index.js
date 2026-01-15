@@ -1,6 +1,5 @@
 // pages/api/vendors/index.js
 // Vendor Index — UUID SAFE
-// Returns raw vendor list for dashboard, dropdowns, vendors page
 
 import { sql } from "../../../lib/db";
 import { resolveOrg } from "../../../lib/resolveOrg";
@@ -11,14 +10,12 @@ export default async function handler(req, res) {
   }
 
   try {
-    // 🔑 Resolve org UUID → internal INT (SAFE)
     const orgId = await resolveOrg(req, res);
 
     if (!orgId) {
       return res.status(200).json({ ok: true, vendors: [] });
     }
 
-    // Fetch vendors (RAW — no analytics, no joins)
     const vendors = await sql`
       SELECT
         id,
@@ -32,15 +29,9 @@ export default async function handler(req, res) {
       ORDER BY name ASC
     `;
 
-    return res.status(200).json({
-      ok: true,
-      vendors,
-    });
+    return res.status(200).json({ ok: true, vendors });
   } catch (err) {
     console.error("[api/vendors/index]", err);
-    return res.status(500).json({
-      ok: false,
-      error: err.message,
-    });
+    return res.status(500).json({ ok: false, error: err.message });
   }
 }
