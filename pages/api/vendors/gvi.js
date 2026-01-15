@@ -1,7 +1,7 @@
 // pages/api/vendors/gvi.js
-// Global Vendor Intelligence (GVI) — UI SAFE
+// Global Vendor Intelligence (GVI) — UI SAFE, BUILD SAFE
 
-import { sql } from "../../lib/db";
+import { sql } from "../../../lib/db";
 
 /* ============================================================
    AI SCORE
@@ -68,7 +68,7 @@ export default async function handler(req, res) {
     const output = vendors.map(v => ({
       id: v.id,
       name: v.name,
-      status: v.status,                 // ✅ THIS FIXES THE CRASH
+      status: v.status,              // ✅ REQUIRED BY UI
       alertsCount: alertMap[v.id] || 0,
       aiScore: 100,
       primaryPolicy: null,
