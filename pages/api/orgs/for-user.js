@@ -5,7 +5,10 @@ import { supabaseServer } from "../../../lib/supabaseServer";
 
 export default async function handler(req, res) {
   if (req.method !== "GET") {
-    return res.status(405).json({ ok: false, error: "Method not allowed" });
+    return res.status(405).json({
+      ok: false,
+      error: "Method not allowed",
+    });
   }
 
   try {
@@ -21,9 +24,11 @@ export default async function handler(req, res) {
       });
     }
 
-    const supabase = supabaseServer();
+    // ✅ Use server-side Supabase client directly
+    const supabase = supabaseServer;
 
     const { data, error } = await supabase.auth.getUser(token);
+
     if (error || !data?.user) {
       return res.status(401).json({
         ok: false,
