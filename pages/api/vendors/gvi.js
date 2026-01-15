@@ -1,12 +1,15 @@
 // pages/api/vendors/gvi.js
 // Global Vendor Intelligence (GVI)
 // ✅ NEON SAFE
-// ✅ Correct imports
+// ✅ UI-COMPATIBLE (adds `status`)
 // ❌ NO sql.join
 // ❌ NO sql.array
 
 import { sql } from "@db";
 
+/* ============================================================
+   MAIN HANDLER
+============================================================ */
 export default async function handler(req, res) {
   if (req.method !== "GET") {
     return res.status(405).json({ ok: false, error: "GET only" });
@@ -19,10 +22,13 @@ export default async function handler(req, res) {
     }
 
     /* ============================================================
-       1) Vendors
+       Vendors (BASE)
     ============================================================ */
     const vendors = await sql`
-      SELECT id, name, contract_status
+      SELECT
+        id,
+        name,
+        contract_status
       FROM vendors
       WHERE org_id = ${orgId}
       ORDER BY name ASC;
@@ -33,7 +39,7 @@ export default async function handler(req, res) {
     }
 
     /* ============================================================
-       2) Alerts per vendor
+       Alerts per vendor
     ============================================================ */
     const alertRows = await sql`
       SELECT vendor_id, COUNT(*)::int AS count
@@ -48,7 +54,7 @@ export default async function handler(req, res) {
     }
 
     /* ============================================================
-       3) Earliest policy per vendor
+       Policies (nearest expiration)
     ============================================================ */
     const policyRows = await sql`
       SELECT DISTINCT ON (vendor_id)
@@ -68,7 +74,7 @@ export default async function handler(req, res) {
     const now = Date.now();
 
     /* ============================================================
-       4) Output
+       FINAL OUTPUT (UI SAFE)
     ============================================================ */
     const output = vendors.map((v) => {
       const policy = policyMap[v.id] || null;
@@ -89,9 +95,15 @@ export default async function handler(req, res) {
       return {
         id: v.id,
         name: v.name,
+
+        // 🔑 CRITICAL FIX — UI EXPECTS THIS
+        status: v.contract_status || "unknown",
+
         alertsCount: alertMap[v.id] || 0,
         aiScore,
+
         primaryPolicy: policy,
+
         renewal: {
           daysLeft,
           stage:
@@ -111,9 +123,6 @@ export default async function handler(req, res) {
     return res.status(200).json({ ok: true, vendors: output });
   } catch (err) {
     console.error("[vendors/gvi]", err);
-    return res.status(500).json({
-      ok: false,
-      error: err.message,
-    });
+    return res.status(500).json({ ok: false, error: err.message });
   }
 }
