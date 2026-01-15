@@ -964,6 +964,18 @@ const alertsCount =
   (alerts.warning90d ?? 0) +
   (alerts.eliteFails ?? 0);
 
+// ✅ REQUIRED: alertSummarySafe (prevents SSR crash)
+const alertSummarySafe = {
+  total: alertsCount,
+  vendors: {},
+  countsBySeverity: {
+    critical: alerts.critical30d ?? 0,
+    high: alerts.expired ?? 0,
+    medium: alerts.warning90d ?? 0,
+    low: 0,
+  },
+};
+
   /* ============================================================
      MAIN RENDER
 ============================================================ */
