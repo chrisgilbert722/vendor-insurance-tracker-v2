@@ -1,5 +1,5 @@
 // pages/api/vendors/gvi.js
-// Global Vendor Intelligence (GVI) — NEON SAFE, NO sql.array, NO sql.join
+// Global Vendor Intelligence (GVI) — UUID SAFE, SINGLE SOURCE OF TRUTH
 
 import { sql } from "../../../lib/db";
 
@@ -51,7 +51,7 @@ export default async function handler(req, res) {
     }
 
     /* -------------------------------------------
-       Vendors (BASE TABLE)
+       Vendors (UUID SOURCE OF TRUTH)
     ------------------------------------------- */
     const vendors = await sql`
       SELECT id, name
@@ -65,7 +65,7 @@ export default async function handler(req, res) {
     }
 
     /* -------------------------------------------
-       Alerts (JOIN, NO ARRAY)
+       Alerts
     ------------------------------------------- */
     const alerts = await sql`
       SELECT v.id AS vendor_id, COUNT(a.id)::int AS count
@@ -112,7 +112,10 @@ export default async function handler(req, res) {
       }
 
       return {
-        id: v.id,
+        // 🔒 UUID EXPLICITLY EXPOSED
+        id: v.id,                 // keep for compatibility
+        external_uuid: v.id,      // canonical routing ID
+
         name: v.name,
         alertsCount: alertMap[v.id] || 0,
         aiScore: computeAiScore(daysLeft, "pass", 0, 0),
@@ -133,4 +136,3 @@ export default async function handler(req, res) {
     });
   }
 }
- 
