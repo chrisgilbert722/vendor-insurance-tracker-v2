@@ -1,9 +1,8 @@
 // pages/vendors/[id].js
 // ============================================================
 // VENDOR COMMAND CENTER — V4 (IRON MAN)
-// - Read-only + actions
-// - No legacy vendor.compliance assumptions
-// - Fully crash-safe
+// - Uses INTERNAL numeric vendor_id
+// - UUID-safe
 // ============================================================
 
 import { useRouter } from "next/router";
@@ -40,10 +39,15 @@ export default function VendorCommandCenter() {
         setLoading(true);
         setError("");
 
+        const numericId = Number(id);
+        if (!Number.isInteger(numericId)) {
+          throw new Error("Invalid vendor ID");
+        }
+
         const { data, error } = await supabase
           .from("vendors")
           .select("*")
-          .eq("id", id)
+          .eq("vendor_id", numericId) // ✅ FIX
           .eq("org_id", activeOrgId)
           .single();
 
@@ -51,8 +55,8 @@ export default function VendorCommandCenter() {
 
         setVendor(data || null);
       } catch (err) {
-        setError("Failed to load vendor.");
         console.error("[vendor detail]", err);
+        setError("Failed to load vendor.");
       } finally {
         setLoading(false);
       }
@@ -76,11 +80,10 @@ export default function VendorCommandCenter() {
 
   return (
     <PageShell>
-      {/* Header */}
       <div style={header}>
         <div>
           <div style={eyebrow}>Vendor Command Center</div>
-          <h1 style={title}>{safeString(vendor.name, "Unnamed Vendor")}</h1>
+          <h1 style={title}>{safeString(vendor.name)}</h1>
           <div style={statusRow(status)}>
             STATUS: {status.toUpperCase()}
           </div>
@@ -93,7 +96,6 @@ export default function VendorCommandCenter() {
         </div>
       </div>
 
-      {/* Panels */}
       <Grid>
         <Panel title="Compliance Snapshot">
           <Metric label="AI Score" value={safeNumber(vendor.aiScore)} />
@@ -125,9 +127,7 @@ export default function VendorCommandCenter() {
   );
 }
 
-/* ============================================================
-   UI Components
-============================================================ */
+/* ---------------- UI components ---------------- */
 
 function PageShell({ children }) {
   return (
@@ -139,19 +139,16 @@ function PageShell({ children }) {
 }
 
 function Grid({ children }) {
-  return {
-    ...children,
-    type: "div",
-    props: {
-      style: {
-        display: "grid",
-        gridTemplateColumns: "repeat(auto-fit,minmax(320px,1fr))",
-        gap: 16,
-        marginTop: 20,
-      },
-      children,
-    },
-  };
+  return (
+    <div style={{
+      display: "grid",
+      gridTemplateColumns: "repeat(auto-fit,minmax(320px,1fr))",
+      gap: 16,
+      marginTop: 20,
+    }}>
+      {children}
+    </div>
+  );
 }
 
 function Panel({ title, children }) {
@@ -182,7 +179,6 @@ function ActionButton({ label, tone }) {
     green: "#22c55e",
     red: "#fb7185",
   };
-
   const c = colors[tone] || "#38bdf8";
 
   return (
@@ -195,8 +191,8 @@ function ActionButton({ label, tone }) {
         color: "#e5e7eb",
         fontSize: 12,
         fontWeight: 700,
-        cursor: "pointer",
         boxShadow: `0 0 18px ${c}66`,
+        cursor: "pointer",
       }}
     >
       {label}
@@ -204,15 +200,12 @@ function ActionButton({ label, tone }) {
   );
 }
 
-/* ============================================================
-   Styles
-============================================================ */
+/* ---------------- styles ---------------- */
 
 const shell = {
   minHeight: "100vh",
   padding: "28px 36px",
-  background:
-    "radial-gradient(circle at top left,#020617,#020617 40%,#000)",
+  background: "radial-gradient(circle at top left,#020617,#000)",
   color: "#e5e7eb",
   position: "relative",
 };
@@ -224,17 +217,14 @@ const aura = {
   transform: "translateX(-50%)",
   width: 1100,
   height: 1100,
-  background:
-    "radial-gradient(circle,rgba(59,130,246,0.35),transparent 60%)",
+  background: "radial-gradient(circle,rgba(59,130,246,0.35),transparent 60%)",
   filter: "blur(130px)",
-  pointerEvents: "none",
 };
 
 const header = {
   display: "flex",
   justifyContent: "space-between",
   alignItems: "center",
-  marginBottom: 18,
 };
 
 const eyebrow = {
