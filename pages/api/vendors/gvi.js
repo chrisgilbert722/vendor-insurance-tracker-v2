@@ -1,15 +1,12 @@
 // pages/api/vendors/gvi.js
-// Global Vendor Intelligence (GVI)
-// ✅ NEON SAFE
-// ✅ NO sql.join
-// ✅ NO sql.array
-// ✅ HARDENED OUTPUT
+// Global Vendor Intelligence (GVI) — NEON SAFE, NO sql.array, NO sql.join
 
 import { sql } from "../../../lib/db";
 
 /* ============================================================
-   AI SCORE
+   HELPERS
 ============================================================ */
+
 function computeAiScore(expDays, status, failingCount, missingCount) {
   let base = 95;
   if (expDays === null) base = 70;
@@ -27,9 +24,6 @@ function computeAiScore(expDays, status, failingCount, missingCount) {
   return Math.max(0, Math.min(Math.round(base * factor), 100));
 }
 
-/* ============================================================
-   RENEWAL HELPERS
-============================================================ */
 function computeRenewalStage(daysLeft) {
   if (daysLeft === null) return null;
   if (daysLeft < 0) return 0;
@@ -41,20 +35,10 @@ function computeRenewalStage(daysLeft) {
   return 999;
 }
 
-function stageLabel(stage) {
-  if (stage === null) return "Unknown";
-  if (stage === 0) return "Expired";
-  if (stage === 1) return "1 Day Left";
-  if (stage === 3) return "3 Days Left (Critical)";
-  if (stage === 7) return "7 Days Left";
-  if (stage === 30) return "30-Day Window";
-  if (stage === 90) return "90-Day Window";
-  return "> 90 Days";
-}
-
 /* ============================================================
    MAIN HANDLER
 ============================================================ */
+
 export default async function handler(req, res) {
   if (req.method !== "GET") {
     return res.status(405).json({ ok: false, error: "GET only" });
@@ -67,103 +51,74 @@ export default async function handler(req, res) {
     }
 
     /* -------------------------------------------
-       Vendors
+       Vendors (BASE TABLE)
     ------------------------------------------- */
     const vendors = await sql`
       SELECT id, name
       FROM vendors
       WHERE org_id = ${orgId}
-      ORDER BY name ASC
+      ORDER BY name ASC;
     `;
 
-    if (!vendors.length) {
+    if (vendors.length === 0) {
       return res.status(200).json({ ok: true, vendors: [] });
     }
 
-    const vendorIds = vendors.map(v => v.id);
-
     /* -------------------------------------------
-       Compliance
+       Alerts (JOIN, NO ARRAY)
     ------------------------------------------- */
-    const complianceRows = await sql`
-      SELECT vendor_id, status, failing, missing
-      FROM vendor_compliance_cache
-      WHERE org_id = ${orgId}
-        AND vendor_id IN (${vendorIds})
-    `;
-
-    const complianceMap = Object.fromEntries(
-      complianceRows.map(r => [r.vendor_id, r])
-    );
-
-    /* -------------------------------------------
-       Alerts
-    ------------------------------------------- */
-    const alertRows = await sql`
-      SELECT vendor_id, COUNT(*)::int AS count
-      FROM alerts_v2
-      WHERE org_id = ${orgId}
-        AND vendor_id IN (${vendorIds})
-      GROUP BY vendor_id
+    const alerts = await sql`
+      SELECT v.id AS vendor_id, COUNT(a.id)::int AS count
+      FROM vendors v
+      LEFT JOIN alerts_v2 a
+        ON a.vendor_id = v.id
+       AND a.org_id = ${orgId}
+      WHERE v.org_id = ${orgId}
+      GROUP BY v.id;
     `;
 
     const alertMap = Object.fromEntries(
-      alertRows.map(r => [r.vendor_id, r.count])
+      alerts.map((r) => [r.vendor_id, r.count])
     );
 
     /* -------------------------------------------
-       Policies
+       Policies (EARLIEST EXPIRATION)
     ------------------------------------------- */
-    const policyRows = await sql`
-      SELECT vendor_id, coverage_type, expiration_date
-      FROM policies
-      WHERE org_id = ${orgId}
-        AND vendor_id IN (${vendorIds})
+    const policies = await sql`
+      SELECT DISTINCT ON (p.vendor_id)
+        p.vendor_id,
+        p.coverage_type,
+        p.expiration_date
+      FROM policies p
+      JOIN vendors v ON v.id = p.vendor_id
+      WHERE v.org_id = ${orgId}
+      ORDER BY p.vendor_id, p.expiration_date ASC;
     `;
 
-    const policyMap = {};
-    for (const p of policyRows) {
-      if (
-        !policyMap[p.vendor_id] ||
-        new Date(p.expiration_date) <
-          new Date(policyMap[p.vendor_id].expiration_date)
-      ) {
-        policyMap[p.vendor_id] = p;
-      }
-    }
+    const policyMap = Object.fromEntries(
+      policies.map((p) => [p.vendor_id, p])
+    );
 
-    const now = new Date();
+    const now = Date.now();
 
-    /* -------------------------------------------
-       FINAL SHAPE (SAFE)
-    ------------------------------------------- */
-    const output = vendors.map(v => {
-      const comp = complianceMap[v.id] || {};
+    const output = vendors.map((v) => {
       const policy = policyMap[v.id];
-
       let daysLeft = null;
+
       if (policy?.expiration_date) {
         daysLeft = Math.floor(
-          (new Date(policy.expiration_date) - now) / 86400000
+          (new Date(policy.expiration_date).getTime() - now) / 86400000
         );
       }
-
-      const stage = computeRenewalStage(daysLeft);
 
       return {
         id: v.id,
         name: v.name,
         alertsCount: alertMap[v.id] || 0,
-        aiScore: computeAiScore(
-          daysLeft,
-          comp.status || "ok",
-          (comp.failing || []).length,
-          (comp.missing || []).length
-        ),
+        aiScore: computeAiScore(daysLeft, "pass", 0, 0),
         primaryPolicy: policy || null,
         renewal: {
-          stage,
-          stage_label: stageLabel(stage),
+          stage: computeRenewalStage(daysLeft),
           daysLeft,
         },
       };
