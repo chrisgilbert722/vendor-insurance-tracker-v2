@@ -1,10 +1,7 @@
-// components/vendors/GlobalVendorTable.js
 import { useEffect, useState } from "react";
-import { useRouter } from "next/router";
+import Link from "next/link";
 
 export default function GlobalVendorTable({ orgId }) {
-  const router = useRouter();
-
   const [vendors, setVendors] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -46,13 +43,7 @@ export default function GlobalVendorTable({ orgId }) {
       <table style={{ width: "100%", fontSize: 12 }}>
         <thead>
           <tr>
-            {[
-              "Vendor",
-              "Status",
-              "AI Score",
-              "Alerts",
-              "Actions",
-            ].map((h) => (
+            {["Vendor", "Status", "AI Score", "Alerts", "Actions"].map((h) => (
               <th
                 key={h}
                 style={{
@@ -70,19 +61,12 @@ export default function GlobalVendorTable({ orgId }) {
 
         <tbody>
           {vendors.map((v) => {
-            // 🔒 HARD REQUIREMENT
             if (!v.external_uuid) {
-              console.error(
-                "[vendors] Missing external_uuid for vendor:",
-                v
-              );
+              console.error("[vendors] Missing external_uuid:", v);
               return null;
             }
 
-            const status =
-              v.status ||
-              v.computedStatus ||
-              "unknown";
+            const status = v.status || v.computedStatus || "unknown";
 
             return (
               <tr key={v.external_uuid}>
@@ -92,25 +76,28 @@ export default function GlobalVendorTable({ orgId }) {
                 <td style={cell}>{v.alertsCount ?? 0}</td>
 
                 <td style={cell}>
-                  <button
-                    onClick={() =>
-                      router.push(`/vendors/${v.external_uuid}`)
-                    }
-                    style={{
-                      padding: "6px 14px",
-                      borderRadius: 999,
-                      border: "1px solid rgba(56,189,248,0.9)",
-                      background:
-                        "radial-gradient(circle at top,#38bdf8,#0ea5e9,#020617)",
-                      color: "#e0f2fe",
-                      fontSize: 11,
-                      fontWeight: 700,
-                      cursor: "pointer",
-                      boxShadow: "0 0 18px rgba(56,189,248,0.6)",
-                    }}
-                  >
-                    ⚡ Review
-                  </button>
+                  <Link href={`/vendors/${v.external_uuid}`} legacyBehavior>
+                    <a
+                      style={{
+                        display: "inline-flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        padding: "6px 14px",
+                        borderRadius: 999,
+                        border: "1px solid rgba(56,189,248,0.9)",
+                        background:
+                          "radial-gradient(circle at top,#38bdf8,#0ea5e9,#020617)",
+                        color: "#e0f2fe",
+                        fontSize: 11,
+                        fontWeight: 700,
+                        textDecoration: "none",
+                        boxShadow: "0 0 18px rgba(56,189,248,0.6)",
+                        cursor: "pointer",
+                      }}
+                    >
+                      ⚡ Review
+                    </a>
+                  </Link>
                 </td>
               </tr>
             );
