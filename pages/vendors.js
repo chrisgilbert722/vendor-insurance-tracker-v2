@@ -87,7 +87,9 @@ function normalizeVendor(v) {
     alertsOpen: typeof safe.alertsOpen === "number" ? safe.alertsOpen : 0,
 
     requirementsPassing:
-      typeof safe.requirementsPassing === "number" ? safe.requirementsPassing : 0,
+      typeof safe.requirementsPassing === "number"
+        ? safe.requirementsPassing
+        : 0,
 
     requirementsTotal:
       typeof safe.requirementsTotal === "number" ? safe.requirementsTotal : null,
@@ -189,7 +191,7 @@ export default function VendorsPage() {
           if (cacheRow.status === "pass") status = "Compliant";
           if (cacheRow.status === "fail") status = "At Risk";
 
-          return normalizeVendor({
+          return {
             id: v.id,
             org_id: v.org_id,
             name: v.name,
@@ -204,10 +206,13 @@ export default function VendorsPage() {
             alertsOpen: failing.length,
             requirementsPassing,
             requirementsTotal: totalReq || null,
-          });
+          };
         });
 
-        setRawVendors(uiVendors);
+        // ✅ FIX #1: normalize ONCE at ingestion (guarantee shape everywhere)
+        setRawVendors(
+          Array.isArray(uiVendors) ? uiVendors.map(normalizeVendor) : []
+        );
       } catch (err) {
         console.error("VendorsPage load error:", err);
         if (!cancelled) {
@@ -268,45 +273,49 @@ export default function VendorsPage() {
     }
   }
 
-  // METRICS
+  /* ===========================
+     METRICS (NO DOUBLE NORMALIZE)
+  =========================== */
+
   const metrics = useMemo(() => {
-  const vendors = Array.isArray(rawVendors)
-    ? rawVendors.map(normalizeVendor)
-    : [];
+    const list = Array.isArray(rawVendors) ? rawVendors : [];
 
-  const total = vendors.length;
-  const compliant = vendors.filter((v) => v.status === "Compliant").length;
-  const atRisk = vendors.filter((v) => v.status === "At Risk").length;
-  const needsReview = vendors.filter((v) => v.status === "Needs Review").length;
+    const total = list.length;
+    const compliant = list.filter((v) => v.status === "Compliant").length;
+    const atRisk = list.filter((v) => v.status === "At Risk").length;
+    const needsReview = list.filter((v) => v.status === "Needs Review").length;
 
-  const avgScore =
-    total === 0
-      ? 0
-      : Math.round(
-          vendors.reduce((sum, v) => sum + (v.complianceScore || 0), 0) / total
-        );
+    const avgScore =
+      total === 0
+        ? 0
+        : Math.round(
+            list.reduce((sum, v) => sum + (v.complianceScore || 0), 0) / total
+          );
 
-  return { total, compliant, atRisk, needsReview, avgScore };
-}, [rawVendors]);
+    return { total, compliant, atRisk, needsReview, avgScore };
+  }, [rawVendors]);
 
-  // Filters & search
+  /* ===========================
+     FILTERS (NO DOUBLE NORMALIZE)
+  =========================== */
+
   const filtered = useMemo(() => {
-    const list = Array.isArray(rawVendors) ? rawVendors.map(normalizeVendor) : [];
+    const list = Array.isArray(rawVendors) ? rawVendors : [];
+
     return list.filter((v) => {
       if (statusFilter !== "All" && v.status !== statusFilter) return false;
       if (categoryFilter !== "All" && v.category !== categoryFilter) return false;
       if (!search) return true;
 
       const tags = Array.isArray(v.tags) ? v.tags : [];
-      const hay = `${v.name} ${v.location} ${v.category} ${tags.join(" ")}`
-        .toLowerCase();
+      const hay = `${v.name} ${v.location} ${v.category} ${tags.join(" ")}`.toLowerCase();
 
       return hay.includes(search.toLowerCase());
     });
   }, [rawVendors, statusFilter, categoryFilter, search]);
 
   const categories = useMemo(() => {
-    const list = Array.isArray(rawVendors) ? rawVendors.map(normalizeVendor) : [];
+    const list = Array.isArray(rawVendors) ? rawVendors : [];
     return Array.from(new Set(list.map((v) => v.category))).sort();
   }, [rawVendors]);
 
@@ -633,7 +642,9 @@ export default function VendorsPage() {
               textAlign: "right",
             }}
           >
-            {loading ? "Loading vendors…" : `Showing ${filtered.length} of ${rawVendors.length}`}
+            {loading
+              ? "Loading vendors…"
+              : `Showing ${filtered.length} of ${rawVendors.length}`}
           </div>
         </div>
 
@@ -652,7 +663,13 @@ export default function VendorsPage() {
           </div>
         )}
 
-        <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+        <div
+          style={{
+            display: "flex",
+            flexDirection: "column",
+            gap: 10,
+          }}
+        >
           {loadError && (
             <div
               style={{
@@ -683,7 +700,8 @@ export default function VendorsPage() {
           )}
 
           {filtered.map((v) => (
-            <VendorRow key={v.id} vendor={normalizeVendor(v)} />
+            // ✅ FIX: do NOT normalize here (already normalized in state)
+            <VendorRow key={v.id} vendor={v} />
           ))}
         </div>
       </div>
@@ -808,7 +826,9 @@ function FilterPillGroup({ options, active, onSelect }) {
 =========================== */
 
 function VendorRow({ vendor }) {
+  // ✅ Final safety net (even if a future change leaks raw data)
   const v = normalizeVendor(vendor);
+
   const palette = statusPalette(v.status);
 
   const passPercent =
@@ -853,8 +873,14 @@ function VendorRow({ vendor }) {
         >
           {v.location} · {v.category}
         </div>
-        <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-          {(Array.isArray(v.tags) ? v.tags : []).map((tag) => (
+        <div
+          style={{
+            display: "flex",
+            gap: 6,
+            flexWrap: "wrap",
+          }}
+        >
+          {v.tags.map((tag) => (
             <span
               key={tag}
               style={{
@@ -873,9 +899,26 @@ function VendorRow({ vendor }) {
       </div>
 
       {/* Middle — Score / requirements */}
-      <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-          <div style={{ fontSize: 12, color: "#e5e7eb" }}>
+      <div
+        style={{
+          display: "flex",
+          flexDirection: "column",
+          gap: 6,
+        }}
+      >
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: 8,
+          }}
+        >
+          <div
+            style={{
+              fontSize: 12,
+              color: "#e5e7eb",
+            }}
+          >
             Score:{" "}
             <span
               style={{
@@ -895,19 +938,36 @@ function VendorRow({ vendor }) {
           <StatusBadge status={v.status} />
         </div>
 
-        <div style={{ fontSize: 11, color: "#9ca3af" }}>
+        <div
+          style={{
+            fontSize: 11,
+            color: "#9ca3af",
+          }}
+        >
           {passPercent != null
             ? `${v.requirementsPassing}/${v.requirementsTotal} requirements passing (${passPercent}%)`
             : "Requirements summary will appear after rules evaluate for this vendor."}
         </div>
 
-        <div style={{ fontSize: 10, color: "#6b7280" }}>
+        <div
+          style={{
+            fontSize: 10,
+            color: "#6b7280",
+          }}
+        >
           Last evaluated {formatRelative(v.lastEvaluated)} · {v.alertsOpen} open alerts
         </div>
       </div>
 
       {/* Right — Actions */}
-      <div style={{ display: "flex", flexDirection: "column", gap: 6, alignItems: "flex-end" }}>
+      <div
+        style={{
+          display: "flex",
+          flexDirection: "column",
+          gap: 6,
+          alignItems: "flex-end",
+        }}
+      >
         <Link href={`/admin/vendor/${v.id}`}>
           <button
             style={{
@@ -924,13 +984,15 @@ function VendorRow({ vendor }) {
           </button>
         </Link>
 
+        {/* Upload COI for this vendor */}
         <Link href={`/upload-coi?vendorId=${encodeURIComponent(v.id)}`}>
           <button
             style={{
               borderRadius: 999,
               padding: "5px 10px",
               border: "1px solid rgba(59,130,246,0.8)",
-              background: "radial-gradient(circle at top,#3b82f6,#1d4ed8,#020617)",
+              background:
+                "radial-gradient(circle at top,#3b82f6,#1d4ed8,#020617)",
               color: "#e0f2fe",
               fontSize: 10,
               cursor: "pointer",
@@ -940,6 +1002,7 @@ function VendorRow({ vendor }) {
           </button>
         </Link>
 
+        {/* Alerts link */}
         <Link href={`/admin/alerts?vendor=${encodeURIComponent(v.id)}`}>
           <button
             style={{
@@ -967,7 +1030,6 @@ function StatusBadge({ status }) {
       : "Needs Review";
 
   const palette = statusPalette(safeStatus);
-
   return (
     <div
       style={{
