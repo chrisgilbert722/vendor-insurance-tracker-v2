@@ -75,13 +75,16 @@ export default function GlobalVendorTable({ orgId }) {
                 <td style={cell}>{v.aiScore ?? "—"}</td>
                 <td style={cell}>{v.alertsCount ?? 0}</td>
 
-                <td style={cell}>
+                {/* 🔒 ENTIRE CELL IS THE LINK — GUARANTEED CLICK */}
+                <td style={{ ...cell, padding: 0 }}>
                   <Link href={`/vendors/${v.external_uuid}`} legacyBehavior>
                     <a
                       style={{
-                        display: "inline-flex",
+                        display: "flex",
                         alignItems: "center",
                         justifyContent: "center",
+                        width: "100%",
+                        height: "100%",
                         padding: "6px 14px",
                         borderRadius: 999,
                         border: "1px solid rgba(56,189,248,0.9)",
@@ -93,6 +96,9 @@ export default function GlobalVendorTable({ orgId }) {
                         textDecoration: "none",
                         boxShadow: "0 0 18px rgba(56,189,248,0.6)",
                         cursor: "pointer",
+                        position: "relative",
+                        zIndex: 9999,
+                        pointerEvents: "auto",
                       }}
                     >
                       ⚡ Review
