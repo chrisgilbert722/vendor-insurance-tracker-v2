@@ -83,6 +83,8 @@ function normalizeVendor(row) {
 ============================================================ */
 
 export default function VendorsPage() {
+  console.log("🔥 VENDORS V4 IS LIVE");
+
   const { activeOrgId, loadingOrgs } = useOrg();
   const orgId = Number.isInteger(activeOrgId) ? activeOrgId : null;
 
