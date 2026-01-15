@@ -946,10 +946,11 @@ useEffect(() => {
   /* ============================================================
    DERIVED METRICS — SAFE FOR SSR
 ============================================================ */
-const avgScore = dashboard?.globalScore ?? 0;
-const totalVendors = dashboard?.vendorCount ?? 0;
+// ---- base dashboard safety ----
+const avgScore = Number(dashboard?.globalScore ?? 0);
+const totalVendors = Number(dashboard?.vendorCount ?? 0);
 
-// ⛑️ REQUIRED: engineHealth is still referenced in render
+// ---- engine health (required by render) ----
 const engineHealth = {
   avg: avgScore,
   fails: 0,
@@ -957,24 +958,29 @@ const engineHealth = {
   total: totalVendors,
 };
 
+// ---- alerts normalization ----
 const alerts = dashboard?.alerts ?? {};
-const alertsCount =
-  (alerts.expired ?? 0) +
-  (alerts.critical30d ?? 0) +
-  (alerts.warning90d ?? 0) +
-  (alerts.eliteFails ?? 0);
 
-// ✅ REQUIRED: alertSummarySafe (prevents SSR crash)
+const alertsCount =
+  Number(alerts.expired ?? 0) +
+  Number(alerts.critical30d ?? 0) +
+  Number(alerts.warning90d ?? 0) +
+  Number(alerts.eliteFails ?? 0);
+
+// ---- ✅ REQUIRED FOR SSR: alertSummarySafe ----
 const alertSummarySafe = {
   total: alertsCount,
   vendors: {},
   countsBySeverity: {
-    critical: alerts.critical30d ?? 0,
-    high: alerts.expired ?? 0,
-    medium: alerts.warning90d ?? 0,
+    critical: Number(alerts.critical30d ?? 0),
+    high: Number(alerts.expired ?? 0),
+    medium: Number(alerts.warning90d ?? 0),
     low: 0,
   },
 };
+
+// ---- ✅ REQUIRED FOR SSR: alertVendorsList ----
+const alertVendorsList = [];
 
   /* ============================================================
      MAIN RENDER
