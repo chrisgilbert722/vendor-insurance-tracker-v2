@@ -1,7 +1,8 @@
 import { useEffect, useState } from "react";
-import Link from "next/link";
+import { useRouter } from "next/router";
 
 export default function GlobalVendorTable({ orgId }) {
+  const router = useRouter();
   const [vendors, setVendors] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -40,7 +41,7 @@ export default function GlobalVendorTable({ orgId }) {
 
   return (
     <div>
-      <table style={{ width: "100%", fontSize: 12 }}>
+      <table style={{ width: "100%", fontSize: 12, borderCollapse: "collapse" }}>
         <thead>
           <tr>
             {["Vendor", "Status", "AI Score", "Alerts", "Actions"].map((h) => (
@@ -69,41 +70,46 @@ export default function GlobalVendorTable({ orgId }) {
             const status = v.status || v.computedStatus || "unknown";
 
             return (
-              <tr key={v.external_uuid}>
+              <tr
+                key={v.external_uuid}
+                onClick={() => router.push(`/vendors/${v.external_uuid}`)}
+                style={{
+                  cursor: "pointer",
+                  transition: "background 0.15s ease",
+                }}
+                onMouseEnter={(e) =>
+                  (e.currentTarget.style.background =
+                    "rgba(56,189,248,0.08)")
+                }
+                onMouseLeave={(e) =>
+                  (e.currentTarget.style.background = "transparent")
+                }
+              >
                 <td style={cell}>{v.name}</td>
                 <td style={cell}>{status.toUpperCase()}</td>
                 <td style={cell}>{v.aiScore ?? "—"}</td>
                 <td style={cell}>{v.alertsCount ?? 0}</td>
 
-                {/* 🔒 ENTIRE CELL IS THE LINK — GUARANTEED CLICK */}
-                <td style={{ ...cell, padding: 0 }}>
-                  <Link href={`/vendors/${v.external_uuid}`} legacyBehavior>
-                    <a
-                      style={{
-                        display: "flex",
-                        alignItems: "center",
-                        justifyContent: "center",
-                        width: "100%",
-                        height: "100%",
-                        padding: "6px 14px",
-                        borderRadius: 999,
-                        border: "1px solid rgba(56,189,248,0.9)",
-                        background:
-                          "radial-gradient(circle at top,#38bdf8,#0ea5e9,#020617)",
-                        color: "#e0f2fe",
-                        fontSize: 11,
-                        fontWeight: 700,
-                        textDecoration: "none",
-                        boxShadow: "0 0 18px rgba(56,189,248,0.6)",
-                        cursor: "pointer",
-                        position: "relative",
-                        zIndex: 9999,
-                        pointerEvents: "auto",
-                      }}
-                    >
-                      ⚡ Review
-                    </a>
-                  </Link>
+                <td style={{ ...cell, textAlign: "right" }}>
+                  <span
+                    style={{
+                      display: "inline-flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      padding: "6px 14px",
+                      borderRadius: 999,
+                      border: "1px solid rgba(56,189,248,0.9)",
+                      background:
+                        "radial-gradient(circle at top,#38bdf8,#0ea5e9,#020617)",
+                      color: "#e0f2fe",
+                      fontSize: 11,
+                      fontWeight: 700,
+                      boxShadow: "0 0 18px rgba(56,189,248,0.6)",
+                      pointerEvents: "none", // 🔒 row handles click
+                    }}
+                  >
+                    ⚡ Review
+                  </span>
                 </td>
               </tr>
             );
