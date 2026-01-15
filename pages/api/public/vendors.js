@@ -1,7 +1,9 @@
-import { sql } from "../../../lib/db";
+// pages/api/vendors.js
+// Dashboard-safe vendor loader (Bearer auth + active org)
+
+import { sql } from "../../lib/db";
 import { createClient } from "@supabase/supabase-js";
 
-// Supabase admin (server-only)
 const supabaseAdmin = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL,
   process.env.SUPABASE_SERVICE_ROLE_KEY
@@ -13,9 +15,9 @@ export default async function handler(req, res) {
   }
 
   try {
-    /* ---------------------------------------------
-       AUTH — SUPABASE SESSION (NOT API KEY)
-    ---------------------------------------------- */
+    // ---------------------------------------------
+    // AUTH — BEARER TOKEN (DASHBOARD SESSION)
+    // ---------------------------------------------
     const authHeader = req.headers.authorization || "";
     const token = authHeader.startsWith("Bearer ")
       ? authHeader.slice(7)
@@ -30,34 +32,46 @@ export default async function handler(req, res) {
       return res.status(401).json({ ok: false, error: "Unauthorized" });
     }
 
-    /* ---------------------------------------------
-       ORG — REQUIRE orgId FROM QUERY
-    ---------------------------------------------- */
-    const orgId = Number(req.query?.orgId);
-    if (!orgId || Number.isNaN(orgId)) {
-      return res.status(400).json({ ok: false, error: "Missing orgId" });
+    const userId = data.user.id;
+
+    // ---------------------------------------------
+    // RESOLVE ORG (ACTIVE ORG FIRST)
+    // ---------------------------------------------
+    let orgId = null;
+
+    if (req.query?.orgId && /^\d+$/.test(req.query.orgId)) {
+      orgId = Number(req.query.orgId);
+    } else {
+      const rows = await sql`
+        SELECT org_id
+        FROM organization_members
+        WHERE user_id = ${userId}
+        ORDER BY created_at ASC
+        LIMIT 1
+      `;
+      if (!rows.length) {
+        return res.json({ ok: true, vendors: [] });
+      }
+      orgId = rows[0].org_id;
     }
 
-    /* ---------------------------------------------
-       FETCH VENDORS (UI-SAFE SHAPE)
-    ---------------------------------------------- */
+    // ---------------------------------------------
+    // FETCH VENDORS
+    // ---------------------------------------------
     const vendors = await sql`
       SELECT
         id,
-        name,
+        vendor_name,
         status,
         created_at
       FROM vendors
       WHERE org_id = ${orgId}
-      ORDER BY name ASC
+      ORDER BY vendor_name ASC
     `;
 
-    return res.status(200).json({
-      ok: true,
-      vendors,
-    });
+    return res.json({ ok: true, vendors });
   } catch (err) {
-    console.error("[public/vendors]", err);
-    return res.status(500).json({ ok: false, error: "Server error" });
+    console.error("[vendors]", err);
+    return res.status(500).json({ ok: false, error: err.message });
   }
 }
