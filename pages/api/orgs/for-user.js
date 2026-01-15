@@ -24,8 +24,8 @@ export default async function handler(req, res) {
       });
     }
 
-    // ✅ Use server-side Supabase client directly
-    const supabase = supabaseServer;
+    // ✅ CORRECT: create server-side Supabase client
+    const supabase = supabaseServer();
 
     const { data, error } = await supabase.auth.getUser(token);
 
