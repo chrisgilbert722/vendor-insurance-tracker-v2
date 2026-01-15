@@ -1,8 +1,9 @@
 // pages/api/vendors/index.js
-// Vendor Index — STABLE, NO ALIASES, BUILD SAFE
+// Vendor Index — UI SAFE
+// Guarantees `status` exists for Vendors page
 
-import { sql } from "../../../lib/db";
-import { resolveOrg } from "../../../lib/server/resolveOrg";
+import { sql } from "@db";
+import { resolveOrg } from "@resolveOrg";
 
 export default async function handler(req, res) {
   if (req.method !== "GET") {
@@ -10,7 +11,6 @@ export default async function handler(req, res) {
   }
 
   try {
-    // Resolve org UUID → internal INT org_id
     const orgId = await resolveOrg(req, res);
     if (!orgId) {
       return res.status(200).json({ ok: true, vendors: [] });
@@ -24,7 +24,7 @@ export default async function handler(req, res) {
         category,
         org_id,
         created_at,
-        contract_status AS status
+        COALESCE(contract_status, 'unknown') AS status
       FROM vendors
       WHERE org_id = ${orgId}
       ORDER BY name ASC;
