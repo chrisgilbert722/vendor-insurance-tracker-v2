@@ -56,15 +56,51 @@ function statusPalette(status) {
   }
 }
 
+/**
+ * ✅ SINGLE NORMALIZER (CRITICAL)
+ * Prevents client-side crashes when any field is missing.
+ */
+function normalizeVendor(v) {
+  const safe = v && typeof v === "object" ? v : {};
+  return {
+    id: safe.id ?? null,
+    org_id: safe.org_id ?? null,
+
+    name: safe.name || "Unnamed Vendor",
+    location: safe.location || safe.address || "Location not set",
+    category: safe.category || "Vendor",
+
+    tags: Array.isArray(safe.tags) ? safe.tags : [],
+
+    status:
+      safe.status === "Compliant" ||
+      safe.status === "At Risk" ||
+      safe.status === "Needs Review"
+        ? safe.status
+        : "Needs Review",
+
+    complianceScore:
+      typeof safe.complianceScore === "number" ? safe.complianceScore : 0,
+
+    lastEvaluated: safe.lastEvaluated || null,
+
+    alertsOpen: typeof safe.alertsOpen === "number" ? safe.alertsOpen : 0,
+
+    requirementsPassing:
+      typeof safe.requirementsPassing === "number" ? safe.requirementsPassing : 0,
+
+    requirementsTotal:
+      typeof safe.requirementsTotal === "number" ? safe.requirementsTotal : null,
+  };
+}
+
 /* ===========================
    MAIN PAGE — VENDORS V3.5
 =========================== */
 
 export default function VendorsPage() {
-  // ✅ Minimal fix:
-  // We must use the INTERNAL integer org id for org_id filters.
-  // OrgContext often exposes both uuid + internal id — we use activeOrgId.
-  const { activeOrgId, activeOrgUuid } = useOrg();
+  // ✅ Minimal fix: use INTERNAL integer org id for org_id filters.
+  const { activeOrgId } = useOrg();
   const orgId = activeOrgId || null; // org_id columns expect this (int)
 
   const { isAdmin, isManager } = useRole();
@@ -73,7 +109,6 @@ export default function VendorsPage() {
   const [rawVendors, setRawVendors] = useState([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState("");
-  const orgMissingMsg = "Select an organization to view vendors.";
 
   const [statusFilter, setStatusFilter] = useState("All");
   const [search, setSearch] = useState("");
@@ -85,7 +120,6 @@ export default function VendorsPage() {
 
     async function load() {
       if (!orgId) {
-        // orgId not ready yet — skip load to prevent 400s / empty filters
         setLoading(false);
         return;
       }
@@ -135,20 +169,17 @@ export default function VendorsPage() {
           }
         });
 
-        // build UI vendors
+        // build UI vendors (normalized)
         const uiVendors = (vendors || []).map((v) => {
           const cacheRow = cacheByVendor[v.id] || {};
           const riskRow = riskByVendor[v.id] || {};
 
-          const failing = cacheRow.failing || [];
-          const missing = cacheRow.missing || [];
-          const passing = cacheRow.passing || [];
+          const failing = Array.isArray(cacheRow.failing) ? cacheRow.failing : [];
+          const missing = Array.isArray(cacheRow.missing) ? cacheRow.missing : [];
+          const passing = Array.isArray(cacheRow.passing) ? cacheRow.passing : [];
 
-          const totalReq =
-            (failing?.length || 0) +
-            (missing?.length || 0) +
-            (passing?.length || 0);
-          const requirementsPassing = passing?.length || 0;
+          const totalReq = failing.length + missing.length + passing.length;
+          const requirementsPassing = passing.length;
 
           const riskScore =
             typeof riskRow.risk_score === "number" ? riskRow.risk_score : 0;
@@ -158,20 +189,22 @@ export default function VendorsPage() {
           if (cacheRow.status === "pass") status = "Compliant";
           if (cacheRow.status === "fail") status = "At Risk";
 
-          return {
+          return normalizeVendor({
             id: v.id,
             org_id: v.org_id,
-            name: v.name || "Unnamed Vendor",
-            location: v.address || "Location not set",
-            category: "Vendor", // upgrade later with real categories
+            name: v.name,
+            location: v.address,
+            category: "Vendor",
             tags: [],
+
             status,
             complianceScore: riskScore,
             lastEvaluated: cacheRow.last_checked_at || riskRow.created_at,
-            alertsOpen: failing?.length || 0,
+
+            alertsOpen: failing.length,
             requirementsPassing,
             requirementsTotal: totalReq || null,
-          };
+          });
         });
 
         setRawVendors(uiVendors);
@@ -199,11 +232,10 @@ export default function VendorsPage() {
     const email = window.prompt("Vendor contact email? (optional)", "") || null;
 
     try {
-      const connectionOrgId = orgId || null;
       const { data, error } = await supabase
         .from("vendors")
         .insert({
-          org_id: connectionOrgId,
+          org_id: orgId,
           name,
           email,
         })
@@ -212,14 +244,14 @@ export default function VendorsPage() {
 
       if (error) throw error;
 
-      // add to local state
+      // add to local state (normalized)
       setRawVendors((prev) => [
         ...prev,
-        {
+        normalizeVendor({
           id: data.id,
           org_id: data.org_id,
           name: data.name,
-          location: data.address || "Location not set",
+          location: data.address,
           category: "Vendor",
           tags: [],
           status: "Needs Review",
@@ -228,7 +260,7 @@ export default function VendorsPage() {
           alertsOpen: 0,
           requirementsPassing: 0,
           requirementsTotal: null,
-        },
+        }),
       ]);
     } catch (err) {
       console.error("Quick add vendor error:", err);
@@ -238,11 +270,12 @@ export default function VendorsPage() {
 
   // METRICS
   const metrics = useMemo(() => {
-    const vendors = rawVendors;
+    const vendors = Array.isArray(rawVendors) ? rawVendors.map(normalizeVendor) : [];
     const total = vendors.length;
     const compliant = vendors.filter((v) => v.status === "Compliant").length;
     const atRisk = vendors.filter((v) => v.status === "At Risk").length;
     const needsReview = vendors.filter((v) => v.status === "Needs Review").length;
+
     const avgScore =
       total === 0
         ? 0
@@ -255,27 +288,24 @@ export default function VendorsPage() {
 
   // Filters & search
   const filtered = useMemo(() => {
-    return rawVendors.filter((v) => {
+    const list = Array.isArray(rawVendors) ? rawVendors.map(normalizeVendor) : [];
+    return list.filter((v) => {
       if (statusFilter !== "All" && v.status !== statusFilter) return false;
       if (categoryFilter !== "All" && v.category !== categoryFilter) return false;
       if (!search) return true;
-      const hay = (
-        v.name +
-        " " +
-        v.location +
-        " " +
-        v.category +
-        " " +
-        v.tags.join(" ")
-      ).toLowerCase();
+
+      const tags = Array.isArray(v.tags) ? v.tags : [];
+      const hay = `${v.name} ${v.location} ${v.category} ${tags.join(" ")}`
+        .toLowerCase();
+
       return hay.includes(search.toLowerCase());
     });
   }, [rawVendors, statusFilter, categoryFilter, search]);
 
-  const categories = useMemo(
-    () => Array.from(new Set(rawVendors.map((v) => v.category))).sort(),
-    [rawVendors]
-  );
+  const categories = useMemo(() => {
+    const list = Array.isArray(rawVendors) ? rawVendors.map(normalizeVendor) : [];
+    return Array.from(new Set(list.map((v) => v.category))).sort();
+  }, [rawVendors]);
 
   return (
     <div
@@ -604,7 +634,6 @@ export default function VendorsPage() {
           </div>
         </div>
 
-        {/* LIST */}
         {/* ORG MISSING */}
         {!orgId && !loading && (
           <div
@@ -620,13 +649,7 @@ export default function VendorsPage() {
           </div>
         )}
 
-        <div
-          style={{
-            display: "flex",
-            flexDirection: "column",
-            gap: 10,
-          }}
-        >
+        <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
           {loadError && (
             <div
               style={{
@@ -657,7 +680,7 @@ export default function VendorsPage() {
           )}
 
           {filtered.map((v) => (
-            <VendorRow key={v.id} vendor={v} />
+            <VendorRow key={v.id} vendor={normalizeVendor(v)} />
           ))}
         </div>
       </div>
@@ -782,11 +805,12 @@ function FilterPillGroup({ options, active, onSelect }) {
 =========================== */
 
 function VendorRow({ vendor }) {
-  const palette = statusPalette(vendor.status);
+  const v = normalizeVendor(vendor);
+  const palette = statusPalette(v.status);
 
   const passPercent =
-    vendor.requirementsTotal && vendor.requirementsTotal > 0
-      ? Math.round((vendor.requirementsPassing / vendor.requirementsTotal) * 100)
+    v.requirementsTotal && v.requirementsTotal > 0
+      ? Math.round((v.requirementsPassing / v.requirementsTotal) * 100)
       : null;
 
   return (
@@ -815,7 +839,7 @@ function VendorRow({ vendor }) {
             marginBottom: 2,
           }}
         >
-          {vendor.name}
+          {v.name}
         </div>
         <div
           style={{
@@ -824,16 +848,10 @@ function VendorRow({ vendor }) {
             marginBottom: 4,
           }}
         >
-          {vendor.location} · {vendor.category}
+          {v.location} · {v.category}
         </div>
-        <div
-          style={{
-            display: "flex",
-            gap: 6,
-            flexWrap: "wrap",
-          }}
-        >
-          {vendor.tags.map((tag) => (
+        <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+          {(Array.isArray(v.tags) ? v.tags : []).map((tag) => (
             <span
               key={tag}
               style={{
@@ -852,76 +870,42 @@ function VendorRow({ vendor }) {
       </div>
 
       {/* Middle — Score / requirements */}
-      <div
-        style={{
-          display: "flex",
-          flexDirection: "column",
-          gap: 6,
-        }}
-      >
-        <div
-          style={{
-            display: "flex",
-            alignItems: "center",
-            gap: 8,
-          }}
-        >
-          <div
-            style={{
-              fontSize: 12,
-              color: "#e5e7eb",
-            }}
-          >
+      <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          <div style={{ fontSize: 12, color: "#e5e7eb" }}>
             Score:{" "}
             <span
               style={{
                 fontWeight: 600,
                 color:
-                  vendor.complianceScore >= 85
+                  v.complianceScore >= 85
                     ? "#4ade80"
-                    : vendor.complianceScore >= 75
+                    : v.complianceScore >= 75
                     ? "#fde68a"
                     : "#fb7185",
               }}
             >
-              {vendor.complianceScore}
+              {v.complianceScore}
             </span>
             /100
           </div>
-          <StatusBadge status={vendor.status} />
+          <StatusBadge status={v.status} />
         </div>
 
-        <div
-          style={{
-            fontSize: 11,
-            color: "#9ca3af",
-          }}
-        >
+        <div style={{ fontSize: 11, color: "#9ca3af" }}>
           {passPercent != null
-            ? `${vendor.requirementsPassing}/${vendor.requirementsTotal} requirements passing (${passPercent}%)`
+            ? `${v.requirementsPassing}/${v.requirementsTotal} requirements passing (${passPercent}%)`
             : "Requirements summary will appear after rules evaluate for this vendor."}
         </div>
 
-        <div
-          style={{
-            fontSize: 10,
-            color: "#6b7280",
-          }}
-        >
-          Last evaluated {formatRelative(vendor.lastEvaluated)} · {vendor.alertsOpen} open alerts
+        <div style={{ fontSize: 10, color: "#6b7280" }}>
+          Last evaluated {formatRelative(v.lastEvaluated)} · {v.alertsOpen} open alerts
         </div>
       </div>
 
       {/* Right — Actions */}
-      <div
-        style={{
-          display: "flex",
-          flexDirection: "column",
-          gap: 6,
-          alignItems: "flex-end",
-        }}
-      >
-        <Link href={`/admin/vendor/${vendor.id}`}>
+      <div style={{ display: "flex", flexDirection: "column", gap: 6, alignItems: "flex-end" }}>
+        <Link href={`/admin/vendor/${v.id}`}>
           <button
             style={{
               borderRadius: 999,
@@ -937,8 +921,7 @@ function VendorRow({ vendor }) {
           </button>
         </Link>
 
-        {/* Upload COI for this vendor */}
-        <Link href={`/upload-coi?vendorId=${encodeURIComponent(vendor.id)}`}>
+        <Link href={`/upload-coi?vendorId=${encodeURIComponent(v.id)}`}>
           <button
             style={{
               borderRadius: 999,
@@ -954,8 +937,7 @@ function VendorRow({ vendor }) {
           </button>
         </Link>
 
-        {/* Alerts link */}
-        <Link href={`/admin/alerts?vendor=${encodeURIComponent(vendor.id)}`}>
+        <Link href={`/admin/alerts?vendor=${encodeURIComponent(v.id)}`}>
           <button
             style={{
               borderRadius: 999,
@@ -976,7 +958,13 @@ function VendorRow({ vendor }) {
 }
 
 function StatusBadge({ status }) {
-  const palette = statusPalette(status);
+  const safeStatus =
+    status === "Compliant" || status === "At Risk" || status === "Needs Review"
+      ? status
+      : "Needs Review";
+
+  const palette = statusPalette(safeStatus);
+
   return (
     <div
       style={{
@@ -1006,7 +994,7 @@ function StatusBadge({ status }) {
           letterSpacing: 0.8,
         }}
       >
-        {status}
+        {safeStatus}
       </span>
     </div>
   );
