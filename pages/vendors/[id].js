@@ -2,7 +2,7 @@
 // ============================================================
 // VENDOR COMMAND CENTER — V4 (IRON MAN)
 // - UUID-based routing (vendors.id)
-// - Matches real DB schema
+// - Hard guard against invalid routes
 // - Crash-safe
 // ============================================================
 
@@ -20,12 +20,16 @@ const safeString = (v, f = "—") =>
 const safeNumber = (v, f = 0) =>
   typeof v === "number" && Number.isFinite(v) ? v : f;
 
+// Strict UUID v4/v5 matcher
+const UUID_RE =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
 /* -----------------------------
    Page
 ----------------------------- */
 export default function VendorCommandCenter() {
   const router = useRouter();
-  const { id } = router.query; // UUID
+  const { id } = router.query; // should be UUID
   const { activeOrgId } = useOrg();
 
   const [vendor, setVendor] = useState(null);
@@ -35,6 +39,15 @@ export default function VendorCommandCenter() {
   useEffect(() => {
     if (!id || !activeOrgId) return;
 
+    // 🔒 HARD GUARD — reject non-UUID URLs
+    if (typeof id !== "string" || !UUID_RE.test(id)) {
+      console.warn("[vendor] Invalid vendor id in URL:", id);
+      router.replace("/vendors");
+      return;
+    }
+
+    let cancelled = false;
+
     async function loadVendor() {
       try {
         setLoading(true);
@@ -43,23 +56,25 @@ export default function VendorCommandCenter() {
         const { data, error } = await supabase
           .from("vendors")
           .select("*")
-          .eq("id", id) // ✅ UUID ONLY
+          .eq("id", id)          // UUID ONLY
           .eq("org_id", activeOrgId)
           .single();
 
         if (error) throw error;
-
-        setVendor(data || null);
+        if (!cancelled) setVendor(data || null);
       } catch (err) {
         console.error("[vendor detail]", err);
-        setError("Failed to load vendor.");
+        if (!cancelled) setError("Failed to load vendor.");
       } finally {
-        setLoading(false);
+        if (!cancelled) setLoading(false);
       }
     }
 
     loadVendor();
-  }, [id, activeOrgId]);
+    return () => {
+      cancelled = true;
+    };
+  }, [id, activeOrgId, router]);
 
   if (loading) {
     return <PageShell>Loading vendor…</PageShell>;
