@@ -1,8 +1,8 @@
 // pages/api/vendors/index.js
-// Vendor Index — UUID SAFE, BUILD SAFE
+// Vendor Index — UUID SAFE, BUILD SAFE (NO ALIASES)
 
-import { sql } from "@db";
-import { resolveOrg } from "@lib/server/resolveOrg";
+import { sql } from "../../../lib/db";
+import { resolveOrg } from "../../../lib/server/resolveOrg";
 
 export default async function handler(req, res) {
   if (req.method !== "GET") {
