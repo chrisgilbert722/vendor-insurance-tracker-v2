@@ -1,4 +1,3 @@
-// pages/vendors/[id].js
 // ============================================================
 // VENDOR COMMAND CENTER — V4 (IRON MAN)
 // - Neon ONLY (via API)
@@ -30,7 +29,7 @@ export default function VendorCommandCenter() {
   const [vendor, setVendor] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
-  const [sendingCOI, setSendingCOI] = useState(false);
+  const [sending, setSending] = useState(false);
 
   useEffect(() => {
     if (!id || !activeOrgId) return;
@@ -52,6 +51,7 @@ export default function VendorCommandCenter() {
         const res = await fetch(
           `/api/vendors/${vendorId}?orgId=${activeOrgId}`
         );
+
         const json = await res.json();
 
         if (!res.ok || !json.ok) {
@@ -84,13 +84,16 @@ export default function VendorCommandCenter() {
   const status = vendor.status || vendor.computedStatus || "unknown";
 
   async function handleRequestCOI() {
-    if (sendingCOI) return;
-    setSendingCOI(true);
+    if (sending) return;
+
+    setSending(true);
 
     try {
       const res = await fetch("/api/vendor/send-fix-email", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+        },
         body: JSON.stringify({
           vendorId: vendor.id,
           orgId: activeOrgId,
@@ -105,19 +108,26 @@ Thank you.`,
         }),
       });
 
-      const data = await res.json();
+      // ⚠️ Handle non-JSON safely
+      const text = await res.text();
+      let data = null;
+
+      try {
+        data = JSON.parse(text);
+      } catch {
+        throw new Error("Invalid server response");
+      }
 
       if (!res.ok || !data.ok) {
-        alert(data.error || "Failed to send COI request");
-        return;
+        throw new Error(data.error || "Failed to send COI request");
       }
 
       alert(`COI request sent to ${data.sentTo}`);
     } catch (err) {
       console.error("Request COI error:", err);
-      alert("Unexpected error sending COI request");
+      alert(err.message || "Unexpected error sending COI request");
     } finally {
-      setSendingCOI(false);
+      setSending(false);
     }
   }
 
@@ -142,10 +152,10 @@ Thank you.`,
           />
 
           <ActionButton
-            label={sendingCOI ? "Sending…" : "Request COI"}
+            label={sending ? "Sending…" : "Request COI"}
             tone="green"
+            disabled={sending}
             onClick={handleRequestCOI}
-            disabled={sendingCOI}
           />
 
           <ActionButton
@@ -257,7 +267,7 @@ function ActionButton({ label, tone, onClick, disabled }) {
         fontWeight: 700,
         boxShadow: `0 0 18px ${c}66`,
         cursor: disabled ? "not-allowed" : "pointer",
-        opacity: disabled ? 0.6 : 1,
+        opacity: disabled ? 0.7 : 1,
       }}
     >
       {label}
