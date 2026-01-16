@@ -99,10 +99,10 @@ export default async function handler(req, res) {
     const portalUrl = `${origin}/vendor/portal/${portalJson.token}`;
 
     /* -------------------------------------------------
-       5. Send email (existing, proven path)
+       5. Send email (ACTUAL EXISTING ROUTE)
     -------------------------------------------------- */
     const emailRes = await fetch(
-      `${origin}/api/vendor-portal/send-fix-email`,
+      `${origin}/api/send-fix-email`,
       {
         method: "POST",
         headers: { "Content-Type": "application/json" },
