@@ -250,7 +250,7 @@ export default function VendorPortal() {
       try {
         setLoading(true);
 
-        const res = await fetch(`/api/vendor/portal?token=${token}`);
+        const res = await fetch(`/api/vendor-portal/portal?token=${token}`);
         const json = await res.json();
         if (!json.ok) throw new Error(json.error || "Invalid link");
 
@@ -277,7 +277,7 @@ export default function VendorPortal() {
 
     async function loadDocs() {
       try {
-        const res = await fetch(`/api/vendor/documents?token=${token}`);
+        const res = await fetch(`/api/vendor-portal/documents?token=${token}`);
         const json = await res.json();
         if (json.ok) setVendorDocuments(json.documents || []);
       } catch (err) {
@@ -297,7 +297,7 @@ export default function VendorPortal() {
     async function loadTimeline() {
       try {
         setLoadingTimeline(true);
-        const res = await fetch(`/api/vendor/timeline?token=${token}`);
+        const res = await fetch(`/api/vendor-portal/timeline?token=${token}`);
         const json = await res.json();
         if (json.ok) setTimeline(json.timeline || []);
       } catch (err) {
@@ -384,13 +384,13 @@ export default function VendorPortal() {
     localStorage.setItem(`vendor_fix_${token}`, JSON.stringify(updated));
 
     try {
-      await fetch("/api/vendor/fix-issue", {
+      await fetch("/api/vendor-portal/fix-issue", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ token, code }),
       });
 
-      const res = await fetch(`/api/vendor/portal?token=${token}`);
+      const res = await fetch(`/api/vendor-portal/portal?token=${token}`);
       const json = await res.json();
       if (json.ok) setVendorData(json);
     } catch (err) {
@@ -451,7 +451,7 @@ export default function VendorPortal() {
       fd.append("file", selectedFile);
       fd.append("token", token);
 
-      const res = await fetch("/api/vendor/upload-coi", {
+      const res = await fetch("/api/vendor-portal/upload-coi", {
         method: "POST",
         body: fd,
       });
@@ -475,11 +475,11 @@ export default function VendorPortal() {
 
       // Refresh documents + timeline automatically
       try {
-        const docsRes = await fetch(`/api/vendor/documents?token=${token}`);
+        const docsRes = await fetch(`/api/vendor-portal/documents?token=${token}`);
         const docsJson = await docsRes.json();
         if (docsJson.ok) setVendorDocuments(docsJson.documents || []);
 
-        const tRes = await fetch(`/api/vendor/timeline?token=${token}`);
+        const tRes = await fetch(`/api/vendor-portal/timeline?token=${token}`);
         const tJson = await tRes.json();
         if (tJson.ok) setTimeline(tJson.timeline || []);
       } catch (_) {}
@@ -531,7 +531,7 @@ export default function VendorPortal() {
       fd.append("token", token);
       fd.append("docType", docType);
 
-      const res = await fetch("/api/vendor/upload-doc", {
+      const res = await fetch("/api/vendor-portal/upload-doc", {
         method: "POST",
         body: fd,
       });
@@ -543,11 +543,11 @@ export default function VendorPortal() {
 
       // Refresh documents + timeline
       try {
-        const docsRes = await fetch(`/api/vendor/documents?token=${token}`);
+        const docsRes = await fetch(`/api/vendor-portal/documents?token=${token}`);
         const docsJson = await docsRes.json();
         if (docsJson.ok) setVendorDocuments(docsJson.documents || []);
 
-        const tRes = await fetch(`/api/vendor/timeline?token=${token}`);
+        const tRes = await fetch(`/api/vendor-portal/timeline?token=${token}`);
         const tJson = await tRes.json();
         if (tJson.ok) setTimeline(tJson.timeline || []);
       } catch (_) {}
@@ -570,7 +570,7 @@ export default function VendorPortal() {
       setSmartSuggestionsError("");
       setSmartSuggestionsLoading(true);
 
-      const res = await fetch("/api/vendor/suggestions", {
+      const res = await fetch("/api/vendor-portal/suggestions", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ token }),
@@ -604,7 +604,7 @@ export default function VendorPortal() {
     setAssistantMessages((prev) => [...prev, { role: "user", text: question }]);
 
     try {
-      const res = await fetch("/api/vendor/assistant", {
+      const res = await fetch("/api/vendor-portal/assistant", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ token, question }),

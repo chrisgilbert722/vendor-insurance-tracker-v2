@@ -71,7 +71,7 @@ export default async function handler(req, res) {
       name: rows[0].org_name,
     };
 
-    const portalUrl = `${process.env.NEXT_PUBLIC_APP_URL}/vendor/portal/${rows[0].portal_token}`;
+    const portalUrl = `${process.env.NEXT_PUBLIC_APP_URL}/vendor-pages/portal/${rows[0].portal_token}`;
 
     // ---------------------------------------------
     // 2) Choose template + render to HTML

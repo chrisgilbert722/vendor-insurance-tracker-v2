@@ -953,8 +953,8 @@ const totalVendors = Number(dashboard?.vendorCount ?? 0);
 // ---- engine health (required by render) ----
 const engineHealth = {
   avg: avgScore,
-  fails: 0,
-  critical: 0,
+  fails: Number(dashboard?.severityBreakdown?.high ?? 0) + Number(dashboard?.severityBreakdown?.critical ?? 0),
+  critical: Number(dashboard?.severityBreakdown?.critical ?? 0),
   total: totalVendors,
 };
 

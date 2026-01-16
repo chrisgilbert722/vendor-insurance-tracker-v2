@@ -26,7 +26,6 @@ export default async function handler(req, res) {
 
     // ✅ CORRECT: create server-side Supabase client
     const supabase = supabaseServer();
-
     const { data, error } = await supabase.auth.getUser(token);
 
     if (error || !data?.user) {
@@ -37,8 +36,9 @@ export default async function handler(req, res) {
     }
 
     const userId = data.user.id;
+    const email = data.user.email;
 
-    const orgs = await sql`
+    let orgs = await sql`
       SELECT
         o.id,
         o.name,
@@ -49,6 +49,25 @@ export default async function handler(req, res) {
       WHERE om.user_id = ${userId}
       ORDER BY o.id ASC;
     `;
+
+    // Auto-create org if user has none
+    if (!orgs || orgs.length === 0) {
+      const [org] = await sql`
+        INSERT INTO organizations (name, onboarding_step)
+        VALUES (
+          ${email ? `${email.split("@")[0]}'s Organization` : "My Organization"},
+          1
+        )
+        RETURNING id, name, external_uuid, onboarding_step;
+      `;
+
+      await sql`
+        INSERT INTO organization_members (org_id, user_id, role)
+        VALUES (${org.id}, ${userId}, 'owner');
+      `;
+
+      orgs = [org];
+    }
 
     return res.status(200).json({
       ok: true,

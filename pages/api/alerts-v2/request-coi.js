@@ -73,7 +73,8 @@ export default async function handler(req, res) {
       VALUES (${alert.org_id}, ${vendor.id}, ${token}, ${expiresAt})
     `;
 
-    const portalUrl = `${origin}/vendor/portal/${token}`;
+    // CRITICAL: Use /vendor-pages/portal/ path (matches actual page location)
+    const portalUrl = `${origin}/vendor-pages/portal/${token}`;
 
     // 4) Send email directly via Resend (manual operator action)
     const apiKey = process.env.RESEND_API_KEY;
