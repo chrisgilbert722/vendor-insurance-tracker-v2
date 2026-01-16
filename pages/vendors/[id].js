@@ -3,7 +3,8 @@
 // VENDOR COMMAND CENTER — V4 (IRON MAN)
 // - Neon ONLY (via API)
 // - INTEGER vendor IDs
-// - Request COI wired to existing email engine
+// - Request COI wired to alerts-v2 automation
+// - ZERO dashboard side effects
 // ============================================================
 
 import { useRouter } from "next/router";
@@ -30,13 +31,16 @@ export default function VendorCommandCenter() {
   const [vendor, setVendor] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+
   const [sendingCOI, setSendingCOI] = useState(false);
+  const [requestMessage, setRequestMessage] = useState("");
 
   useEffect(() => {
     if (!id || !activeOrgId) return;
 
     const vendorId = Number(id);
     if (!Number.isInteger(vendorId)) {
+      console.warn("[vendor] Invalid vendor id:", id);
       router.replace("/vendors");
       return;
     }
@@ -48,7 +52,9 @@ export default function VendorCommandCenter() {
         setLoading(true);
         setError("");
 
-        const res = await fetch(`/api/vendors/${vendorId}?orgId=${activeOrgId}`);
+        const res = await fetch(
+          `/api/vendors/${vendorId}?orgId=${activeOrgId}`
+        );
         const json = await res.json();
 
         if (!res.ok || !json.ok) {
@@ -70,50 +76,49 @@ export default function VendorCommandCenter() {
     };
   }, [id, activeOrgId, router]);
 
-  if (loading) return <PageShell>Loading vendor…</PageShell>;
-  if (error || !vendor)
-    return <PageShell>{error || "Vendor not found."}</PageShell>;
-
-  const status = vendor.status || vendor.computedStatus || "unknown";
-
-  async function handleRequestCOI() {
-    if (sendingCOI) return;
+  /* -----------------------------
+     REQUEST COI (REAL WIRING)
+  ----------------------------- */
+  async function requestCOI() {
+    if (!vendor || !activeOrgId) return;
 
     try {
       setSendingCOI(true);
+      setRequestMessage("");
 
-      const res = await fetch("/api/vendor/send-fix-email", {
+      const res = await fetch("/api/alerts-v2/request-coi", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           vendorId: vendor.id,
           orgId: activeOrgId,
-          subject: "Certificate of Insurance Required",
-          body: `Hello ${vendor.name},
-
-We are requesting an updated Certificate of Insurance for our records.
-
-Please upload your COI at your earliest convenience.
-
-Thank you.`,
         }),
       });
 
-      const text = await res.text();
-      const data = text ? JSON.parse(text) : null;
+      const json = await res.json();
 
-      if (!res.ok || !data?.ok) {
-        throw new Error(data?.error || "Invalid server response");
+      if (!res.ok || !json.ok) {
+        throw new Error(json.error || "Request failed");
       }
 
-      alert(`COI request sent to ${data.sentTo}`);
+      setRequestMessage("COI request sent successfully.");
     } catch (err) {
-      console.error("Request COI error:", err);
-      alert(err.message || "Unexpected error sending COI request");
+      console.error("[request COI]", err);
+      setRequestMessage("Failed to send COI request.");
     } finally {
       setSendingCOI(false);
     }
   }
+
+  if (loading) {
+    return <PageShell>Loading vendor…</PageShell>;
+  }
+
+  if (error || !vendor) {
+    return <PageShell>{error || "Vendor not found."}</PageShell>;
+  }
+
+  const status = vendor.status || vendor.computedStatus || "unknown";
 
   return (
     <PageShell>
@@ -130,14 +135,16 @@ Thank you.`,
           <ActionButton
             label="Upload COI"
             tone="blue"
-            onClick={() => router.push(`/upload-coi?vendorId=${vendor.id}`)}
+            onClick={() =>
+              router.push(`/upload-coi?vendorId=${vendor.id}`)
+            }
           />
 
           <ActionButton
             label={sendingCOI ? "Sending…" : "Request COI"}
             tone="green"
+            onClick={requestCOI}
             disabled={sendingCOI}
-            onClick={handleRequestCOI}
           />
 
           <ActionButton
@@ -147,6 +154,20 @@ Thank you.`,
           />
         </div>
       </div>
+
+      {requestMessage && (
+        <div
+          style={{
+            marginTop: 10,
+            fontSize: 12,
+            color: requestMessage.includes("success")
+              ? "#22c55e"
+              : "#fb7185",
+          }}
+        >
+          {requestMessage}
+        </div>
+      )}
 
       <Grid>
         <Panel title="Compliance Snapshot">
