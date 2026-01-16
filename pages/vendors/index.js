@@ -5,8 +5,6 @@ import GlobalVendorTable from "../../components/vendors/GlobalVendorTable";
 export default function VendorsIndexPage() {
   const { activeOrgId: orgId, loading } = useOrg();
 
-  // 🔒 CRITICAL GUARD:
-  // Do NOT render vendors table until org auto-selection is complete
   if (loading || !orgId) {
     return (
       <div
@@ -35,9 +33,12 @@ export default function VendorsIndexPage() {
           "radial-gradient(circle at top left,#020617 0,#020617 45%,#000 100%)",
         padding: "32px 40px 40px",
         color: "#e5e7eb",
+
+        // 🔒 IMPORTANT: outer shell should NOT receive clicks
+        pointerEvents: "none",
       }}
     >
-      {/* AURA */}
+      {/* AURA (visual only) */}
       <div
         style={{
           position: "absolute",
@@ -54,12 +55,12 @@ export default function VendorsIndexPage() {
         }}
       />
 
-      {/* COCKPIT FRAME */}
+      {/* COCKPIT FRAME — ONLY CLICKABLE LAYER */}
       <div
         style={{
           position: "relative",
           zIndex: 1,
-          pointerEvents: "auto", // ✅ CRITICAL FIX — allow clicks to reach table
+          pointerEvents: "auto", // ✅ clicks allowed here
           borderRadius: 32,
           padding: 22,
           background:
@@ -128,13 +129,7 @@ export default function VendorsIndexPage() {
               </span>
             </div>
 
-            <h1
-              style={{
-                margin: 0,
-                fontSize: 26,
-                fontWeight: 600,
-              }}
-            >
+            <h1 style={{ margin: 0, fontSize: 26, fontWeight: 600 }}>
               One cockpit for{" "}
               <span
                 style={{
@@ -164,7 +159,7 @@ export default function VendorsIndexPage() {
           </div>
         </div>
 
-        {/* GVI TABLE — orgId is GUARANTEED here */}
+        {/* GVI TABLE */}
         <GlobalVendorTable orgId={orgId} />
       </div>
     </div>
