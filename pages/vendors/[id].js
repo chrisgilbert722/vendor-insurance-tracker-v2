@@ -1,8 +1,9 @@
+// pages/vendors/[id].js
 // ============================================================
 // VENDOR COMMAND CENTER — V4 (IRON MAN)
 // - Neon ONLY (via API)
 // - INTEGER vendor IDs
-// - ZERO Supabase usage
+// - Request COI wired to existing email engine
 // ============================================================
 
 import { useRouter } from "next/router";
@@ -29,14 +30,13 @@ export default function VendorCommandCenter() {
   const [vendor, setVendor] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
-  const [sending, setSending] = useState(false);
+  const [sendingCOI, setSendingCOI] = useState(false);
 
   useEffect(() => {
     if (!id || !activeOrgId) return;
 
     const vendorId = Number(id);
     if (!Number.isInteger(vendorId)) {
-      console.warn("[vendor] Invalid vendor id:", id);
       router.replace("/vendors");
       return;
     }
@@ -48,10 +48,7 @@ export default function VendorCommandCenter() {
         setLoading(true);
         setError("");
 
-        const res = await fetch(
-          `/api/vendors/${vendorId}?orgId=${activeOrgId}`
-        );
-
+        const res = await fetch(`/api/vendors/${vendorId}?orgId=${activeOrgId}`);
         const json = await res.json();
 
         if (!res.ok || !json.ok) {
@@ -73,27 +70,21 @@ export default function VendorCommandCenter() {
     };
   }, [id, activeOrgId, router]);
 
-  if (loading) {
-    return <PageShell>Loading vendor…</PageShell>;
-  }
-
-  if (error || !vendor) {
+  if (loading) return <PageShell>Loading vendor…</PageShell>;
+  if (error || !vendor)
     return <PageShell>{error || "Vendor not found."}</PageShell>;
-  }
 
   const status = vendor.status || vendor.computedStatus || "unknown";
 
   async function handleRequestCOI() {
-    if (sending) return;
-
-    setSending(true);
+    if (sendingCOI) return;
 
     try {
+      setSendingCOI(true);
+
       const res = await fetch("/api/vendor/send-fix-email", {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           vendorId: vendor.id,
           orgId: activeOrgId,
@@ -108,18 +99,11 @@ Thank you.`,
         }),
       });
 
-      // ⚠️ Handle non-JSON safely
       const text = await res.text();
-      let data = null;
+      const data = text ? JSON.parse(text) : null;
 
-      try {
-        data = JSON.parse(text);
-      } catch {
-        throw new Error("Invalid server response");
-      }
-
-      if (!res.ok || !data.ok) {
-        throw new Error(data.error || "Failed to send COI request");
+      if (!res.ok || !data?.ok) {
+        throw new Error(data?.error || "Invalid server response");
       }
 
       alert(`COI request sent to ${data.sentTo}`);
@@ -127,7 +111,7 @@ Thank you.`,
       console.error("Request COI error:", err);
       alert(err.message || "Unexpected error sending COI request");
     } finally {
-      setSending(false);
+      setSendingCOI(false);
     }
   }
 
@@ -146,15 +130,13 @@ Thank you.`,
           <ActionButton
             label="Upload COI"
             tone="blue"
-            onClick={() =>
-              router.push(`/upload-coi?vendorId=${vendor.id}`)
-            }
+            onClick={() => router.push(`/upload-coi?vendorId=${vendor.id}`)}
           />
 
           <ActionButton
-            label={sending ? "Sending…" : "Request COI"}
+            label={sendingCOI ? "Sending…" : "Request COI"}
             tone="green"
-            disabled={sending}
+            disabled={sendingCOI}
             onClick={handleRequestCOI}
           />
 
