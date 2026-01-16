@@ -1,8 +1,8 @@
 // pages/vendors/[id].js
 // ============================================================
 // VENDOR COMMAND CENTER — V4 (IRON MAN)
-// - UUID-based routing (vendors.id)
-// - Hard guard against invalid routes
+// - INTEGER-based routing (vendors.id)
+// - Matches real DB schema
 // - Crash-safe
 // ============================================================
 
@@ -20,16 +20,12 @@ const safeString = (v, f = "—") =>
 const safeNumber = (v, f = 0) =>
   typeof v === "number" && Number.isFinite(v) ? v : f;
 
-// Strict UUID v4/v5 matcher
-const UUID_RE =
-  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
-
 /* -----------------------------
    Page
 ----------------------------- */
 export default function VendorCommandCenter() {
   const router = useRouter();
-  const { id } = router.query; // should be UUID
+  const { id } = router.query; // INTEGER
   const { activeOrgId } = useOrg();
 
   const [vendor, setVendor] = useState(null);
@@ -39,9 +35,9 @@ export default function VendorCommandCenter() {
   useEffect(() => {
     if (!id || !activeOrgId) return;
 
-    // 🔒 HARD GUARD — reject non-UUID URLs
-    if (typeof id !== "string" || !UUID_RE.test(id)) {
-      console.warn("[vendor] Invalid vendor id in URL:", id);
+    const vendorId = Number(id);
+    if (!Number.isInteger(vendorId)) {
+      console.warn("[vendor] Invalid vendor id:", id);
       router.replace("/vendors");
       return;
     }
@@ -56,7 +52,7 @@ export default function VendorCommandCenter() {
         const { data, error } = await supabase
           .from("vendors")
           .select("*")
-          .eq("id", id)          // UUID ONLY
+          .eq("id", vendorId)        // ✅ INTEGER ID
           .eq("org_id", activeOrgId)
           .single();
 
