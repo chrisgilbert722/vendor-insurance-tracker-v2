@@ -1,7 +1,13 @@
 // pages/api/alerts-v2/request-coi.js
-// A4 — Request COI automation (FINAL, PATH-CORRECT, SAFE)
+// A4 — Request COI automation (SINGLE OWNER, NO INTERNAL HOPS)
+// - Loads alert + vendor from Neon
+// - Creates vendor portal token directly
+// - Sends email directly via Resend (manual operator action)
+// - No trial/automation lock (this is NOT "automation", it's manual request)
 
 import { sql } from "../../../lib/db";
+import crypto from "crypto";
+import { Resend } from "resend";
 
 export default async function handler(req, res) {
   if (req.method !== "POST") {
@@ -10,30 +16,36 @@ export default async function handler(req, res) {
 
   try {
     const { alertId } = req.body || {};
-
     if (!alertId) {
-      return res.status(400).json({
+      return res.status(400).json({ ok: false, error: "Missing alertId" });
+    }
+
+    // Resolve origin safely (works on Vercel + browser)
+    const origin =
+      req.headers.origin ||
+      process.env.APP_URL ||
+      (req.headers.host ? `https://${req.headers.host}` : null);
+
+    if (!origin) {
+      return res.status(500).json({
         ok: false,
-        error: "Missing alertId",
+        error: "Unable to resolve origin for portal URL",
       });
     }
 
-    // 1. Load alert
+    // 1) Load alert (schema-safe)
     const [alert] = await sql`
-      SELECT id, vendor_id, org_id
+      SELECT id, vendor_id, org_id, type
       FROM alerts_v2
       WHERE id = ${alertId}
       LIMIT 1;
     `;
 
     if (!alert) {
-      return res.status(404).json({
-        ok: false,
-        error: "Alert not found",
-      });
+      return res.status(404).json({ ok: false, error: "Alert not found" });
     }
 
-    // 2. Load vendor
+    // 2) Load vendor (must have email)
     const [vendor] = await sql`
       SELECT id, name, email
       FROM vendors
@@ -41,73 +53,57 @@ export default async function handler(req, res) {
       LIMIT 1;
     `;
 
-    if (!vendor || !vendor.email) {
-      return res.status(400).json({
+    if (!vendor) {
+      return res.status(404).json({ ok: false, error: "Vendor not found" });
+    }
+
+    if (!vendor.email) {
+      return res.status(400).json({ ok: false, error: "Vendor has no email on file" });
+    }
+
+    // 3) Create portal token directly (no API hop)
+    const token = crypto.randomBytes(32).toString("hex");
+
+    const expiresAt = new Date();
+    expiresAt.setDate(expiresAt.getDate() + 30);
+
+    // If your table has a UNIQUE constraint on token (it should), this is safe.
+    await sql`
+      INSERT INTO vendor_portal_tokens (org_id, vendor_id, token, expires_at)
+      VALUES (${alert.org_id}, ${vendor.id}, ${token}, ${expiresAt})
+    `;
+
+    const portalUrl = `${origin}/vendor/portal/${token}`;
+
+    // 4) Send email directly via Resend (manual operator action)
+    const apiKey = process.env.RESEND_API_KEY;
+    if (!apiKey) {
+      return res.status(500).json({
         ok: false,
-        error: "Vendor has no email on file",
+        error: "RESEND_API_KEY is not set",
       });
     }
 
-    // 3. Resolve origin safely
-    const origin =
-      req.headers.origin ||
-      process.env.APP_URL ||
-      `https://${req.headers.host}`;
+    const resend = new Resend(apiKey);
 
-    if (!origin) {
-      throw new Error("Unable to resolve origin");
-    }
+    const from = process.env.EMAIL_FROM || "Compliance <no-reply@verivo.io>";
+    const subject = "Action Required: Upload Updated COI";
+    const body = `Hello ${vendor.name || "there"},
 
-    // 4. Create portal link (REAL ROUTE)
-    const portalRes = await fetch(
-      `${origin}/api/vendor-portal/create-portal-link`,
-      {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          orgId: alert.org_id,
-          vendorId: alert.vendor_id,
-        }),
-      }
-    );
+Please upload an updated Certificate of Insurance (COI).
 
-    if (!portalRes.ok) {
-      throw new Error("Portal link service failed");
-    }
-
-    const portalJson = await portalRes.json();
-
-    if (!portalJson?.ok || !portalJson.token) {
-      throw new Error("Invalid portal link response");
-    }
-
-    const portalUrl = `${origin}/vendor/portal/${portalJson.token}`;
-
-    // 5. Send email (REAL ROUTE)
-    const emailRes = await fetch(
-      `${origin}/api/vendor/send-fix-email`,
-      {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          vendorId: vendor.id,
-          orgId: alert.org_id,
-          subject: "Action Required: Upload Updated COI",
-          body: `Hello ${vendor.name},
-
-Please upload an updated Certificate of Insurance:
-
+Upload here:
 ${portalUrl}
 
 Thank you,
-Compliance Team`,
-        }),
-      }
-    );
+Compliance Team`;
 
-    if (!emailRes.ok) {
-      throw new Error("Email API failed");
-    }
+    await resend.emails.send({
+      from,
+      to: vendor.email,
+      subject,
+      text: body,
+    });
 
     return res.status(200).json({
       ok: true,
@@ -115,10 +111,10 @@ Compliance Team`,
       portalUrl,
     });
   } catch (err) {
-    console.error("[alerts-v2/request-coi]", err);
+    console.error("[alerts-v2/request-coi] ERROR:", err);
     return res.status(500).json({
       ok: false,
-      error: err.message || "Failed to request COI",
+      error: err?.message || "Failed to request COI",
     });
   }
 }
