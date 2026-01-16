@@ -16,7 +16,9 @@ export default async function handler(req, res) {
   }
 
   try {
-    // 1. Look for existing open COI alert
+    // --------------------------------------------------
+    // 1. Reuse existing OPEN COI alert if present
+    // --------------------------------------------------
     const existing = await sql`
       SELECT id
       FROM alerts_v2
@@ -35,7 +37,9 @@ export default async function handler(req, res) {
       });
     }
 
-    // 2. Create new alert
+    // --------------------------------------------------
+    // 2. Create NEW COI alert (FULLY SPECIFIED)
+    // --------------------------------------------------
     const created = await sql`
       INSERT INTO alerts_v2 (
         org_id,
@@ -43,7 +47,11 @@ export default async function handler(req, res) {
         type,
         severity,
         status,
-        source
+        source,
+        title,
+        message,
+        created_at,
+        updated_at
       )
       VALUES (
         ${orgId},
@@ -51,7 +59,11 @@ export default async function handler(req, res) {
         'coi_missing',
         'medium',
         'open',
-        'manual_request'
+        'manual_request',
+        'COI Requested',
+        'A certificate of insurance has been requested from this vendor.',
+        NOW(),
+        NOW()
       )
       RETURNING id;
     `;
@@ -62,7 +74,7 @@ export default async function handler(req, res) {
       reused: false,
     });
   } catch (err) {
-    console.error("[ensure-coi-alert]", err);
+    console.error("[ensure-coi-alert] ERROR:", err);
     return res.status(500).json({
       ok: false,
       error: "Failed to ensure COI alert",
