@@ -1,4 +1,3 @@
-// pages/api/alerts-v2/ensure-coi-alert.js
 import { sql } from "../../../lib/db";
 
 export default async function handler(req, res) {
@@ -17,27 +16,27 @@ export default async function handler(req, res) {
 
   try {
     // --------------------------------------------------
-    // 0. Resolve vendor UUID (CRITICAL FIX)
+    // 1. Resolve vendor UUID (TEXT → UUID SAFE)
     // --------------------------------------------------
     const vendorRes = await sql`
-      SELECT external_uuid
+      SELECT external_uuid::uuid AS vendor_uuid
       FROM vendors
       WHERE id = ${vendorId}
         AND org_id = ${orgId}
       LIMIT 1;
     `;
 
-    if (!vendorRes.length || !vendorRes[0].external_uuid) {
+    if (!vendorRes.length) {
       return res.status(404).json({
         ok: false,
-        error: "Vendor UUID not found",
+        error: "Vendor not found",
       });
     }
 
-    const vendorUuid = vendorRes[0].external_uuid;
+    const vendorUuid = vendorRes[0].vendor_uuid;
 
     // --------------------------------------------------
-    // 1. Reuse existing OPEN COI alert
+    // 2. Reuse existing open COI alert
     // --------------------------------------------------
     const existing = await sql`
       SELECT id
@@ -58,7 +57,7 @@ export default async function handler(req, res) {
     }
 
     // --------------------------------------------------
-    // 2. Create new COI alert (UUID-SAFE)
+    // 3. Create COI alert (UUID SAFE)
     // --------------------------------------------------
     const created = await sql`
       INSERT INTO alerts_v2 (
@@ -94,7 +93,7 @@ export default async function handler(req, res) {
       reused: false,
     });
   } catch (err) {
-    console.error("[ensure-coi-alert] ERROR:", err);
+    console.error("[ensure-coi-alert] FATAL:", err);
     return res.status(500).json({
       ok: false,
       error: "Failed to ensure COI alert",
