@@ -1,5 +1,5 @@
 // pages/api/alerts-v2/request-coi.js
-// A4 — Request COI automation (HARDENED, SCHEMA-SAFE, FIXED PATH)
+// A4 — Request COI automation (HARDENED, SCHEMA-SAFE, PATH-CORRECT)
 
 import { sql } from "../../../lib/db";
 
@@ -60,10 +60,10 @@ export default async function handler(req, res) {
     }
 
     /* -------------------------------------------------
-       3. Create vendor portal link
-       🔴 FIX: correct endpoint path
+       3. Create vendor portal link (CORRECT PATH)
     -------------------------------------------------- */
     const origin = req.headers.origin;
+
     if (!origin) {
       throw new Error("Request origin missing");
     }
@@ -124,7 +124,7 @@ Compliance Team
     }
 
     /* -------------------------------------------------
-       5. Success
+       5. Success — NO alert mutation here
     -------------------------------------------------- */
     return res.status(200).json({
       ok: true,
