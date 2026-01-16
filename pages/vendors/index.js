@@ -59,6 +59,7 @@ export default function VendorsIndexPage() {
         style={{
           position: "relative",
           zIndex: 1,
+          pointerEvents: "auto", // ✅ CRITICAL FIX — allow clicks to reach table
           borderRadius: 32,
           padding: 22,
           background:
