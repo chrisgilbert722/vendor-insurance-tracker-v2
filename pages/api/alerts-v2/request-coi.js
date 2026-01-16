@@ -1,5 +1,5 @@
 // pages/api/alerts-v2/request-coi.js
-// A4 — Request COI automation (HARDENED, SCHEMA-SAFE, PATH-CORRECT)
+// A4 — Request COI automation (HARDENED, SCHEMA-SAFE)
 
 import { sql } from "../../../lib/db";
 
@@ -60,7 +60,7 @@ export default async function handler(req, res) {
     }
 
     /* -------------------------------------------------
-       3. Create vendor portal link (CORRECT PATH)
+       3. Create vendor portal link (CORRECT ROUTE)
     -------------------------------------------------- */
     const origin = req.headers.origin;
 
