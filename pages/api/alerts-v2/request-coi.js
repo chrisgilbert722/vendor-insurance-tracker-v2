@@ -60,14 +60,20 @@ export default async function handler(req, res) {
     }
 
     /* -------------------------------------------------
-       3. Create vendor portal link (CORRECT ROUTE)
+       3. Resolve origin SAFELY (browser + server)
     -------------------------------------------------- */
-    const origin = req.headers.origin;
+    const origin =
+      req.headers.origin ||
+      process.env.APP_URL ||
+      `https://${req.headers.host}`;
 
     if (!origin) {
-      throw new Error("Request origin missing");
+      throw new Error("Unable to resolve request origin");
     }
 
+    /* -------------------------------------------------
+       4. Create vendor portal link (CORRECT ROUTE)
+    -------------------------------------------------- */
     const portalRes = await fetch(
       `${origin}/api/vendor-portal/create-portal-link`,
       {
@@ -93,7 +99,7 @@ export default async function handler(req, res) {
     const portalUrl = `${origin}/vendor/portal/${portalJson.token}`;
 
     /* -------------------------------------------------
-       4. Send email (existing, proven path)
+       5. Send email (existing, proven path)
     -------------------------------------------------- */
     const emailRes = await fetch(
       `${origin}/api/vendor-portal/send-fix-email`,
@@ -124,7 +130,7 @@ Compliance Team
     }
 
     /* -------------------------------------------------
-       5. Success — NO alert mutation here
+       6. Success — NO alert mutation here
     -------------------------------------------------- */
     return res.status(200).json({
       ok: true,
