@@ -27,7 +27,10 @@ export default async function handler(req, res) {
     `;
 
     if (!alert) {
-      return res.status(404).json({ ok: false, error: "Alert not found" });
+      return res.status(404).json({
+        ok: false,
+        error: "Alert not found",
+      });
     }
 
     // 2. Load vendor
@@ -55,7 +58,7 @@ export default async function handler(req, res) {
       throw new Error("Unable to resolve origin");
     }
 
-    // 4. Create portal link (CORRECT ROUTE)
+    // 4. Create portal link (REAL ROUTE)
     const portalRes = await fetch(
       `${origin}/api/vendor-portal/create-portal-link`,
       {
@@ -80,9 +83,9 @@ export default async function handler(req, res) {
 
     const portalUrl = `${origin}/vendor/portal/${portalJson.token}`;
 
-    // 5. Send email (CORRECT ROUTE)
+    // 5. Send email (REAL ROUTE)
     const emailRes = await fetch(
-      `${origin}/api/vendor-portal/send-fix-email`,
+      `${origin}/api/vendor/send-fix-email`,
       {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -112,7 +115,7 @@ Compliance Team`,
       portalUrl,
     });
   } catch (err) {
-    console.error("[request-coi]", err);
+    console.error("[alerts-v2/request-coi]", err);
     return res.status(500).json({
       ok: false,
       error: err.message || "Failed to request COI",
