@@ -1,10 +1,9 @@
-// pages/vendors/[id].js
 // ============================================================
 // VENDOR COMMAND CENTER — V4 (IRON MAN)
 // - Neon ONLY (via API)
 // - INTEGER vendor IDs
-// - Request COI wired to alerts-v2 automation
-// - ZERO dashboard side effects
+// - ZERO Supabase usage
+// - HARDENED Request COI UX
 // ============================================================
 
 import { useRouter } from "next/router";
@@ -32,8 +31,9 @@ export default function VendorCommandCenter() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
 
+  // 🔒 UX state for Request COI
   const [sendingCOI, setSendingCOI] = useState(false);
-  const [requestMessage, setRequestMessage] = useState("");
+  const [coiMessage, setCoiMessage] = useState("");
 
   useEffect(() => {
     if (!id || !activeOrgId) return;
@@ -77,38 +77,48 @@ export default function VendorCommandCenter() {
   }, [id, activeOrgId, router]);
 
   /* -----------------------------
-     REQUEST COI (REAL WIRING)
+     ACTIONS
   ----------------------------- */
-  async function requestCOI() {
-    if (!vendor || !activeOrgId) return;
+
+  async function handleRequestCOI() {
+    if (!vendor || sendingCOI) return;
+
+    setSendingCOI(true);
+    setCoiMessage("");
 
     try {
-      setSendingCOI(true);
-      setRequestMessage("");
-
-      const res = await fetch("/api/alerts-v2/request-coi", {
+      const res = await fetch("/api/vendor/send-fix-email", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           vendorId: vendor.id,
           orgId: activeOrgId,
+          subject: "Certificate of Insurance Request",
+          body:
+            "Please provide an updated Certificate of Insurance to remain compliant.",
         }),
       });
 
       const json = await res.json();
 
       if (!res.ok || !json.ok) {
-        throw new Error(json.error || "Request failed");
+        throw new Error(json.error || "Failed to send COI request");
       }
 
-      setRequestMessage("COI request sent successfully.");
+      setCoiMessage("✅ COI request sent successfully.");
     } catch (err) {
-      console.error("[request COI]", err);
-      setRequestMessage("Failed to send COI request.");
+      console.error("[Request COI]", err);
+      setCoiMessage(
+        `❌ ${err.message || "Unexpected error sending COI request"}`
+      );
     } finally {
       setSendingCOI(false);
     }
   }
+
+  /* -----------------------------
+     RENDER STATES
+  ----------------------------- */
 
   if (loading) {
     return <PageShell>Loading vendor…</PageShell>;
@@ -129,6 +139,10 @@ export default function VendorCommandCenter() {
           <div style={statusRow(status)}>
             STATUS: {status.toUpperCase()}
           </div>
+
+          {coiMessage && (
+            <div style={{ marginTop: 6, fontSize: 12 }}>{coiMessage}</div>
+          )}
         </div>
 
         <div style={{ display: "flex", gap: 10 }}>
@@ -143,8 +157,8 @@ export default function VendorCommandCenter() {
           <ActionButton
             label={sendingCOI ? "Sending…" : "Request COI"}
             tone="green"
-            onClick={requestCOI}
             disabled={sendingCOI}
+            onClick={handleRequestCOI}
           />
 
           <ActionButton
@@ -154,20 +168,6 @@ export default function VendorCommandCenter() {
           />
         </div>
       </div>
-
-      {requestMessage && (
-        <div
-          style={{
-            marginTop: 10,
-            fontSize: 12,
-            color: requestMessage.includes("success")
-              ? "#22c55e"
-              : "#fb7185",
-          }}
-        >
-          {requestMessage}
-        </div>
-      )}
 
       <Grid>
         <Panel title="Compliance Snapshot">
@@ -270,7 +270,7 @@ function ActionButton({ label, tone, onClick, disabled }) {
         fontWeight: 700,
         boxShadow: `0 0 18px ${c}66`,
         cursor: disabled ? "not-allowed" : "pointer",
-        opacity: disabled ? 0.7 : 1,
+        opacity: disabled ? 0.6 : 1,
       }}
     >
       {label}
