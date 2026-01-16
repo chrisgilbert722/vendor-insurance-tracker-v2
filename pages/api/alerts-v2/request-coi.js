@@ -1,5 +1,5 @@
 // pages/api/alerts-v2/request-coi.js
-// A4 — Request COI automation (HARDENED, SCHEMA-SAFE)
+// A4 — Request COI automation (HARDENED, SCHEMA-SAFE, INTERNAL-SAFE)
 
 import { sql } from "../../../lib/db";
 
@@ -17,6 +17,13 @@ export default async function handler(req, res) {
         error: "Missing alertId",
       });
     }
+
+    /* -------------------------------------------------
+       Resolve base URL SAFELY (no env var dependency)
+    -------------------------------------------------- */
+    const baseUrl =
+      req.headers.origin ||
+      `https://${req.headers.host}`;
 
     /* -------------------------------------------------
        1. Load alert (ONLY real columns)
@@ -62,14 +69,8 @@ export default async function handler(req, res) {
     /* -------------------------------------------------
        3. Create vendor portal link (INTERNAL SAFE)
     -------------------------------------------------- */
-    const origin = req.headers.origin;
-
-    if (!origin) {
-      throw new Error("Request origin missing");
-    }
-
     const portalRes = await fetch(
-      `${origin}/api/vendor/create-portal-link`,
+      `${baseUrl}/api/vendor/create-portal-link`,
       {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -81,7 +82,8 @@ export default async function handler(req, res) {
     );
 
     if (!portalRes.ok) {
-      throw new Error("Portal link service failed");
+      const txt = await portalRes.text();
+      throw new Error(`Portal link service failed: ${txt}`);
     }
 
     const portalJson = await portalRes.json();
@@ -90,13 +92,13 @@ export default async function handler(req, res) {
       throw new Error("Invalid response from portal link service");
     }
 
-    const portalUrl = `${origin}/vendor/portal/${portalJson.token}`;
+    const portalUrl = `${baseUrl}/vendor/portal/${portalJson.token}`;
 
     /* -------------------------------------------------
        4. Send email (existing, proven path)
     -------------------------------------------------- */
     const emailRes = await fetch(
-      `${origin}/api/vendor-portal/send-fix-email`,
+      `${baseUrl}/api/vendor-portal/send-fix-email`,
       {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -120,7 +122,8 @@ Compliance Team
     );
 
     if (!emailRes.ok) {
-      throw new Error("Failed to send COI request email");
+      const txt = await emailRes.text();
+      throw new Error(`Failed to send COI request email: ${txt}`);
     }
 
     /* -------------------------------------------------
