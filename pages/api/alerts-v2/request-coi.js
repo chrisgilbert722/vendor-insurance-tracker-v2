@@ -1,5 +1,5 @@
 // pages/api/alerts-v2/request-coi.js
-// A4 — Request COI automation (FINAL, INLINE, UNBREAKABLE)
+// A4 — Request COI automation (FINAL — INLINE TOKEN + CORRECT EMAIL ROUTE)
 
 import { sql } from "../../../lib/db";
 import crypto from "crypto";
@@ -61,7 +61,7 @@ export default async function handler(req, res) {
     }
 
     /* -------------------------------------------------
-       3. CREATE PORTAL TOKEN INLINE (NO API HOP)
+       3. Create portal token INLINE (NO API HOPS)
     -------------------------------------------------- */
     const token = crypto.randomBytes(32).toString("hex");
 
@@ -81,16 +81,18 @@ export default async function handler(req, res) {
     const portalUrl = `${origin}/vendor/portal/${token}`;
 
     /* -------------------------------------------------
-       4. SEND EMAIL (WORKING ROUTE)
+       4. SEND EMAIL — ✅ CORRECT ROUTE
     -------------------------------------------------- */
-    const emailRes = await fetch(`${origin}/api/send-fix-email`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        vendorId: vendor.id,
-        orgId: alert.org_id,
-        subject: "Action Required: Upload Updated COI",
-        body: `
+    const emailRes = await fetch(
+      `${origin}/api/vendor/send-fix-email`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          vendorId: vendor.id,
+          orgId: alert.org_id,
+          subject: "Action Required: Upload Updated COI",
+          body: `
 Hello ${vendor.name},
 
 Please upload an updated Certificate of Insurance.
@@ -100,16 +102,18 @@ ${portalUrl}
 
 Thank you,
 Compliance Team
-        `.trim(),
-      }),
-    });
+          `.trim(),
+        }),
+      }
+    );
 
     if (!emailRes.ok) {
-      throw new Error("Failed to send COI request email");
+      const txt = await emailRes.text();
+      throw new Error(`Email API failed: ${txt}`);
     }
 
     /* -------------------------------------------------
-       5. DONE
+       5. SUCCESS
     -------------------------------------------------- */
     return res.status(200).json({
       ok: true,
