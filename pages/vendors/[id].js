@@ -30,6 +30,7 @@ export default function VendorCommandCenter() {
   const [vendor, setVendor] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [sendingCOI, setSendingCOI] = useState(false);
 
   useEffect(() => {
     if (!id || !activeOrgId) return;
@@ -82,6 +83,44 @@ export default function VendorCommandCenter() {
 
   const status = vendor.status || vendor.computedStatus || "unknown";
 
+  async function handleRequestCOI() {
+    if (sendingCOI) return;
+    setSendingCOI(true);
+
+    try {
+      const res = await fetch("/api/vendor/send-fix-email", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          vendorId: vendor.id,
+          orgId: activeOrgId,
+          subject: "Certificate of Insurance Required",
+          body: `Hello ${vendor.name},
+
+We are requesting an updated Certificate of Insurance for our records.
+
+Please upload your COI at your earliest convenience.
+
+Thank you.`,
+        }),
+      });
+
+      const data = await res.json();
+
+      if (!res.ok || !data.ok) {
+        alert(data.error || "Failed to send COI request");
+        return;
+      }
+
+      alert(`COI request sent to ${data.sentTo}`);
+    } catch (err) {
+      console.error("Request COI error:", err);
+      alert("Unexpected error sending COI request");
+    } finally {
+      setSendingCOI(false);
+    }
+  }
+
   return (
     <PageShell>
       <div style={header}>
@@ -103,11 +142,10 @@ export default function VendorCommandCenter() {
           />
 
           <ActionButton
-            label="Request COI"
+            label={sendingCOI ? "Sending…" : "Request COI"}
             tone="green"
-            onClick={() =>
-              router.push(`/vendors/${vendor.id}/request-coi`)
-            }
+            onClick={handleRequestCOI}
+            disabled={sendingCOI}
           />
 
           <ActionButton
@@ -197,7 +235,7 @@ function EmptySafe({ text }) {
   return <div style={empty}>{text}</div>;
 }
 
-function ActionButton({ label, tone, onClick }) {
+function ActionButton({ label, tone, onClick, disabled }) {
   const colors = {
     blue: "#38bdf8",
     green: "#22c55e",
@@ -208,6 +246,7 @@ function ActionButton({ label, tone, onClick }) {
   return (
     <button
       onClick={onClick}
+      disabled={disabled}
       style={{
         padding: "8px 14px",
         borderRadius: 999,
@@ -217,7 +256,8 @@ function ActionButton({ label, tone, onClick }) {
         fontSize: 12,
         fontWeight: 700,
         boxShadow: `0 0 18px ${c}66`,
-        cursor: "pointer",
+        cursor: disabled ? "not-allowed" : "pointer",
+        opacity: disabled ? 0.6 : 1,
       }}
     >
       {label}
