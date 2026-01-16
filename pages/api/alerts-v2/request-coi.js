@@ -1,8 +1,7 @@
 // pages/api/alerts-v2/request-coi.js
-// A4 — Request COI automation (FINAL — INLINE TOKEN + CORRECT EMAIL ROUTE)
+// A4 — Request COI automation (FINAL, PATH-CORRECT, SAFE)
 
 import { sql } from "../../../lib/db";
-import crypto from "crypto";
 
 export default async function handler(req, res) {
   if (req.method !== "POST") {
@@ -19,9 +18,7 @@ export default async function handler(req, res) {
       });
     }
 
-    /* -------------------------------------------------
-       1. Load alert
-    -------------------------------------------------- */
+    // 1. Load alert
     const [alert] = await sql`
       SELECT id, vendor_id, org_id
       FROM alerts_v2
@@ -30,15 +27,10 @@ export default async function handler(req, res) {
     `;
 
     if (!alert) {
-      return res.status(404).json({
-        ok: false,
-        error: "Alert not found",
-      });
+      return res.status(404).json({ ok: false, error: "Alert not found" });
     }
 
-    /* -------------------------------------------------
-       2. Load vendor
-    -------------------------------------------------- */
+    // 2. Load vendor
     const [vendor] = await sql`
       SELECT id, name, email
       FROM vendors
@@ -46,45 +38,51 @@ export default async function handler(req, res) {
       LIMIT 1;
     `;
 
-    if (!vendor) {
-      return res.status(404).json({
-        ok: false,
-        error: "Vendor not found",
-      });
-    }
-
-    if (!vendor.email) {
+    if (!vendor || !vendor.email) {
       return res.status(400).json({
         ok: false,
         error: "Vendor has no email on file",
       });
     }
 
-    /* -------------------------------------------------
-       3. Create portal token INLINE (NO API HOPS)
-    -------------------------------------------------- */
-    const token = crypto.randomBytes(32).toString("hex");
-
-    const expiresAt = new Date();
-    expiresAt.setDate(expiresAt.getDate() + 30);
-
-    await sql`
-      INSERT INTO vendor_portal_tokens (org_id, vendor_id, token, expires_at)
-      VALUES (${alert.org_id}, ${vendor.id}, ${token}, ${expiresAt})
-    `;
-
+    // 3. Resolve origin safely
     const origin =
       req.headers.origin ||
       process.env.APP_URL ||
       `https://${req.headers.host}`;
 
-    const portalUrl = `${origin}/vendor/portal/${token}`;
+    if (!origin) {
+      throw new Error("Unable to resolve origin");
+    }
 
-    /* -------------------------------------------------
-       4. SEND EMAIL — ✅ CORRECT ROUTE
-    -------------------------------------------------- */
+    // 4. Create portal link (CORRECT ROUTE)
+    const portalRes = await fetch(
+      `${origin}/api/vendor-portal/create-portal-link`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          orgId: alert.org_id,
+          vendorId: alert.vendor_id,
+        }),
+      }
+    );
+
+    if (!portalRes.ok) {
+      throw new Error("Portal link service failed");
+    }
+
+    const portalJson = await portalRes.json();
+
+    if (!portalJson?.ok || !portalJson.token) {
+      throw new Error("Invalid portal link response");
+    }
+
+    const portalUrl = `${origin}/vendor/portal/${portalJson.token}`;
+
+    // 5. Send email (CORRECT ROUTE)
     const emailRes = await fetch(
-      `${origin}/api/vendor/send-fix-email`,
+      `${origin}/api/vendor-portal/send-fix-email`,
       {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -92,29 +90,22 @@ export default async function handler(req, res) {
           vendorId: vendor.id,
           orgId: alert.org_id,
           subject: "Action Required: Upload Updated COI",
-          body: `
-Hello ${vendor.name},
+          body: `Hello ${vendor.name},
 
-Please upload an updated Certificate of Insurance.
+Please upload an updated Certificate of Insurance:
 
-Upload here:
 ${portalUrl}
 
 Thank you,
-Compliance Team
-          `.trim(),
+Compliance Team`,
         }),
       }
     );
 
     if (!emailRes.ok) {
-      const txt = await emailRes.text();
-      throw new Error(`Email API failed: ${txt}`);
+      throw new Error("Email API failed");
     }
 
-    /* -------------------------------------------------
-       5. SUCCESS
-    -------------------------------------------------- */
     return res.status(200).json({
       ok: true,
       sentTo: vendor.email,
