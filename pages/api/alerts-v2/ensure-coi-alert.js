@@ -17,12 +17,32 @@ export default async function handler(req, res) {
 
   try {
     // --------------------------------------------------
-    // 1. Reuse existing OPEN COI alert if present
+    // 0. Resolve vendor UUID (CRITICAL FIX)
+    // --------------------------------------------------
+    const vendorRes = await sql`
+      SELECT external_uuid
+      FROM vendors
+      WHERE id = ${vendorId}
+        AND org_id = ${orgId}
+      LIMIT 1;
+    `;
+
+    if (!vendorRes.length || !vendorRes[0].external_uuid) {
+      return res.status(404).json({
+        ok: false,
+        error: "Vendor UUID not found",
+      });
+    }
+
+    const vendorUuid = vendorRes[0].external_uuid;
+
+    // --------------------------------------------------
+    // 1. Reuse existing OPEN COI alert
     // --------------------------------------------------
     const existing = await sql`
       SELECT id
       FROM alerts_v2
-      WHERE vendor_id = ${vendorId}
+      WHERE vendor_id = ${vendorUuid}
         AND org_id = ${orgId}
         AND type = 'coi_missing'
         AND status = 'open'
@@ -38,7 +58,7 @@ export default async function handler(req, res) {
     }
 
     // --------------------------------------------------
-    // 2. Create NEW COI alert (FULLY SPECIFIED)
+    // 2. Create new COI alert (UUID-SAFE)
     // --------------------------------------------------
     const created = await sql`
       INSERT INTO alerts_v2 (
@@ -55,7 +75,7 @@ export default async function handler(req, res) {
       )
       VALUES (
         ${orgId},
-        ${vendorId},
+        ${vendorUuid},
         'coi_missing',
         'medium',
         'open',
