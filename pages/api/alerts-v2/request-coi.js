@@ -1,7 +1,8 @@
 // pages/api/alerts-v2/request-coi.js
-// A4 — Request COI automation (HARDENED, SCHEMA-SAFE)
+// A4 — Request COI automation (FINAL, INLINE, UNBREAKABLE)
 
 import { sql } from "../../../lib/db";
+import crypto from "crypto";
 
 export default async function handler(req, res) {
   if (req.method !== "POST") {
@@ -19,10 +20,10 @@ export default async function handler(req, res) {
     }
 
     /* -------------------------------------------------
-       1. Load alert (ONLY real columns)
+       1. Load alert
     -------------------------------------------------- */
     const [alert] = await sql`
-      SELECT id, vendor_id, org_id, type
+      SELECT id, vendor_id, org_id
       FROM alerts_v2
       WHERE id = ${alertId}
       LIMIT 1;
@@ -48,7 +49,7 @@ export default async function handler(req, res) {
     if (!vendor) {
       return res.status(404).json({
         ok: false,
-        error: "Vendor not found for alert",
+        error: "Vendor not found",
       });
     }
 
@@ -60,57 +61,36 @@ export default async function handler(req, res) {
     }
 
     /* -------------------------------------------------
-       3. Resolve origin SAFELY (browser + server)
+       3. CREATE PORTAL TOKEN INLINE (NO API HOP)
     -------------------------------------------------- */
+    const token = crypto.randomBytes(32).toString("hex");
+
+    const expiresAt = new Date();
+    expiresAt.setDate(expiresAt.getDate() + 30);
+
+    await sql`
+      INSERT INTO vendor_portal_tokens (org_id, vendor_id, token, expires_at)
+      VALUES (${alert.org_id}, ${vendor.id}, ${token}, ${expiresAt})
+    `;
+
     const origin =
       req.headers.origin ||
       process.env.APP_URL ||
       `https://${req.headers.host}`;
 
-    if (!origin) {
-      throw new Error("Unable to resolve request origin");
-    }
+    const portalUrl = `${origin}/vendor/portal/${token}`;
 
     /* -------------------------------------------------
-       4. Create vendor portal link (CORRECT ROUTE)
+       4. SEND EMAIL (WORKING ROUTE)
     -------------------------------------------------- */
-    const portalRes = await fetch(
-      `${origin}/api/vendor-portal/create-portal-link`,
-      {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          orgId: alert.org_id,
-          vendorId: alert.vendor_id,
-        }),
-      }
-    );
-
-    if (!portalRes.ok) {
-      throw new Error("Portal link service failed");
-    }
-
-    const portalJson = await portalRes.json();
-
-    if (!portalJson?.ok || !portalJson?.token) {
-      throw new Error("Invalid response from portal link service");
-    }
-
-    const portalUrl = `${origin}/vendor/portal/${portalJson.token}`;
-
-    /* -------------------------------------------------
-       5. Send email (ACTUAL EXISTING ROUTE)
-    -------------------------------------------------- */
-    const emailRes = await fetch(
-      `${origin}/api/send-fix-email`,
-      {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          vendorId: vendor.id,
-          orgId: alert.org_id,
-          subject: "Action Required: Upload Updated COI",
-          body: `
+    const emailRes = await fetch(`${origin}/api/send-fix-email`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        vendorId: vendor.id,
+        orgId: alert.org_id,
+        subject: "Action Required: Upload Updated COI",
+        body: `
 Hello ${vendor.name},
 
 Please upload an updated Certificate of Insurance.
@@ -120,17 +100,16 @@ ${portalUrl}
 
 Thank you,
 Compliance Team
-          `.trim(),
-        }),
-      }
-    );
+        `.trim(),
+      }),
+    });
 
     if (!emailRes.ok) {
       throw new Error("Failed to send COI request email");
     }
 
     /* -------------------------------------------------
-       6. Success — NO alert mutation here
+       5. DONE
     -------------------------------------------------- */
     return res.status(200).json({
       ok: true,
@@ -138,7 +117,7 @@ Compliance Team
       portalUrl,
     });
   } catch (err) {
-    console.error("[alerts-v2/request-coi]", err);
+    console.error("[request-coi]", err);
     return res.status(500).json({
       ok: false,
       error: err.message || "Failed to request COI",
