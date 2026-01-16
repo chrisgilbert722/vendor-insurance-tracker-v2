@@ -1,14 +1,13 @@
 // pages/vendors/[id].js
 // ============================================================
 // VENDOR COMMAND CENTER — V4 (IRON MAN)
-// - INTEGER vendor ID
-// - Functional command buttons
-// - Crash-safe
+// - Neon ONLY (via API)
+// - INTEGER vendor IDs
+// - ZERO Supabase usage
 // ============================================================
 
 import { useRouter } from "next/router";
 import { useEffect, useState } from "react";
-import { supabase } from "../../lib/supabaseClient";
 import { useOrg } from "../../context/OrgContext";
 
 /* -----------------------------
@@ -49,15 +48,16 @@ export default function VendorCommandCenter() {
         setLoading(true);
         setError("");
 
-        const { data, error } = await supabase
-          .from("vendors")
-          .select("*")
-          .eq("id", vendorId)
-          .eq("org_id", activeOrgId)
-          .single();
+        const res = await fetch(
+          `/api/vendors/${vendorId}?orgId=${activeOrgId}`
+        );
+        const json = await res.json();
 
-        if (error) throw error;
-        if (!cancelled) setVendor(data || null);
+        if (!res.ok || !json.ok) {
+          throw new Error(json.error || "Failed to load vendor");
+        }
+
+        if (!cancelled) setVendor(json.vendor);
       } catch (err) {
         console.error("[vendor detail]", err);
         if (!cancelled) setError("Failed to load vendor.");
@@ -80,7 +80,7 @@ export default function VendorCommandCenter() {
     return <PageShell>{error || "Vendor not found."}</PageShell>;
   }
 
-  const status = vendor.status || "unknown";
+  const status = vendor.status || vendor.computedStatus || "unknown";
 
   return (
     <PageShell>
@@ -93,7 +93,6 @@ export default function VendorCommandCenter() {
           </div>
         </div>
 
-        {/* COMMAND BUTTONS */}
         <div style={{ display: "flex", gap: 10 }}>
           <ActionButton
             label="Upload COI"
@@ -114,9 +113,7 @@ export default function VendorCommandCenter() {
           <ActionButton
             label="Flag Vendor"
             tone="red"
-            onClick={() =>
-              window.alert("Flag Vendor — wiring next")
-            }
+            onClick={() => alert("Flag Vendor — next")}
           />
         </div>
       </div>
