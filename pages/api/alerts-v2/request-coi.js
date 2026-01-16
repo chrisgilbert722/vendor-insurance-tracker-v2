@@ -60,10 +60,16 @@ export default async function handler(req, res) {
     }
 
     /* -------------------------------------------------
-       3. Create vendor portal link (EXACT contract)
+       3. Create vendor portal link (INTERNAL SAFE)
     -------------------------------------------------- */
+    const origin = req.headers.origin;
+
+    if (!origin) {
+      throw new Error("Request origin missing");
+    }
+
     const portalRes = await fetch(
-      `${process.env.APP_URL}/api/vendor/create-portal-link`,
+      `${origin}/api/vendor/create-portal-link`,
       {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -84,13 +90,13 @@ export default async function handler(req, res) {
       throw new Error("Invalid response from portal link service");
     }
 
-    const portalUrl = `${process.env.APP_URL}/vendor/portal/${portalJson.token}`;
+    const portalUrl = `${origin}/vendor/portal/${portalJson.token}`;
 
     /* -------------------------------------------------
        4. Send email (existing, proven path)
     -------------------------------------------------- */
     const emailRes = await fetch(
-      `${process.env.APP_URL}/api/vendor-portal/send-fix-email`,
+      `${origin}/api/vendor-portal/send-fix-email`,
       {
         method: "POST",
         headers: { "Content-Type": "application/json" },
