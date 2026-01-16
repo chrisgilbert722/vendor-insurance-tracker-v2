@@ -1,3 +1,4 @@
+// pages/api/alerts-v2/ensure-coi-alert.js
 import { sql } from "../../../lib/db";
 
 export default async function handler(req, res) {
@@ -15,52 +16,18 @@ export default async function handler(req, res) {
   }
 
   try {
-    // --------------------------------------------------
-    // 1. Load vendor + validate UUID safely
-    // --------------------------------------------------
-    const vendorRes = await sql`
-      SELECT external_uuid
-      FROM vendors
-      WHERE id = ${vendorId}
-        AND org_id = ${orgId}
-      LIMIT 1;
-    `;
-
-    if (!vendorRes.length) {
-      return res.status(404).json({
-        ok: false,
-        error: "Vendor not found",
-      });
-    }
-
-    const externalUuid = vendorRes[0].external_uuid;
-
-    if (
-      !externalUuid ||
-      !/^[0-9a-f-]{36}$/i.test(externalUuid)
-    ) {
-      return res.status(400).json({
-        ok: false,
-        code: "VENDOR_UUID_MISSING",
-        error:
-          "Vendor is missing a valid external UUID. This vendor cannot receive COI requests until migrated.",
-      });
-    }
-
-    // --------------------------------------------------
-    // 2. Reuse existing COI alert
-    // --------------------------------------------------
+    // 1️⃣ Check for existing unresolved COI alert
     const existing = await sql`
       SELECT id
       FROM alerts_v2
-      WHERE vendor_id = ${externalUuid}::uuid
+      WHERE vendor_id = ${vendorId}
         AND org_id = ${orgId}
         AND type = 'coi_missing'
-        AND status = 'open'
+        AND resolved_at IS NULL
       LIMIT 1;
     `;
 
-    if (existing.length) {
+    if (existing.length > 0) {
       return res.status(200).json({
         ok: true,
         alertId: existing[0].id,
@@ -68,33 +35,21 @@ export default async function handler(req, res) {
       });
     }
 
-    // --------------------------------------------------
-    // 3. Create COI alert
-    // --------------------------------------------------
+    // 2️⃣ Create new COI alert (MATCHES REAL SCHEMA)
     const created = await sql`
       INSERT INTO alerts_v2 (
         org_id,
         vendor_id,
         type,
         severity,
-        status,
-        source,
-        title,
-        message,
-        created_at,
-        updated_at
+        message
       )
       VALUES (
         ${orgId},
-        ${externalUuid}::uuid,
+        ${vendorId},
         'coi_missing',
         'medium',
-        'open',
-        'manual_request',
-        'COI Requested',
-        'A certificate of insurance has been requested from this vendor.',
-        NOW(),
-        NOW()
+        'Certificate of Insurance requested from vendor'
       )
       RETURNING id;
     `;
@@ -105,7 +60,7 @@ export default async function handler(req, res) {
       reused: false,
     });
   } catch (err) {
-    console.error("[ensure-coi-alert] FATAL:", err);
+    console.error("[ensure-coi-alert]", err);
     return res.status(500).json({
       ok: false,
       error: "Failed to ensure COI alert",
