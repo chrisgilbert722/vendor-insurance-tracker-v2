@@ -91,10 +91,31 @@ export default function VendorCommandCenter() {
           </div>
         </div>
 
+        {/* 🔌 COMMAND BUTTONS (NOW WIRED) */}
         <div style={{ display: "flex", gap: 10 }}>
-          <ActionButton label="Upload COI" tone="blue" />
-          <ActionButton label="Request COI" tone="green" />
-          <ActionButton label="Flag Vendor" tone="red" />
+          <ActionButton
+            label="Upload COI"
+            tone="blue"
+            onClick={() =>
+              router.push(`/upload-coi?vendorId=${vendor.id}`)
+            }
+          />
+
+          <ActionButton
+            label="Request COI"
+            tone="green"
+            onClick={() =>
+              alert("Request COI wiring next")
+            }
+          />
+
+          <ActionButton
+            label="Flag Vendor"
+            tone="red"
+            onClick={() =>
+              alert("Flag Vendor wiring next")
+            }
+          />
         </div>
       </div>
 
@@ -177,7 +198,7 @@ function EmptySafe({ text }) {
   return <div style={empty}>{text}</div>;
 }
 
-function ActionButton({ label, tone }) {
+function ActionButton({ label, tone, onClick }) {
   const colors = {
     blue: "#38bdf8",
     green: "#22c55e",
@@ -187,6 +208,7 @@ function ActionButton({ label, tone }) {
 
   return (
     <button
+      onClick={onClick}
       style={{
         padding: "8px 14px",
         borderRadius: 999,
