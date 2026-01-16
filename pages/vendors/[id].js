@@ -1,13 +1,14 @@
 // pages/vendors/[id].js
 // ============================================================
 // VENDOR COMMAND CENTER — V4 (IRON MAN)
-// - Uses Neon via API (single source of truth)
-// - INTEGER vendor IDs
+// - INTEGER vendor ID
+// - Functional command buttons
 // - Crash-safe
 // ============================================================
 
 import { useRouter } from "next/router";
 import { useEffect, useState } from "react";
+import { supabase } from "../../lib/supabaseClient";
 import { useOrg } from "../../context/OrgContext";
 
 /* -----------------------------
@@ -48,14 +49,15 @@ export default function VendorCommandCenter() {
         setLoading(true);
         setError("");
 
-        const res = await fetch(`/api/vendors/${vendorId}?orgId=${activeOrgId}`);
-        const json = await res.json();
+        const { data, error } = await supabase
+          .from("vendors")
+          .select("*")
+          .eq("id", vendorId)
+          .eq("org_id", activeOrgId)
+          .single();
 
-        if (!res.ok || !json.ok) {
-          throw new Error(json.error || "Failed to load vendor");
-        }
-
-        if (!cancelled) setVendor(json.vendor || null);
+        if (error) throw error;
+        if (!cancelled) setVendor(data || null);
       } catch (err) {
         console.error("[vendor detail]", err);
         if (!cancelled) setError("Failed to load vendor.");
@@ -78,7 +80,7 @@ export default function VendorCommandCenter() {
     return <PageShell>{error || "Vendor not found."}</PageShell>;
   }
 
-  const status = vendor.status || vendor.computedStatus || "unknown";
+  const status = vendor.status || "unknown";
 
   return (
     <PageShell>
@@ -91,7 +93,7 @@ export default function VendorCommandCenter() {
           </div>
         </div>
 
-        {/* 🔌 COMMAND BUTTONS (NOW WIRED) */}
+        {/* COMMAND BUTTONS */}
         <div style={{ display: "flex", gap: 10 }}>
           <ActionButton
             label="Upload COI"
@@ -105,7 +107,7 @@ export default function VendorCommandCenter() {
             label="Request COI"
             tone="green"
             onClick={() =>
-              alert("Request COI wiring next")
+              router.push(`/vendors/${vendor.id}/request-coi`)
             }
           />
 
@@ -113,7 +115,7 @@ export default function VendorCommandCenter() {
             label="Flag Vendor"
             tone="red"
             onClick={() =>
-              alert("Flag Vendor wiring next")
+              window.alert("Flag Vendor — wiring next")
             }
           />
         </div>
