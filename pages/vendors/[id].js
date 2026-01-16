@@ -1,8 +1,9 @@
+// pages/vendors/[id].js
 // ============================================================
 // VENDOR COMMAND CENTER — V4 (IRON MAN)
-// - Neon ONLY (via API)
-// - INTEGER vendor IDs
-// - Request COI wired to alerts-v2 pipeline
+// - Neon API only
+// - Alert-first Request COI
+// - Hardened UX states
 // ============================================================
 
 import { useRouter } from "next/router";
@@ -23,15 +24,15 @@ const safeNumber = (v, f = 0) =>
 ----------------------------- */
 export default function VendorCommandCenter() {
   const router = useRouter();
-  const { id } = router.query; // INTEGER
+  const { id } = router.query; // INTEGER vendorId
   const { activeOrgId } = useOrg();
 
   const [vendor, setVendor] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
 
-  const [sendingCOI, setSendingCOI] = useState(false);
-  const [coiMessage, setCoiMessage] = useState("");
+  const [requestState, setRequestState] = useState("idle");
+  const [requestMsg, setRequestMsg] = useState("");
 
   useEffect(() => {
     if (!id || !activeOrgId) return;
@@ -46,17 +47,12 @@ export default function VendorCommandCenter() {
 
     async function loadVendor() {
       try {
-        const res = await fetch(
-          `/api/vendors/${vendorId}?orgId=${activeOrgId}`
-        );
+        setLoading(true);
+        const res = await fetch(`/api/vendors/${vendorId}?orgId=${activeOrgId}`);
         const json = await res.json();
-
-        if (!res.ok || !json.ok) {
-          throw new Error(json.error || "Failed to load vendor");
-        }
-
+        if (!res.ok || !json.ok) throw new Error(json.error);
         if (!cancelled) setVendor(json.vendor);
-      } catch (err) {
+      } catch {
         if (!cancelled) setError("Failed to load vendor.");
       } finally {
         if (!cancelled) setLoading(false);
@@ -67,17 +63,15 @@ export default function VendorCommandCenter() {
     return () => (cancelled = true);
   }, [id, activeOrgId, router]);
 
-  /* -----------------------------
-     REQUEST COI (CORRECT PIPELINE)
-  ----------------------------- */
   async function handleRequestCOI() {
-    if (!vendor || sendingCOI) return;
+    if (!vendor || requestState === "sending") return;
 
-    setSendingCOI(true);
-    setCoiMessage("");
+    setRequestState("sending");
+    setRequestMsg("");
 
     try {
-      const res = await fetch("/api/alerts-v2/request-coi", {
+      // STEP 2.1 — ensure alert
+      const alertRes = await fetch("/api/alerts-v2/ensure-coi-alert", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -86,22 +80,40 @@ export default function VendorCommandCenter() {
         }),
       });
 
-      const json = await res.json();
-
-      if (!res.ok || !json.ok) {
-        throw new Error(json.error || "Failed to request COI");
+      const alertJson = await alertRes.json();
+      if (!alertRes.ok || !alertJson.ok) {
+        throw new Error(alertJson.error || "Failed to create alert");
       }
 
-      setCoiMessage("✅ COI request sent and alert created.");
+      const alertId = alertJson.alertId;
+
+      // STEP 2.2 — trigger automation
+      const reqRes = await fetch("/api/alerts-v2/request-coi", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          alertId,
+          orgId: activeOrgId,
+        }),
+      });
+
+      const reqJson = await reqRes.json();
+      if (!reqRes.ok || !reqJson.ok) {
+        throw new Error(reqJson.error || "Request failed");
+      }
+
+      setRequestState("sent");
+      setRequestMsg("COI request sent successfully.");
     } catch (err) {
-      setCoiMessage(`❌ ${err.message}`);
-    } finally {
-      setSendingCOI(false);
+      console.error("[request-coi]", err);
+      setRequestState("error");
+      setRequestMsg(err.message || "Failed to send COI request.");
     }
   }
 
   if (loading) return <PageShell>Loading vendor…</PageShell>;
-  if (error || !vendor) return <PageShell>{error}</PageShell>;
+  if (error || !vendor)
+    return <PageShell>{error || "Vendor not found."}</PageShell>;
 
   const status = vendor.status || vendor.computedStatus || "unknown";
 
@@ -114,9 +126,19 @@ export default function VendorCommandCenter() {
           <div style={statusRow(status)}>
             STATUS: {status.toUpperCase()}
           </div>
-
-          {coiMessage && (
-            <div style={{ marginTop: 6, fontSize: 12 }}>{coiMessage}</div>
+          {requestMsg && (
+            <div
+              style={{
+                marginTop: 6,
+                fontSize: 12,
+                color:
+                  requestState === "sent"
+                    ? "#22c55e"
+                    : "#fb7185",
+              }}
+            >
+              {requestMsg}
+            </div>
           )}
         </div>
 
@@ -130,9 +152,15 @@ export default function VendorCommandCenter() {
           />
 
           <ActionButton
-            label={sendingCOI ? "Sending…" : "Request COI"}
+            label={
+              requestState === "sending"
+                ? "Sending…"
+                : requestState === "sent"
+                ? "Sent"
+                : "Request COI"
+            }
             tone="green"
-            disabled={sendingCOI}
+            disabled={requestState === "sending" || requestState === "sent"}
             onClick={handleRequestCOI}
           />
 
@@ -188,7 +216,14 @@ function PageShell({ children }) {
 
 function Grid({ children }) {
   return (
-    <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(320px,1fr))", gap: 16, marginTop: 20 }}>
+    <div
+      style={{
+        display: "grid",
+        gridTemplateColumns: "repeat(auto-fit,minmax(320px,1fr))",
+        gap: 16,
+        marginTop: 20,
+      }}
+    >
       {children}
     </div>
   );
@@ -205,7 +240,7 @@ function Panel({ title, children }) {
 
 function Metric({ label, value }) {
   return (
-    <div>
+    <div style={{ marginBottom: 6 }}>
       <div style={metricLabel}>{label}</div>
       <div style={metricValue}>{value}</div>
     </div>
@@ -217,8 +252,12 @@ function EmptySafe({ text }) {
 }
 
 function ActionButton({ label, tone, onClick, disabled }) {
-  const colors = { blue: "#38bdf8", green: "#22c55e", red: "#fb7185" };
-  const c = colors[tone];
+  const colors = {
+    blue: "#38bdf8",
+    green: "#22c55e",
+    red: "#fb7185",
+  };
+  const c = colors[tone] || "#38bdf8";
 
   return (
     <button
@@ -230,7 +269,9 @@ function ActionButton({ label, tone, onClick, disabled }) {
         border: `1px solid ${c}`,
         background: `radial-gradient(circle at top,${c},#020617)`,
         color: "#e5e7eb",
+        fontSize: 12,
         fontWeight: 700,
+        boxShadow: `0 0 18px ${c}66`,
         cursor: disabled ? "not-allowed" : "pointer",
         opacity: disabled ? 0.6 : 1,
       }}
@@ -261,12 +302,62 @@ const aura = {
   filter: "blur(130px)",
 };
 
-const header = { display: "flex", justifyContent: "space-between", alignItems: "center" };
-const eyebrow = { fontSize: 11, letterSpacing: 1.4, color: "#94a3b8", textTransform: "uppercase" };
-const title = { fontSize: 26, fontWeight: 600 };
-const statusRow = (s) => ({ fontSize: 12, fontWeight: 700, color: s === "active" ? "#22c55e" : s === "expired" ? "#fb7185" : "#facc15" });
-const panel = { borderRadius: 20, padding: 14, background: "rgba(15,23,42,0.95)", border: "1px solid rgba(148,163,184,0.4)" };
-const panelTitle = { fontSize: 12, fontWeight: 700, marginBottom: 10, textTransform: "uppercase", color: "#94a3b8" };
-const metricLabel = { fontSize: 11, color: "#9ca3af" };
-const metricValue = { fontSize: 20, fontWeight: 700 };
-const empty = { fontSize: 12, color: "#6b7280" };
+const header = {
+  display: "flex",
+  justifyContent: "space-between",
+  alignItems: "center",
+};
+
+const eyebrow = {
+  fontSize: 11,
+  letterSpacing: 1.4,
+  color: "#94a3b8",
+  textTransform: "uppercase",
+};
+
+const title = {
+  fontSize: 26,
+  fontWeight: 600,
+  margin: "6px 0",
+};
+
+const statusRow = (status) => ({
+  fontSize: 12,
+  fontWeight: 700,
+  color:
+    status === "active"
+      ? "#22c55e"
+      : status === "expired"
+      ? "#fb7185"
+      : "#facc15",
+});
+
+const panel = {
+  borderRadius: 20,
+  padding: 14,
+  background: "rgba(15,23,42,0.95)",
+  border: "1px solid rgba(148,163,184,0.4)",
+};
+
+const panelTitle = {
+  fontSize: 12,
+  fontWeight: 700,
+  marginBottom: 10,
+  textTransform: "uppercase",
+  color: "#94a3b8",
+};
+
+const metricLabel = {
+  fontSize: 11,
+  color: "#9ca3af",
+};
+
+const metricValue = {
+  fontSize: 20,
+  fontWeight: 700,
+};
+
+const empty = {
+  fontSize: 12,
+  color: "#6b7280",
+};
