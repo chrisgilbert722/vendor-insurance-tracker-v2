@@ -31,7 +31,7 @@ export default function VendorCommandCenter() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
 
-  const [requestState, setRequestState] = useState("idle");
+  const [requestState, setRequestState] = useState("idle"); // idle | sending | sent | error
   const [requestMsg, setRequestMsg] = useState("");
 
   useEffect(() => {
@@ -70,7 +70,7 @@ export default function VendorCommandCenter() {
     setRequestMsg("");
 
     try {
-      // STEP 2.1 — ensure alert
+      // STEP 1 — ensure alert exists
       const alertRes = await fetch("/api/alerts-v2/ensure-coi-alert", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -81,25 +81,22 @@ export default function VendorCommandCenter() {
       });
 
       const alertJson = await alertRes.json();
-      if (!alertRes.ok || !alertJson.ok) {
-        throw new Error(alertJson.error || "Failed to create alert");
+      if (!alertRes.ok || !alertJson.ok || !alertJson.alertId) {
+        throw new Error(alertJson.error || "Failed to create COI alert");
       }
 
       const alertId = alertJson.alertId;
 
-      // STEP 2.2 — trigger automation
+      // STEP 2 — trigger COI request (alertId ONLY)
       const reqRes = await fetch("/api/alerts-v2/request-coi", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          alertId,
-          orgId: activeOrgId,
-        }),
+        body: JSON.stringify({ alertId }),
       });
 
       const reqJson = await reqRes.json();
       if (!reqRes.ok || !reqJson.ok) {
-        throw new Error(reqJson.error || "Request failed");
+        throw new Error(reqJson.error || "Failed to request COI");
       }
 
       setRequestState("sent");
@@ -126,15 +123,13 @@ export default function VendorCommandCenter() {
           <div style={statusRow(status)}>
             STATUS: {status.toUpperCase()}
           </div>
+
           {requestMsg && (
             <div
               style={{
                 marginTop: 6,
                 fontSize: 12,
-                color:
-                  requestState === "sent"
-                    ? "#22c55e"
-                    : "#fb7185",
+                color: requestState === "sent" ? "#22c55e" : "#fb7185",
               }}
             >
               {requestMsg}
