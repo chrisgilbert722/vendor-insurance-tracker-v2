@@ -2,8 +2,7 @@
 // VENDOR COMMAND CENTER — V4 (IRON MAN)
 // - Neon ONLY (via API)
 // - INTEGER vendor IDs
-// - ZERO Supabase usage
-// - HARDENED Request COI UX
+// - Request COI wired to alerts-v2 pipeline
 // ============================================================
 
 import { useRouter } from "next/router";
@@ -31,7 +30,6 @@ export default function VendorCommandCenter() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
 
-  // 🔒 UX state for Request COI
   const [sendingCOI, setSendingCOI] = useState(false);
   const [coiMessage, setCoiMessage] = useState("");
 
@@ -40,7 +38,6 @@ export default function VendorCommandCenter() {
 
     const vendorId = Number(id);
     if (!Number.isInteger(vendorId)) {
-      console.warn("[vendor] Invalid vendor id:", id);
       router.replace("/vendors");
       return;
     }
@@ -49,9 +46,6 @@ export default function VendorCommandCenter() {
 
     async function loadVendor() {
       try {
-        setLoading(true);
-        setError("");
-
         const res = await fetch(
           `/api/vendors/${vendorId}?orgId=${activeOrgId}`
         );
@@ -63,7 +57,6 @@ export default function VendorCommandCenter() {
 
         if (!cancelled) setVendor(json.vendor);
       } catch (err) {
-        console.error("[vendor detail]", err);
         if (!cancelled) setError("Failed to load vendor.");
       } finally {
         if (!cancelled) setLoading(false);
@@ -71,15 +64,12 @@ export default function VendorCommandCenter() {
     }
 
     loadVendor();
-    return () => {
-      cancelled = true;
-    };
+    return () => (cancelled = true);
   }, [id, activeOrgId, router]);
 
   /* -----------------------------
-     ACTIONS
+     REQUEST COI (CORRECT PIPELINE)
   ----------------------------- */
-
   async function handleRequestCOI() {
     if (!vendor || sendingCOI) return;
 
@@ -87,46 +77,31 @@ export default function VendorCommandCenter() {
     setCoiMessage("");
 
     try {
-      const res = await fetch("/api/vendor/send-fix-email", {
+      const res = await fetch("/api/alerts-v2/request-coi", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           vendorId: vendor.id,
           orgId: activeOrgId,
-          subject: "Certificate of Insurance Request",
-          body:
-            "Please provide an updated Certificate of Insurance to remain compliant.",
         }),
       });
 
       const json = await res.json();
 
       if (!res.ok || !json.ok) {
-        throw new Error(json.error || "Failed to send COI request");
+        throw new Error(json.error || "Failed to request COI");
       }
 
-      setCoiMessage("✅ COI request sent successfully.");
+      setCoiMessage("✅ COI request sent and alert created.");
     } catch (err) {
-      console.error("[Request COI]", err);
-      setCoiMessage(
-        `❌ ${err.message || "Unexpected error sending COI request"}`
-      );
+      setCoiMessage(`❌ ${err.message}`);
     } finally {
       setSendingCOI(false);
     }
   }
 
-  /* -----------------------------
-     RENDER STATES
-  ----------------------------- */
-
-  if (loading) {
-    return <PageShell>Loading vendor…</PageShell>;
-  }
-
-  if (error || !vendor) {
-    return <PageShell>{error || "Vendor not found."}</PageShell>;
-  }
+  if (loading) return <PageShell>Loading vendor…</PageShell>;
+  if (error || !vendor) return <PageShell>{error}</PageShell>;
 
   const status = vendor.status || vendor.computedStatus || "unknown";
 
@@ -213,14 +188,7 @@ function PageShell({ children }) {
 
 function Grid({ children }) {
   return (
-    <div
-      style={{
-        display: "grid",
-        gridTemplateColumns: "repeat(auto-fit,minmax(320px,1fr))",
-        gap: 16,
-        marginTop: 20,
-      }}
-    >
+    <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(320px,1fr))", gap: 16, marginTop: 20 }}>
       {children}
     </div>
   );
@@ -237,7 +205,7 @@ function Panel({ title, children }) {
 
 function Metric({ label, value }) {
   return (
-    <div style={{ marginBottom: 6 }}>
+    <div>
       <div style={metricLabel}>{label}</div>
       <div style={metricValue}>{value}</div>
     </div>
@@ -249,12 +217,8 @@ function EmptySafe({ text }) {
 }
 
 function ActionButton({ label, tone, onClick, disabled }) {
-  const colors = {
-    blue: "#38bdf8",
-    green: "#22c55e",
-    red: "#fb7185",
-  };
-  const c = colors[tone] || "#38bdf8";
+  const colors = { blue: "#38bdf8", green: "#22c55e", red: "#fb7185" };
+  const c = colors[tone];
 
   return (
     <button
@@ -266,9 +230,7 @@ function ActionButton({ label, tone, onClick, disabled }) {
         border: `1px solid ${c}`,
         background: `radial-gradient(circle at top,${c},#020617)`,
         color: "#e5e7eb",
-        fontSize: 12,
         fontWeight: 700,
-        boxShadow: `0 0 18px ${c}66`,
         cursor: disabled ? "not-allowed" : "pointer",
         opacity: disabled ? 0.6 : 1,
       }}
@@ -299,62 +261,12 @@ const aura = {
   filter: "blur(130px)",
 };
 
-const header = {
-  display: "flex",
-  justifyContent: "space-between",
-  alignItems: "center",
-};
-
-const eyebrow = {
-  fontSize: 11,
-  letterSpacing: 1.4,
-  color: "#94a3b8",
-  textTransform: "uppercase",
-};
-
-const title = {
-  fontSize: 26,
-  fontWeight: 600,
-  margin: "6px 0",
-};
-
-const statusRow = (status) => ({
-  fontSize: 12,
-  fontWeight: 700,
-  color:
-    status === "active"
-      ? "#22c55e"
-      : status === "expired"
-      ? "#fb7185"
-      : "#facc15",
-});
-
-const panel = {
-  borderRadius: 20,
-  padding: 14,
-  background: "rgba(15,23,42,0.95)",
-  border: "1px solid rgba(148,163,184,0.4)",
-};
-
-const panelTitle = {
-  fontSize: 12,
-  fontWeight: 700,
-  marginBottom: 10,
-  textTransform: "uppercase",
-  color: "#94a3b8",
-};
-
-const metricLabel = {
-  fontSize: 11,
-  color: "#9ca3af",
-};
-
-const metricValue = {
-  fontSize: 20,
-  fontWeight: 700,
-};
-
-const empty = {
-  fontSize: 12,
-  color: "#6b7280",
-};
+const header = { display: "flex", justifyContent: "space-between", alignItems: "center" };
+const eyebrow = { fontSize: 11, letterSpacing: 1.4, color: "#94a3b8", textTransform: "uppercase" };
+const title = { fontSize: 26, fontWeight: 600 };
+const statusRow = (s) => ({ fontSize: 12, fontWeight: 700, color: s === "active" ? "#22c55e" : s === "expired" ? "#fb7185" : "#facc15" });
+const panel = { borderRadius: 20, padding: 14, background: "rgba(15,23,42,0.95)", border: "1px solid rgba(148,163,184,0.4)" };
+const panelTitle = { fontSize: 12, fontWeight: 700, marginBottom: 10, textTransform: "uppercase", color: "#94a3b8" };
+const metricLabel = { fontSize: 11, color: "#9ca3af" };
+const metricValue = { fontSize: 20, fontWeight: 700 };
+const empty = { fontSize: 12, color: "#6b7280" };
