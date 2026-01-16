@@ -16,10 +16,10 @@ export default async function handler(req, res) {
 
   try {
     // --------------------------------------------------
-    // 1. Resolve vendor UUID (TEXT → UUID SAFE)
+    // 1. Load vendor + validate UUID safely
     // --------------------------------------------------
     const vendorRes = await sql`
-      SELECT external_uuid::uuid AS vendor_uuid
+      SELECT external_uuid
       FROM vendors
       WHERE id = ${vendorId}
         AND org_id = ${orgId}
@@ -33,15 +33,27 @@ export default async function handler(req, res) {
       });
     }
 
-    const vendorUuid = vendorRes[0].vendor_uuid;
+    const externalUuid = vendorRes[0].external_uuid;
+
+    if (
+      !externalUuid ||
+      !/^[0-9a-f-]{36}$/i.test(externalUuid)
+    ) {
+      return res.status(400).json({
+        ok: false,
+        code: "VENDOR_UUID_MISSING",
+        error:
+          "Vendor is missing a valid external UUID. This vendor cannot receive COI requests until migrated.",
+      });
+    }
 
     // --------------------------------------------------
-    // 2. Reuse existing open COI alert
+    // 2. Reuse existing COI alert
     // --------------------------------------------------
     const existing = await sql`
       SELECT id
       FROM alerts_v2
-      WHERE vendor_id = ${vendorUuid}
+      WHERE vendor_id = ${externalUuid}::uuid
         AND org_id = ${orgId}
         AND type = 'coi_missing'
         AND status = 'open'
@@ -57,7 +69,7 @@ export default async function handler(req, res) {
     }
 
     // --------------------------------------------------
-    // 3. Create COI alert (UUID SAFE)
+    // 3. Create COI alert
     // --------------------------------------------------
     const created = await sql`
       INSERT INTO alerts_v2 (
@@ -74,7 +86,7 @@ export default async function handler(req, res) {
       )
       VALUES (
         ${orgId},
-        ${vendorUuid},
+        ${externalUuid}::uuid,
         'coi_missing',
         'medium',
         'open',
