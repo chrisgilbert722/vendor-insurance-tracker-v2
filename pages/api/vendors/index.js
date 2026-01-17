@@ -33,10 +33,8 @@ export default async function handler(req, res) {
         id,
         name,
         email,
-        category,
         org_id,
-        created_at,
-        COALESCE(contract_status, 'unknown') AS status
+        created_at
       FROM vendors
       WHERE org_id = ${orgId}
       ORDER BY name ASC;
