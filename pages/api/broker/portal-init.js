@@ -37,7 +37,7 @@ export default async function handler(req, res) {
 
     // Get organization details
     const [org] = await sql`
-      SELECT id, name FROM orgs WHERE id = ${orgId} LIMIT 1;
+      SELECT id, name FROM organizations WHERE id = ${orgId} LIMIT 1;
     `;
 
     if (!org) {

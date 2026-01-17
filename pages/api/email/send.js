@@ -51,7 +51,7 @@ export default async function handler(req, res) {
         t.token AS portal_token
       FROM vendors v
       JOIN vendor_portal_tokens t ON t.vendor_id = v.id
-      JOIN orgs o ON o.id = t.org_id
+      JOIN organizations o ON o.id = t.org_id
       WHERE v.id = ${vendorId}
       LIMIT 1;
     `;

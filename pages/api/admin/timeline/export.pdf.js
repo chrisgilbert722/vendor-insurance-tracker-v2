@@ -55,7 +55,7 @@ export default async function handler(req, res) {
 
     // Get organization name
     const [org] = await sql`
-      SELECT name FROM orgs WHERE id = ${orgId} LIMIT 1;
+      SELECT name FROM organizations WHERE id = ${orgId} LIMIT 1;
     `;
     const orgName = org?.name || `Organization #${orgId}`;
 

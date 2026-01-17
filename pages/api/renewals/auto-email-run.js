@@ -28,7 +28,7 @@ export default async function handler(req, res) {
       let orgName = `Org #${orgId}`;
       try {
         const orgMeta = await sql`
-          SELECT name FROM orgs WHERE id = ${orgId} LIMIT 1;
+          SELECT name FROM organizations WHERE id = ${orgId} LIMIT 1;
         `;
         if (orgMeta[0]?.name) orgName = orgMeta[0].name;
       } catch (_) {}
