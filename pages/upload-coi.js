@@ -60,8 +60,11 @@ export default function UploadCOIPage() {
   const [fileUrl, setFileUrl] = useState(null);
   const [extracted, setExtracted] = useState(null);
 
-  // Check if vendorId is missing (show error state)
-  const missingVendorId = !vendorId;
+  // Wait for router to be ready before checking vendorId (prevents hydration flash)
+  const routerReady = router.isReady;
+
+  // Only check for missing vendorId after router is ready
+  const missingVendorId = routerReady && !vendorId;
 
   /* ------------ handlers ----------- */
 
@@ -169,6 +172,40 @@ export default function UploadCOIPage() {
   };
 
   /* ------------ render ----------- */
+
+  // Show loading state while router initializes (prevents hydration flash)
+  if (!routerReady) {
+    return (
+      <div
+        style={{
+          minHeight: "100vh",
+          background:
+            "radial-gradient(circle at top left,#020617 0%, #020617 40%, #000 100%)",
+          padding: "30px 40px 40px",
+          color: "#e5e7eb",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+        }}
+      >
+        <div style={{ textAlign: "center" }}>
+          <div
+            style={{
+              width: 48,
+              height: 48,
+              borderRadius: "999px",
+              border: "3px solid rgba(56,189,248,0.3)",
+              borderTopColor: "#38bdf8",
+              animation: "spin 1s linear infinite",
+              margin: "0 auto 16px",
+            }}
+          />
+          <div style={{ fontSize: 14, color: "#9ca3af" }}>Loading...</div>
+          <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
+        </div>
+      </div>
+    );
+  }
 
   // Show error state if vendorId is missing
   if (missingVendorId) {
