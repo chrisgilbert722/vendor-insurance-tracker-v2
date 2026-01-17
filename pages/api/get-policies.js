@@ -1,14 +1,8 @@
 // pages/api/get-policies.js
-// FINAL — Bearer-token auth + ACTIVE ORG AWARE + DASHBOARD SAFE
+// Bearer-token auth + ACTIVE ORG AWARE + DASHBOARD SAFE
 
 import { sql } from "../../lib/db";
-import { createClient } from "@supabase/supabase-js";
-
-// Supabase admin (server-only)
-const supabaseAdmin = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL,
-  process.env.SUPABASE_SERVICE_ROLE_KEY
-);
+import { supabaseServer } from "../../lib/supabaseServer";
 
 export default async function handler(req, res) {
   if (req.method !== "GET") {
@@ -28,7 +22,9 @@ export default async function handler(req, res) {
       return res.status(401).json({ ok: false, error: "Unauthorized" });
     }
 
-    const { data, error } = await supabaseAdmin.auth.getUser(token);
+    const supabase = supabaseServer();
+    const { data, error } = await supabase.auth.getUser(token);
+
     if (error || !data?.user) {
       return res.status(401).json({ ok: false, error: "Unauthorized" });
     }
