@@ -3,13 +3,15 @@ import { useEffect } from "react";
 import OnboardingLayout from "../../components/onboarding/OnboardingLayout";
 
 export default function OnboardingComplete() {
-  // Dispatch event to trigger dashboard refetch when user navigates there
+  // Dispatch events to trigger dashboard/vendors refetch when user navigates there
   useEffect(() => {
     if (typeof window !== "undefined") {
       window.dispatchEvent(new CustomEvent("onboarding:complete"));
       window.dispatchEvent(new CustomEvent("policies:changed"));
+      window.dispatchEvent(new CustomEvent("vendors:changed"));
       try {
         localStorage.setItem("policies:changed", String(Date.now()));
+        localStorage.setItem("vendors:changed", String(Date.now()));
       } catch {}
     }
   }, []);

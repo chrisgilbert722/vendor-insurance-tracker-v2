@@ -6,6 +6,42 @@ export default function GlobalVendorTable({ orgId }) {
   const [vendors, setVendors] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [refreshKey, setRefreshKey] = useState(0);
+
+  // Listen for visibility changes and custom events to trigger refetch
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === "visible") {
+        setRefreshKey((k) => k + 1);
+      }
+    };
+
+    const handleVendorsChanged = () => {
+      setRefreshKey((k) => k + 1);
+    };
+
+    const handleStorage = (e) => {
+      if (e?.key === "vendors:changed" || e?.key === "policies:changed") {
+        handleVendorsChanged();
+      }
+    };
+
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+    window.addEventListener("vendors:changed", handleVendorsChanged);
+    window.addEventListener("policies:changed", handleVendorsChanged);
+    window.addEventListener("onboarding:complete", handleVendorsChanged);
+    window.addEventListener("storage", handleStorage);
+
+    return () => {
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+      window.removeEventListener("vendors:changed", handleVendorsChanged);
+      window.removeEventListener("policies:changed", handleVendorsChanged);
+      window.removeEventListener("onboarding:complete", handleVendorsChanged);
+      window.removeEventListener("storage", handleStorage);
+    };
+  }, []);
 
   useEffect(() => {
     if (!orgId) return;
@@ -29,7 +65,7 @@ export default function GlobalVendorTable({ orgId }) {
     }
 
     load();
-  }, [orgId]);
+  }, [orgId, refreshKey]);
 
   if (loading) {
     return <div style={{ fontSize: 12, color: "#9ca3af" }}>Loading vendors…</div>;
