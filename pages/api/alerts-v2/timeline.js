@@ -9,7 +9,6 @@
 // ============================================================
 
 import { sql } from "../../../lib/db";
-import { cleanUUID } from "../../../lib/uuid";
 
 export default async function handler(req, res) {
   // HARD CONTRACT — dashboard safety
@@ -21,11 +20,11 @@ export default async function handler(req, res) {
   }
 
   try {
-    const orgId = cleanUUID(req.query.orgId);
+    const orgId = Number(req.query.orgId);
     const days = Math.max(1, Math.min(365, Number(req.query.days || 30)));
 
     // HARD SKIP — no org context
-    if (!orgId) {
+    if (!Number.isInteger(orgId) || orgId <= 0) {
       return res.status(200).json({
         ok: true,
         skipped: true,

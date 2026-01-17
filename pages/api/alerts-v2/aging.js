@@ -8,7 +8,6 @@
 // ============================================================
 
 import { sql } from "../../../lib/db";
-import { cleanUUID } from "../../../lib/uuid";
 
 export default async function handler(req, res) {
   if (req.method !== "GET") {
@@ -24,10 +23,10 @@ export default async function handler(req, res) {
   }
 
   try {
-    const orgId = cleanUUID(req.query.orgId);
+    const orgId = Number(req.query.orgId);
 
     // HARD SKIP — dashboard safety
-    if (!orgId) {
+    if (!Number.isInteger(orgId) || orgId <= 0) {
       return res.status(200).json({
         ok: true,
         skipped: true,
