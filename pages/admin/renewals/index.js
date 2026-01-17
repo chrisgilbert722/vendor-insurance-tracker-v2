@@ -189,6 +189,42 @@ export default function RenewalIntelligenceV5() {
   const [predictions, setPredictions] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [refreshKey, setRefreshKey] = useState(0);
+
+  // Listen for visibility changes and custom events to trigger refetch
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === "visible") {
+        setRefreshKey((k) => k + 1);
+      }
+    };
+
+    const handleDataChanged = () => {
+      setRefreshKey((k) => k + 1);
+    };
+
+    const handleStorage = (e) => {
+      if (e?.key === "policies:changed" || e?.key === "vendors:changed") {
+        handleDataChanged();
+      }
+    };
+
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+    window.addEventListener("policies:changed", handleDataChanged);
+    window.addEventListener("vendors:changed", handleDataChanged);
+    window.addEventListener("onboarding:complete", handleDataChanged);
+    window.addEventListener("storage", handleStorage);
+
+    return () => {
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+      window.removeEventListener("policies:changed", handleDataChanged);
+      window.removeEventListener("vendors:changed", handleDataChanged);
+      window.removeEventListener("onboarding:complete", handleDataChanged);
+      window.removeEventListener("storage", handleStorage);
+    };
+  }, []);
 
   useEffect(() => {
     if (!orgId) {
@@ -219,7 +255,7 @@ export default function RenewalIntelligenceV5() {
     })();
 
     return () => (alive = false);
-  }, [orgId]);
+  }, [orgId, refreshKey]);
 
   const safe = Array.isArray(predictions) ? predictions : [];
   const total = safe.length;
