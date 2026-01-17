@@ -686,8 +686,9 @@ export default function RequirementsV5Page() {
           marginBottom: 24,
           padding: 20,
           borderRadius: 20,
-          background: "rgba(15,23,42,0.8)",
-          border: "1px solid rgba(80,120,255,0.3)",
+          background: "radial-gradient(circle at top left,rgba(15,23,42,0.98),rgba(15,23,42,0.92))",
+          border: "1px solid rgba(148,163,184,0.5)",
+          boxShadow: "0 16px 40px rgba(15,23,42,0.9)",
         }}
       >
         <div style={{ fontSize: 12, textTransform: "uppercase", letterSpacing: 1.2, color: "#9ca3af", marginBottom: 10 }}>
@@ -742,8 +743,9 @@ Example: Vendors must carry GL 1M/2M, Auto 1M CSL, WC statutory."
           style={{
             borderRadius: 20,
             padding: 16,
-            background: "rgba(15,23,42,0.8)",
-            border: "1px solid rgba(80,120,255,0.25)",
+            background: "radial-gradient(circle at top left,rgba(15,23,42,0.98),rgba(15,23,42,0.92))",
+            border: "1px solid rgba(148,163,184,0.5)",
+            boxShadow: "0 16px 40px rgba(15,23,42,0.9)",
           }}
         >
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
@@ -816,8 +818,9 @@ Example: Vendors must carry GL 1M/2M, Auto 1M CSL, WC statutory."
           style={{
             borderRadius: 20,
             padding: 16,
-            background: "rgba(15,23,42,0.8)",
-            border: "1px solid rgba(80,120,255,0.25)",
+            background: "radial-gradient(circle at top left,rgba(15,23,42,0.98),rgba(15,23,42,0.92))",
+            border: "1px solid rgba(148,163,184,0.5)",
+            boxShadow: "0 16px 40px rgba(15,23,42,0.9)",
           }}
         >
           {activeGroup ? (
@@ -918,8 +921,9 @@ Example: Vendors must carry GL 1M/2M, Auto 1M CSL, WC statutory."
           style={{
             borderRadius: 20,
             padding: 16,
-            background: "rgba(15,23,42,0.8)",
-            border: "1px solid rgba(80,120,255,0.25)",
+            background: "radial-gradient(circle at top left,rgba(15,23,42,0.98),rgba(15,23,42,0.92))",
+            border: "1px solid rgba(148,163,184,0.5)",
+            boxShadow: "0 16px 40px rgba(15,23,42,0.9)",
             display: "flex",
             flexDirection: "column",
             gap: 16,

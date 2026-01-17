@@ -1,6 +1,10 @@
 // pages/api/vendors/upload.js
+// ============================================================
+// VENDOR UPLOAD API — Accepts uploads via token (no auth required)
+// Token-based authentication for vendor portal uploads
+// ============================================================
+
 import { sql } from "@db";
-import { resolveOrg } from "@resolveOrg";
 import formidable from "formidable";
 import fs from "fs";
 import pdfParse from "pdf-parse";
@@ -20,15 +24,6 @@ export default async function handler(req, res) {
   }
 
   try {
-    // 🔑 Resolve org FIRST (UUID → internal INT)
-    const orgId = await resolveOrg(req, res);
-    if (!orgId) {
-      return res.status(400).json({
-        ok: false,
-        error: "Organization not resolved",
-      });
-    }
-
     const form = formidable({});
     const [fields, files] = await form.parse(req);
 
@@ -36,7 +31,7 @@ export default async function handler(req, res) {
     if (!token) {
       return res.status(400).json({
         ok: false,
-        error: "Missing token",
+        error: "Missing upload token",
       });
     }
 
@@ -49,19 +44,13 @@ export default async function handler(req, res) {
     }
 
     /* ------------------------------------------------------------
-       VALIDATE PDF
-    ------------------------------------------------------------ */
-    const pdfBuffer = fs.readFileSync(file.filepath);
-    const pdfData = await pdfParse(pdfBuffer);
-
-    /* ------------------------------------------------------------
-       LOOKUP VENDOR (SCOPED TO ORG)
+       LOOKUP VENDOR BY TOKEN (token is scoped to vendor+org)
+       No auth session required - token IS the authentication
     ------------------------------------------------------------ */
     const vendors = await sql`
-      SELECT id, name, upload_token_expires_at
+      SELECT id, name, org_id, upload_token_expires_at
       FROM vendors
       WHERE upload_token = ${token}
-        AND org_id = ${orgId}
       LIMIT 1;
     `;
 
@@ -80,8 +69,25 @@ export default async function handler(req, res) {
     if (now > expires) {
       return res.status(400).json({
         ok: false,
-        error: "Upload link expired",
+        error: "Upload link expired. Please request a new link.",
       });
+    }
+
+    /* ------------------------------------------------------------
+       PARSE FILE (PDF or image)
+    ------------------------------------------------------------ */
+    const fileBuffer = fs.readFileSync(file.filepath);
+    let parsedText = null;
+
+    // Only parse PDFs for text extraction
+    if (file.mimetype === "application/pdf") {
+      try {
+        const pdfData = await pdfParse(fileBuffer);
+        parsedText = pdfData.text;
+      } catch (pdfErr) {
+        console.warn("[vendors/upload] PDF parse warning:", pdfErr.message);
+        // Continue without parsed text - it's optional
+      }
     }
 
     /* ------------------------------------------------------------
@@ -100,7 +106,7 @@ export default async function handler(req, res) {
         ${file.originalFilename},
         ${file.mimetype},
         ${file.size},
-        ${pdfData.text}
+        ${parsedText}
       )
       RETURNING id, vendor_id, file_name;
     `;

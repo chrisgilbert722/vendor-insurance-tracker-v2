@@ -1,19 +1,41 @@
 // pages/billing/upgrade.js
+// ============================================================
+// BILLING UPGRADE PAGE — Trial expired or subscription required
+// ============================================================
+
 import { useRouter } from "next/router";
-import { useState } from "react";
+import { useState, useEffect } from "react";
+import { useOrg } from "../../context/OrgContext";
 
 export default function BillingUpgrade() {
   const router = useRouter();
   const { reason } = router.query;
+  const { activeOrgId } = useOrg();
 
   const [loading, setLoading] = useState(false);
+  const [trial, setTrial] = useState(null);
 
-  const message =
-    reason === "expired"
-      ? "Your 14-day trial has expired."
-      : reason === "failed"
-      ? "Your payment failed and your subscription is paused."
-      : "Your subscription is not active.";
+  // Fetch trial status
+  useEffect(() => {
+    if (!activeOrgId) return;
+    fetch(`/api/billing/trial-status?orgId=${activeOrgId}`)
+      .then((r) => r.json())
+      .then((data) => {
+        if (data.ok && data.trial) setTrial(data.trial);
+      })
+      .catch(() => {});
+  }, [activeOrgId]);
+
+  const isExpired = trial?.expired || reason === "expired";
+  const daysLeft = trial?.days_left || 0;
+
+  const message = isExpired
+    ? "Your 14-day trial has expired."
+    : reason === "failed"
+    ? "Your payment failed and your subscription is paused."
+    : daysLeft > 0
+    ? `You have ${daysLeft} day${daysLeft !== 1 ? "s" : ""} left in your trial.`
+    : "Your subscription is not active.";
 
   function handleUpgrade() {
     setLoading(true);

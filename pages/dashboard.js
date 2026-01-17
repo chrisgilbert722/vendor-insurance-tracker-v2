@@ -2,6 +2,7 @@
 
 import { supabase } from "../lib/supabaseClient";
 import React, { useEffect, useState, useRef } from "react";
+import { useRouter } from "next/router";
 import PropertyManagementRiskPreview from "../components/dashboard/PropertyManagementRiskPreview";
 import VendorDrawer from "../components/VendorDrawer";
 import { useRole } from "../lib/useRole";
@@ -332,8 +333,30 @@ function summarizeEngineHealth(engineMap) {
    MAIN DASHBOARD COMPONENT
 ============================================================ */
 function Dashboard() {
+  const router = useRouter();
   const { isAdmin, isManager } = useRole();
   const { activeOrgId, activeOrgUuid } = useOrg();
+
+  // Trial status check (single source of truth)
+  const [trialChecked, setTrialChecked] = useState(false);
+
+  useEffect(() => {
+    if (!activeOrgId || trialChecked) return;
+
+    fetch(`/api/billing/trial-status?orgId=${activeOrgId}`)
+      .then((r) => r.json())
+      .then((data) => {
+        if (data.ok && data.trial) {
+          // If trial expired and not paid, redirect to billing
+          if (data.trial.expired && !data.trial.is_paid) {
+            router.replace("/billing/upgrade?reason=expired");
+            return;
+          }
+        }
+        setTrialChecked(true);
+      })
+      .catch(() => setTrialChecked(true));
+  }, [activeOrgId, trialChecked, router]);
 
   // Spotlight anchors for tutorial (Option B)
   const riskRef = useRef(null);

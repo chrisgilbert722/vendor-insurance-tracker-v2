@@ -5,6 +5,7 @@ import Script from "next/script";
 import { UserProvider } from "../context/UserContext";
 import { OrgProvider } from "../context/OrgContext";
 import Layout from "../components/Layout";
+import TrialBanner from "../components/billing/TrialBanner";
 
 /* ============================================================
    GLOBAL APP GUARD — PASSIVE (NO REDIRECTS)
@@ -40,6 +41,7 @@ export default function App({ Component, pageProps }) {
       <UserProvider>
         <OrgProvider>
           <AppGuard>
+            <TrialBanner />
             <Layout>
               <Component {...pageProps} />
             </Layout>

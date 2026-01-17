@@ -7,12 +7,15 @@
 import { useRouter } from "next/router";
 import { useEffect, useState } from "react";
 
+// IRON MAN COMMAND CENTER THEME (aligned with dashboard)
 const GP = {
   bg: "#020617",
   panel: "rgba(15,23,42,0.98)",
   border: "rgba(51,65,85,0.9)",
+  borderStrong: "rgba(148,163,184,0.8)",
   text: "#e5e7eb",
   textSoft: "#9ca3af",
+  textMuted: "#6b7280",
   neonBlue: "#38bdf8",
   neonPurple: "#a855f7",
   neonGreen: "#22c55e",
@@ -162,33 +165,40 @@ export default function AdminVendorDetailPage() {
 
       <Section>
         <h2 style={sectionTitle}>Renewal Status</h2>
-        <div style={{ fontSize: 13, color: GP.textSoft }}>
+        <div style={{ fontSize: 13, color: GP.text }}>
           {primaryPolicy?.expiration_date ? (
-            <>Policy expires: <span style={{ color: GP.neonGold }}>{primaryPolicy.expiration_date}</span></>
+            <>
+              Primary policy expires:{" "}
+              <span style={{ color: GP.neonGold, fontWeight: 600 }}>
+                {primaryPolicy.expiration_date}
+              </span>
+            </>
           ) : (
-            "No expiration date set for primary policy."
+            <span style={{ color: GP.textMuted, fontStyle: "italic" }}>
+              No expiration date on file for primary policy.
+            </span>
           )}
         </div>
       </Section>
 
       <Section>
         <h2 style={sectionTitle}>Renewal Predictions</h2>
-        <div style={{ fontSize: 13, color: GP.textSoft }}>
-          Renewal predictions coming soon.
+        <div style={{ fontSize: 13, color: GP.textMuted, fontStyle: "italic" }}>
+          AI renewal predictions will appear here once policy history is available.
         </div>
       </Section>
 
       <Section>
         <h2 style={sectionTitle}>Renewal Communication Log</h2>
-        <div style={{ fontSize: 13, color: GP.textSoft }}>
-          No renewal history yet.
+        <div style={{ fontSize: 13, color: GP.textMuted, fontStyle: "italic" }}>
+          No renewal communications recorded yet.
         </div>
       </Section>
 
       <Section>
         <h2 style={sectionTitle}>Renewal Timeline</h2>
-        <div style={{ fontSize: 13, color: GP.textSoft }}>
-          No renewal events logged for this vendor yet.
+        <div style={{ fontSize: 13, color: GP.textMuted, fontStyle: "italic" }}>
+          Timeline events will appear as renewal activity occurs.
         </div>
       </Section>
 
@@ -434,11 +444,12 @@ function SnapCard({ label, value, color }) {
         borderRadius: 16,
         padding: 14,
         border: `1px solid ${color}55`,
-        background: GP.panel,
+        background: "radial-gradient(circle at top left,rgba(15,23,42,0.98),rgba(15,23,42,0.94))",
+        boxShadow: `0 0 20px ${color}22`,
       }}
     >
-      <div style={{ fontSize: 12, color: GP.textSoft }}>{label}</div>
-      <div style={{ fontSize: 20, fontWeight: 700, color }}>{value}</div>
+      <div style={{ fontSize: 12, color: GP.textSoft, marginBottom: 4 }}>{label}</div>
+      <div style={{ fontSize: 22, fontWeight: 700, color }}>{value}</div>
     </div>
   );
 }
@@ -447,11 +458,12 @@ function Section({ children }) {
   return (
     <div
       style={{
-        marginTop: 30,
+        marginTop: 26,
         padding: 20,
         borderRadius: 20,
         background: GP.panel,
-        border: `1px solid ${GP.border}`,
+        border: `1px solid ${GP.borderStrong}`,
+        boxShadow: "0 16px 40px rgba(15,23,42,0.9)",
       }}
     >
       {children}
@@ -505,10 +517,12 @@ const snapshotGrid = {
 
 const sectionTitle = {
   margin: 0,
-  marginBottom: 8,
-  fontSize: 16,
+  marginBottom: 10,
+  fontSize: 12,
   fontWeight: 600,
-  color: GP.text,
+  textTransform: "uppercase",
+  letterSpacing: "0.16em",
+  color: GP.textSoft,
 };
 
 const policyTableShell = {
