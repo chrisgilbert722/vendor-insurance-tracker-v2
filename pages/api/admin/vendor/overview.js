@@ -1,6 +1,6 @@
 // pages/api/admin/vendor/overview.js
 // ============================================================
-// VENDOR INTELLIGENCE API (V5 + Contract Intelligence V3)
+// VENDOR INTELLIGENCE API (V5)
 // ============================================================
 //
 // Returns:
@@ -14,12 +14,6 @@
 //  • timeline
 //  • documents
 //  • metrics
-//  • ⭐ contract_json
-//  • ⭐ contract_score
-//  • ⭐ contract_requirements
-//  • ⭐ contract_mismatches
-//  • ⭐ contract_status
-//  • ⭐ contract_risk_score
 // ============================================================
 
 import { sql } from "../../../../lib/db";
@@ -41,22 +35,13 @@ export default async function handler(req, res) {
     }
 
     // ============================================================
-    // 1) LOAD VENDOR (now includes Contract Intelligence V3 fields)
+    // 1) LOAD VENDOR
     // ============================================================
     const vendorRows = await sql`
-      SELECT 
+      SELECT
         id,
         name,
-        org_id,
-
-        /* ⭐ Contract Intelligence V3 fields */
-        contract_json,
-        contract_score,
-        contract_requirements,
-        contract_mismatches,
-        contract_status,
-        contract_risk_score
-
+        org_id
       FROM vendors
       WHERE id = ${vendorId}
       LIMIT 1;
