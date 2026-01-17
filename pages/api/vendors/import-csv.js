@@ -75,7 +75,6 @@ export default async function handler(req, res) {
     for (const row of rows) {
       const name = (row.vendor_name || row.name || "").trim();
       const email = (row.email || "").trim() || null;
-      const category = (row.category || "").trim() || "General";
 
       if (!name) {
         results.push({
@@ -107,8 +106,8 @@ export default async function handler(req, res) {
 
       // ✅ INSERT VENDOR (CORRECT SCHEMA)
       const inserted = await sql`
-        INSERT INTO vendors (org_id, name, email, category)
-        VALUES (${orgId}, ${name}, ${email}, ${category})
+        INSERT INTO vendors (org_id, name, email)
+        VALUES (${orgId}, ${name}, ${email})
         RETURNING id, name;
       `;
 
