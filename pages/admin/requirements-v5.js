@@ -367,6 +367,44 @@ export default function RequirementsV5Page() {
     () => getConflictedRuleIds(conflicts),
     [conflicts]
   );
+
+  const [refreshKey, setRefreshKey] = useState(0);
+
+  // Listen for visibility changes and custom events to trigger refetch
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === "visible") {
+        setRefreshKey((k) => k + 1);
+      }
+    };
+
+    const handleDataChanged = () => {
+      setRefreshKey((k) => k + 1);
+    };
+
+    const handleStorage = (e) => {
+      if (e?.key === "policies:changed" || e?.key === "vendors:changed") {
+        handleDataChanged();
+      }
+    };
+
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+    window.addEventListener("policies:changed", handleDataChanged);
+    window.addEventListener("vendors:changed", handleDataChanged);
+    window.addEventListener("onboarding:complete", handleDataChanged);
+    window.addEventListener("storage", handleStorage);
+
+    return () => {
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+      window.removeEventListener("policies:changed", handleDataChanged);
+      window.removeEventListener("vendors:changed", handleDataChanged);
+      window.removeEventListener("onboarding:complete", handleDataChanged);
+      window.removeEventListener("storage", handleStorage);
+    };
+  }, []);
+
   // -------------------------------------
   // LOADERS
   // -------------------------------------
@@ -378,7 +416,7 @@ export default function RequirementsV5Page() {
     }
     loadGroups();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [orgId, loadingOrgs]);
+  }, [orgId, loadingOrgs, refreshKey]);
 
   async function loadGroups() {
     setLoading(true);
