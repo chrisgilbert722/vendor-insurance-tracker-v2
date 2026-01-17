@@ -15,10 +15,10 @@ export default async function handler(req, res) {
     const vendors = await sql`
       SELECT
         id,
-        vendor_name
+        name AS vendor_name
       FROM vendors
       WHERE org_id = ${orgId}
-      ORDER BY vendor_name ASC;
+      ORDER BY name ASC;
     `;
 
     return res.status(200).json({
