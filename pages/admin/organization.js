@@ -6,6 +6,7 @@
 // ============================================================
 
 import { useState, useMemo } from "react";
+import { useRouter } from "next/router";
 import { useOrg } from "../../context/OrgContext";
 import { useRole } from "../../lib/useRole";
 
@@ -159,7 +160,7 @@ export default function OrganizationPage() {
         {/* RIGHT */}
         <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
           <OrgRiskSnapshot stats={stats} />
-          <OrgQuickActions />
+          <OrgQuickActions team={team} />
           <OrgAiAssistant />
           <OrgAuditPanel />
         </div>
@@ -589,7 +590,44 @@ function OrgRiskSnapshot({ stats }) {
    QUICK ORG ACTIONS
 =========================== */
 
-function OrgQuickActions() {
+function OrgQuickActions({ team }) {
+  const router = useRouter();
+
+  function handleExportTeam() {
+    if (!team || team.length === 0) {
+      alert("No team members to export.");
+      return;
+    }
+    const header = ["name", "email", "role", "status", "last_active"];
+    const rows = team.map((m) => [
+      m.name || "",
+      m.email || "",
+      m.role || "",
+      m.status || "",
+      m.lastActive || "",
+    ]);
+    const csv = [header.join(","), ...rows.map((r) => r.map((c) => `"${String(c).replace(/"/g, '""')}"`).join(","))].join("\n");
+    const blob = new Blob([csv], { type: "text/csv" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `team_access_${new Date().toISOString().split("T")[0]}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+  }
+
+  function handleAuditLog() {
+    router.push("/admin/audit-log");
+  }
+
+  function handleSetupSSO() {
+    router.push("/admin/security/sso");
+  }
+
+  function handleLockSettings() {
+    alert("Lock org settings is not yet implemented. Coming soon.");
+  }
+
   return (
     <div
       style={{
@@ -615,32 +653,43 @@ function OrgQuickActions() {
         <QuickActionCard
           label="Export team access"
           description="Generate a CSV of members, roles, and last-active timestamps."
+          onClick={handleExportTeam}
         />
         <QuickActionCard
           label="Review rule change history"
           description="See which admins changed rules or requirements recently."
+          onClick={handleAuditLog}
         />
         <QuickActionCard
           label="Set up SSO"
           description="Integrate with your identity provider."
+          onClick={handleSetupSSO}
         />
         <QuickActionCard
           label="Lock org settings"
           description="Restrict org-level changes to a smaller admin set."
+          onClick={handleLockSettings}
         />
       </div>
     </div>
   );
 }
 
-function QuickActionCard({ label, description }) {
+function QuickActionCard({ label, description, onClick }) {
+  const [hover, setHover] = useState(false);
+
   return (
     <div
+      onClick={onClick}
+      onMouseEnter={() => setHover(true)}
+      onMouseLeave={() => setHover(false)}
       style={{
         borderRadius: 18,
         padding: 12,
-        border: `1px solid ${V5.border}`,
-        background: "rgba(2,6,23,0.45)",
+        border: `1px solid ${hover ? V5.blue : V5.border}`,
+        background: hover ? "rgba(56,189,248,0.08)" : "rgba(2,6,23,0.45)",
+        cursor: "pointer",
+        transition: "all 0.15s ease",
       }}
     >
       <div style={{ color: V5.text, fontSize: 12, fontWeight: 800, marginBottom: 4 }}>
