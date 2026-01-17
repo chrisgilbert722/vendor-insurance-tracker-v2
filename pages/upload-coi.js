@@ -1,5 +1,5 @@
 // pages/upload-coi.js
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useOrg } from "../context/OrgContext";
 import { useRole } from "../lib/useRole";
 import { useRouter } from "next/router";
@@ -44,8 +44,8 @@ export default function UploadCOIPage() {
   const canUpload = isAdmin || isManager;
 
   const router = useRouter();
-  const vendorId = router.query.vendorId; // /upload-coi?vendorId=2
-  const uploadType = router.query.type || null; // /upload-coi?type=gl
+  const vendorIdFromUrl = router.query.vendorId;
+  const uploadType = router.query.type || null;
   const expectedLabel = getTypeLabel(uploadType);
 
   const [file, setFile] = useState(null);
@@ -60,11 +60,37 @@ export default function UploadCOIPage() {
   const [fileUrl, setFileUrl] = useState(null);
   const [extracted, setExtracted] = useState(null);
 
-  // Wait for router to be ready before checking vendorId (prevents hydration flash)
-  const routerReady = router.isReady;
+  // Vendor selection state (for when vendorId is not in URL)
+  const [selectedVendorId, setSelectedVendorId] = useState(null);
+  const [vendors, setVendors] = useState([]);
+  const [loadingVendors, setLoadingVendors] = useState(false);
+  const [showVendorPicker, setShowVendorPicker] = useState(false);
+  const [pendingUploadResult, setPendingUploadResult] = useState(null);
 
-  // Only check for missing vendorId after router is ready
-  const missingVendorId = routerReady && !vendorId;
+  // Effective vendorId: from URL or user selection
+  const vendorId = vendorIdFromUrl || selectedVendorId;
+
+  // Load vendors for picker when needed
+  useEffect(() => {
+    if (showVendorPicker && activeOrgId && vendors.length === 0) {
+      loadVendors();
+    }
+  }, [showVendorPicker, activeOrgId]);
+
+  async function loadVendors() {
+    setLoadingVendors(true);
+    try {
+      const res = await fetch(`/api/vendors?orgId=${activeOrgId}`);
+      const data = await res.json();
+      if (data.ok && data.vendors) {
+        setVendors(data.vendors);
+      }
+    } catch (err) {
+      console.error("Failed to load vendors:", err);
+    } finally {
+      setLoadingVendors(false);
+    }
+  }
 
   /* ------------ handlers ----------- */
 
@@ -108,13 +134,17 @@ export default function UploadCOIPage() {
       return;
     }
 
+    // If no vendorId, show vendor picker after upload
     if (!vendorId) {
-      setError(
-        "Missing vendorId in URL. Open this page from a vendor profile or append ?vendorId=123."
-      );
+      setShowVendorPicker(true);
+      setPendingUploadResult({ file });
       return;
     }
 
+    await performUpload(file, vendorId);
+  };
+
+  async function performUpload(uploadFile, vId) {
     setIsSubmitting(true);
     setError("");
     setResult(null);
@@ -122,11 +152,13 @@ export default function UploadCOIPage() {
     setViewerOpen(false);
     setFileUrl(null);
     setExtracted(null);
+    setShowVendorPicker(false);
+    setPendingUploadResult(null);
 
     try {
       const formData = new FormData();
-      formData.append("file", file);
-      formData.append("vendorId", vendorId);
+      formData.append("file", uploadFile);
+      formData.append("vendorId", vId);
 
       const res = await fetch("/api/upload-coi", {
         method: "POST",
@@ -169,12 +201,19 @@ export default function UploadCOIPage() {
     } finally {
       setIsSubmitting(false);
     }
-  };
+  }
+
+  function handleVendorSelect(vId) {
+    setSelectedVendorId(vId);
+    if (pendingUploadResult?.file) {
+      performUpload(pendingUploadResult.file, vId);
+    }
+  }
 
   /* ------------ render ----------- */
 
-  // Show loading state while router initializes (prevents hydration flash)
-  if (!routerReady) {
+  // Show loading state while router initializes
+  if (!router.isReady) {
     return (
       <div
         style={{
@@ -202,113 +241,6 @@ export default function UploadCOIPage() {
           />
           <div style={{ fontSize: 14, color: "#9ca3af" }}>Loading...</div>
           <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
-        </div>
-      </div>
-    );
-  }
-
-  // Show error state if vendorId is missing
-  if (missingVendorId) {
-    return (
-      <div
-        style={{
-          minHeight: "100vh",
-          background:
-            "radial-gradient(circle at top left,#020617 0%, #020617 40%, #000 100%)",
-          padding: "30px 40px 40px",
-          color: "#e5e7eb",
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "center",
-        }}
-      >
-        <div
-          style={{
-            borderRadius: 24,
-            padding: 32,
-            maxWidth: 520,
-            background:
-              "radial-gradient(circle at top left,rgba(15,23,42,0.97),rgba(15,23,42,0.92))",
-            border: "1px solid rgba(248,113,113,0.6)",
-            boxShadow: "0 24px 60px rgba(15,23,42,0.98)",
-            textAlign: "center",
-          }}
-        >
-          <div
-            style={{
-              width: 64,
-              height: 64,
-              borderRadius: "999px",
-              background: "rgba(127,29,29,0.4)",
-              border: "1px solid rgba(248,113,113,0.6)",
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              margin: "0 auto 16px",
-            }}
-          >
-            <span style={{ fontSize: 28 }}>⚠️</span>
-          </div>
-          <h2
-            style={{
-              margin: "0 0 12px",
-              fontSize: 20,
-              fontWeight: 600,
-              color: "#fecaca",
-            }}
-          >
-            Missing Vendor Context
-          </h2>
-          <p
-            style={{
-              margin: "0 0 20px",
-              fontSize: 14,
-              color: "#9ca3af",
-              lineHeight: 1.6,
-            }}
-          >
-            This page requires a <code style={{ color: "#e5e7eb" }}>vendorId</code> to associate the uploaded COI with a vendor.
-          </p>
-          <div
-            style={{
-              padding: "12px 16px",
-              borderRadius: 12,
-              background: "rgba(15,23,42,0.9)",
-              border: "1px solid rgba(75,85,99,0.6)",
-              fontSize: 13,
-              color: "#9ca3af",
-              textAlign: "left",
-            }}
-          >
-            <div style={{ marginBottom: 8 }}>
-              <strong style={{ color: "#e5e7eb" }}>How to fix:</strong>
-            </div>
-            <ul style={{ margin: 0, paddingLeft: 20 }}>
-              <li style={{ marginBottom: 6 }}>
-                Open this page from a vendor profile or compliance fix workflow
-              </li>
-              <li>
-                Or append <code style={{ color: "#38bdf8" }}>?vendorId=123</code> to the URL
-              </li>
-            </ul>
-          </div>
-          <button
-            onClick={() => router.push("/vendors")}
-            style={{
-              marginTop: 20,
-              borderRadius: 999,
-              padding: "10px 20px",
-              border: "1px solid rgba(59,130,246,0.9)",
-              background:
-                "radial-gradient(circle at top left,#3b82f6,#1d4ed8,#0f172a)",
-              color: "#e5f2ff",
-              fontSize: 13,
-              fontWeight: 500,
-              cursor: "pointer",
-            }}
-          >
-            Go to Vendors
-          </button>
         </div>
       </div>
     );
@@ -436,6 +368,7 @@ export default function UploadCOIPage() {
               what matters most — all in one cinematic pipeline.
             </p>
 
+            {/* Vendor context indicator */}
             <div
               style={{
                 marginTop: 6,
@@ -443,10 +376,18 @@ export default function UploadCOIPage() {
                 color: "#9ca3af",
               }}
             >
-              Vendor context:{" "}
-              <span style={{ color: "#22c55e" }}>
-                vendorId={vendorId}
-              </span>
+              {vendorId ? (
+                <>
+                  Vendor context:{" "}
+                  <span style={{ color: "#22c55e" }}>
+                    vendorId={vendorId}
+                  </span>
+                </>
+              ) : (
+                <span style={{ color: "#facc15" }}>
+                  No vendor selected — you can select after upload
+                </span>
+              )}
             </div>
 
             {/* MAGICALLY GUIDED DOCUMENT TYPE (Option D) */}
@@ -492,6 +433,132 @@ export default function UploadCOIPage() {
           </div>
         </div>
       </div>
+
+      {/* VENDOR PICKER MODAL */}
+      {showVendorPicker && (
+        <div
+          style={{
+            position: "fixed",
+            inset: 0,
+            background: "rgba(0,0,0,0.8)",
+            zIndex: 100,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+          }}
+        >
+          <div
+            style={{
+              borderRadius: 24,
+              padding: 24,
+              maxWidth: 480,
+              width: "90%",
+              background:
+                "radial-gradient(circle at top left,rgba(15,23,42,0.98),rgba(15,23,42,0.95))",
+              border: "1px solid rgba(56,189,248,0.5)",
+              boxShadow: "0 24px 60px rgba(0,0,0,0.9)",
+            }}
+          >
+            <h3
+              style={{
+                margin: "0 0 12px",
+                fontSize: 18,
+                fontWeight: 600,
+                color: "#e5e7eb",
+              }}
+            >
+              Select a Vendor
+            </h3>
+            <p style={{ margin: "0 0 16px", fontSize: 13, color: "#9ca3af" }}>
+              Choose which vendor this COI belongs to.
+            </p>
+
+            {loadingVendors ? (
+              <div style={{ padding: 20, textAlign: "center", color: "#9ca3af" }}>
+                Loading vendors...
+              </div>
+            ) : vendors.length === 0 ? (
+              <div style={{ padding: 20, textAlign: "center", color: "#9ca3af" }}>
+                No vendors found. Create a vendor first.
+              </div>
+            ) : (
+              <div
+                style={{
+                  maxHeight: 300,
+                  overflow: "auto",
+                  display: "flex",
+                  flexDirection: "column",
+                  gap: 8,
+                }}
+              >
+                {vendors.map((v) => (
+                  <button
+                    key={v.id}
+                    onClick={() => handleVendorSelect(v.id)}
+                    style={{
+                      padding: "12px 16px",
+                      borderRadius: 12,
+                      border: "1px solid rgba(51,65,85,0.8)",
+                      background: "rgba(15,23,42,0.9)",
+                      color: "#e5e7eb",
+                      fontSize: 14,
+                      textAlign: "left",
+                      cursor: "pointer",
+                      display: "flex",
+                      justifyContent: "space-between",
+                      alignItems: "center",
+                    }}
+                  >
+                    <span>{v.name}</span>
+                    {v.email && (
+                      <span style={{ fontSize: 12, color: "#9ca3af" }}>
+                        {v.email}
+                      </span>
+                    )}
+                  </button>
+                ))}
+              </div>
+            )}
+
+            <div style={{ marginTop: 16, display: "flex", gap: 10 }}>
+              <button
+                onClick={() => {
+                  setShowVendorPicker(false);
+                  setPendingUploadResult(null);
+                }}
+                style={{
+                  flex: 1,
+                  padding: "10px 16px",
+                  borderRadius: 999,
+                  border: "1px solid rgba(75,85,99,0.8)",
+                  background: "rgba(15,23,42,0.9)",
+                  color: "#9ca3af",
+                  fontSize: 13,
+                  cursor: "pointer",
+                }}
+              >
+                Cancel
+              </button>
+              <button
+                onClick={() => router.push("/vendors")}
+                style={{
+                  flex: 1,
+                  padding: "10px 16px",
+                  borderRadius: 999,
+                  border: "1px solid rgba(59,130,246,0.9)",
+                  background:
+                    "radial-gradient(circle at top left,#3b82f6,#1d4ed8,#0f172a)",
+                  color: "#e5f2ff",
+                  fontSize: 13,
+                  cursor: "pointer",
+                }}
+              >
+                Create Vendor
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* MAIN GRID */}
       <div
@@ -645,8 +712,9 @@ export default function UploadCOIPage() {
                   color: "#6b7280",
                 }}
               >
-                This posts to <code>/api/upload-coi</code> with vendorId and
-                streams AI analysis.
+                {vendorId
+                  ? "COI will be attached to selected vendor"
+                  : "You'll select a vendor after upload"}
               </div>
             </div>
           </form>

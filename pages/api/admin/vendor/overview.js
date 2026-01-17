@@ -94,22 +94,19 @@ export default async function handler(req, res) {
     `;
 
     // ============================================================
-    // 4) ALERTS (V5)
+    // 4) ALERTS (V2)
     // ============================================================
     const alerts = await sql`
-      SELECT 
+      SELECT
         id,
         severity,
         message,
-        code,
         type,
-        status,
-        rule_label,
         created_at
-      FROM alerts
+      FROM alerts_v2
       WHERE vendor_id = ${vendorId}
         AND org_id = ${orgId}
-        AND status = 'open'
+        AND resolved_at IS NULL
       ORDER BY severity DESC, created_at DESC;
     `;
 

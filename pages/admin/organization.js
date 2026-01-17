@@ -8,7 +8,6 @@
 import { useState, useMemo } from "react";
 import { useRouter } from "next/router";
 import { useOrg } from "../../context/OrgContext";
-import { useRole } from "../../lib/useRole";
 
 import CommandShell from "../../components/v5/CommandShell";
 import { V5 } from "../../components/v5/v5Theme";
@@ -76,8 +75,9 @@ export default function OrganizationPage() {
   const orgCtx = useOrg();
   const orgId = orgCtx?.orgId || orgCtx?.activeOrgId || null;
 
-  const { isAdmin, isManager } = useRole();
-  const canInvite = isAdmin || isManager;
+  // V1: Full editing enabled for all authenticated users
+  // Role-based restrictions will be added in V2 with proper org_members wiring
+  const canInvite = true;
 
   const [team, setTeam] = useState(initialTeam);
   const [inviteEmail, setInviteEmail] = useState("");
@@ -283,8 +283,8 @@ function TeamPanel({
             Control who can view risk, edit rules, and resolve alerts.
           </div>
         </div>
-        <div style={{ fontSize: 11, color: canInvite ? V5.green : V5.yellow, textAlign: "right" }}>
-          {canInvite ? "Admin/Manager access" : "Viewer access (read-only)"}
+        <div style={{ fontSize: 11, color: V5.green, textAlign: "right" }}>
+          Editing enabled
         </div>
       </div>
 
