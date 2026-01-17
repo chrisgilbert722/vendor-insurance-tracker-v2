@@ -7,7 +7,10 @@ export default function RenewalSlaWidget({ orgId }) {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    if (!orgId) return;
+    if (!orgId) {
+      setLoading(false);
+      return;
+    }
     async function load() {
       try {
         setLoading(true);
@@ -25,7 +28,7 @@ export default function RenewalSlaWidget({ orgId }) {
 
   if (!orgId) return null;
 
-  if (loading || !buckets) {
+  if (loading) {
     return (
       <div
         style={{
@@ -38,6 +41,36 @@ export default function RenewalSlaWidget({ orgId }) {
         }}
       >
         Loading renewal SLA…
+      </div>
+    );
+  }
+
+  // Empty state when no buckets data available
+  if (!buckets) {
+    return (
+      <div
+        style={{
+          borderRadius: 16,
+          padding: 14,
+          border: "1px solid rgba(148,163,184,0.5)",
+          background: "rgba(15,23,42,0.96)",
+          fontSize: 12,
+          color: "#e5e7eb",
+        }}
+      >
+        <div
+          style={{
+            fontSize: 13,
+            marginBottom: 8,
+            color: "#9ca3af",
+            fontWeight: 600,
+          }}
+        >
+          Renewal SLA Snapshot
+        </div>
+        <div style={{ fontSize: 12, color: "#6b7280" }}>
+          No renewal SLA data available.
+        </div>
       </div>
     );
   }

@@ -27,7 +27,7 @@ function getTypeLabel(type) {
   if (!type) return null;
   const t = String(type).toLowerCase();
   if (t === "gl") return "General Liability COI";
-  if (t === "wc") return "Workers’ Compensation COI";
+  if (t === "wc") return "Workers' Compensation COI";
   if (t === "auto") return "Auto Liability COI";
   if (t === "umbrella") return "Umbrella / Excess COI";
   if (t === "generic") return "Insurance document";
@@ -39,7 +39,7 @@ function getTypeLabel(type) {
 =========================== */
 
 export default function UploadCOIPage() {
-  const { orgId } = useOrg();
+  const { activeOrgId } = useOrg();
   const { isAdmin, isManager } = useRole();
   const canUpload = isAdmin || isManager;
 
@@ -59,6 +59,9 @@ export default function UploadCOIPage() {
   const [viewerOpen, setViewerOpen] = useState(false);
   const [fileUrl, setFileUrl] = useState(null);
   const [extracted, setExtracted] = useState(null);
+
+  // Check if vendorId is missing (show error state)
+  const missingVendorId = !vendorId;
 
   /* ------------ handlers ----------- */
 
@@ -98,7 +101,7 @@ export default function UploadCOIPage() {
     }
 
     if (!canUpload) {
-      setError("You don’t have permission to upload COIs.");
+      setError("You don't have permission to upload COIs.");
       return;
     }
 
@@ -166,6 +169,113 @@ export default function UploadCOIPage() {
   };
 
   /* ------------ render ----------- */
+
+  // Show error state if vendorId is missing
+  if (missingVendorId) {
+    return (
+      <div
+        style={{
+          minHeight: "100vh",
+          background:
+            "radial-gradient(circle at top left,#020617 0%, #020617 40%, #000 100%)",
+          padding: "30px 40px 40px",
+          color: "#e5e7eb",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+        }}
+      >
+        <div
+          style={{
+            borderRadius: 24,
+            padding: 32,
+            maxWidth: 520,
+            background:
+              "radial-gradient(circle at top left,rgba(15,23,42,0.97),rgba(15,23,42,0.92))",
+            border: "1px solid rgba(248,113,113,0.6)",
+            boxShadow: "0 24px 60px rgba(15,23,42,0.98)",
+            textAlign: "center",
+          }}
+        >
+          <div
+            style={{
+              width: 64,
+              height: 64,
+              borderRadius: "999px",
+              background: "rgba(127,29,29,0.4)",
+              border: "1px solid rgba(248,113,113,0.6)",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              margin: "0 auto 16px",
+            }}
+          >
+            <span style={{ fontSize: 28 }}>⚠️</span>
+          </div>
+          <h2
+            style={{
+              margin: "0 0 12px",
+              fontSize: 20,
+              fontWeight: 600,
+              color: "#fecaca",
+            }}
+          >
+            Missing Vendor Context
+          </h2>
+          <p
+            style={{
+              margin: "0 0 20px",
+              fontSize: 14,
+              color: "#9ca3af",
+              lineHeight: 1.6,
+            }}
+          >
+            This page requires a <code style={{ color: "#e5e7eb" }}>vendorId</code> to associate the uploaded COI with a vendor.
+          </p>
+          <div
+            style={{
+              padding: "12px 16px",
+              borderRadius: 12,
+              background: "rgba(15,23,42,0.9)",
+              border: "1px solid rgba(75,85,99,0.6)",
+              fontSize: 13,
+              color: "#9ca3af",
+              textAlign: "left",
+            }}
+          >
+            <div style={{ marginBottom: 8 }}>
+              <strong style={{ color: "#e5e7eb" }}>How to fix:</strong>
+            </div>
+            <ul style={{ margin: 0, paddingLeft: 20 }}>
+              <li style={{ marginBottom: 6 }}>
+                Open this page from a vendor profile or compliance fix workflow
+              </li>
+              <li>
+                Or append <code style={{ color: "#38bdf8" }}>?vendorId=123</code> to the URL
+              </li>
+            </ul>
+          </div>
+          <button
+            onClick={() => router.push("/vendors")}
+            style={{
+              marginTop: 20,
+              borderRadius: 999,
+              padding: "10px 20px",
+              border: "1px solid rgba(59,130,246,0.9)",
+              background:
+                "radial-gradient(circle at top left,#3b82f6,#1d4ed8,#0f172a)",
+              color: "#e5f2ff",
+              fontSize: 13,
+              fontWeight: 500,
+              cursor: "pointer",
+            }}
+          >
+            Go to Vendors
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div
@@ -284,7 +394,7 @@ export default function UploadCOIPage() {
                 maxWidth: 700,
               }}
             >
-              Drag & drop a certificate of insurance. We’ll ingest the PDF,
+              Drag & drop a certificate of insurance. We'll ingest the PDF,
               extract coverage, limits, endorsements, and expirations, then flag
               what matters most — all in one cinematic pipeline.
             </p>
@@ -297,8 +407,8 @@ export default function UploadCOIPage() {
               }}
             >
               Vendor context:{" "}
-              <span style={{ color: "#e5e7eb" }}>
-                {vendorId ? `vendorId=${vendorId}` : "none (append ?vendorId=123)"}
+              <span style={{ color: "#22c55e" }}>
+                vendorId={vendorId}
               </span>
             </div>
 
@@ -337,8 +447,8 @@ export default function UploadCOIPage() {
                   to continue your compliance fix.
                 </span>
                 <span style={{ fontSize: 11, color: "#bbf7d0" }}>
-                  If this doesn’t look right, you can still upload any COI —
-                  we’ll analyze it automatically.
+                  If this doesn't look right, you can still upload any COI —
+                  we'll analyze it automatically.
                 </span>
               </div>
             )}
@@ -432,7 +542,7 @@ export default function UploadCOIPage() {
               >
                 PDF only · max 25MB · tied to org{" "}
                 <span style={{ color: "#e5e7eb" }}>
-                  {orgId || "(Org context active)"}
+                  {activeOrgId || "(Org context active)"}
                 </span>
               </div>
               <input
@@ -659,7 +769,7 @@ export default function UploadCOIPage() {
               }}
             >
               Upload a certificate to see extracted carrier, policy, coverage,
-              limits, endorsement, and risk data here. We’ll render the raw JSON
+              limits, endorsement, and risk data here. We'll render the raw JSON
               response plus a readable summary.
             </div>
           )}
