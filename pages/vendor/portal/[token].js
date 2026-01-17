@@ -27,7 +27,7 @@ export default function VendorPortalPage() {
         setLoading(true);
         setError("");
 
-        const res = await fetch(`/api/vendor/portal/${token}`);
+        const res = await fetch(`/api/vendor-portal/portal/${token}`);
         const json = await res.json();
 
         if (!res.ok || !json.ok) {

@@ -60,7 +60,7 @@ export default async function handler(req, res) {
 
     // 2) Load vendor profile
     const vendorRows = await sql`
-      SELECT id, vendor_name, email, phone, category, created_at
+      SELECT id, name, email, org_id, created_at
       FROM vendors
       WHERE id = ${vendorId} AND org_id = ${orgId}
       LIMIT 1
@@ -75,35 +75,27 @@ export default async function handler(req, res) {
 
     const vendor = vendorRows[0];
 
-    // 3) Load policies on file
-    const policies = await sql`
-      SELECT
-        id,
-        policy_number,
-        carrier,
-        coverage_type,
-        expiration_date,
-        limit_each_occurrence,
-        auto_limit,
-        work_comp_limit,
-        umbrella_limit
-      FROM policies
-      WHERE vendor_id = ${vendorId}
-      ORDER BY expiration_date DESC NULLS LAST
-    `;
+    // 3) Load policies on file (fail-safe)
+    let policies = [];
+    try {
+      policies = await sql`
+        SELECT
+          id,
+          policy_number,
+          carrier,
+          coverage_type,
+          expiration_date
+        FROM policies
+        WHERE vendor_id = ${vendorId}
+        ORDER BY expiration_date DESC NULLS LAST
+      `;
+    } catch (e) {
+      console.warn("[vendor/portal] Policies query failed:", e.message);
+    }
 
     // 4) Load vendor alerts (open issues)
-    const alerts = await sql`
-      SELECT
-        code,
-        message,
-        severity,
-        created_at
-      FROM vendor_alerts
-      WHERE vendor_id = ${vendorId}
-      ORDER BY created_at DESC
-      LIMIT 20
-    `;
+    // vendor_alerts table does not exist - return empty array
+    const alerts = [];
 
     // 5) OPTIONAL — future expansion: load uploaded docs (W9, licenses, etc.)
     let documents = [];
