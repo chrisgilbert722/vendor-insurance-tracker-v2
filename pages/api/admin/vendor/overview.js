@@ -111,39 +111,35 @@ export default async function handler(req, res) {
     `;
 
     // ============================================================
-    // 5) RULE ENGINE V5 SUMMARY (from results table)
+    // 5) RULE ENGINE V5 SUMMARY (fail-safe, returns empty if table missing)
     // ============================================================
-    const failingRules = await sql`
-      SELECT
-        rr.requirement_id AS rule_id,
-        rr.severity,
-        rr.message,
-        r.field_key,
-        r.operator,
-        r.expected_value,
-        r.group_id
-      FROM rule_results_v3 rr
-      LEFT JOIN requirements_rules_v2 r
-        ON r.id = rr.requirement_id
-      WHERE rr.vendor_id = ${vendorId}
-        AND rr.org_id = ${orgId}
-        AND rr.passed = FALSE;
-    `;
+    let failingRules = [];
+    let passingRules = [];
 
-    const passingRules = await sql`
-      SELECT
-        rr.requirement_id AS rule_id,
-        rr.message,
-        r.field_key,
-        r.operator,
-        r.expected_value
-      FROM rule_results_v3 rr
-      LEFT JOIN requirements_rules_v2 r
-        ON r.id = rr.requirement_id
-      WHERE rr.vendor_id = ${vendorId}
-        AND rr.org_id = ${orgId}
-        AND rr.passed = TRUE;
-    `;
+    try {
+      failingRules = await sql`
+        SELECT
+          rr.id AS rule_id,
+          rr.severity,
+          rr.message
+        FROM rule_results_v3 rr
+        WHERE rr.vendor_id = ${vendorId}
+          AND rr.org_id = ${orgId}
+          AND rr.passed = FALSE;
+      `;
+
+      passingRules = await sql`
+        SELECT
+          rr.id AS rule_id,
+          rr.message
+        FROM rule_results_v3 rr
+        WHERE rr.vendor_id = ${vendorId}
+          AND rr.org_id = ${orgId}
+          AND rr.passed = TRUE;
+      `;
+    } catch (ruleErr) {
+      console.warn("[vendor/overview] Rule query failed:", ruleErr.message);
+    }
 
     const engine = {
       totalRules: failingRules.length + passingRules.length,
