@@ -28,7 +28,7 @@ export default async function handler(req, res) {
 
     // 1) Find token entry
     const tokenRows = await sql`
-      SELECT id, org_id, vendor_id, expires_at, used_at
+      SELECT id, org_id, vendor_id, expires_at
       FROM vendor_portal_tokens
       WHERE token = ${token}
       LIMIT 1
