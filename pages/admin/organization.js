@@ -283,8 +283,8 @@ function TeamPanel({
             Control who can view risk, edit rules, and resolve alerts.
           </div>
         </div>
-        <div style={{ fontSize: 11, color: V5.soft, textAlign: "right" }}>
-          {canInvite ? "Invite enabled" : "Read-only mode"}
+        <div style={{ fontSize: 11, color: canInvite ? V5.green : V5.yellow, textAlign: "right" }}>
+          {canInvite ? "Admin/Manager access" : "Viewer access (read-only)"}
         </div>
       </div>
 

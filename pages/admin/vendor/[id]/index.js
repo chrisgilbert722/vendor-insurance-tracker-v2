@@ -126,7 +126,13 @@ export default function AdminVendorDetailPage() {
         </div>
 
         {/* ACTION BUTTONS */}
-        <div style={{ display: "flex", gap: 12 }}>
+        <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
+          <Button
+            label="Upload COI"
+            onClick={() => router.push(`/upload-coi?vendorId=${vendor.id}`)}
+            color={GP.neonGold}
+          />
+
           <Button
             label="Profile"
             onClick={() => router.push(`/admin/vendor/${vendor.id}/profile`)}
