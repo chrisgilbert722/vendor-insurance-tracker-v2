@@ -739,6 +739,8 @@ useEffect(() => {
   /* ============================================================
      RULE ENGINE V5 — run-v3
 ============================================================ */
+  const engineFetchedRef = useRef({});
+
   useEffect(() => {
     const pols = safeArray(policies);
     if (pols.length === 0 || !activeOrgId) return;
@@ -746,8 +748,10 @@ useEffect(() => {
     const vendorIds = [...new Set(pols.map((p) => p?.vendor_id).filter(Boolean))];
 
     vendorIds.forEach((vendorId) => {
-      const existing = engineMap?.[vendorId];
-      if (existing && existing.loaded && !existing.error) return;
+      // Guard: skip if already fetched for this orgId
+      const fetchKey = `${activeOrgId}-${vendorId}`;
+      if (engineFetchedRef.current[fetchKey]) return;
+      engineFetchedRef.current[fetchKey] = true;
 
       setEngineMap((prev) => ({
         ...(prev || {}),
@@ -821,7 +825,7 @@ useEffect(() => {
           }));
         });
     });
-  }, [policies, activeOrgId, engineMap]);
+  }, [policies, activeOrgId]);
 
   /* ============================================================
      ELITE SUMMARY COUNTS
@@ -889,26 +893,44 @@ useEffect(() => {
   /* ============================================================
      SYSTEM TIMELINE
 ============================================================ */
+  const timelineLoadedRef = useRef(false);
+
   useEffect(() => {
+    if (!activeOrgId) return;
+
+    // Guard: only load once per org
+    if (timelineLoadedRef.current) return;
+    timelineLoadedRef.current = true;
+
+    let cancelled = false;
+
     const loadTimeline = async () => {
       try {
-        setSystemTimelineLoading(true);
-        const res = await fetch("/api/admin/timeline");
+        if (!cancelled) setSystemTimelineLoading(true);
+        const res = await fetch(`/api/admin/timeline?orgId=${activeOrgId}`);
         const json = await res.json();
-        if (json?.ok) setSystemTimeline(safeArray(json.timeline));
-        else setSystemTimeline([]);
+        if (!cancelled) {
+          if (json?.ok) setSystemTimeline(safeArray(json.timeline));
+          else setSystemTimeline([]);
+        }
       } catch (err) {
         console.error("[system timeline] fail:", err);
-        setSystemTimeline([]);
+        if (!cancelled) setSystemTimeline([]);
       } finally {
-        setSystemTimelineLoading(false);
+        if (!cancelled) setSystemTimelineLoading(false);
       }
     };
 
     loadTimeline();
-    const int = setInterval(loadTimeline, 10000);
-    return () => clearInterval(int);
-  }, []);
+
+    // Poll every 30s instead of 10s to reduce load
+    const int = setInterval(loadTimeline, 30000);
+
+    return () => {
+      cancelled = true;
+      clearInterval(int);
+    };
+  }, [activeOrgId]);
 
   /* DRAWER HANDLERS */
   const openDrawer = (vendorId) => {

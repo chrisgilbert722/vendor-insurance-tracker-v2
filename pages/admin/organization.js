@@ -313,6 +313,7 @@ function TeamPanel({
               onChange={(e) => setInviteEmail(e.target.value)}
               placeholder="teammate@example.com"
               disabled={!canInvite}
+              aria-label="Email address to invite"
               style={{
                 width: "100%",
                 borderRadius: 999,
@@ -334,6 +335,7 @@ function TeamPanel({
               value={inviteRole}
               onChange={(e) => setInviteRole(e.target.value)}
               disabled={!canInvite}
+              aria-label="Role for new team member"
               style={{
                 width: "100%",
                 borderRadius: 999,
@@ -343,6 +345,7 @@ function TeamPanel({
                 color: V5.text,
                 fontSize: 13,
                 outline: "none",
+                cursor: canInvite ? "pointer" : "not-allowed",
               }}
             >
               {roleOptions.map((r) => (
@@ -357,6 +360,7 @@ function TeamPanel({
             <button
               type="submit"
               disabled={!canInvite}
+              aria-label="Send team invite"
               style={{
                 borderRadius: 999,
                 padding: "9px 14px",
@@ -447,6 +451,7 @@ function TeamRow({ member, canEdit, onRoleChange, onRemove }) {
           value={member.role}
           onChange={(e) => onRoleChange(member.id, e.target.value)}
           disabled={!canEdit}
+          aria-label={`Change role for ${member.name}`}
           style={{
             borderRadius: 999,
             padding: "6px 10px",
@@ -455,6 +460,7 @@ function TeamRow({ member, canEdit, onRoleChange, onRemove }) {
             color: V5.text,
             fontSize: 11,
             outline: "none",
+            cursor: canEdit ? "pointer" : "not-allowed",
           }}
         >
           {roleOptions.map((r) => (
@@ -467,6 +473,7 @@ function TeamRow({ member, canEdit, onRoleChange, onRemove }) {
         <button
           onClick={() => onRemove(member.id)}
           disabled={!canEdit}
+          aria-label={`Remove ${member.name} from organization`}
           style={{
             borderRadius: 999,
             padding: "6px 10px",
@@ -559,6 +566,11 @@ function OrgRiskSnapshot({ stats }) {
       </div>
 
       <div
+        role="progressbar"
+        aria-valuenow={score}
+        aria-valuemin={0}
+        aria-valuemax={100}
+        aria-label={`Organization access risk score: ${score} percent`}
         style={{
           height: 8,
           width: "100%",
@@ -678,11 +690,24 @@ function OrgQuickActions({ team }) {
 function QuickActionCard({ label, description, onClick }) {
   const [hover, setHover] = useState(false);
 
+  function handleKeyDown(e) {
+    if (e.key === "Enter" || e.key === " ") {
+      e.preventDefault();
+      onClick?.();
+    }
+  }
+
   return (
     <div
+      role="button"
+      tabIndex={0}
+      aria-label={label}
       onClick={onClick}
+      onKeyDown={handleKeyDown}
       onMouseEnter={() => setHover(true)}
       onMouseLeave={() => setHover(false)}
+      onFocus={() => setHover(true)}
+      onBlur={() => setHover(false)}
       style={{
         borderRadius: 18,
         padding: 12,
