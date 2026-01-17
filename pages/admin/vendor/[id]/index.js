@@ -1,19 +1,11 @@
 // pages/admin/vendor/[id]/index.js
 // ============================================================
-// ADMIN VENDOR OVERVIEW — V5 INTELLIGENCE EDITION
+// ADMIN VENDOR OVERVIEW — STABILIZED V6
+// Removed legacy renewal components that call non-existent endpoints
 // ============================================================
 
 import { useRouter } from "next/router";
 import { useEffect, useState } from "react";
-
-// Existing renewal components
-import VendorRenewalStatusPanel from "../../../../components/renewals/VendorRenewalStatusPanel";
-import RenewalCommunicationLog from "../../../../components/renewals/RenewalCommunicationLog";
-import RenewalUploadPanel from "../../../../components/renewals/RenewalUploadPanel";
-import RenewalPredictionPanel from "../../../../components/renewals/RenewalPredictionPanel";
-
-// ⭐ NEW — Renewal Timeline (Step 6)
-import VendorRenewalTimeline from "../../../../components/renewals/VendorRenewalTimeline";
 
 const GP = {
   bg: "#020617",
@@ -83,13 +75,13 @@ export default function AdminVendorDetailPage() {
     );
   }
 
-  // Extract fields
-  const { vendor, org, policies, alerts, engine, metrics } = data;
+  // Extract fields with guards
+  const { vendor, org, policies = [], alerts = [], engine, metrics = {} } = data;
 
   const primaryPolicy = policies?.[0] || null;
 
-  const critical = alerts.filter((a) => a.severity === "critical");
-  const high = alerts.filter((a) => a.severity === "high");
+  const critical = (alerts || []).filter((a) => a.severity === "critical");
+  const high = (alerts || []).filter((a) => a.severity === "high");
 
   const score =
     engine?.failedCount > 0
@@ -165,36 +157,39 @@ export default function AdminVendorDetailPage() {
       </div>
 
       {/* ============================================================
-          RENEWAL INTELLIGENCE
+          RENEWAL INTELLIGENCE (Static Empty States)
       ============================================================ */}
 
       <Section>
-        <VendorRenewalStatusPanel
-          vendorId={vendor.id}
-          orgId={vendor.org_id}
-          expirationDate={primaryPolicy?.expiration_date}
-        />
+        <h2 style={sectionTitle}>Renewal Status</h2>
+        <div style={{ fontSize: 13, color: GP.textSoft }}>
+          {primaryPolicy?.expiration_date ? (
+            <>Policy expires: <span style={{ color: GP.neonGold }}>{primaryPolicy.expiration_date}</span></>
+          ) : (
+            "No expiration date set for primary policy."
+          )}
+        </div>
       </Section>
 
       <Section>
-        <RenewalUploadPanel
-          vendorId={vendor.id}
-          orgId={vendor.org_id}
-          onComplete={() => router.replace(router.asPath)}
-        />
+        <h2 style={sectionTitle}>Renewal Predictions</h2>
+        <div style={{ fontSize: 13, color: GP.textSoft }}>
+          Renewal predictions coming soon.
+        </div>
       </Section>
 
       <Section>
-        <RenewalPredictionPanel vendorId={vendor.id} orgId={vendor.org_id} />
+        <h2 style={sectionTitle}>Renewal Communication Log</h2>
+        <div style={{ fontSize: 13, color: GP.textSoft }}>
+          No renewal history yet.
+        </div>
       </Section>
 
       <Section>
-        <RenewalCommunicationLog vendorId={vendor.id} />
-      </Section>
-
-      {/* ⭐ TIMELINE */}
-      <Section>
-        <VendorRenewalTimeline vendorId={vendor.id} />
+        <h2 style={sectionTitle}>Renewal Timeline</h2>
+        <div style={{ fontSize: 13, color: GP.textSoft }}>
+          No renewal events logged for this vendor yet.
+        </div>
       </Section>
 
       {/* ⭐ ============================================================

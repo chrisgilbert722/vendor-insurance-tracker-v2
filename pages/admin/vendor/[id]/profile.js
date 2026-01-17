@@ -202,17 +202,17 @@ export default function AdminVendorProfile() {
   const {
     vendor,
     org,
-    metrics,
-    alerts,
-    requirements,
-    timeline,
+    metrics = {},
+    alerts = [],
+    requirements = [],
+    timeline = [],
     portalToken,
     documents = [],
-  } = overview;
+  } = overview || {};
 
-  const criticalAlerts = alerts.filter((a) => a.severity === "critical");
-  const highAlerts = alerts.filter((a) => a.severity === "high");
-  const infoAlerts = alerts.filter(
+  const criticalAlerts = (alerts || []).filter((a) => a.severity === "critical");
+  const highAlerts = (alerts || []).filter((a) => a.severity === "high");
+  const infoAlerts = (alerts || []).filter(
     (a) => a.severity === "info" || !a.severity
   );
   return (
@@ -530,7 +530,7 @@ export default function AdminVendorProfile() {
                 Coverage Requirements
               </h3>
 
-              {requirements.length === 0 ? (
+              {(!requirements || requirements.length === 0) ? (
                 <div style={{ fontSize: 13, color: GP.textSoft }}>
                   No requirements configured.
                 </div>
@@ -756,7 +756,7 @@ export default function AdminVendorProfile() {
                 Activity Timeline
               </h3>
 
-              {timeline.length === 0 ? (
+              {(!timeline || timeline.length === 0) ? (
                 <div style={{ fontSize: 13, color: GP.textSoft }}>
                   No recorded activity for this vendor yet.
                 </div>
