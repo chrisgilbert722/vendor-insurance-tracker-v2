@@ -1,8 +1,8 @@
 // pages/api/admin/timeline/index.js
-// UUID-safe, skip-safe admin compliance timeline (direct SQL)
+// Admin compliance timeline — reads from vendor_timeline table
+// Returns events for dashboard "System Timeline" widget
 
 import { sql } from "../../../../lib/db";
-import { cleanUUID } from "../../../../lib/uuid";
 
 export default async function handler(req, res) {
   if (req.method !== "GET") {
@@ -10,41 +10,56 @@ export default async function handler(req, res) {
   }
 
   try {
-    const orgId = cleanUUID(req.query.orgId);
+    // Accept integer orgId (dashboard passes activeOrgId)
+    const orgId = Number(req.query.orgId);
 
-    // HARD GUARD — never crash UI
-    if (!orgId) {
-      return res.status(200).json({
-        ok: false,
-        skipped: true,
-        events: [],
-      });
-    }
-
+    // HARD GUARD — never crash UI, but still return data if no orgId
+    // (for backwards compatibility with dashboard that doesn't pass orgId)
     const limit = Math.max(
       1,
       Math.min(500, Number(req.query.limit || 100))
     );
 
-    const rows = await sql`
-      SELECT
-        id,
-        org_id,
-        vendor_id,
-        alert_id,
-        event_type,
-        source,
-        payload,
-        occurred_at
-      FROM compliance_events
-      WHERE org_id = ${orgId}
-      ORDER BY occurred_at DESC
-      LIMIT ${limit};
-    `;
+    let rows;
+
+    if (Number.isInteger(orgId) && orgId > 0) {
+      // Org-scoped query
+      rows = await sql`
+        SELECT
+          t.id,
+          t.vendor_id,
+          t.action,
+          t.message,
+          t.severity,
+          t.created_at,
+          v.name AS vendor_name
+        FROM vendor_timeline t
+        LEFT JOIN vendors v ON v.id = t.vendor_id
+        WHERE v.org_id = ${orgId}
+        ORDER BY t.created_at DESC
+        LIMIT ${limit};
+      `;
+    } else {
+      // Fallback: return recent events across all orgs (for backwards compat)
+      rows = await sql`
+        SELECT
+          t.id,
+          t.vendor_id,
+          t.action,
+          t.message,
+          t.severity,
+          t.created_at,
+          v.name AS vendor_name
+        FROM vendor_timeline t
+        LEFT JOIN vendors v ON v.id = t.vendor_id
+        ORDER BY t.created_at DESC
+        LIMIT ${limit};
+      `;
+    }
 
     return res.status(200).json({
       ok: true,
-      events: rows || [],
+      timeline: rows || [],
     });
   } catch (err) {
     // NEVER bubble to UI
@@ -52,7 +67,7 @@ export default async function handler(req, res) {
     return res.status(200).json({
       ok: false,
       skipped: true,
-      events: [],
+      timeline: [],
     });
   }
 }

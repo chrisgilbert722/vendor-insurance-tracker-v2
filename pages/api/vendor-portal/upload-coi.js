@@ -10,6 +10,7 @@ import { sql } from "../../../lib/db";
 import { supabase } from "../../../lib/supabaseClient";
 import { openai } from "../../../lib/openaiClient";
 import { sendEmail } from "../../../lib/sendEmail";
+import { logTimelineEvent, TIMELINE_EVENTS } from "../../../lib/timeline";
 
 // NEW: Document → Alert Intelligence V2 engine
 import { runDocumentAlertIntelligenceV2 } from "../../../lib/documentAlertIntelligenceV2";
@@ -416,7 +417,17 @@ ${autoResolved?.resolved || 0}
     }
 
     // -------------------------------------------------------------
-    // 10) FINAL RETURN PAYLOAD
+    // 10) LOG TO VENDOR TIMELINE (for dashboard)
+    // -------------------------------------------------------------
+    await logTimelineEvent({
+      vendorId,
+      action: TIMELINE_EVENTS.COI_UPLOADED,
+      message: `COI uploaded successfully${autoResolved.resolved > 0 ? ` (${autoResolved.resolved} alerts auto-resolved)` : ""}`,
+      severity: "info",
+    });
+
+    // -------------------------------------------------------------
+    // 11) FINAL RETURN PAYLOAD
     // -------------------------------------------------------------
     return res.status(200).json({
       ok: true,

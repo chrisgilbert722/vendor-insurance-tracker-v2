@@ -72,7 +72,7 @@ export default function GlobalVendorTable({ orgId }) {
             return (
               <tr
                 key={v.external_uuid}
-                onClick={() => router.push(`/vendors/${v.external_uuid}`)}
+                onClick={() => router.push(`/admin/vendor/${v.id}`)}
                 style={{
                   cursor: "pointer",
                   transition: "background 0.15s ease",

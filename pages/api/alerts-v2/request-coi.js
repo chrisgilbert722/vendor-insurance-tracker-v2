@@ -8,6 +8,7 @@
 import { sql } from "../../../lib/db";
 import crypto from "crypto";
 import { Resend } from "resend";
+import { logTimelineEvent, TIMELINE_EVENTS } from "../../../lib/timeline";
 
 export default async function handler(req, res) {
   if (req.method !== "POST") {
@@ -103,6 +104,14 @@ Compliance Team`;
       to: vendor.email,
       subject,
       text: body,
+    });
+
+    // Log to timeline for audit trail
+    await logTimelineEvent({
+      vendorId: vendor.id,
+      action: TIMELINE_EVENTS.COI_REQUESTED,
+      message: `COI request sent to ${vendor.email}`,
+      severity: "info",
     });
 
     return res.status(200).json({

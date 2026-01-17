@@ -1331,7 +1331,7 @@ const alertVendorsList = [];
 
           <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
             <a
-              href="/admin/vendors"
+              href="/vendors"
               style={{
                 padding: "10px 16px",
                 borderRadius: 14,

@@ -1,5 +1,6 @@
 // pages/api/alerts-v2/ensure-coi-alert.js
 import { sql } from "../../../lib/db";
+import { logTimelineEvent, TIMELINE_EVENTS } from "../../../lib/timeline";
 
 export default async function handler(req, res) {
   if (req.method !== "POST") {
@@ -53,6 +54,14 @@ export default async function handler(req, res) {
       )
       RETURNING id;
     `;
+
+    // Log to timeline for audit trail
+    await logTimelineEvent({
+      vendorId,
+      action: TIMELINE_EVENTS.ALERT_CREATED,
+      message: "COI missing alert created",
+      severity: "warning",
+    });
 
     return res.status(200).json({
       ok: true,
