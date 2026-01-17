@@ -67,7 +67,6 @@ export default async function handler(req, res) {
     const expiresAt = new Date();
     expiresAt.setDate(expiresAt.getDate() + 30);
 
-    // If your table has a UNIQUE constraint on token (it should), this is safe.
     await sql`
       INSERT INTO vendor_portal_tokens (org_id, vendor_id, token, expires_at)
       VALUES (${alert.org_id}, ${vendor.id}, ${token}, ${expiresAt})

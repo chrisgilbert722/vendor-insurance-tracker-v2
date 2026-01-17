@@ -42,7 +42,10 @@ export default async function handler(req, res) {
   }
 
   try {
-    const form = formidable({ multiples: false });
+    const form = formidable({
+      multiples: false,
+      maxFileSize: 25 * 1024 * 1024, // 25MB limit for mobile uploads
+    });
 
     form.parse(req, async (err, fields, files) => {
       if (err) {

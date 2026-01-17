@@ -804,13 +804,14 @@ export default function VendorPortal() {
             onDragOver={handleDragOver}
           >
             <h3 style={{ marginTop: 0, fontSize: isMobile ? 16 : 18 }}>
-              Upload COI PDF
+              Upload COI
             </h3>
 
             <input
               id="coiUpload"
               type="file"
-              accept="application/pdf"
+              accept="application/pdf,image/jpeg,image/png,image/jpg"
+              capture="environment"
               style={{ display: "none" }}
               onChange={handleFileInput}
             />

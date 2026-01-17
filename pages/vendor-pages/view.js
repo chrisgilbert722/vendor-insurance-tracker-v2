@@ -238,7 +238,7 @@ export default function VendorPage() {
       setSendError("");
       setSendSuccess("");
 
-      const res = await fetch("/api/vendor/send-fix-email", {
+      const res = await fetch("/api/vendor-portal/send-fix-email", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({

@@ -47,9 +47,12 @@ export default async function handler(req, res) {
     }
 
     // -------------------------------------------------------------
-    // 1) Parse multipart form-data (PDF + token or vendorId/orgId)
+    // 1) Parse multipart form-data (PDF/images + token or vendorId/orgId)
     // -------------------------------------------------------------
-    const form = formidable({ multiples: false });
+    const form = formidable({
+      multiples: false,
+      maxFileSize: 25 * 1024 * 1024, // 25MB limit for mobile uploads
+    });
     const [fields, files] = await form.parse(req);
 
     const token = fields.token?.[0] || null;
@@ -60,12 +63,24 @@ export default async function handler(req, res) {
     if (!file)
       return res.status(400).json({ ok: false, error: "No file uploaded." });
 
-    if (!file.originalFilename.toLowerCase().endsWith(".pdf")) {
+    // Accept PDF and common image formats (for mobile camera uploads)
+    const filename = (file.originalFilename || "").toLowerCase();
+    const allowedExtensions = [".pdf", ".jpg", ".jpeg", ".png"];
+    const hasValidExtension = allowedExtensions.some(ext => filename.endsWith(ext));
+
+    if (!hasValidExtension) {
       return res.status(400).json({
         ok: false,
-        error: "Only PDF files allowed.",
+        error: "Please upload a PDF or image file (JPG, PNG).",
       });
     }
+
+    // Determine content type for storage
+    const contentType = filename.endsWith(".pdf")
+      ? "application/pdf"
+      : filename.endsWith(".png")
+        ? "image/png"
+        : "image/jpeg";
 
     // -------------------------------------------------------------
     // 2) Resolve vendor + org  (NOW INCLUDES requirements_json)
@@ -125,15 +140,16 @@ export default async function handler(req, res) {
     const requirementsProfile = vendor.requirements_json || {};
 
     // -------------------------------------------------------------
-    // 3) Upload PDF → Supabase storage
+    // 3) Upload file → Supabase storage
     // -------------------------------------------------------------
-    const pdfBuffer = fs.readFileSync(file.filepath);
-    const fileName = `vendor-coi-${vendorId}-${Date.now()}.pdf`;
+    const fileBuffer = fs.readFileSync(file.filepath);
+    const fileExt = filename.endsWith(".pdf") ? "pdf" : filename.endsWith(".png") ? "png" : "jpg";
+    const fileName = `vendor-coi-${vendorId}-${Date.now()}.${fileExt}`;
 
     const { error: uploadErr } = await supabase.storage
       .from("uploads")
-      .upload(fileName, pdfBuffer, {
-        contentType: "application/pdf",
+      .upload(fileName, fileBuffer, {
+        contentType,
       });
 
     if (uploadErr) throw uploadErr;
