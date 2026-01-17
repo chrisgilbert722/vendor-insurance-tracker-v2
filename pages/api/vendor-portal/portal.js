@@ -70,23 +70,24 @@ export default async function handler(req, res) {
     const vendor = vendorRows[0];
 
     // ----------------------------------------------------------
-    // 3) Load policies
+    // 3) Load policies (fail-safe)
     // ----------------------------------------------------------
-    const policyRows = await sql`
-      SELECT
-        id,
-        policy_number,
-        carrier,
-        coverage_type,
-        expiration_date,
-        limit_each_occurrence,
-        auto_limit,
-        work_comp_limit,
-        umbrella_limit
-      FROM policies
-      WHERE vendor_id = ${vendorId}
-      ORDER BY expiration_date ASC NULLS LAST
-    `;
+    let policyRows = [];
+    try {
+      policyRows = await sql`
+        SELECT
+          id,
+          policy_number,
+          carrier,
+          coverage_type,
+          expiration_date
+        FROM policies
+        WHERE vendor_id = ${vendorId}
+        ORDER BY expiration_date ASC NULLS LAST
+      `;
+    } catch (e) {
+      console.warn("[vendor/portal] Policies query failed:", e.message);
+    }
 
     // ----------------------------------------------------------
     // 4) Load alerts
