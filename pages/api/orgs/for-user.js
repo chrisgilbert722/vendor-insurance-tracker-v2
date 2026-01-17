@@ -38,40 +38,25 @@ export default async function handler(req, res) {
     const userId = data.user.id;
     const email = data.user.email;
 
-    let orgs = await sql`
+    const orgs = await sql`
       SELECT
         o.id,
         o.name,
         o.external_uuid,
-        o.onboarding_step
+        o.onboarding_step,
+        o.onboarding_completed
       FROM organization_members om
       JOIN organizations o ON o.id = om.org_id
       WHERE om.user_id = ${userId}
       ORDER BY o.id ASC;
     `;
 
-    // Auto-create org if user has none
-    if (!orgs || orgs.length === 0) {
-      const [org] = await sql`
-        INSERT INTO organizations (name, onboarding_step)
-        VALUES (
-          ${email ? `${email.split("@")[0]}'s Organization` : "My Organization"},
-          1
-        )
-        RETURNING id, name, external_uuid, onboarding_step;
-      `;
-
-      await sql`
-        INSERT INTO organization_members (org_id, user_id, role)
-        VALUES (${org.id}, ${userId}, 'owner');
-      `;
-
-      orgs = [org];
-    }
-
+    // NO AUTO-CREATE: Return empty array if user has no orgs
+    // User must explicitly create an org via onboarding
     return res.status(200).json({
       ok: true,
       orgs: orgs || [],
+      hasOrg: orgs && orgs.length > 0,
     });
   } catch (err) {
     console.error("[api/orgs/for-user] error:", err);

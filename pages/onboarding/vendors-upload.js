@@ -24,6 +24,7 @@ export default function OnboardingVendorsUpload() {
     const f = e.target.files?.[0];
     if (!f) return;
     setError("");
+    setUploadMeta(null); // Reset previous upload
     setFile(f);
     parseCsvFile(f);
   }
@@ -32,7 +33,7 @@ export default function OnboardingVendorsUpload() {
     setParsing(true);
     const reader = new FileReader();
 
-    reader.onload = () => {
+    reader.onload = async () => {
       try {
         const text = String(reader.result || "");
         const lines = text
@@ -76,10 +77,14 @@ export default function OnboardingVendorsUpload() {
         } catch (err) {
           console.warn("Could not store CSV snapshot:", err);
         }
+
+        // Immediately upload after parsing
+        setParsing(false);
+        await uploadCsvToServer(f, rows);
+
       } catch (err) {
         console.error("CSV parse error", err);
         setError("There was a problem parsing the CSV file.");
-      } finally {
         setParsing(false);
       }
     };
@@ -92,38 +97,22 @@ export default function OnboardingVendorsUpload() {
     reader.readAsText(f);
   }
 
-  async function handleUploadAndContinue(e) {
-    e.preventDefault();
+  async function uploadCsvToServer(f, rows) {
+    if (!f || !rows.length) return;
+
+    setUploading(true);
     setError("");
 
-    if (!file) {
-      setError("Please select a CSV file before continuing.");
-      return;
-    }
-
-    if (!parsedRows.length) {
-      setError(
-        "We couldn't parse any rows from this CSV. Double-check the file and try again."
-      );
-      return;
-    }
-
     try {
-      setUploading(true);
-
       const formData = new FormData();
-      formData.append("file", file);
+      formData.append("file", f);
       if (activeOrgId) formData.append("orgId", String(activeOrgId));
 
       const token = localStorage.getItem("supabase_token") || "";
 
       const res = await fetch("/api/onboarding/upload-vendors-csv", {
         method: "POST",
-        headers: token
-          ? {
-              Authorization: `Bearer ${token}`,
-            }
-          : undefined,
+        headers: token ? { Authorization: `Bearer ${token}` } : undefined,
         body: formData,
       });
 
@@ -134,14 +123,14 @@ export default function OnboardingVendorsUpload() {
 
       setUploadMeta(json);
 
-      // Store combined state (parsed rows + storage info) for the wizard
+      // Store combined state for the wizard
       try {
         const combined = {
           headers: previewHeaders,
-          rows: parsedRows,
+          rows: rows,
           uploadMeta: json,
           orgId: activeOrgId || null,
-          originalName: file.name,
+          originalName: f.name,
         };
         localStorage.setItem(
           "onboarding_vendors_csv",
@@ -150,10 +139,6 @@ export default function OnboardingVendorsUpload() {
       } catch (err) {
         console.warn("Could not persist onboarding_vendors_csv:", err);
       }
-
-      // For now, go to the next logical onboarding step route.
-      // When fully wired into AiWizard wizard shell, this will just call goNext().
-      router.push("/onboarding/insurance");
     } catch (err) {
       console.error("Vendor CSV upload error:", err);
       setError(err.message || "Upload failed. Please try again.");
@@ -162,13 +147,26 @@ export default function OnboardingVendorsUpload() {
     }
   }
 
+  function handleContinue(e) {
+    e.preventDefault();
+
+    // Only allow continue if upload was successful
+    if (!uploadMeta?.ok || uploadMeta?.skipped) {
+      setError("Please upload a CSV file before continuing.");
+      return;
+    }
+
+    // Navigate to next onboarding step
+    router.push("/onboarding/insurance");
+  }
+
   return (
     <OnboardingLayout
       currentKey="vendors-upload"
       title="Upload Your Vendor List (CSV)"
       subtitle="Upload a CSV export of your vendors so the AI can analyze coverage gaps, map requirements, and pre-build rules."
     >
-      <form onSubmit={handleUploadAndContinue}>
+      <form onSubmit={handleContinue}>
         <div
           style={{
             display: "grid",
@@ -314,32 +312,72 @@ export default function OnboardingVendorsUpload() {
               </div>
             )}
 
-            {/* Continue button */}
+            {/* Upload Success Summary */}
+            {uploadMeta && uploadMeta.ok && !uploadMeta.skipped && (
+              <div
+                style={{
+                  marginTop: 18,
+                  padding: 16,
+                  borderRadius: 14,
+                  background: "rgba(34,197,94,0.15)",
+                  border: "1px solid rgba(34,197,94,0.5)",
+                }}
+              >
+                <div style={{ fontSize: 14, fontWeight: 600, color: "#22c55e", marginBottom: 8 }}>
+                  ✓ Upload Successful
+                </div>
+                <div style={{ fontSize: 13, color: "#e5e7eb", marginBottom: 6 }}>
+                  <strong>{uploadMeta.inserted || 0}</strong> new vendors added
+                  {uploadMeta.rows?.length > 0 && uploadMeta.inserted < uploadMeta.rows.length && (
+                    <span style={{ color: "#9ca3af" }}>
+                      {" "}({uploadMeta.rows.length - uploadMeta.inserted} already existed)
+                    </span>
+                  )}
+                </div>
+                <div style={{ fontSize: 12, color: "#9ca3af", marginTop: 8 }}>
+                  You can upload COIs for each vendor later from the dashboard.
+                  This step sets up your vendor list.
+                </div>
+              </div>
+            )}
+
+            {/* Continue button — only enabled after successful upload */}
             <button
               type="submit"
-              disabled={uploading || parsing}
+              disabled={uploading || parsing || !uploadMeta?.ok || uploadMeta?.skipped}
               style={{
                 marginTop: 20,
                 padding: "10px 22px",
                 borderRadius: 999,
-                cursor: uploading || parsing ? "not-allowed" : "pointer",
-                opacity: uploading || parsing ? 0.6 : 1,
+                cursor: (uploading || parsing || !uploadMeta?.ok || uploadMeta?.skipped) ? "not-allowed" : "pointer",
+                opacity: (uploading || parsing || !uploadMeta?.ok || uploadMeta?.skipped) ? 0.5 : 1,
                 border: "1px solid rgba(56,189,248,0.9)",
-                background:
-                  "linear-gradient(90deg,rgba(56,189,248,0.9),rgba(88,28,135,0.85))",
+                background: uploadMeta?.ok && !uploadMeta?.skipped
+                  ? "linear-gradient(90deg,rgba(56,189,248,0.9),rgba(88,28,135,0.85))"
+                  : "rgba(51,65,85,0.6)",
                 color: "#e5f2ff",
                 fontSize: 14,
                 fontWeight: 600,
-                boxShadow:
-                  "0 0 22px rgba(56,189,248,0.75),0 0 40px rgba(88,28,135,0.4)",
+                boxShadow: uploadMeta?.ok && !uploadMeta?.skipped
+                  ? "0 0 22px rgba(56,189,248,0.75),0 0 40px rgba(88,28,135,0.4)"
+                  : "none",
               }}
             >
               {uploading
                 ? "Uploading CSV…"
                 : parsing
                 ? "Analyzing CSV…"
-                : "Save & Continue →"}
+                : uploadMeta?.ok && !uploadMeta?.skipped
+                ? "Continue →"
+                : "Upload CSV to Continue"}
             </button>
+
+            {/* Hint when button disabled */}
+            {!uploadMeta?.ok && !uploading && !parsing && (
+              <div style={{ marginTop: 8, fontSize: 11, color: "#6b7280" }}>
+                Upload a vendor CSV file to enable the Continue button.
+              </div>
+            )}
           </div>
 
           {/* RIGHT: Info Panel */}
