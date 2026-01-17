@@ -681,8 +681,48 @@ function Dashboard() {
 }, [activeOrgId]);
 
   /* ============================================================
-   LOAD POLICIES (AUTH SAFE)
+   LOAD POLICIES (AUTH SAFE + REFETCH ON VISIBILITY/EVENT)
 ============================================================ */
+  const [policyRefreshKey, setPolicyRefreshKey] = useState(0);
+  const engineFetchedRef = useRef({});
+
+  // Listen for visibility changes, custom events, and localStorage to trigger refetch
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === "visible") {
+        setPolicyRefreshKey((k) => k + 1);
+      }
+    };
+
+    const handlePoliciesChanged = () => {
+      // Clear engine cache so new policies get evaluated
+      if (engineFetchedRef.current) {
+        engineFetchedRef.current = {};
+      }
+      setPolicyRefreshKey((k) => k + 1);
+    };
+
+    const handleStorage = (e) => {
+      if (e?.key === "policies:changed") {
+        handlePoliciesChanged();
+      }
+    };
+
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+    window.addEventListener("policies:changed", handlePoliciesChanged);
+    window.addEventListener("onboarding:complete", handlePoliciesChanged);
+    window.addEventListener("storage", handleStorage);
+
+    return () => {
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+      window.removeEventListener("policies:changed", handlePoliciesChanged);
+      window.removeEventListener("onboarding:complete", handlePoliciesChanged);
+      window.removeEventListener("storage", handleStorage);
+    };
+  }, []);
+
 useEffect(() => {
   let cancelled = false;
 
@@ -734,13 +774,11 @@ useEffect(() => {
   return () => {
     cancelled = true;
   };
-}, [activeOrgId]);
+}, [activeOrgId, policyRefreshKey]);
 
   /* ============================================================
      RULE ENGINE V5 — run-v3
 ============================================================ */
-  const engineFetchedRef = useRef({});
-
   useEffect(() => {
     const pols = safeArray(policies);
     if (pols.length === 0 || !activeOrgId) return;
