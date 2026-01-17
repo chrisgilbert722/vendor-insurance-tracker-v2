@@ -102,11 +102,47 @@ export default function AlertsV5() {
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState("all");
   const [toast, setToast] = useState({ open: false, type: "success", message: "" });
+  const [refreshKey, setRefreshKey] = useState(0);
+
+  // Listen for visibility changes and custom events to trigger refetch
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === "visible") {
+        setRefreshKey((k) => k + 1);
+      }
+    };
+
+    const handleAlertsChanged = () => {
+      setRefreshKey((k) => k + 1);
+    };
+
+    const handleStorage = (e) => {
+      if (e?.key === "alerts:changed" || e?.key === "policies:changed") {
+        handleAlertsChanged();
+      }
+    };
+
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+    window.addEventListener("alerts:changed", handleAlertsChanged);
+    window.addEventListener("policies:changed", handleAlertsChanged);
+    window.addEventListener("onboarding:complete", handleAlertsChanged);
+    window.addEventListener("storage", handleStorage);
+
+    return () => {
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+      window.removeEventListener("alerts:changed", handleAlertsChanged);
+      window.removeEventListener("policies:changed", handleAlertsChanged);
+      window.removeEventListener("onboarding:complete", handleAlertsChanged);
+      window.removeEventListener("storage", handleStorage);
+    };
+  }, []);
 
   useEffect(() => {
     if (!orgId || loadingOrgs) return;
     loadAlerts();
-  }, [orgId, loadingOrgs]);
+  }, [orgId, loadingOrgs, refreshKey]);
 
   async function loadAlerts() {
     try {
