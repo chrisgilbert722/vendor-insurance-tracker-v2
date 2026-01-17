@@ -28,33 +28,23 @@ export default async function handler(req, res) {
     const created = [];
 
     for (const v of vendors) {
-      const vendorName = v.vendor_name || "Unnamed Vendor";
+      const vendorName = v.vendor_name || v.name || "Unnamed Vendor";
 
       // 1️⃣ Insert vendor
       const rows = await sql`
         INSERT INTO vendors (
           org_id,
-          vendor_name,
+          name,
           email,
-          phone,
-          work_type,
-          address,
-          notes,
-          created_at,
-          updated_at
+          created_at
         )
         VALUES (
           ${orgId},
           ${vendorName},
           ${v.email || null},
-          ${v.phone || null},
-          ${v.work_type || null},
-          ${v.address || null},
-          ${v.notes || null},
-          NOW(),
           NOW()
         )
-        RETURNING id, vendor_name, email, work_type, created_at;
+        RETURNING id, name, email, created_at;
       `;
 
       const vendor = rows[0];
@@ -66,9 +56,8 @@ export default async function handler(req, res) {
       try {
         await emitWebhook(orgId, "vendor.created", {
           vendorId: vendorId,
-          vendorName: vendor.vendor_name,
+          vendorName: vendor.name,
           email: vendor.email,
-          workType: vendor.work_type,
           createdAt: vendor.created_at,
         });
       } catch (err) {
