@@ -758,13 +758,8 @@ You can say:
       `;
 
       // 5) Load alerts
-      const alertRows = await sql`
-        SELECT code, message, severity, created_at
-        FROM vendor_alerts
-        WHERE vendor_id = ${vendor.id}
-        ORDER BY created_at DESC
-        LIMIT 20
-      `;
+      // vendor_alerts table does not exist - return empty array
+      const alertRows = [];
 
       // 6) Build AI prompt
       const riskPrompt = `
