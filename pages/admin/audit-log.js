@@ -42,6 +42,7 @@ export default function AuditLogPage() {
   const [events, setEvents] = useState([]);
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState("");
+  const [refreshKey, setRefreshKey] = useState(0);
 
   // Filters
   const [vendorId, setVendorId] = useState("");
@@ -55,6 +56,43 @@ export default function AuditLogPage() {
   const [hasMore, setHasMore] = useState(false);
   const pageSize = 50;
 
+  // Listen for visibility changes and custom events to trigger refetch
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === "visible") {
+        setRefreshKey((k) => k + 1);
+      }
+    };
+
+    const handleDataChanged = () => {
+      setRefreshKey((k) => k + 1);
+    };
+
+    const handleStorage = (e) => {
+      if (e?.key === "policies:changed" || e?.key === "vendors:changed" || e?.key === "alerts:changed") {
+        handleDataChanged();
+      }
+    };
+
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+    window.addEventListener("policies:changed", handleDataChanged);
+    window.addEventListener("vendors:changed", handleDataChanged);
+    window.addEventListener("alerts:changed", handleDataChanged);
+    window.addEventListener("onboarding:complete", handleDataChanged);
+    window.addEventListener("storage", handleStorage);
+
+    return () => {
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+      window.removeEventListener("policies:changed", handleDataChanged);
+      window.removeEventListener("vendors:changed", handleDataChanged);
+      window.removeEventListener("alerts:changed", handleDataChanged);
+      window.removeEventListener("onboarding:complete", handleDataChanged);
+      window.removeEventListener("storage", handleStorage);
+    };
+  }, []);
+
   // ---------------------------------------
   // Load vendors (no org param needed)
   // ---------------------------------------
@@ -65,7 +103,7 @@ export default function AuditLogPage() {
       .then((r) => r.json())
       .then((j) => setVendors(j.vendors || []))
       .catch(() => {});
-  }, [activeOrgExternalId]);
+  }, [activeOrgExternalId, refreshKey]);
 
   // ---------------------------------------
   // Load audit events
@@ -107,7 +145,7 @@ export default function AuditLogPage() {
   useEffect(() => {
     load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeOrgExternalId, vendorId, source, severity, start, end, page]);
+  }, [activeOrgExternalId, vendorId, source, severity, start, end, page, refreshKey]);
 
   const header = useMemo(
     () => ["timestamp", "source", "severity", "vendorId", "vendorName", "action", "message"],

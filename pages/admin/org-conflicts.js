@@ -30,6 +30,42 @@ export default function OrgConflictsPage() {
   const [typeFilter, setTypeFilter] = useState("all");
   const [search, setSearch] = useState("");
   const [expandedIndex, setExpandedIndex] = useState(null);
+  const [refreshKey, setRefreshKey] = useState(0);
+
+  // Listen for visibility changes and custom events to trigger refetch
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === "visible") {
+        setRefreshKey((k) => k + 1);
+      }
+    };
+
+    const handleDataChanged = () => {
+      setRefreshKey((k) => k + 1);
+    };
+
+    const handleStorage = (e) => {
+      if (e?.key === "policies:changed" || e?.key === "vendors:changed") {
+        handleDataChanged();
+      }
+    };
+
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+    window.addEventListener("policies:changed", handleDataChanged);
+    window.addEventListener("vendors:changed", handleDataChanged);
+    window.addEventListener("onboarding:complete", handleDataChanged);
+    window.addEventListener("storage", handleStorage);
+
+    return () => {
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+      window.removeEventListener("policies:changed", handleDataChanged);
+      window.removeEventListener("vendors:changed", handleDataChanged);
+      window.removeEventListener("onboarding:complete", handleDataChanged);
+      window.removeEventListener("storage", handleStorage);
+    };
+  }, []);
 
   useEffect(() => {
     if (!activeOrgId) {
@@ -65,7 +101,7 @@ export default function OrgConflictsPage() {
     }
 
     loadConflicts();
-  }, [activeOrgId]);
+  }, [activeOrgId, refreshKey]);
 
   if (!activeOrgId) {
     return (
