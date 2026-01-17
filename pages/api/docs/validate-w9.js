@@ -218,7 +218,7 @@ export default async function handler(req, res) {
 
     if (vendorIdNum && !isNaN(vendorIdNum)) {
       const rows = await sql`
-        SELECT id, vendor_name, email, org_id
+        SELECT id, name AS vendor_name, email, org_id
         FROM vendors
         WHERE id = ${vendorIdNum}
         LIMIT 1;

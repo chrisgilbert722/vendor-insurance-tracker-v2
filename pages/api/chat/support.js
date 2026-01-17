@@ -616,7 +616,7 @@ You can say:
 
       // 3) Load vendor
       const vendorRows = await sql`
-        SELECT id, vendor_name, email
+        SELECT id, name AS vendor_name, email
         FROM vendors
         WHERE id = ${targetVendorId} AND org_id = ${orgId}
         LIMIT 1
@@ -728,7 +728,7 @@ You can say:
 
       // 2) Load vendor
       const vendorRows = await sql`
-        SELECT id, vendor_name, email
+        SELECT id, name AS vendor_name, email
         FROM vendors
         WHERE id = ${targetVendorId} AND org_id = ${orgId}
         LIMIT 1

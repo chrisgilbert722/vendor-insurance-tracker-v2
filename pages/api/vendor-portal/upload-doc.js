@@ -112,7 +112,7 @@ export default async function handler(req, res) {
         }
 
         const vendorRows = await sql`
-          SELECT id, vendor_name, email, org_id
+          SELECT id, name AS vendor_name, email, org_id
           FROM vendors
           WHERE id = ${t.vendor_id}
           LIMIT 1
@@ -126,7 +126,7 @@ export default async function handler(req, res) {
         vendor = vendorRows[0];
       } else if (vendorIdField && orgIdField) {
         const vendorRows = await sql`
-          SELECT id, vendor_name, email, org_id
+          SELECT id, name AS vendor_name, email, org_id
           FROM vendors
           WHERE id = ${vendorIdField}
             AND org_id = ${orgIdField}

@@ -163,7 +163,7 @@ ${text}
 
     if (vendorId && orgId) {
       const vendorRows = await sql`
-        SELECT id, org_id, vendor_name, requirements_json
+        SELECT id, org_id, name AS vendor_name
         FROM vendors
         WHERE id = ${vendorId} AND org_id = ${orgId}
         LIMIT 1;

@@ -111,7 +111,7 @@ Read this COI PDF and return JSON with:
 
       // Check if vendor already exists
       const exists = await sql`
-        SELECT id FROM vendors WHERE org_id = ${orgId} AND vendor_name = ${vendorName}
+        SELECT id FROM vendors WHERE org_id = ${orgId} AND name = ${vendorName}
       `;
 
       let vendorId;
@@ -119,7 +119,7 @@ Read this COI PDF and return JSON with:
         vendorId = exists[0].id;
       } else {
         const insertedVendor = await sql`
-          INSERT INTO vendors (org_id, vendor_name)
+          INSERT INTO vendors (org_id, name)
           VALUES (${orgId}, ${vendorName})
           RETURNING id
         `;

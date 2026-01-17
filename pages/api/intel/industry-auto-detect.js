@@ -37,7 +37,7 @@ export default async function handler(req, res) {
     let vendors = [];
     try {
       vendors = await sql`
-        SELECT vendor_name, category
+        SELECT name AS vendor_name
         FROM vendors
         WHERE org_id = ${orgId}
         LIMIT 50

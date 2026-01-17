@@ -35,7 +35,7 @@ export default async function handler(req, res) {
     // 1) LOAD VENDOR + CONTRACT DOCS
     // -----------------------------------------------------------
     const vendorRows = await sql`
-      SELECT id, vendor_name, org_id
+      SELECT id, name AS vendor_name, org_id
       FROM vendors
       WHERE id = ${vendorId}
       LIMIT 1;

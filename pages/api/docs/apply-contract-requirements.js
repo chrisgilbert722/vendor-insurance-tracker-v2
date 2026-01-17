@@ -53,7 +53,7 @@ export default async function handler(req, res) {
     // 1️⃣ LOAD EXISTING vendor.requirements_json
     // ===========================================================
     const rows = await sql`
-      SELECT id, vendor_name, requirements_json
+      SELECT id, name AS vendor_name
       FROM vendors
       WHERE id = ${vendorId} AND org_id = ${orgId}
       LIMIT 1;

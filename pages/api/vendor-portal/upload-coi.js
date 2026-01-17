@@ -108,7 +108,7 @@ export default async function handler(req, res) {
       }
 
       const vendorRows = await sql`
-        SELECT id, vendor_name, email, phone, category, org_id, requirements_json
+        SELECT id, name AS vendor_name, email, org_id
         FROM vendors
         WHERE id = ${t.vendor_id}
         LIMIT 1
@@ -121,7 +121,7 @@ export default async function handler(req, res) {
     } else if (vendorIdField && orgIdField) {
       // Admin Upload Flow
       const vendorRows = await sql`
-        SELECT id, vendor_name, email, phone, category, org_id, requirements_json
+        SELECT id, name AS vendor_name, email, org_id
         FROM vendors
         WHERE id = ${vendorIdField} AND org_id = ${orgIdField}
       `;

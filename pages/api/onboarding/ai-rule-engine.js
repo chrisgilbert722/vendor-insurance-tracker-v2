@@ -34,7 +34,7 @@ export default async function handler(req, res) {
     // 2) Load vendors (context for AI)
     // ----------------------------------------------------------
     const vendors = await sql`
-      SELECT vendor_name, email, category
+      SELECT name AS vendor_name, email
       FROM vendors
       WHERE org_id = ${orgId}
       ORDER BY id ASC;
