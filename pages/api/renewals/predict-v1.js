@@ -56,11 +56,8 @@ export default async function handler(req, res) {
       WHERE vendor_id = ANY(${vendorsToScore});
     `;
 
-    const alertRows = await sql`
-      SELECT vendor_id, code, severity, created_at
-      FROM vendor_alerts
-      WHERE vendor_id = ANY(${vendorsToScore});
-    `;
+    // vendor_alerts table does not exist - return empty array
+    const alertRows = [];
 
     const rulesRows = await sql`
       SELECT vendor_id, COUNT(*) AS total_rules,

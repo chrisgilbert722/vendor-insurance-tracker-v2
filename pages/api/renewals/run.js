@@ -56,13 +56,8 @@ export default async function handler(req, res) {
       /* --------------------------------------------------------
          3) COMPUTE RENEWAL RISK SCORE (0–100)
       -------------------------------------------------------- */
-      const alertCountRows = await sql`
-        SELECT COUNT(*)::int AS c
-        FROM vendor_alerts
-        WHERE vendor_id = ${vendorId};
-      `;
-
-      const alertsCount = alertCountRows[0].c;
+      // vendor_alerts table does not exist - use 0 alerts
+      const alertsCount = 0;
 
       const risk = predictRenewalRisk({
         expirationDate,

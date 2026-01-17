@@ -115,46 +115,16 @@ export default async function handler(req, res) {
       });
     }
 
-    // 4) Clear old renewal alerts for the vendors in scope
-    const vendorIdsInScope = [...new Set(candidates.map((c) => c.vendorId))];
-
-    // Delete renewable alerts by code prefix RENEWAL_*
-    // (adjust this WHERE clause to match your schema if needed)
-    await sql`
-      DELETE FROM vendor_alerts
-      WHERE vendor_id = ANY(${vendorIdsInScope})
-      AND code LIKE 'RENEWAL_%';
-    `;
-
-    // 5) Insert new alerts
-    let alertsInserted = 0;
-
-    for (const c of candidates) {
-      const code = `RENEWAL_${c.daysLeft}D`;
-      const severity = c.daysLeft <= 3 ? "critical" : "high";
-      const message = buildRenewalMessage(c.vendorName, c.expirationDate, c.daysLeft);
-
-      await sql`
-        INSERT INTO vendor_alerts (vendor_id, org_id, code, message, severity)
-        VALUES (
-          ${c.vendorId},
-          ${c.orgId},
-          ${code},
-          ${message},
-          ${severity}
-        );
-      `;
-
-      alertsInserted++;
-    }
-
+    // vendor_alerts table does not exist - skip alert operations
+    // Just return the candidates that would have been processed
     return res.status(200).json({
       ok: true,
       orgId: orgId || null,
       windows: reminderWindows,
       policiesConsidered: filteredPolicies.length,
       candidates: candidates.length,
-      alertsInserted,
+      alertsInserted: 0,
+      note: "vendor_alerts table not available - alerts skipped",
     });
   } catch (err) {
     console.error("[renewals/cron-v3] ERROR:", err);

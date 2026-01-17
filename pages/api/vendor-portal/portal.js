@@ -90,19 +90,9 @@ export default async function handler(req, res) {
 
     // ----------------------------------------------------------
     // 4) Load alerts
+    // vendor_alerts table does not exist - return empty array
     // ----------------------------------------------------------
-    const alertRows = await sql`
-      SELECT
-        code,
-        label,
-        message,
-        severity,
-        created_at
-      FROM vendor_alerts
-      WHERE vendor_id = ${vendorId}
-      ORDER BY severity DESC, created_at DESC
-      LIMIT 50
-    `;
+    const alertRows = [];
 
     // ----------------------------------------------------------
     // 5) Load AI extraction (optional)

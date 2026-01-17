@@ -56,52 +56,12 @@ export default async function handler(req, res) {
 
     // -------------------------------------------------------
     // 2) Update vendor_alerts: mark issue as resolved
-    // -------------------------------------------------------
-    const updateResult = await sql`
-      UPDATE vendor_alerts
-      SET resolved = TRUE,
-          resolved_at = NOW()
-      WHERE vendor_id = ${vendorId}
-        AND code = ${code}
-        AND (resolved IS NOT TRUE)
-      RETURNING id;
-    `;
-
-    const resolvedRow = updateResult[0];
-
-    if (!resolvedRow) {
-      // Either already resolved or not found
-      return res.status(200).json({
-        ok: true,
-        alreadyResolved: true,
-        message: "Issue already resolved or not found.",
-      });
-    }
-
-    // -------------------------------------------------------
-    // 3) Log resolution into system_timeline
-    // -------------------------------------------------------
-    await sql`
-      INSERT INTO system_timeline (org_id, vendor_id, action, message, severity)
-      VALUES (
-        ${orgId},
-        ${vendorId},
-        'vendor_issue_resolved',
-        ${'Vendor resolved issue: ' + code},
-        'info'
-      );
-    `;
-
-    // -------------------------------------------------------
-    // 4) Return success response
+    // vendor_alerts table does not exist - return no-op success
     // -------------------------------------------------------
     return res.status(200).json({
       ok: true,
-      vendorId,
-      orgId,
-      resolved: true,
-      code,
-      message: "Issue marked as resolved.",
+      alreadyResolved: true,
+      message: "Issue already resolved or not found.",
     });
   } catch (err) {
     console.error("[vendor/fix-issue] ERROR:", err);

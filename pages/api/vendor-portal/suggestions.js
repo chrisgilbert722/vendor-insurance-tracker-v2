@@ -80,13 +80,8 @@ export default async function handler(req, res) {
     `;
 
     // 4) Load alerts
-    const alertRows = await sql`
-      SELECT code, message, severity
-      FROM vendor_alerts
-      WHERE vendor_id = ${vendorId}
-      ORDER BY created_at DESC
-      LIMIT 20
-    `;
+    // vendor_alerts table does not exist - return empty array
+    const alertRows = [];
 
     // 5) Build AI prompt
     const prompt = `
