@@ -56,7 +56,7 @@ export default async function handler(req, res) {
 
     // 2) Load vendor information
     const vendorRows = await sql`
-      SELECT id, vendor_name, email, category
+      SELECT id, name, email, org_id
       FROM vendors
       WHERE id = ${vendorId}
       LIMIT 1

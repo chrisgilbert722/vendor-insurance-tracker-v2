@@ -64,7 +64,7 @@ export default async function handler(req, res) {
     // 2) LOAD VENDORS
     // ============================================================
     const vendors = await sql`
-      SELECT id, vendor_name
+      SELECT id, name
       FROM vendors
       WHERE org_id = ${orgId}
     `;
@@ -91,7 +91,7 @@ export default async function handler(req, res) {
     const vendorIds = vendors.map((v) => v.id);
     const vendorIndex = {};
     vendors.forEach((v) => {
-      vendorIndex[v.id] = v.vendor_name || `Vendor ${v.id}`;
+      vendorIndex[v.id] = v.name || `Vendor ${v.id}`;
     });
 
     // ============================================================
