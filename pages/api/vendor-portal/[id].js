@@ -100,9 +100,9 @@ export async function getServerSideProps({ params, req }) {
 
   // Load vendor's policies
   const policiesRes = await client.query(
-    `SELECT id, vendor_id, vendor_name, policy_number,
+    `SELECT id, vendor_id, policy_number,
             carrier, coverage_type, expiration_date,
-            effective_date, status, created_at
+            effective_date, created_at
      FROM public.policies
      WHERE vendor_id = $1
      ORDER BY created_at DESC`,
