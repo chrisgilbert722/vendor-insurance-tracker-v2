@@ -360,11 +360,40 @@ function Dashboard() {
     pass: 0,
     warn: 0,
     fail: 0,
+    hasEvaluations: false, // Track if any evaluations have run
   });
 
   const [engineMap, setEngineMap] = useState({});
   const [alertSummary, setAlertSummary] = useState({});
   const [showAlerts, setShowAlerts] = useState(true);
+
+  // Track previous orgId to detect org changes
+  const prevOrgIdRef = useRef(null);
+
+  // ============================================================
+  // CLEAR STALE DATA WHEN ORG CHANGES
+  // ============================================================
+  useEffect(() => {
+    // Skip initial render
+    if (prevOrgIdRef.current === null) {
+      prevOrgIdRef.current = activeOrgId;
+      return;
+    }
+
+    // Detect org change
+    if (prevOrgIdRef.current !== activeOrgId) {
+      prevOrgIdRef.current = activeOrgId;
+
+      // Clear all cached evaluation data to prevent stale displays
+      setEngineMap({});
+      setComplianceMap({});
+      setEliteMap({});
+      setEliteSummary({ pass: 0, warn: 0, fail: 0, hasEvaluations: false });
+      setAlertSummary({});
+      setPolicies([]);
+      setDashboard(null);
+    }
+  }, [activeOrgId]);
 
   // ============================================================
   // DASHBOARD TUTORIAL — FORCE ALERTS PANEL OPEN (STEP 3 FIX)
@@ -696,29 +725,35 @@ function Dashboard() {
       }
     };
 
-    const handlePoliciesChanged = () => {
-      // Clear engine cache so new policies get evaluated
+    const handleDataChanged = () => {
+      // Clear engine cache so vendors/policies get re-evaluated
       if (engineFetchedRef.current) {
         engineFetchedRef.current = {};
       }
+      // Clear engineMap to force fresh evaluations
+      setEngineMap({});
+      setComplianceMap({});
+      setEliteSummary({ pass: 0, warn: 0, fail: 0, hasEvaluations: false });
       setPolicyRefreshKey((k) => k + 1);
     };
 
     const handleStorage = (e) => {
-      if (e?.key === "policies:changed") {
-        handlePoliciesChanged();
+      if (e?.key === "policies:changed" || e?.key === "vendors:changed") {
+        handleDataChanged();
       }
     };
 
     document.addEventListener("visibilitychange", handleVisibilityChange);
-    window.addEventListener("policies:changed", handlePoliciesChanged);
-    window.addEventListener("onboarding:complete", handlePoliciesChanged);
+    window.addEventListener("policies:changed", handleDataChanged);
+    window.addEventListener("vendors:changed", handleDataChanged);
+    window.addEventListener("onboarding:complete", handleDataChanged);
     window.addEventListener("storage", handleStorage);
 
     return () => {
       document.removeEventListener("visibilitychange", handleVisibilityChange);
-      window.removeEventListener("policies:changed", handlePoliciesChanged);
-      window.removeEventListener("onboarding:complete", handlePoliciesChanged);
+      window.removeEventListener("policies:changed", handleDataChanged);
+      window.removeEventListener("vendors:changed", handleDataChanged);
+      window.removeEventListener("onboarding:complete", handleDataChanged);
       window.removeEventListener("storage", handleStorage);
     };
   }, []);
@@ -866,22 +901,37 @@ useEffect(() => {
   }, [policies, activeOrgId]);
 
   /* ============================================================
-     ELITE SUMMARY COUNTS
+     ELITE SUMMARY COUNTS — Derived from engineMap (Rule Engine V5)
+     Since eliteMap is not populated, we derive pass/warn/fail from
+     engineMap based on failedCount:
+       - Pass: failedCount === 0
+       - Warn: failedCount > 0 && failedCount <= 2
+       - Fail: failedCount > 2
 ============================================================ */
   useEffect(() => {
     let pass = 0,
       warn = 0,
       fail = 0;
 
-    safeArray(Object.values(safeObject(eliteMap))).forEach((e) => {
-      if (!e || e.loading || e.error) return;
-      if (e.overall === "pass") pass++;
-      else if (e.overall === "warn") warn++;
-      else if (e.overall === "fail") fail++;
+    const engineEntries = safeArray(Object.values(safeObject(engineMap)));
+    const evaluatedVendors = engineEntries.filter(
+      (e) => e && e.loaded && !e.loading && !e.error
+    );
+
+    evaluatedVendors.forEach((e) => {
+      const failedCount = typeof e.failedCount === "number" ? e.failedCount : 0;
+      if (failedCount === 0) pass++;
+      else if (failedCount <= 2) warn++;
+      else fail++;
     });
 
-    setEliteSummary({ pass, warn, fail });
-  }, [eliteMap]);
+    setEliteSummary({
+      pass,
+      warn,
+      fail,
+      hasEvaluations: evaluatedVendors.length > 0,
+    });
+  }, [engineMap]);
 
   /* ============================================================
      ALERTS V2 SUMMARY
@@ -1323,39 +1373,47 @@ const alertVendorsList = [];
             <div style={{ fontSize: 12, color: GP.textSoft, marginBottom: 6 }}>
               Elite Engine Snapshot
             </div>
-            <div
-              style={{
-                display: "flex",
-                justifyContent: "space-between",
-                fontSize: 11,
-                color: "#4ade80",
-              }}
-            >
-              <span>PASS</span>
-              <span>{eliteSummary.pass}</span>
-            </div>
-            <div
-              style={{
-                display: "flex",
-                justifyContent: "space-between",
-                fontSize: 11,
-                color: "#facc15",
-              }}
-            >
-              <span>WARN</span>
-              <span>{eliteSummary.warn}</span>
-            </div>
-            <div
-              style={{
-                display: "flex",
-                justifyContent: "space-between",
-                fontSize: 11,
-                color: "#fb7185",
-              }}
-            >
-              <span>FAIL</span>
-              <span>{eliteSummary.fail}</span>
-            </div>
+            {!eliteSummary.hasEvaluations ? (
+              <div style={{ fontSize: 11, color: GP.textMuted, fontStyle: "italic" }}>
+                No evaluations run yet
+              </div>
+            ) : (
+              <>
+                <div
+                  style={{
+                    display: "flex",
+                    justifyContent: "space-between",
+                    fontSize: 11,
+                    color: "#4ade80",
+                  }}
+                >
+                  <span>PASS</span>
+                  <span>{eliteSummary.pass}</span>
+                </div>
+                <div
+                  style={{
+                    display: "flex",
+                    justifyContent: "space-between",
+                    fontSize: 11,
+                    color: "#facc15",
+                  }}
+                >
+                  <span>WARN</span>
+                  <span>{eliteSummary.warn}</span>
+                </div>
+                <div
+                  style={{
+                    display: "flex",
+                    justifyContent: "space-between",
+                    fontSize: 11,
+                    color: "#fb7185",
+                  }}
+                >
+                  <span>FAIL</span>
+                  <span>{eliteSummary.fail}</span>
+                </div>
+              </>
+            )}
           </div>
         </div>
       </div>
