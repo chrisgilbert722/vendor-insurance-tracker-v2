@@ -43,6 +43,42 @@ export default function AdminTimelineV5() {
   const [events, setEvents] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [refreshKey, setRefreshKey] = useState(0);
+
+  // Listen for visibility changes and custom events to trigger refetch
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === "visible") {
+        setRefreshKey((k) => k + 1);
+      }
+    };
+
+    const handleTimelineChanged = () => {
+      setRefreshKey((k) => k + 1);
+    };
+
+    const handleStorage = (e) => {
+      if (e?.key === "policies:changed" || e?.key === "alerts:changed") {
+        handleTimelineChanged();
+      }
+    };
+
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+    window.addEventListener("policies:changed", handleTimelineChanged);
+    window.addEventListener("alerts:changed", handleTimelineChanged);
+    window.addEventListener("onboarding:complete", handleTimelineChanged);
+    window.addEventListener("storage", handleStorage);
+
+    return () => {
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+      window.removeEventListener("policies:changed", handleTimelineChanged);
+      window.removeEventListener("alerts:changed", handleTimelineChanged);
+      window.removeEventListener("onboarding:complete", handleTimelineChanged);
+      window.removeEventListener("storage", handleStorage);
+    };
+  }, []);
 
   useEffect(() => {
     if (!orgId) {
@@ -68,7 +104,7 @@ export default function AdminTimelineV5() {
         }
 
         if (!alive) return;
-        setEvents(Array.isArray(json.events) ? json.events : []);
+        setEvents(Array.isArray(json.timeline) ? json.timeline : []);
       } catch (e) {
         if (!alive) return;
         setError(e.message || "Failed loading timeline");
@@ -79,7 +115,7 @@ export default function AdminTimelineV5() {
     })();
 
     return () => (alive = false);
-  }, [orgId]);
+  }, [orgId, refreshKey]);
 
   return (
     <CommandShell
