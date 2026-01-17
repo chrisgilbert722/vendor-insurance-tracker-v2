@@ -1,6 +1,6 @@
 // pages/api/admin/vendor/overview.js
 // ============================================================
-// VENDOR INTELLIGENCE API (V5)
+// VENDOR INTELLIGENCE API (V5) - PRODUCTION SAFE
 // ============================================================
 //
 // Returns:
@@ -14,6 +14,8 @@
 //  • timeline
 //  • documents
 //  • metrics
+//
+// All optional queries are fail-safe and return empty arrays
 // ============================================================
 
 import { sql } from "../../../../lib/db";
@@ -35,7 +37,7 @@ export default async function handler(req, res) {
     }
 
     // ============================================================
-    // 1) LOAD VENDOR
+    // 1) LOAD VENDOR (required)
     // ============================================================
     const vendorRows = await sql`
       SELECT
@@ -55,7 +57,7 @@ export default async function handler(req, res) {
     const orgId = vendor.org_id;
 
     // ============================================================
-    // 2) ORG + PORTAL TOKEN
+    // 2) ORG (required) + PORTAL TOKEN (optional)
     // ============================================================
     const orgRows = await sql`
       SELECT id, name
@@ -65,53 +67,68 @@ export default async function handler(req, res) {
     `;
     const org = orgRows[0] || null;
 
-    const portalRows = await sql`
-      SELECT token 
-      FROM vendor_portal_tokens
-      WHERE vendor_id = ${vendorId}
-      LIMIT 1;
-    `;
-    const portalToken = portalRows[0]?.token || null;
+    let portalToken = null;
+    try {
+      const portalRows = await sql`
+        SELECT token
+        FROM vendor_portal_tokens
+        WHERE vendor_id = ${vendorId}
+        LIMIT 1;
+      `;
+      portalToken = portalRows[0]?.token || null;
+    } catch (e) {
+      console.warn("[vendor/overview] Portal token query failed:", e.message);
+    }
 
     // ============================================================
-    // 3) POLICIES
+    // 3) POLICIES (fail-safe)
     // ============================================================
-    const policies = await sql`
-      SELECT
-        id,
-        coverage_type,
-        policy_number,
-        carrier,
-        expiration_date,
-        effective_date,
-        limit_each_occurrence,
-        auto_limit,
-        work_comp_limit,
-        umbrella_limit
-      FROM policies
-      WHERE vendor_id = ${vendorId} AND org_id = ${orgId}
-      ORDER BY expiration_date ASC NULLS LAST;
-    `;
+    let policies = [];
+    try {
+      policies = await sql`
+        SELECT
+          id,
+          coverage_type,
+          policy_number,
+          carrier,
+          expiration_date,
+          effective_date,
+          limit_each_occurrence,
+          auto_limit,
+          work_comp_limit,
+          umbrella_limit
+        FROM policies
+        WHERE vendor_id = ${vendorId} AND org_id = ${orgId}
+        ORDER BY expiration_date ASC NULLS LAST;
+      `;
+    } catch (e) {
+      console.warn("[vendor/overview] Policies query failed:", e.message);
+    }
 
     // ============================================================
-    // 4) ALERTS (V2)
+    // 4) ALERTS (fail-safe)
     // ============================================================
-    const alerts = await sql`
-      SELECT
-        id,
-        severity,
-        message,
-        type,
-        created_at
-      FROM alerts_v2
-      WHERE vendor_id = ${vendorId}
-        AND org_id = ${orgId}
-        AND resolved_at IS NULL
-      ORDER BY severity DESC, created_at DESC;
-    `;
+    let alerts = [];
+    try {
+      alerts = await sql`
+        SELECT
+          id,
+          severity,
+          message,
+          type,
+          created_at
+        FROM alerts_v2
+        WHERE vendor_id = ${vendorId}
+          AND org_id = ${orgId}
+          AND resolved_at IS NULL
+        ORDER BY severity DESC, created_at DESC;
+      `;
+    } catch (e) {
+      console.warn("[vendor/overview] Alerts query failed:", e.message);
+    }
 
     // ============================================================
-    // 5) RULE ENGINE V5 SUMMARY (fail-safe, returns empty if table missing)
+    // 5) RULE ENGINE V5 SUMMARY (fail-safe)
     // ============================================================
     let failingRules = [];
     let passingRules = [];
@@ -119,26 +136,26 @@ export default async function handler(req, res) {
     try {
       failingRules = await sql`
         SELECT
-          rr.id AS rule_id,
-          rr.severity,
-          rr.message
-        FROM rule_results_v3 rr
-        WHERE rr.vendor_id = ${vendorId}
-          AND rr.org_id = ${orgId}
-          AND rr.passed = FALSE;
+          id AS rule_id,
+          severity,
+          message
+        FROM rule_results_v3
+        WHERE vendor_id = ${vendorId}
+          AND org_id = ${orgId}
+          AND passed = FALSE;
       `;
 
       passingRules = await sql`
         SELECT
-          rr.id AS rule_id,
-          rr.message
-        FROM rule_results_v3 rr
-        WHERE rr.vendor_id = ${vendorId}
-          AND rr.org_id = ${orgId}
-          AND rr.passed = TRUE;
+          id AS rule_id,
+          message
+        FROM rule_results_v3
+        WHERE vendor_id = ${vendorId}
+          AND org_id = ${orgId}
+          AND passed = TRUE;
       `;
-    } catch (ruleErr) {
-      console.warn("[vendor/overview] Rule query failed:", ruleErr.message);
+    } catch (e) {
+      console.warn("[vendor/overview] Rule query failed:", e.message);
     }
 
     const engine = {
@@ -173,25 +190,35 @@ export default async function handler(req, res) {
     const intel = { coverageMap, failuresByCoverage };
 
     // ============================================================
-    // 7) TIMELINE (last 50)
+    // 7) TIMELINE (fail-safe)
     // ============================================================
-    const timeline = await sql`
-      SELECT action, message, severity, created_at
-      FROM vendor_timeline
-      WHERE vendor_id = ${vendorId}
-      ORDER BY created_at DESC
-      LIMIT 50;
-    `;
+    let timeline = [];
+    try {
+      timeline = await sql`
+        SELECT action, message, severity, created_at
+        FROM vendor_timeline
+        WHERE vendor_id = ${vendorId}
+        ORDER BY created_at DESC
+        LIMIT 50;
+      `;
+    } catch (e) {
+      console.warn("[vendor/overview] Timeline query failed:", e.message);
+    }
 
     // ============================================================
-    // 8) DOCUMENTS (all types: COI, contract, W9, etc.)
+    // 8) DOCUMENTS (fail-safe)
     // ============================================================
-    const documents = await sql`
-      SELECT id, document_type, file_url, ai_json, uploaded_at
-      FROM vendor_documents
-      WHERE vendor_id = ${vendorId}
-      ORDER BY uploaded_at DESC;
-    `;
+    let documents = [];
+    try {
+      documents = await sql`
+        SELECT id, document_type, file_url, ai_json, uploaded_at
+        FROM vendor_documents
+        WHERE vendor_id = ${vendorId}
+        ORDER BY uploaded_at DESC;
+      `;
+    } catch (e) {
+      console.warn("[vendor/overview] Documents query failed:", e.message);
+    }
 
     // ============================================================
     // 9) METRICS
