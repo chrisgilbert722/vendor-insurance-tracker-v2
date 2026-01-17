@@ -172,6 +172,13 @@ function RuleCard({
 
   drag(drop(ref));
 
+  // Support both V2 format (name, logic) and legacy V5 format (field_key, operator, expected_value)
+  const logic = rule.logic || {};
+  const fieldKey = logic.field_key || rule.field_key || "";
+  const operator = logic.operator || rule.operator || "";
+  const expectedValue = logic.expected_value ?? rule.expected_value ?? "";
+  const ruleName = rule.name || "";
+
   return (
     <div
       ref={ref}
@@ -190,11 +197,21 @@ function RuleCard({
         cursor: canEdit ? "grab" : "default",
       }}
     >
-      <div style={{ fontSize: 13, marginBottom: 6 }}>
-        IF <span style={{ color: "#93c5fd" }}>{rule.field_key}</span>{" "}
-        {operatorLabel(rule.operator)}{" "}
-        <span style={{ color: "#c4b5fd" }}>{rule.expected_value}</span>
-      </div>
+      {ruleName ? (
+        <div style={{ fontSize: 13, marginBottom: 6, fontWeight: 500, color: "#e5e7eb" }}>
+          {ruleName}
+        </div>
+      ) : fieldKey ? (
+        <div style={{ fontSize: 13, marginBottom: 6 }}>
+          IF <span style={{ color: "#93c5fd" }}>{fieldKey}</span>{" "}
+          {operatorLabel(operator)}{" "}
+          <span style={{ color: "#c4b5fd" }}>{expectedValue}</span>
+        </div>
+      ) : (
+        <div style={{ fontSize: 13, marginBottom: 6, color: "#9ca3af", fontStyle: "italic" }}>
+          Empty rule
+        </div>
+      )}
 
       <div style={{ display: "flex", justifyContent: "space-between" }}>
         <button
@@ -548,10 +565,12 @@ export default function RequirementsV5Page() {
   async function handleCreateRule() {
     if (!activeGroup || !canEdit) return;
 
-    const field_key = prompt("Field key:");
-    if (!field_key) return;
-    const expected_value = prompt("Expected value:");
-    if (!expected_value) return;
+    const ruleName = prompt("Rule name (e.g. 'GL Each Occurrence >= 1M'):");
+    if (!ruleName) return;
+    const severityInput = prompt("Severity (critical/required/recommended):");
+    const severity = ["critical", "required", "recommended"].includes(severityInput)
+      ? severityInput
+      : "required";
 
     try {
       setSaving(true);
@@ -559,17 +578,19 @@ export default function RequirementsV5Page() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          groupId: activeGroup.id,
-          field_key,
-          operator: "equals",
-          expected_value,
-          severity: "required",
+          group_id: activeGroup.id,
+          name: ruleName,
+          description: "",
+          severity,
+          logic: {},
+          is_active: true,
         }),
       });
       const json = await res.json();
       if (!json.ok) throw new Error(json.error);
 
       setRules((p) => [...p, json.rule]);
+      setToast({ open: true, type: "success", message: "Rule created." });
     } catch (err) {
       console.error(err);
       setToast({ open: true, type: "error", message: err.message });
@@ -645,6 +666,15 @@ export default function RequirementsV5Page() {
   // ENGINE RUN (V5 LOGGING, still uses run-v3 backend)
   // -------------------------------------
   async function handleRunEngine() {
+    if (!orgId) {
+      setToast({
+        open: true,
+        type: "error",
+        message: "No active org. Select or create an org first.",
+      });
+      return;
+    }
+
     try {
       setRunningEngine(true);
       setEngineLog((prev) => [
@@ -656,18 +686,39 @@ export default function RequirementsV5Page() {
         ...prev,
       ]);
 
-      const res = await fetch("/api/engine/run-v3", { method: "POST" });
+      const res = await fetch("/api/engine/run-v3", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ orgId }),
+      });
       const json = await res.json();
 
       if (!res.ok || !json.ok) {
         throw new Error(json.error || "Engine run failed.");
       }
 
+      // Handle skipped case
+      if (json.skipped) {
+        const skipReason =
+          json.reason === "no_vendors_found"
+            ? "No vendors found for this org."
+            : json.reason || "Engine skipped.";
+        setEngineLog((prev) => [
+          {
+            at: new Date().toISOString(),
+            level: "info",
+            message: skipReason,
+          },
+          ...prev,
+        ]);
+        setToast({ open: true, type: "success", message: skipReason });
+        setRunningEngine(false);
+        return;
+      }
+
       const msg =
         json.message ||
-        `Engine ran for ${json.vendors_evaluated || 0} vendors, created ${
-          json.alerts_created || 0
-        } alerts.`;
+        `Engine ran for ${json.vendorsProcessed || json.vendors_evaluated || 0} vendors.`;
 
       setLastRunAt(new Date().toISOString());
       setEngineLog((prev) => [
@@ -741,6 +792,15 @@ export default function RequirementsV5Page() {
         open: true,
         type: "error",
         message: "No active org. Select or create an org first.",
+      });
+      return;
+    }
+
+    if (!activeGroupId) {
+      setToast({
+        open: true,
+        type: "error",
+        message: "Select or create a group first. Rules must belong to a group.",
       });
       return;
     }
@@ -833,12 +893,16 @@ export default function RequirementsV5Page() {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
-            groupId: activeGroup.id,
-            field_key: "policy.glEachOccurrence",
-            operator: "gte",
-            expected_value: 1000000,
+            group_id: activeGroup.id,
+            name: "GL Each Occurrence >= 1M",
+            description: aiText,
             severity: "critical",
-            requirement_text: aiText,
+            logic: {
+              field_key: "policy.glEachOccurrence",
+              operator: "gte",
+              expected_value: 1000000,
+            },
+            is_active: true,
           }),
         });
         const json = await res.json();
@@ -1748,32 +1812,49 @@ Must include Additional Insured and Waiver of Subrogation."`}
                 }}
               >
                 {activeGroup && rules.length > 0 ? (
-                  rules.map((r) => (
-                    <div
-                      key={r.id}
-                      style={{
-                        padding: "4px 0",
-                        borderBottom: "1px solid rgba(31,41,55,0.8)",
-                      }}
-                    >
-                      IF{" "}
-                      <span style={{ color: "#93c5fd" }}>{r.field_key}</span>{" "}
-                      {operatorLabel(r.operator)}{" "}
-                      <span style={{ color: "#a5b4fc" }}>
-                        {r.expected_value}
-                      </span>{" "}
-                      →{" "}
-                      <span
+                  rules.map((r) => {
+                    const logic = r.logic || {};
+                    const fieldKey = logic.field_key || r.field_key || "";
+                    const op = logic.operator || r.operator || "";
+                    const expVal = logic.expected_value ?? r.expected_value ?? "";
+                    const ruleName = r.name || "";
+
+                    return (
+                      <div
+                        key={r.id}
                         style={{
-                          color:
-                            SEVERITY_COLORS[r.severity] ||
-                            SEVERITY_COLORS.medium,
+                          padding: "4px 0",
+                          borderBottom: "1px solid rgba(31,41,55,0.8)",
                         }}
                       >
-                        {String(r.severity || "medium").toUpperCase()} ALERT
-                      </span>
-                    </div>
-                  ))
+                        {ruleName ? (
+                          <>
+                            <span style={{ color: "#e5e7eb" }}>{ruleName}</span>
+                            {" → "}
+                          </>
+                        ) : fieldKey ? (
+                          <>
+                            IF{" "}
+                            <span style={{ color: "#93c5fd" }}>{fieldKey}</span>{" "}
+                            {operatorLabel(op)}{" "}
+                            <span style={{ color: "#a5b4fc" }}>{expVal}</span>
+                            {" → "}
+                          </>
+                        ) : (
+                          <span style={{ color: "#6b7280" }}>Empty rule → </span>
+                        )}
+                        <span
+                          style={{
+                            color:
+                              SEVERITY_COLORS[r.severity] ||
+                              SEVERITY_COLORS.medium,
+                          }}
+                        >
+                          {String(r.severity || "medium").toUpperCase()} ALERT
+                        </span>
+                      </div>
+                    );
+                  })
                 ) : (
                   <div style={{ color: "#6b7280" }}>
                     Add rules in the lanes to preview logic.
