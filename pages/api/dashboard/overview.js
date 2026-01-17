@@ -10,20 +10,24 @@ export default async function handler(req, res) {
     }
 
     //
-    // 1. Load vendors
+    // 1. Load vendors (ACTIVE ONLY — exclude at_rest)
     //
     const vendors = await sql`
-      SELECT id FROM vendors WHERE org_id = ${orgId};
+      SELECT id FROM vendors
+      WHERE org_id = ${orgId}
+        AND (status IS NULL OR status = 'active');
     `;
     const vendorCount = vendors.length;
 
     //
-    // 2. Policies for expiration logic
+    // 2. Policies for expiration logic (ACTIVE VENDORS ONLY)
     //
     const policies = await sql`
-      SELECT id, expiration_date
-      FROM policies
-      WHERE org_id = ${orgId};
+      SELECT p.id, p.expiration_date
+      FROM policies p
+      INNER JOIN vendors v ON v.id = p.vendor_id
+      WHERE p.org_id = ${orgId}
+        AND (v.status IS NULL OR v.status = 'active');
     `;
 
     const today = new Date();

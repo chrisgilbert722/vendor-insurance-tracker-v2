@@ -34,6 +34,7 @@ export default async function handler(req, res) {
     }
 
     // Run all checks in parallel for performance
+    // Note: vendor/policy counts filter ACTIVE vendors only (exclude at_rest)
     const [
       vendorResult,
       policyResult,
@@ -43,9 +44,9 @@ export default async function handler(req, res) {
       alertResult,
       orgResult,
     ] = await Promise.all([
-      sql`SELECT COUNT(*)::int as count FROM vendors WHERE org_id = ${orgId}`.catch(() => [{ count: 0 }]),
-      sql`SELECT COUNT(*)::int as count FROM policies WHERE org_id = ${orgId}`.catch(() => [{ count: 0 }]),
-      sql`SELECT COUNT(*)::int as count FROM certificates WHERE vendor_id IN (SELECT id FROM vendors WHERE org_id = ${orgId})`.catch(() => [{ count: 0 }]),
+      sql`SELECT COUNT(*)::int as count FROM vendors WHERE org_id = ${orgId} AND (status IS NULL OR status = 'active')`.catch(() => [{ count: 0 }]),
+      sql`SELECT COUNT(*)::int as count FROM policies p INNER JOIN vendors v ON v.id = p.vendor_id WHERE p.org_id = ${orgId} AND (v.status IS NULL OR v.status = 'active')`.catch(() => [{ count: 0 }]),
+      sql`SELECT COUNT(*)::int as count FROM certificates WHERE vendor_id IN (SELECT id FROM vendors WHERE org_id = ${orgId} AND (status IS NULL OR status = 'active'))`.catch(() => [{ count: 0 }]),
       sql`SELECT COUNT(*)::int as count FROM requirements_groups_v2 WHERE org_id = ${orgId}`.catch(() => [{ count: 0 }]),
       sql`SELECT COUNT(*)::int as count FROM requirements_rules_v2 WHERE group_id IN (SELECT id FROM requirements_groups_v2 WHERE org_id = ${orgId})`.catch(() => [{ count: 0 }]),
       sql`SELECT COUNT(*)::int as count FROM alerts_v2 WHERE org_id = ${orgId}`.catch(() => [{ count: 0 }]),

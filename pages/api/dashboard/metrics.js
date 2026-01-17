@@ -31,14 +31,15 @@ export default async function handler(req, res) {
     const orgId = requireOrgId(req);
 
     /* ============================================================
-       1) Vendor count
+       1) Vendor count (ACTIVE ONLY — exclude at_rest)
     ============================================================ */
     let vendorCount = 0;
     try {
       const rows = await sql`
         SELECT COUNT(*)::int AS vendor_count
         FROM vendors
-        WHERE org_id = ${orgId};
+        WHERE org_id = ${orgId}
+          AND (status IS NULL OR status = 'active');
       `;
       vendorCount = rows[0]?.vendor_count ?? 0;
     } catch (err) {
@@ -46,7 +47,7 @@ export default async function handler(req, res) {
     }
 
     /* ============================================================
-       2) Policy awareness (includes placeholders)
+       2) Policy awareness (ACTIVE VENDORS ONLY)
     ============================================================ */
     let policyCount = 0;
     let placeholderCount = 0;
@@ -55,9 +56,11 @@ export default async function handler(req, res) {
       const policyRows = await sql`
         SELECT
           COUNT(*)::int AS total,
-          COUNT(*) FILTER (WHERE is_placeholder = true)::int AS placeholders
-        FROM policies
-        WHERE org_id = ${orgId};
+          COUNT(*) FILTER (WHERE p.is_placeholder = true)::int AS placeholders
+        FROM policies p
+        INNER JOIN vendors v ON v.id = p.vendor_id
+        WHERE p.org_id = ${orgId}
+          AND (v.status IS NULL OR v.status = 'active');
       `;
 
       policyCount = policyRows[0]?.total ?? 0;

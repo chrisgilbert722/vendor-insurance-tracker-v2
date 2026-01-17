@@ -17,7 +17,7 @@ export default async function handler(req, res) {
       return res.status(200).json({ ok: true, data: [] });
     }
 
-    // ORG-SCOPED QUERY — only return policies for this org
+    // ORG-SCOPED QUERY — only return policies for ACTIVE vendors
     const rows = await sql`
       SELECT
         p.id AS policy_id,
@@ -26,9 +26,10 @@ export default async function handler(req, res) {
         p.expiration_date,
         v.name AS vendor_name
       FROM policies p
-      LEFT JOIN vendors v ON v.id = p.vendor_id
+      INNER JOIN vendors v ON v.id = p.vendor_id
       WHERE p.org_id = ${orgId}
         AND p.expiration_date IS NOT NULL
+        AND (v.status IS NULL OR v.status = 'active')
     `;
 
     const now = new Date();

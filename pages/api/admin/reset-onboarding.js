@@ -1,12 +1,13 @@
 // pages/api/admin/reset-onboarding.js
 // ============================================================
 // ADMIN — RESET / REPLAY ONBOARDING
-// - Admin only
+// - Admin only (server-side enforced)
 // - Safe reset (no data deletion)
 // ============================================================
 
 import { sql } from "@db";
 import { resolveOrg } from "@resolveOrg";
+import { requireAdmin } from "../../../lib/server/requireAdmin";
 
 export default async function handler(req, res) {
   if (req.method !== "POST") {
@@ -14,9 +15,17 @@ export default async function handler(req, res) {
   }
 
   try {
-    // 🔒 TODO: enforce admin role here (recommended)
     const orgIdInt = await resolveOrg(req, res);
     if (!orgIdInt) return res.status(200).json({ ok: true });
+
+    // 🔒 Admin-only: server-side role check
+    const adminCheck = await requireAdmin(req, orgIdInt);
+    if (!adminCheck.ok) {
+      return res.status(403).json({
+        ok: false,
+        error: adminCheck.error || "Admin access required",
+      });
+    }
 
     // Reset onboarding telemetry
     await sql`

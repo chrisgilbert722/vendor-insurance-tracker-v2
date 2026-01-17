@@ -1,5 +1,6 @@
 // ============================================================
-// ONBOARDING RESET — ADMIN / DEV TOOL
+// ONBOARDING RESET — ADMIN ONLY
+// - Admin only (server-side enforced)
 // - Resets onboarding to Step 1
 // - Does NOT delete business data
 // - Safe for reuse during testing
@@ -7,6 +8,7 @@
 
 import { sql } from "../../../lib/db";
 import { resolveOrg } from "../../../lib/server/resolveOrg";
+import { requireAdmin } from "../../../lib/server/requireAdmin";
 
 export default async function handler(req, res) {
   if (req.method !== "POST") {
@@ -20,6 +22,15 @@ export default async function handler(req, res) {
       return res.status(400).json({
         ok: false,
         error: "Unable to resolve organization",
+      });
+    }
+
+    // 🔒 Admin-only: server-side role check
+    const adminCheck = await requireAdmin(req, orgId);
+    if (!adminCheck.ok) {
+      return res.status(403).json({
+        ok: false,
+        error: adminCheck.error || "Admin access required",
       });
     }
 
