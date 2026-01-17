@@ -24,6 +24,7 @@ export default async function handler(req, res) {
 
   try {
     const uploadToken = crypto.randomBytes(24).toString("hex");
+    const externalUuid = crypto.randomUUID();
 
     const expiresAt = new Date();
     expiresAt.setDate(expiresAt.getDate() + 30);
@@ -34,14 +35,16 @@ export default async function handler(req, res) {
         name,
         email,
         upload_token,
-        upload_token_expires_at
+        upload_token_expires_at,
+        external_uuid
       )
       VALUES (
         ${orgId},
         ${name},
         ${email || null},
         ${uploadToken},
-        ${expiresAt}
+        ${expiresAt},
+        ${externalUuid}
       )
       RETURNING id, name, email, upload_token;
     `;
