@@ -36,7 +36,7 @@ function csvEscape(v) {
 }
 
 export default function AuditLogPage() {
-  const { activeOrgExternalId } = useOrg();
+  const { activeOrgUuid } = useOrg();
 
   const [vendors, setVendors] = useState([]);
   const [events, setEvents] = useState([]);
@@ -97,25 +97,25 @@ export default function AuditLogPage() {
   // Load vendors (no org param needed)
   // ---------------------------------------
   useEffect(() => {
-    if (!activeOrgExternalId) return;
+    if (!activeOrgUuid) return;
 
     fetch("/api/admin/vendors-lite")
       .then((r) => r.json())
       .then((j) => setVendors(j.vendors || []))
       .catch(() => {});
-  }, [activeOrgExternalId, refreshKey]);
+  }, [activeOrgUuid, refreshKey]);
 
   // ---------------------------------------
   // Load audit events
   // ---------------------------------------
   async function load() {
-    if (!activeOrgExternalId) return;
+    if (!activeOrgUuid) return;
     setLoading(true);
     setErr("");
 
     try {
       const qs = new URLSearchParams();
-      qs.set("orgExternalId", activeOrgExternalId);
+      qs.set("orgExternalId", activeOrgUuid);
       qs.set("page", String(page));
       qs.set("pageSize", String(pageSize));
       if (vendorId) qs.set("vendorId", vendorId);
@@ -140,12 +140,12 @@ export default function AuditLogPage() {
 
   useEffect(() => {
     setPage(1);
-  }, [activeOrgExternalId, vendorId, source, severity, start, end]);
+  }, [activeOrgUuid, vendorId, source, severity, start, end]);
 
   useEffect(() => {
     load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeOrgExternalId, vendorId, source, severity, start, end, page, refreshKey]);
+  }, [activeOrgUuid, vendorId, source, severity, start, end, page, refreshKey]);
 
   const header = useMemo(
     () => ["timestamp", "source", "severity", "vendorId", "vendorName", "action", "message"],
@@ -172,7 +172,7 @@ export default function AuditLogPage() {
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
-    a.download = `audit_log_org_${activeOrgExternalId}_page_${page}.csv`;
+    a.download = `audit_log_org_${activeOrgUuid}_page_${page}.csv`;
     a.click();
     URL.revokeObjectURL(url);
   }

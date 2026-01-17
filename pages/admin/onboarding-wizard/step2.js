@@ -10,9 +10,11 @@ import { useRouter } from "next/router";
 import { openai } from "../../../lib/openaiClient";
 import ToastV2 from "../../../components/ToastV2";
 import CockpitWizardLayout from "../../../components/CockpitWizardLayout";  // ✅ NEW
+import { useOrg } from "../../../context/OrgContext";
 
 export default function OnboardingWizardStep2() {
   const router = useRouter();
+  const { activeOrgId } = useOrg();
 
   // -----------------------------------------------------------
   // STATE
@@ -158,7 +160,7 @@ Format:
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          orgId: 1,
+          orgId: activeOrgId,
           vendorIds: selectedVendorIds,
         }),
       });

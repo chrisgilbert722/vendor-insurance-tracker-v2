@@ -9,9 +9,11 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/router";
 import ToastV2 from "../../../components/ToastV2";
 import CockpitWizardLayout from "../../../components/CockpitWizardLayout";
+import { useOrg } from "../../../context/OrgContext";
 
 export default function OnboardingWizardStep5() {
   const router = useRouter();
+  const { activeOrgId } = useOrg();
 
   const [vendors, setVendors] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -94,7 +96,7 @@ export default function OnboardingWizardStep5() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          orgId: 1,
+          orgId: activeOrgId,
           vendorIds: selectedVendorIds,
           mode, // 'missing_coi' | 'coverage_issues' | 'renewal'
         }),

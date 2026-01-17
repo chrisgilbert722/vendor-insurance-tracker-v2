@@ -8,7 +8,7 @@ export default async function handler(req, res) {
       .json({ ok: false, error: "Method not allowed" });
   }
 
-  const { name, email } = req.body || {};
+  const { name, email, orgId } = req.body || {};
 
   if (!name) {
     return res
@@ -16,13 +16,17 @@ export default async function handler(req, res) {
       .json({ ok: false, error: "Vendor name is required" });
   }
 
+  if (!orgId) {
+    return res
+      .status(400)
+      .json({ ok: false, error: "orgId is required" });
+  }
+
   try {
     const uploadToken = crypto.randomBytes(24).toString("hex");
 
     const expiresAt = new Date();
     expiresAt.setDate(expiresAt.getDate() + 30);
-
-    const orgId = 1;
 
     const rows = await sql`
       INSERT INTO vendors (
