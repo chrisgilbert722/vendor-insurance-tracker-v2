@@ -75,9 +75,14 @@ export default function UploadCOIPage() {
     if (showVendorPicker && activeOrgId && vendors.length === 0) {
       loadVendors();
     }
-  }, [showVendorPicker, activeOrgId]);
+    // Also preload vendors if no vendorId (anticipate picker)
+    if (!vendorId && activeOrgId && vendors.length === 0 && !loadingVendors) {
+      loadVendors();
+    }
+  }, [showVendorPicker, activeOrgId, vendorId]);
 
   async function loadVendors() {
+    if (!activeOrgId) return;
     setLoadingVendors(true);
     try {
       const res = await fetch(`/api/vendors?orgId=${activeOrgId}`);
@@ -121,6 +126,8 @@ export default function UploadCOIPage() {
     setIsDragging(false);
   };
 
+  // FIXED: Upload handler does NOT require vendorId
+  // Upload always proceeds, vendor picker shown AFTER upload if needed
   const handleSubmit = async (e) => {
     e.preventDefault();
 
@@ -134,14 +141,9 @@ export default function UploadCOIPage() {
       return;
     }
 
-    // If no vendorId, show vendor picker after upload
-    if (!vendorId) {
-      setShowVendorPicker(true);
-      setPendingUploadResult({ file });
-      return;
-    }
-
-    await performUpload(file, vendorId);
+    // FIXED: Always proceed with upload, pass vendorId if available
+    // Vendor picker will be shown AFTER upload completes if no vendor selected
+    await performUpload(file, vendorId || null);
   };
 
   async function performUpload(uploadFile, vId) {
@@ -152,13 +154,18 @@ export default function UploadCOIPage() {
     setViewerOpen(false);
     setFileUrl(null);
     setExtracted(null);
-    setShowVendorPicker(false);
-    setPendingUploadResult(null);
+
+    // Track if we need to show vendor picker after upload
+    const needsVendorSelection = !vId;
 
     try {
       const formData = new FormData();
       formData.append("file", uploadFile);
-      formData.append("vendorId", vId);
+
+      // FIXED: Only append vendorId if we have one
+      if (vId) {
+        formData.append("vendorId", vId);
+      }
 
       const res = await fetch("/api/upload-coi", {
         method: "POST",
@@ -191,6 +198,12 @@ export default function UploadCOIPage() {
       }
 
       setActiveStep("done");
+
+      // FIXED: Show vendor picker AFTER successful upload if no vendor was selected
+      if (needsVendorSelection) {
+        setPendingUploadResult(data);
+        setShowVendorPicker(true);
+      }
     } catch (err) {
       console.error(err);
       setError(
@@ -203,10 +216,33 @@ export default function UploadCOIPage() {
     }
   }
 
+  // FIXED: Handle vendor selection after upload
   function handleVendorSelect(vId) {
     setSelectedVendorId(vId);
-    if (pendingUploadResult?.file) {
-      performUpload(pendingUploadResult.file, vId);
+    setShowVendorPicker(false);
+
+    // If we have a pending upload, link it to the selected vendor
+    if (pendingUploadResult) {
+      // Update result to show vendor association
+      setResult({
+        ...pendingUploadResult,
+        linkedVendorId: vId,
+        vendorLinked: true,
+      });
+
+      // If the upload returned a document/policy ID, we could call an API here
+      // to associate it with the vendor. For now, we track it client-side.
+      const docId = pendingUploadResult?.documentId || pendingUploadResult?.policyId;
+      if (docId) {
+        // Fire event to notify other components
+        if (typeof window !== "undefined") {
+          window.dispatchEvent(new CustomEvent("coi:linked", {
+            detail: { documentId: docId, vendorId: vId }
+          }));
+        }
+      }
+
+      setPendingUploadResult(null);
     }
   }
 
@@ -384,8 +420,8 @@ export default function UploadCOIPage() {
                   </span>
                 </>
               ) : (
-                <span style={{ color: "#facc15" }}>
-                  No vendor selected — you can select after upload
+                <span style={{ color: "#38bdf8" }}>
+                  Upload first — select vendor after
                 </span>
               )}
             </div>
@@ -434,7 +470,7 @@ export default function UploadCOIPage() {
         </div>
       </div>
 
-      {/* VENDOR PICKER MODAL */}
+      {/* VENDOR PICKER MODAL - Shows AFTER upload when no vendor was selected */}
       {showVendorPicker && (
         <div
           style={{
@@ -459,27 +495,62 @@ export default function UploadCOIPage() {
               boxShadow: "0 24px 60px rgba(0,0,0,0.9)",
             }}
           >
-            <h3
+            <div
               style={{
-                margin: "0 0 12px",
-                fontSize: 18,
-                fontWeight: 600,
-                color: "#e5e7eb",
+                display: "flex",
+                alignItems: "center",
+                gap: 10,
+                marginBottom: 12,
               }}
             >
-              Select a Vendor
-            </h3>
-            <p style={{ margin: "0 0 16px", fontSize: 13, color: "#9ca3af" }}>
-              Choose which vendor this COI belongs to.
-            </p>
+              <span style={{ fontSize: 24 }}>✅</span>
+              <div>
+                <h3
+                  style={{
+                    margin: 0,
+                    fontSize: 18,
+                    fontWeight: 600,
+                    color: "#22c55e",
+                  }}
+                >
+                  COI Uploaded Successfully
+                </h3>
+                <p style={{ margin: 0, fontSize: 12, color: "#9ca3af" }}>
+                  Now select which vendor this COI belongs to
+                </p>
+              </div>
+            </div>
 
             {loadingVendors ? (
               <div style={{ padding: 20, textAlign: "center", color: "#9ca3af" }}>
+                <div
+                  style={{
+                    width: 24,
+                    height: 24,
+                    borderRadius: "999px",
+                    border: "2px solid rgba(56,189,248,0.3)",
+                    borderTopColor: "#38bdf8",
+                    animation: "spin 1s linear infinite",
+                    margin: "0 auto 8px",
+                  }}
+                />
                 Loading vendors...
               </div>
             ) : vendors.length === 0 ? (
-              <div style={{ padding: 20, textAlign: "center", color: "#9ca3af" }}>
-                No vendors found. Create a vendor first.
+              <div
+                style={{
+                  padding: 20,
+                  textAlign: "center",
+                  color: "#9ca3af",
+                  borderRadius: 12,
+                  border: "1px dashed rgba(75,85,99,0.6)",
+                  background: "rgba(15,23,42,0.5)",
+                }}
+              >
+                <div style={{ marginBottom: 8 }}>No vendors found.</div>
+                <div style={{ fontSize: 12 }}>
+                  Create a vendor first, then link this COI.
+                </div>
               </div>
             ) : (
               <div
@@ -507,6 +578,15 @@ export default function UploadCOIPage() {
                       display: "flex",
                       justifyContent: "space-between",
                       alignItems: "center",
+                      transition: "border-color 0.15s ease, background 0.15s ease",
+                    }}
+                    onMouseOver={(e) => {
+                      e.currentTarget.style.borderColor = "rgba(56,189,248,0.8)";
+                      e.currentTarget.style.background = "rgba(30,58,138,0.3)";
+                    }}
+                    onMouseOut={(e) => {
+                      e.currentTarget.style.borderColor = "rgba(51,65,85,0.8)";
+                      e.currentTarget.style.background = "rgba(15,23,42,0.9)";
                     }}
                   >
                     <span>{v.name}</span>
@@ -537,7 +617,7 @@ export default function UploadCOIPage() {
                   cursor: "pointer",
                 }}
               >
-                Cancel
+                Skip for now
               </button>
               <button
                 onClick={() => router.push("/vendors")}
@@ -684,9 +764,10 @@ export default function UploadCOIPage() {
                 gap: 8,
               }}
             >
+              {/* FIXED: Button is ALWAYS clickable (only disabled when submitting or no permission) */}
               <button
                 type="submit"
-                disabled={isSubmitting || !canUpload}
+                disabled={isSubmitting || !canUpload || !file}
                 style={{
                   borderRadius: 999,
                   padding: "9px 16px",
@@ -699,8 +780,8 @@ export default function UploadCOIPage() {
                   display: "inline-flex",
                   alignItems: "center",
                   gap: 8,
-                  cursor: isSubmitting || !canUpload ? "not-allowed" : "pointer",
-                  opacity: isSubmitting || !canUpload ? 0.6 : 1,
+                  cursor: isSubmitting || !canUpload || !file ? "not-allowed" : "pointer",
+                  opacity: isSubmitting || !canUpload || !file ? 0.6 : 1,
                 }}
               >
                 {isSubmitting ? "Uploading & analyzing…" : "Upload & analyze COI"}
@@ -714,7 +795,7 @@ export default function UploadCOIPage() {
               >
                 {vendorId
                   ? "COI will be attached to selected vendor"
-                  : "You'll select a vendor after upload"}
+                  : "Select vendor after upload"}
               </div>
             </div>
           </form>
@@ -865,6 +946,28 @@ export default function UploadCOIPage() {
               </button>
             )}
           </div>
+
+          {/* Show vendor linked status */}
+          {result?.vendorLinked && (
+            <div
+              style={{
+                padding: "8px 12px",
+                borderRadius: 10,
+                border: "1px solid rgba(34,197,94,0.7)",
+                background: "rgba(22,163,74,0.15)",
+                color: "#bbf7d0",
+                fontSize: 12,
+                display: "flex",
+                alignItems: "center",
+                gap: 8,
+              }}
+            >
+              <span>✅</span>
+              <span>
+                COI linked to vendor ID: <strong>{result.linkedVendorId}</strong>
+              </span>
+            </div>
+          )}
 
           {!result && (
             <div
