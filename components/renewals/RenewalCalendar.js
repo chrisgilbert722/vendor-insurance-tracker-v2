@@ -1,6 +1,18 @@
 // components/renewals/RenewalCalendar.js
+// ============================================================
+// RENEWAL CALENDAR — ORG-SCOPED (NO DEMO DATA)
+// Shows expiring policies grouped by date
+// Empty state for first-time users
+// ============================================================
 
 import { useEffect, useState } from "react";
+import { useOrg } from "../../context/OrgContext";
+
+const GP = {
+  textSoft: "#9ca3af",
+  textMuted: "#6b7280",
+  border: "rgba(51,65,85,0.9)",
+};
 
 function groupByDate(data = []) {
   const map = {};
@@ -13,16 +25,25 @@ function groupByDate(data = []) {
 }
 
 export default function RenewalCalendar({ range = 60 }) {
+  const { activeOrgId } = useOrg();
   const [data, setData] = useState([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    // Reset when org changes
+    setData([]);
+    setLoading(true);
+
+    if (!activeOrgId) {
+      setLoading(false);
+      return;
+    }
+
     async function load() {
       try {
-        setLoading(true);
-        const res = await fetch(`/api/renewals/expiring?range=${range}`);
+        const res = await fetch(`/api/renewals/expiring?range=${range}&orgId=${activeOrgId}`);
         const json = await res.json();
-        if (json.ok) setData(json.data);
+        if (json.ok) setData(json.data || []);
       } catch (err) {
         console.error("RenewalCalendar error:", err);
       } finally {
@@ -30,20 +51,54 @@ export default function RenewalCalendar({ range = 60 }) {
       }
     }
     load();
-  }, [range]);
+  }, [range, activeOrgId]);
 
   if (loading) {
     return (
-      <div style={{ fontSize: 13, color: "#9ca3af" }}>
-        Loading renewal calendar…
+      <div
+        style={{
+          borderRadius: 16,
+          padding: 16,
+          border: `1px solid ${GP.border}`,
+          background: "rgba(15,23,42,0.96)",
+        }}
+      >
+        <div style={{ fontSize: 14, marginBottom: 10, color: "#38bdf8", fontWeight: 600 }}>
+          Renewal Calendar (Next {range} Days)
+        </div>
+        <div style={{ fontSize: 13, color: GP.textSoft }}>Loading renewal calendar…</div>
       </div>
     );
   }
 
+  // EMPTY STATE — No policies for this org
   if (!data.length) {
     return (
-      <div style={{ fontSize: 13, color: "#9ca3af" }}>
-        No expirations in the next {range} days.
+      <div
+        style={{
+          borderRadius: 16,
+          padding: 16,
+          border: `1px solid ${GP.border}`,
+          background: "rgba(15,23,42,0.96)",
+        }}
+      >
+        <div style={{ fontSize: 14, marginBottom: 10, color: "#38bdf8", fontWeight: 600 }}>
+          Renewal Calendar (Next {range} Days)
+        </div>
+        <div
+          style={{
+            padding: 20,
+            borderRadius: 12,
+            background: "rgba(2,6,23,0.5)",
+            border: "1px dashed rgba(51,65,85,0.6)",
+            textAlign: "center",
+          }}
+        >
+          <div style={{ fontSize: 24, marginBottom: 6 }}>🗓️</div>
+          <div style={{ fontSize: 13, color: GP.textMuted }}>
+            Upload your first vendor COI to see upcoming renewals.
+          </div>
+        </div>
       </div>
     );
   }

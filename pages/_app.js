@@ -6,16 +6,15 @@ import { UserProvider } from "../context/UserContext";
 import { OrgProvider } from "../context/OrgContext";
 import Layout from "../components/Layout";
 import TrialBanner from "../components/billing/TrialBanner";
+import OnboardingGuard from "../components/OnboardingGuard";
 
 /* ============================================================
-   GLOBAL APP GUARD — PASSIVE (NO REDIRECTS)
-   - NO auth redirects
-   - NO org redirects
-   - NO onboarding logic
-   - Pages own their own flow
+   GLOBAL APP GUARD — Now includes onboarding enforcement
+   - OnboardingGuard redirects first-time users to onboarding
+   - Pages still own their own detailed logic
 ============================================================ */
 function AppGuard({ children }) {
-  return children;
+  return <OnboardingGuard>{children}</OnboardingGuard>;
 }
 
 /* ============================================================

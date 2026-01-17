@@ -8,6 +8,7 @@ import VendorDrawer from "../components/VendorDrawer";
 import { useRole } from "../lib/useRole";
 import { useOrg } from "../context/OrgContext";
 import EliteStatusPill from "../components/elite/EliteStatusPill";
+import { useFirstTimeCheck } from "../lib/useFirstTimeCheck";
 
 // ONBOARDING COCKPIT
 import OnboardingHeroCard from "../components/onboarding/OnboardingHeroCard";
@@ -336,6 +337,9 @@ function Dashboard() {
   const router = useRouter();
   const { isAdmin, isManager } = useRole();
   const { activeOrgId, activeOrgUuid } = useOrg();
+
+  // First-time state check (single source of truth)
+  const { isFirstTime, checks, counts, loading: firstTimeLoading } = useFirstTimeCheck();
 
   // Trial status check (single source of truth)
   const [trialChecked, setTrialChecked] = useState(false);
@@ -1366,19 +1370,32 @@ const alertVendorsList = [];
                 >
                   Global Score
                 </div>
-                <div
-                  style={{
-                    fontSize: 32,
-                    fontWeight: 700,
-                    background:
-                      "linear-gradient(120deg,#22c55e,#bef264,#facc15)",
-                    WebkitBackgroundClip: "text",
-                    color: "transparent",
-                  }}
-                >
-                  {dashboardLoading ? "—" : Number(avgScore).toFixed(0)}
-                </div>
-                <div style={{ fontSize: 10, color: GP.textMuted }}>/100</div>
+                {dashboardLoading ? (
+                  <div style={{ fontSize: 32, fontWeight: 700, color: GP.textMuted }}>—</div>
+                ) : totalVendors === 0 ? (
+                  <>
+                    <div style={{ fontSize: 28, fontWeight: 700, color: GP.textMuted }}>—</div>
+                    <div style={{ fontSize: 9, color: GP.textMuted, marginTop: 4, textAlign: "center", maxWidth: 90 }}>
+                      Scores appear after first vendor
+                    </div>
+                  </>
+                ) : (
+                  <>
+                    <div
+                      style={{
+                        fontSize: 32,
+                        fontWeight: 700,
+                        background:
+                          "linear-gradient(120deg,#22c55e,#bef264,#facc15)",
+                        WebkitBackgroundClip: "text",
+                        color: "transparent",
+                      }}
+                    >
+                      {Number(avgScore).toFixed(0)}
+                    </div>
+                    <div style={{ fontSize: 10, color: GP.textMuted }}>/100</div>
+                  </>
+                )}
               </div>
             </div>
           </div>
@@ -1440,7 +1457,148 @@ const alertVendorsList = [];
           </div>
         </div>
       </div>
-{/* POST-TUTORIAL STEP 5 ACTION BOX */}
+{/* FIRST-RUN EMPTY STATE */}
+      {!firstTimeLoading && counts?.vendors === 0 && (
+        <div
+          style={{
+            marginBottom: 28,
+            borderRadius: 24,
+            padding: 32,
+            border: "1px solid rgba(56,189,248,0.5)",
+            background:
+              "radial-gradient(circle at top left,rgba(15,23,42,0.98),rgba(15,23,42,0.92))",
+            boxShadow:
+              "0 0 60px rgba(56,189,248,0.25), inset 0 0 30px rgba(0,0,0,0.6)",
+            textAlign: "center",
+          }}
+        >
+          <div
+            style={{
+              fontSize: 48,
+              marginBottom: 16,
+            }}
+          >
+            🚀
+          </div>
+          <h2
+            style={{
+              fontSize: 24,
+              fontWeight: 600,
+              margin: 0,
+              marginBottom: 8,
+              background: "linear-gradient(90deg,#38bdf8,#a855f7,#22c55e)",
+              WebkitBackgroundClip: "text",
+              color: "transparent",
+            }}
+          >
+            Welcome to Your Compliance Command Center
+          </h2>
+          <p
+            style={{
+              fontSize: 14,
+              color: GP.textSoft,
+              maxWidth: 500,
+              margin: "0 auto 24px",
+              lineHeight: 1.6,
+            }}
+          >
+            You haven't added any vendors yet. Get started by creating your first vendor
+            and uploading their Certificate of Insurance.
+          </p>
+
+          <div
+            style={{
+              display: "flex",
+              justifyContent: "center",
+              gap: 16,
+              flexWrap: "wrap",
+            }}
+          >
+            <a
+              href="/vendors"
+              style={{
+                padding: "12px 24px",
+                borderRadius: 14,
+                background: "linear-gradient(90deg,#22c55e,#16a34a)",
+                color: "#052e16",
+                fontSize: 14,
+                fontWeight: 700,
+                textDecoration: "none",
+                boxShadow: "0 0 20px rgba(34,197,94,0.4)",
+                display: "inline-flex",
+                alignItems: "center",
+                gap: 8,
+              }}
+            >
+              <span>+</span> Add Your First Vendor
+            </a>
+
+            <a
+              href="/admin/requirements-v5"
+              style={{
+                padding: "12px 24px",
+                borderRadius: 14,
+                border: "1px solid rgba(168,85,247,0.6)",
+                background:
+                  "linear-gradient(90deg,rgba(15,23,42,0.95),rgba(15,23,42,0.85))",
+                color: GP.neonPurple,
+                fontSize: 14,
+                fontWeight: 600,
+                textDecoration: "none",
+                display: "inline-flex",
+                alignItems: "center",
+                gap: 8,
+              }}
+            >
+              <span>📋</span> Set Up Compliance Rules
+            </a>
+          </div>
+
+          <div
+            style={{
+              marginTop: 24,
+              padding: 16,
+              borderRadius: 12,
+              background: "rgba(2,6,23,0.6)",
+              border: "1px solid rgba(51,65,85,0.6)",
+            }}
+          >
+            <div
+              style={{
+                fontSize: 12,
+                color: GP.textSoft,
+                marginBottom: 8,
+              }}
+            >
+              Quick Start Checklist
+            </div>
+            <div
+              style={{
+                display: "flex",
+                justifyContent: "center",
+                gap: 24,
+                fontSize: 13,
+                color: GP.textMuted,
+              }}
+            >
+              <span style={{ color: checks?.vendors ? GP.textMuted : GP.neonGreen }}>
+                {checks?.vendors ? "○" : "✓"} Add vendors
+              </span>
+              <span style={{ color: checks?.policies ? GP.textMuted : GP.neonGreen }}>
+                {checks?.policies ? "○" : "✓"} Upload COIs
+              </span>
+              <span style={{ color: checks?.ruleGroups ? GP.textMuted : GP.neonGreen }}>
+                {checks?.ruleGroups ? "○" : "✓"} Create rules
+              </span>
+              <span style={{ color: checks?.alerts ? GP.textMuted : GP.neonGreen }}>
+                {checks?.alerts ? "○" : "✓"} Review alerts
+              </span>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* POST-TUTORIAL STEP 5 ACTION BOX */}
       {showPostTutorialActions && (
         <div
           style={{
@@ -1849,7 +2007,7 @@ const alertVendorsList = [];
 
       <ExpiringCertsHeatmap policies={safeArray(policies)} />
       <SeverityDistributionChart overview={dashboard ?? {}} />
-      <RiskTimelineChart policies={safeArray(policies)} />
+      <RiskTimelineChart data={safeArray(dashboard?.riskHistory)} />
 
       <AlertTimelineChart orgId={activeOrgId} />
       <TopAlertTypes orgId={activeOrgId} />

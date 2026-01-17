@@ -1,4 +1,12 @@
+// components/renewals/RenewalHeatmap.js
+// ============================================================
+// RENEWAL HEATMAP — ORG-SCOPED (NO DEMO DATA)
+// Shows expiring policies as colored tiles
+// Empty state for first-time users
+// ============================================================
+
 import { useEffect, useState } from "react";
+import { useOrg } from "../../context/OrgContext";
 
 const STATUS_COLORS = {
   overdue: "#fb718580",
@@ -8,16 +16,32 @@ const STATUS_COLORS = {
   missing: "#47556980",
 };
 
+const GP = {
+  textSoft: "#9ca3af",
+  textMuted: "#6b7280",
+  border: "rgba(51,65,85,0.9)",
+};
+
 export default function RenewalHeatmap({ range = 90 }) {
+  const { activeOrgId } = useOrg();
   const [data, setData] = useState([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    // Reset when org changes
+    setData([]);
+    setLoading(true);
+
+    if (!activeOrgId) {
+      setLoading(false);
+      return;
+    }
+
     async function load() {
       try {
-        const res = await fetch(`/api/renewals/expiring?range=${range}`);
+        const res = await fetch(`/api/renewals/expiring?range=${range}&orgId=${activeOrgId}`);
         const json = await res.json();
-        if (json.ok) setData(json.data);
+        if (json.ok) setData(json.data || []);
       } catch (err) {
         console.error("Heatmap load error:", err);
       } finally {
@@ -25,14 +49,58 @@ export default function RenewalHeatmap({ range = 90 }) {
       }
     }
     load();
-  }, [range]);
+  }, [range, activeOrgId]);
 
   if (loading) {
-    return <div style={{ fontSize: 13, color: "#9ca3af" }}>Loading heatmap…</div>;
+    return (
+      <div
+        style={{
+          marginTop: 20,
+          padding: 20,
+          borderRadius: 20,
+          background: "rgba(15,23,42,0.95)",
+          border: `1px solid ${GP.border}`,
+        }}
+      >
+        <h3 style={{ marginTop: 0, fontSize: 16, color: "#38bdf8", marginBottom: 12 }}>
+          Renewal Heatmap (Next {range} Days)
+        </h3>
+        <div style={{ fontSize: 13, color: GP.textSoft }}>Loading heatmap…</div>
+      </div>
+    );
   }
 
+  // EMPTY STATE — No policies for this org
   if (!data.length) {
-    return <div style={{ fontSize: 13, color: "#9ca3af" }}>No expiring policies.</div>;
+    return (
+      <div
+        style={{
+          marginTop: 20,
+          padding: 20,
+          borderRadius: 20,
+          background: "rgba(15,23,42,0.95)",
+          border: `1px solid ${GP.border}`,
+        }}
+      >
+        <h3 style={{ marginTop: 0, fontSize: 16, color: "#38bdf8", marginBottom: 12 }}>
+          Renewal Heatmap (Next {range} Days)
+        </h3>
+        <div
+          style={{
+            padding: 24,
+            borderRadius: 12,
+            background: "rgba(2,6,23,0.5)",
+            border: "1px dashed rgba(51,65,85,0.6)",
+            textAlign: "center",
+          }}
+        >
+          <div style={{ fontSize: 28, marginBottom: 8 }}>📅</div>
+          <div style={{ fontSize: 13, color: GP.textMuted }}>
+            Upload your first vendor COI to see upcoming renewals.
+          </div>
+        </div>
+      </div>
+    );
   }
 
   return (

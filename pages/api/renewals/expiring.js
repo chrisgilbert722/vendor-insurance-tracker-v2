@@ -1,7 +1,8 @@
 // pages/api/renewals/expiring.js
-//
-// Returns renewals expiring within X days (default: 90)
-//
+// ============================================================
+// RENEWAL EXPIRING API — ORG-SCOPED (NO FALLBACKS)
+// Returns renewals expiring within X days for a specific org
+// ============================================================
 
 import { sql } from "../../../lib/db";
 import { classifyRenewal } from "../../../lib/classifyRenewal";
@@ -9,7 +10,14 @@ import { classifyRenewal } from "../../../lib/classifyRenewal";
 export default async function handler(req, res) {
   try {
     const range = Number(req.query.range || 90);
+    const orgId = req.query.orgId ? Number(req.query.orgId) : null;
 
+    // REQUIRE orgId — no cross-org data leakage
+    if (!orgId || !Number.isInteger(orgId)) {
+      return res.status(200).json({ ok: true, data: [] });
+    }
+
+    // ORG-SCOPED QUERY — only return policies for this org
     const rows = await sql`
       SELECT
         p.id AS policy_id,
@@ -19,7 +27,8 @@ export default async function handler(req, res) {
         v.name AS vendor_name
       FROM policies p
       LEFT JOIN vendors v ON v.id = p.vendor_id
-      WHERE p.expiration_date IS NOT NULL
+      WHERE p.org_id = ${orgId}
+        AND p.expiration_date IS NOT NULL
     `;
 
     const now = new Date();

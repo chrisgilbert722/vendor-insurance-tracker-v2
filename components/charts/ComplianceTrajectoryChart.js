@@ -1,4 +1,10 @@
 // components/charts/ComplianceTrajectoryChart.js
+// ============================================================
+// COMPLIANCE TRAJECTORY — ORG-SCOPED (NO DEMO DATA)
+// Shows compliance score over time
+// Empty state for first-time users
+// ============================================================
+
 import React from "react";
 import {
   LineChart,
@@ -21,6 +27,7 @@ const GP = {
   glowPurple: "rgba(168,85,247,0.25)",
   text: "#e5e7eb",
   textSoft: "#9ca3af",
+  textMuted: "#6b7280",
   accentBlue: "#38bdf8",
   accentGreen: "#22c55e",
   accentPurple: "#a855f7",
@@ -61,19 +68,94 @@ function TrajectoryTooltip({ active, payload, label }) {
 
 /* ===========================
    MAIN COMPONENT
+
+   Props:
+   - data: Array of { label: string, score: number } from dashboard metrics API
+
+   NO DEMO DATA — shows empty state when no real data exists
 =========================== */
 export default function ComplianceTrajectoryChart({ data }) {
-  const d = data || [
-    { label: "Jan", score: 62 },
-    { label: "Feb", score: 68 },
-    { label: "Mar", score: 74 },
-    { label: "Apr", score: 79 },
-    { label: "May", score: 83 },
-    { label: "Jun", score: 88 },
-  ];
+  // Ensure data is an array
+  const safeData = Array.isArray(data) ? data : [];
 
-  const latest = d[d.length - 1]?.score ?? 0;
-  const start = d[0]?.score ?? 0;
+  // Check for real data (all 100s = no real activity)
+  const hasRealData = safeData.length > 0 && safeData.some(d => d.score !== 100);
+
+  // EMPTY STATE — No real data
+  if (!hasRealData) {
+    return (
+      <div
+        style={{
+          borderRadius: 24,
+          padding: 22,
+          border: `1px solid ${GP.border}`,
+          background:
+            "radial-gradient(circle at top left,rgba(15,23,42,0.98),rgba(15,23,42,0.94))",
+          boxShadow: `
+            0 0 40px rgba(0,0,0,0.7),
+            0 0 60px ${GP.glowBlue},
+            inset 0 0 25px rgba(0,0,0,0.45)
+          `,
+          height: "100%",
+          display: "flex",
+          flexDirection: "column",
+        }}
+      >
+        <div style={{ marginBottom: 16 }}>
+          <div
+            style={{
+              fontSize: 12,
+              letterSpacing: 1.5,
+              textTransform: "uppercase",
+              color: GP.textSoft,
+              marginBottom: 6,
+            }}
+          >
+            Compliance Score Trajectory
+          </div>
+
+          <div
+            style={{
+              fontSize: 26,
+              fontWeight: 700,
+              color: GP.textMuted,
+              marginBottom: 2,
+            }}
+          >
+            —
+          </div>
+
+          <div style={{ fontSize: 12, color: GP.textMuted }}>
+            No trend data yet
+          </div>
+        </div>
+
+        {/* EMPTY CHART AREA */}
+        <div
+          style={{
+            flex: 1,
+            minHeight: 200,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            borderRadius: 12,
+            background: "rgba(2,6,23,0.5)",
+            border: "1px dashed rgba(51,65,85,0.6)",
+          }}
+        >
+          <div style={{ textAlign: "center", color: GP.textMuted }}>
+            <div style={{ fontSize: 28, marginBottom: 8 }}>📈</div>
+            <div style={{ fontSize: 13 }}>
+              Compliance trajectory will appear after vendor evaluations
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  const latest = safeData[safeData.length - 1]?.score ?? 0;
+  const start = safeData[0]?.score ?? 0;
   const delta = latest - start;
 
   return (
@@ -123,7 +205,7 @@ export default function ComplianceTrajectoryChart({ data }) {
         </div>
 
         <div style={{ fontSize: 12, color: GP.textSoft }}>
-          {delta >= 0 ? "↗ Improving" : "↘ Declining"} (
+          {delta > 0 ? "↗ Improving" : delta < 0 ? "↘ Declining" : "→ Stable"} (
           {delta >= 0 ? "+" : ""}
           {delta})
         </div>
@@ -132,7 +214,7 @@ export default function ComplianceTrajectoryChart({ data }) {
       {/* CHART */}
       <div style={{ flex: 1, minHeight: 200 }}>
         <ResponsiveContainer width="100%" height="100%">
-          <LineChart data={d} margin={{ top: 10, right: 15, left: 0, bottom: 0 }}>
+          <LineChart data={safeData} margin={{ top: 10, right: 15, left: 0, bottom: 0 }}>
             <defs>
               {/* Line color */}
               <linearGradient id="trajectoryLine" x1="0" y1="0" x2="0" y2="1">
@@ -164,7 +246,7 @@ export default function ComplianceTrajectoryChart({ data }) {
               tickLine={false}
               axisLine={false}
               tick={{ fontSize: 11, fill: GP.textSoft }}
-              domain={[40, 100]}
+              domain={[0, 100]}
             />
 
             <Tooltip content={<TrajectoryTooltip />} />

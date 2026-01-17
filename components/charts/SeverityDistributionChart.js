@@ -1,5 +1,11 @@
-// components/charts/SeverityDistributionChart.js — Cinematic V2
-import React, { useMemo } from "react";
+// components/charts/SeverityDistributionChart.js
+// ============================================================
+// SEVERITY DISTRIBUTION — ORG-SCOPED (NO DEMO DATA)
+// Shows alert severity breakdown
+// Empty state for first-time users
+// ============================================================
+
+import React from "react";
 
 /* ===========================
    CINEMATIC V2 COLOR SYSTEM
@@ -10,6 +16,7 @@ const GP = {
 
   text: "#e5e7eb",
   textSoft: "#9ca3af",
+  textMuted: "#6b7280",
 
   high: "#fb7185",    // neon red
   med: "#facc15",     // neon yellow
@@ -22,31 +29,80 @@ const GP = {
 
 /* ===========================
    MAIN COMPONENT
+
+   Props:
+   - overview: Dashboard overview object with severityBreakdown
+
+   NO DEMO DATA — shows empty state when no real data exists
 =========================== */
-export default function SeverityDistributionChart({ policies = [] }) {
-  // Compute severity category counts
-  const counts = useMemo(() => {
-    const result = { high: 0, medium: 0, low: 0 };
+export default function SeverityDistributionChart({ overview = {} }) {
+  // Extract severity breakdown from overview
+  const breakdown = overview?.severityBreakdown || {};
 
-    for (const p of policies) {
-      if (!p.expiration_date) continue;
+  const counts = {
+    high: (breakdown.critical || 0) + (breakdown.high || 0),
+    medium: breakdown.medium || 0,
+    low: breakdown.low || 0,
+  };
 
-      const [mm, dd, yyyy] = p.expiration_date.split("/");
-      const d = new Date(`${yyyy}-${mm}-${dd}T00:00:00`);
-      const diff = Math.floor((d - new Date()) / (1000 * 60 * 60 * 24));
+  const total = counts.high + counts.medium + counts.low;
+  const hasData = total > 0;
 
-      if (Number.isNaN(diff)) continue;
+  // EMPTY STATE — No data
+  if (!hasData) {
+    return (
+      <div
+        style={{
+          borderRadius: 24,
+          padding: 22,
+          border: `1px solid ${GP.border}`,
+          background:
+            "radial-gradient(circle at top left,rgba(15,23,42,0.98),rgba(15,23,42,0.94))",
+          boxShadow: `
+            0 0 40px rgba(0,0,0,0.75),
+            inset 0 0 20px rgba(0,0,0,0.45)
+          `,
+          marginBottom: 40,
+        }}
+      >
+        <div style={{ marginBottom: 18 }}>
+          <div
+            style={{
+              fontSize: 12,
+              letterSpacing: "0.15em",
+              textTransform: "uppercase",
+              color: GP.textSoft,
+              marginBottom: 6,
+            }}
+          >
+            Severity Distribution
+          </div>
 
-      if (diff < 0) result.high++;
-      else if (diff <= 30) result.high++;
-      else if (diff <= 90) result.medium++;
-      else result.low++;
-    }
+          <div
+            style={{
+              fontSize: 22,
+              fontWeight: 700,
+              color: GP.textMuted,
+              marginBottom: 2,
+            }}
+          >
+            No Alerts Evaluated
+          </div>
 
-    return result;
-  }, [policies]);
+          <div style={{ fontSize: 12, color: GP.textMuted }}>
+            Upload COIs to see severity breakdown
+          </div>
+        </div>
 
-  const total = counts.high + counts.medium + counts.low || 1;
+        {/* EMPTY BARS */}
+        <div style={{ display: "flex", flexDirection: "column", gap: 22 }}>
+          <EmptyBar label="High Risk" color={GP.high} />
+          <EmptyBar label="Moderate Risk" color={GP.med} />
+          <EmptyBar label="Low Risk" color={GP.low} />
+        </div>
+      </div>
+    );
+  }
 
   const pctHigh = Math.round((counts.high / total) * 100);
   const pctMed = Math.round((counts.medium / total) * 100);
@@ -92,11 +148,11 @@ export default function SeverityDistributionChart({ policies = [] }) {
             marginBottom: 2,
           }}
         >
-          {total} Active Certificates Evaluated
+          {total} Alerts Evaluated
         </div>
 
         <div style={{ fontSize: 12, color: GP.textSoft }}>
-          Overall risk exposure across expiration windows.
+          Overall risk exposure by severity level
         </div>
       </div>
 
@@ -129,6 +185,39 @@ export default function SeverityDistributionChart({ policies = [] }) {
           count={counts.low}
         />
       </div>
+    </div>
+  );
+}
+
+/* ===========================
+   EMPTY BAR COMPONENT
+=========================== */
+function EmptyBar({ label, color }) {
+  return (
+    <div>
+      <div
+        style={{
+          display: "flex",
+          justifyContent: "space-between",
+          marginBottom: 6,
+        }}
+      >
+        <span style={{ fontWeight: 600, color: GP.textMuted }}>
+          {label}
+        </span>
+        <span style={{ fontSize: 13, color: GP.textMuted }}>
+          0 (0%)
+        </span>
+      </div>
+
+      <div
+        style={{
+          height: 14,
+          borderRadius: 999,
+          background: "rgba(255,255,255,0.06)",
+          overflow: "hidden",
+        }}
+      />
     </div>
   );
 }
