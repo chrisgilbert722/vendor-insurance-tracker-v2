@@ -11,6 +11,7 @@ import { useRouter } from "next/router";
 import { supabase } from "../../lib/supabaseClient";
 import { useOrg } from "../../context/OrgContext";
 import AiWizardPanel from "../../components/onboarding/AiWizardPanel";
+import AuthHeader from "../../components/AuthHeader";
 
 export default function AiOnboardingWizardPage() {
   const router = useRouter();
@@ -166,12 +167,15 @@ export default function AiOnboardingWizardPage() {
   }, [activeOrgUuid, orgLoading, setActiveOrg]);
 
   /* -------------------------------------------------
-     ⏳ WAIT STATES
+     ⏳ WAIT STATES (with AuthHeader for logout access)
   -------------------------------------------------- */
   if (checkingSession || orgLoading || creatingOrg) {
     return (
-      <div style={{ padding: 40, color: "#9ca3af" }}>
-        Loading onboarding…
+      <div style={{ minHeight: "100vh", background: "#020617" }}>
+        <AuthHeader />
+        <div style={{ padding: 40, color: "#9ca3af" }}>
+          Loading onboarding…
+        </div>
       </div>
     );
   }
@@ -183,37 +187,41 @@ export default function AiOnboardingWizardPage() {
   // Still waiting for org to be created/loaded
   if (!activeOrgUuid) {
     return (
-      <div style={{ padding: 40, color: "#9ca3af" }}>
-        Setting up your organization…
+      <div style={{ minHeight: "100vh", background: "#020617" }}>
+        <AuthHeader />
+        <div style={{ padding: 40, color: "#9ca3af" }}>
+          Setting up your organization…
+        </div>
       </div>
     );
   }
 
   /* -------------------------------------------------
-     ✅ RENDER WIZARD
+     ✅ RENDER WIZARD (with AuthHeader)
   -------------------------------------------------- */
   return (
     <div
       style={{
         minHeight: "100vh",
-        padding: "32px 40px",
         color: "#e5e7eb",
         background:
           "radial-gradient(circle at top left,#020617 0,#020617 45%,#000 100%)",
       }}
     >
-      <div
-        style={{
-          borderRadius: 32,
-          padding: 22,
-          background:
-            "radial-gradient(circle at top left,rgba(15,23,42,0.98),rgba(15,23,42,0.95))",
-          border: "1px solid rgba(148,163,184,0.45)",
-          boxShadow: "0 0 60px rgba(15,23,42,0.95)",
-        }}
-      >
-        {/* UUID is still correct for wizard */}
-        <AiWizardPanel orgId={activeOrgUuid} />
+      <AuthHeader />
+      <div style={{ padding: "32px 40px" }}>
+        <div
+          style={{
+            borderRadius: 32,
+            padding: 22,
+            background:
+              "radial-gradient(circle at top left,rgba(15,23,42,0.98),rgba(15,23,42,0.95))",
+            border: "1px solid rgba(148,163,184,0.45)",
+            boxShadow: "0 0 60px rgba(15,23,42,0.95)",
+          }}
+        >
+          <AiWizardPanel orgId={activeOrgUuid} />
+        </div>
       </div>
     </div>
   );

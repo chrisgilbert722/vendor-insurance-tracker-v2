@@ -14,7 +14,18 @@ export default function Header() {
 
   async function handleLogout() {
     await supabase.auth.signOut();
-    window.location.href = "/auth/login";
+
+    // Clear local storage
+    try {
+      localStorage.removeItem("supabase_token");
+      localStorage.removeItem("verivo:activeOrgId");
+      localStorage.removeItem("verivo:activeOrgUuid");
+      localStorage.removeItem("onboarding_vendors_csv");
+      localStorage.removeItem("onboarding_vendors_csv_snapshot");
+    } catch {}
+
+    // Redirect to landing page (not login)
+    window.location.href = "/";
   }
 
   const isLoading = loading || isLoadingRole;
