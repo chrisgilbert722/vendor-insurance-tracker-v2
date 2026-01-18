@@ -1,8 +1,10 @@
 // components/MarketingHeader.js
 // ============================================================
 // MARKETING HEADER — Single auth control for marketing pages
-// Shows: Logo + Pricing + Login (logged out) OR Sign Out (logged in)
-// Reacts to Supabase session state in real-time
+// CTA STATES:
+// 1) Logged out, no trial → Start Free Trial
+// 2) Logged out, trial exists → Login
+// 3) Logged in → Sign Out
 // ============================================================
 
 import { useEffect, useState } from "react";
@@ -11,33 +13,55 @@ import { supabase } from "../lib/supabaseClient";
 
 export default function MarketingHeader() {
   const router = useRouter();
+
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [hasTrial, setHasTrial] = useState(false);
 
-  // Subscribe to auth state changes
+  // ----------------------------
+  // AUTH + TRIAL STATE
+  // ----------------------------
   useEffect(() => {
-    // Check initial session
-    async function checkSession() {
-      const { data: { session } } = await supabase.auth.getSession();
+    async function init() {
+      // 1. Check session
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
+
       setUser(session?.user || null);
+
+      // 2. If logged out, check if trial exists
+      if (!session?.user) {
+        try {
+          const res = await fetch("/api/billing/trial-status");
+          const json = await res.json();
+          setHasTrial(!!json?.trial_started_at);
+        } catch {
+          setHasTrial(false);
+        }
+      }
+
       setLoading(false);
     }
-    checkSession();
+
+    init();
 
     // Subscribe to auth changes
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(
-      (_event, session) => {
-        setUser(session?.user || null);
-      }
-    );
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange((_event, session) => {
+      setUser(session?.user || null);
+    });
 
     return () => subscription.unsubscribe();
   }, []);
 
+  // ----------------------------
+  // ACTIONS
+  // ----------------------------
   async function handleLogout() {
     await supabase.auth.signOut();
 
-    // Clear local storage
     try {
       localStorage.removeItem("supabase_token");
       localStorage.removeItem("verivo:activeOrgId");
@@ -46,13 +70,31 @@ export default function MarketingHeader() {
       localStorage.removeItem("onboarding_vendors_csv_snapshot");
     } catch {}
 
-    // Redirect to landing page
     window.location.href = "/";
   }
 
-  function handleLogin() {
+  function goToSignup() {
+    router.push("/auth/signup");
+  }
+
+  function goToLogin() {
     router.push("/auth/login");
   }
+
+  // ----------------------------
+  // SHARED CTA STYLE (MATCHES HERO)
+  // ----------------------------
+  const primaryCtaStyle = {
+    borderRadius: 999,
+    padding: "10px 18px",
+    border: "1px solid rgba(59,130,246,0.9)",
+    background:
+      "radial-gradient(circle at top left,#3b82f6,#1d4ed8,#0f172a)",
+    color: "#e0f2fe",
+    fontSize: 15,
+    fontWeight: 500,
+    cursor: "pointer",
+  };
 
   return (
     <header
@@ -66,7 +108,7 @@ export default function MarketingHeader() {
         zIndex: 2,
       }}
     >
-      {/* Logo */}
+      {/* LOGO */}
       <div
         style={{
           display: "flex",
@@ -102,7 +144,7 @@ export default function MarketingHeader() {
         </span>
       </div>
 
-      {/* Nav actions */}
+      {/* NAV */}
       <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
         <button
           onClick={() => router.push("/pricing")}
@@ -118,8 +160,9 @@ export default function MarketingHeader() {
         </button>
 
         {loading ? (
-          <span style={{ fontSize: 13, color: "#9ca3af" }}>...</span>
+          <span style={{ fontSize: 13, color: "#9ca3af" }}>…</span>
         ) : user ? (
+          // LOGGED IN → SIGN OUT
           <button
             onClick={handleLogout}
             style={{
@@ -135,21 +178,15 @@ export default function MarketingHeader() {
           >
             Sign Out
           </button>
+        ) : hasTrial ? (
+          // LOGGED OUT + TRIAL EXISTS → LOGIN
+          <button onClick={goToLogin} style={primaryCtaStyle}>
+            Login →
+          </button>
         ) : (
-          <button
-            onClick={handleLogin}
-            style={{
-              fontSize: 14,
-              borderRadius: 999,
-              padding: "7px 14px",
-              border: "1px solid rgba(56,189,248,0.7)",
-              background: "rgba(56,189,248,0.15)",
-              color: "#7dd3fc",
-              cursor: "pointer",
-              fontWeight: 500,
-            }}
-          >
-            Login
+          // LOGGED OUT + NO TRIAL → START FREE TRIAL
+          <button onClick={goToSignup} style={primaryCtaStyle}>
+            Start Free Trial →
           </button>
         )}
       </div>
