@@ -13,10 +13,26 @@
 import Head from "next/head";
 import { useRouter } from "next/router";
 import { useEffect, useMemo, useRef, useState } from "react";
+import { supabase } from "../lib/supabaseClient";
 import MarketingHeader from "../components/MarketingHeader";
 
 export default function PropertyManagement() {
   const router = useRouter();
+  const [isLoggedIn, setIsLoggedIn] = useState(false);
+
+  // Check session state for hero CTA visibility
+  useEffect(() => {
+    async function checkSession() {
+      const { data: { session } } = await supabase.auth.getSession();
+      setIsLoggedIn(!!session?.user);
+    }
+    checkSession();
+
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(
+      (_event, session) => setIsLoggedIn(!!session?.user)
+    );
+    return () => subscription.unsubscribe();
+  }, []);
 
   const title =
     "Vendor Insurance Compliance for Property Managers | COI Tracking — verivo";
@@ -427,51 +443,53 @@ const faqJsonLd = {
                 approve.
               </p>
 
-              <div
-                style={{
-                  display: "flex",
-                  gap: 12,
-                  flexWrap: "wrap",
-                  marginBottom: 18,
-                }}
-              >
-                <button
-                  onClick={() => {
-                    const el = document.getElementById("how-it-works");
-                    if (el) el.scrollIntoView({ behavior: "smooth" });
-                  }}
-                  className="pm-cta"
+              {!isLoggedIn && (
+                <div
                   style={{
-                    borderRadius: 999,
-                    padding: "10px 18px",
-                    border: "1px solid rgba(59,130,246,0.9)",
-                    background:
-                      "radial-gradient(circle at top left,#3b82f6,#1d4ed8,#0f172a)",
-                    color: "#e0f2fe",
-                    fontSize: 15,
-                    fontWeight: 500,
-                    cursor: "pointer",
-                    position: "relative",
+                    display: "flex",
+                    gap: 12,
+                    flexWrap: "wrap",
+                    marginBottom: 18,
                   }}
                 >
-                  See How It Works →
-                </button>
+                  <button
+                    onClick={() => router.push("/auth/signup")}
+                    className="pm-cta"
+                    style={{
+                      borderRadius: 999,
+                      padding: "10px 18px",
+                      border: "1px solid rgba(59,130,246,0.9)",
+                      background:
+                        "radial-gradient(circle at top left,#3b82f6,#1d4ed8,#0f172a)",
+                      color: "#e0f2fe",
+                      fontSize: 15,
+                      fontWeight: 500,
+                      cursor: "pointer",
+                      position: "relative",
+                    }}
+                  >
+                    Start Free Trial →
+                  </button>
 
-                <button
-                  onClick={() => router.push("/pricing")}
-                  style={{
-                    borderRadius: 999,
-                    padding: "10px 16px",
-                    border: "1px solid rgba(148,163,184,0.7)",
-                    background: "rgba(15,23,42,0.9)",
-                    color: "#cbd5f5",
-                    fontSize: 14,
-                    cursor: "pointer",
-                  }}
-                >
-                  View pricing
-                </button>
-              </div>
+                  <button
+                    onClick={() => {
+                      const el = document.getElementById("how-it-works");
+                      if (el) el.scrollIntoView({ behavior: "smooth" });
+                    }}
+                    style={{
+                      borderRadius: 999,
+                      padding: "10px 16px",
+                      border: "1px solid rgba(148,163,184,0.7)",
+                      background: "rgba(15,23,42,0.9)",
+                      color: "#cbd5f5",
+                      fontSize: 14,
+                      cursor: "pointer",
+                    }}
+                  >
+                    See How It Works →
+                  </button>
+                </div>
+              )}
 
               <div style={{ fontSize: 12, color: "#9ca3af" }}>
                 <span>💡 Most teams choose the annual plan ($4,999) to simplify budgeting</span><br/>

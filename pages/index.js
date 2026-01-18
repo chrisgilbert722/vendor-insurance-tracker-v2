@@ -1,10 +1,27 @@
 // pages/index.js
+import { useEffect, useState } from "react";
 import Head from "next/head";
 import { useRouter } from "next/router";
+import { supabase } from "../lib/supabaseClient";
 import MarketingHeader from "../components/MarketingHeader";
 
 export default function Home() {
   const router = useRouter();
+  const [isLoggedIn, setIsLoggedIn] = useState(false);
+
+  // Check session state for hero CTA visibility
+  useEffect(() => {
+    async function checkSession() {
+      const { data: { session } } = await supabase.auth.getSession();
+      setIsLoggedIn(!!session?.user);
+    }
+    checkSession();
+
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(
+      (_event, session) => setIsLoggedIn(!!session?.user)
+    );
+    return () => subscription.unsubscribe();
+  }, []);
 
   const title = "verivo — AI-Powered COI Tracking & Vendor Compliance";
   const description =
@@ -154,45 +171,49 @@ export default function Home() {
                 No vendor logins. No spreadsheets. No manual review.
               </p>
 
-              <div
-                style={{
-                  display: "flex",
-                  gap: 12,
-                  flexWrap: "wrap",
-                  marginBottom: 18,
-                }}
-              >
-                <button
-                  onClick={() => router.push("/property-management")}
+              {/* Hero CTAs - only for logged OUT users */}
+              {!isLoggedIn && (
+                <div
                   style={{
-                    borderRadius: 999,
-                    padding: "10px 18px",
-                    border: "1px solid rgba(59,130,246,0.9)",
-                    background:
-                      "radial-gradient(circle at top left,#3b82f6,#1d4ed8,#0f172a)",
-                    color: "#e0f2fe",
-                    fontSize: 15,
-                    fontWeight: 500,
-                    cursor: "pointer",
+                    display: "flex",
+                    gap: 12,
+                    flexWrap: "wrap",
+                    marginBottom: 18,
                   }}
                 >
-                  See How It Works →
-                </button>
-                <button
-                  onClick={() => router.push("/pricing")}
-                  style={{
-                    borderRadius: 999,
-                    padding: "10px 16px",
-                    border: "1px solid rgba(148,163,184,0.7)",
-                    background: "rgba(15,23,42,0.9)",
-                    color: "#cbd5f5",
-                    fontSize: 14,
-                    cursor: "pointer",
-                  }}
-                >
-                  View pricing
-                </button>
-              </div>
+                  <button
+                    onClick={() => router.push("/auth/signup")}
+                    style={{
+                      borderRadius: 999,
+                      padding: "10px 18px",
+                      border: "1px solid rgba(59,130,246,0.9)",
+                      background:
+                        "radial-gradient(circle at top left,#3b82f6,#1d4ed8,#0f172a)",
+                      color: "#e0f2fe",
+                      fontSize: 15,
+                      fontWeight: 500,
+                      cursor: "pointer",
+                    }}
+                  >
+                    Start Free Trial →
+                  </button>
+                  <button
+                    onClick={() => router.push("/property-management")}
+                    style={{
+                      borderRadius: 999,
+                      padding: "10px 18px",
+                      border: "1px solid rgba(148,163,184,0.7)",
+                      background: "rgba(15,23,42,0.9)",
+                      color: "#cbd5f5",
+                      fontSize: 15,
+                      fontWeight: 500,
+                      cursor: "pointer",
+                    }}
+                  >
+                    See How It Works →
+                  </button>
+                </div>
+              )}
 
               <p
                 style={{
