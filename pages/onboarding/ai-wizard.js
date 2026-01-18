@@ -1,9 +1,9 @@
 // pages/onboarding/ai-wizard.js
 // ============================================================
-// AI Onboarding Wizard V5 — UUID-SAFE + SESSION-GATED
-// ✅ Blocks until Supabase session exists
-// ✅ Redirects to /auth/login if missing
-// ✅ Activates org via API (NO supabase.from organizations)
+// AI Onboarding Wizard V5 — CANONICAL ONBOARDING ENTRY POINT
+// ✅ Session required (redirects to login if missing)
+// ✅ Auto-creates org if user doesn't have one
+// ✅ Single onboarding UI for all users
 // ============================================================
 
 import { useEffect, useState } from "react";
@@ -17,12 +17,14 @@ export default function AiOnboardingWizardPage() {
 
   const {
     activeOrgUuid,
+    orgs,
     setActiveOrg,
     loading: orgLoading,
   } = useOrg();
 
   const [checkingSession, setCheckingSession] = useState(true);
   const [hasSession, setHasSession] = useState(false);
+  const [creatingOrg, setCreatingOrg] = useState(false);
 
   /* -------------------------------------------------
      🔐 SESSION GATE (HARD)
@@ -54,7 +56,66 @@ export default function AiOnboardingWizardPage() {
   }, [router]);
 
   /* -------------------------------------------------
-     🧠 ACTIVATE ORG VIA API (CORRECT SOURCE OF TRUTH)
+     🏢 AUTO-CREATE ORG IF USER DOESN'T HAVE ONE
+  -------------------------------------------------- */
+  useEffect(() => {
+    if (checkingSession || orgLoading || creatingOrg) return;
+    if (!hasSession) return;
+
+    // If user has orgs, no need to create
+    if (orgs && orgs.length > 0) return;
+
+    // Auto-create org
+    let cancelled = false;
+    setCreatingOrg(true);
+
+    async function createOrg() {
+      try {
+        const {
+          data: { session },
+        } = await supabase.auth.getSession();
+
+        if (!session?.access_token || cancelled) return;
+
+        const res = await fetch("/api/orgs/create", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${session.access_token}`,
+          },
+        });
+
+        const json = await res.json();
+
+        if (cancelled) return;
+
+        if (json.ok && json.org) {
+          setActiveOrg(json.org);
+
+          // Store org info
+          if (json.org.external_uuid) {
+            localStorage.setItem("verivo:activeOrgUuid", json.org.external_uuid);
+          }
+          if (json.org.id) {
+            localStorage.setItem("verivo:activeOrgId", String(json.org.id));
+          }
+        }
+      } catch (err) {
+        console.error("[ai-wizard] Failed to create org:", err);
+      } finally {
+        if (!cancelled) setCreatingOrg(false);
+      }
+    }
+
+    createOrg();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [checkingSession, orgLoading, hasSession, orgs, creatingOrg, setActiveOrg]);
+
+  /* -------------------------------------------------
+     🧠 ACTIVATE ORG VIA API (if org exists but not active)
   -------------------------------------------------- */
   useEffect(() => {
     if (!activeOrgUuid || orgLoading) return;
@@ -89,16 +150,9 @@ export default function AiOnboardingWizardPage() {
           (o) => o.external_uuid === activeOrgUuid
         );
 
-        if (!org) {
-          console.error(
-            "Active org UUID not found in org list:",
-            activeOrgUuid
-          );
-          return;
+        if (org) {
+          setActiveOrg(org);
         }
-
-        // 🔥 THIS IS THE LINE THAT MAKES THE APP COME ALIVE
-        setActiveOrg(org);
       } catch (err) {
         console.error("Failed to activate org during onboarding", err);
       }
@@ -114,7 +168,7 @@ export default function AiOnboardingWizardPage() {
   /* -------------------------------------------------
      ⏳ WAIT STATES
   -------------------------------------------------- */
-  if (checkingSession || orgLoading) {
+  if (checkingSession || orgLoading || creatingOrg) {
     return (
       <div style={{ padding: 40, color: "#9ca3af" }}>
         Loading onboarding…
@@ -123,22 +177,14 @@ export default function AiOnboardingWizardPage() {
   }
 
   if (!hasSession) {
-    return null; // redirecting
+    return null; // redirecting to login
   }
 
+  // Still waiting for org to be created/loaded
   if (!activeOrgUuid) {
     return (
-      <div
-        style={{
-          padding: 24,
-          margin: 40,
-          borderRadius: 16,
-          background: "rgba(15,23,42,0.95)",
-          border: "1px solid rgba(239,68,68,0.6)",
-          color: "#fecaca",
-        }}
-      >
-        Invalid organization context. Please re-select your organization.
+      <div style={{ padding: 40, color: "#9ca3af" }}>
+        Setting up your organization…
       </div>
     );
   }
