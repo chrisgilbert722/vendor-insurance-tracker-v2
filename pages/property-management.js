@@ -13,17 +13,10 @@
 import Head from "next/head";
 import { useRouter } from "next/router";
 import { useEffect, useMemo, useRef, useState } from "react";
+import MarketingHeader from "../components/MarketingHeader";
 
 export default function PropertyManagement() {
   const router = useRouter();
-
-  function goToSignup() {
-    router.push("/auth/signup?industry=property_management");
-  }
-
-  function goToPricing() {
-    router.push("/pricing");
-  }
 
   const title =
     "Vendor Insurance Compliance for Property Managers | COI Tracking — verivo";
@@ -349,92 +342,8 @@ const faqJsonLd = {
           }}
         />
 
-        <header
-          style={{
-            maxWidth: 1180,
-            margin: "0 auto 40px auto",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "space-between",
-            position: "relative",
-            zIndex: 2,
-          }}
-        >
-          <div
-            style={{
-              display: "flex",
-              alignItems: "center",
-              gap: 10,
-              cursor: "pointer",
-            }}
-            onClick={() => router.push("/")}
-          >
-            <div
-              style={{
-                width: 32,
-                height: 32,
-                borderRadius: "999px",
-                background:
-                  "radial-gradient(circle at 30% 0,#38bdf8,#6366f1,#0f172a)",
-                boxShadow: "0 0 30px rgba(56,189,248,0.6)",
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-              }}
-            >
-              <span style={{ fontSize: 18 }}>⚡</span>
-            </div>
-            <span style={{ fontSize: 18, fontWeight: 600, letterSpacing: 0.4 }}>
-              verivo
-            </span>
-          </div>
-
-          <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
-            <button
-              onClick={goToPricing}
-              style={{
-                fontSize: 14,
-                border: "none",
-                background: "transparent",
-                color: "#cbd5f5",
-                cursor: "pointer",
-              }}
-            >
-              Pricing
-            </button>
-            <button
-              onClick={() => router.push("/auth/login")}
-              style={{
-                fontSize: 14,
-                borderRadius: 999,
-                padding: "7px 14px",
-                border: "1px solid rgba(148,163,184,0.7)",
-                background: "rgba(15,23,42,0.85)",
-                color: "#e5e7eb",
-                cursor: "pointer",
-              }}
-            >
-              Login
-            </button>
-            <button
-              onClick={goToSignup}
-              className="pm-cta"
-              style={{
-                fontSize: 14,
-                borderRadius: 999,
-                padding: "8px 16px",
-                border: "1px solid rgba(59,130,246,0.9)",
-                background:
-                  "radial-gradient(circle at top left,#3b82f6,#1d4ed8,#0f172a)",
-                color: "#e0f2fe",
-                cursor: "pointer",
-                fontWeight: 500,
-              }}
-            >
-              Start Free Trial
-            </button>
-          </div>
-        </header>
+        {/* Global Auth Header */}
+        <MarketingHeader />
 
         <main style={{ position: "relative", zIndex: 2 }}>
           <section
@@ -527,7 +436,10 @@ const faqJsonLd = {
                 }}
               >
                 <button
-                  onClick={goToSignup}
+                  onClick={() => {
+                    const el = document.getElementById("how-it-works");
+                    if (el) el.scrollIntoView({ behavior: "smooth" });
+                  }}
                   className="pm-cta"
                   style={{
                     borderRadius: 999,
@@ -542,11 +454,11 @@ const faqJsonLd = {
                     position: "relative",
                   }}
                 >
-                  View My Portfolio Risk →
+                  See How It Works →
                 </button>
 
                 <button
-                  onClick={goToPricing}
+                  onClick={() => router.push("/pricing")}
                   style={{
                     borderRadius: 999,
                     padding: "10px 16px",
@@ -557,7 +469,7 @@ const faqJsonLd = {
                     cursor: "pointer",
                   }}
                 >
-                  View pricing (annual saves vs monthly)
+                  View pricing
                 </button>
               </div>
 
@@ -892,7 +804,7 @@ const faqJsonLd = {
               </p>
 
               <button
-                onClick={goToSignup}
+                onClick={() => router.push("/pricing")}
                 className="pm-cta"
                 style={{
                   borderRadius: 999,
@@ -908,7 +820,7 @@ const faqJsonLd = {
                   position: "relative",
                 }}
               >
-                View My Portfolio Risk →
+                View Pricing →
               </button>
 
               <div style={{ fontSize: 11, color: "#9ca3af" }}>
@@ -939,7 +851,7 @@ const faqJsonLd = {
               <button onClick={() => router.push("/privacy")} style={linkBtn}>
                 Privacy
               </button>
-              <button onClick={goToPricing} style={linkBtn}>
+              <button onClick={() => router.push("/pricing")} style={linkBtn}>
                 Pricing
               </button>
             </div>
@@ -950,7 +862,7 @@ const faqJsonLd = {
         <OwnerReportPreviewModal
           open={ownerReportOpen}
           onClose={() => setOwnerReportOpen(false)}
-          onStartTrial={goToSignup}
+          onStartTrial={() => router.push("/pricing")}
         />
       </div>
     </>
