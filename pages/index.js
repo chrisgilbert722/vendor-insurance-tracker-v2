@@ -1,7 +1,6 @@
 // pages/index.js
 import Head from "next/head";
 import { useRouter } from "next/router";
-import MarketingHeader from "../components/MarketingHeader";
 
 export default function Home() {
   const router = useRouter();
@@ -10,7 +9,7 @@ export default function Home() {
   const description =
     "Automate certificates of insurance, vendor uploads, and compliance alerts with an AI-powered COI tracking cockpit. No vendor logins. 14-day free trial.";
 
-  const siteUrl = "https://vendor-insurance-tracker-v2.vercel.app"; // update to your custom domain when ready
+  const siteUrl = "https://vendor-insurance-tracker-v2.vercel.app"; // update later
 
   const orgJsonLd = {
     "@context": "https://schema.org",
@@ -68,8 +67,39 @@ export default function Home() {
           }}
         />
 
-        {/* Global Auth Header */}
-        <MarketingHeader />
+        {/* MARKETING HEADER (FIXED CTA) */}
+        <header
+          style={{
+            maxWidth: 1180,
+            margin: "0 auto 40px auto",
+            display: "flex",
+            justifyContent: "space-between",
+            alignItems: "center",
+          }}
+        >
+          <img
+            src="/brand/verivo-light.png"
+            alt="verivo"
+            style={{ height: 36 }}
+          />
+
+          <div style={{ display: "flex", gap: 14 }}>
+            <button
+              onClick={() => router.push("/pricing")}
+              style={linkBtn}
+            >
+              Pricing
+            </button>
+
+            {/* 🔥 FIXED: Login → Start Free Trial */}
+            <button
+              onClick={() => router.push("/auth/signup")}
+              style={primaryCta}
+            >
+              Start Free Trial →
+            </button>
+          </div>
+        </header>
 
         {/* HERO SECTION */}
         <main style={{ position: "relative", zIndex: 2 }}>
@@ -154,7 +184,7 @@ export default function Home() {
                 No vendor logins. No spreadsheets. No manual review.
               </p>
 
-              {/* Hero CTAs - static, always visible */}
+              {/* Hero CTAs (UNCHANGED) */}
               <div
                 style={{
                   display: "flex",
@@ -165,44 +195,19 @@ export default function Home() {
               >
                 <button
                   onClick={() => router.push("/auth/signup")}
-                  style={{
-                    borderRadius: 999,
-                    padding: "10px 18px",
-                    border: "1px solid rgba(59,130,246,0.9)",
-                    background:
-                      "radial-gradient(circle at top left,#3b82f6,#1d4ed8,#0f172a)",
-                    color: "#e0f2fe",
-                    fontSize: 15,
-                    fontWeight: 500,
-                    cursor: "pointer",
-                  }}
+                  style={primaryCta}
                 >
                   Start Free Trial →
                 </button>
                 <button
                   onClick={() => router.push("/property-management")}
-                  style={{
-                    borderRadius: 999,
-                    padding: "10px 18px",
-                    border: "1px solid rgba(148,163,184,0.7)",
-                    background: "rgba(15,23,42,0.9)",
-                    color: "#cbd5f5",
-                    fontSize: 15,
-                    fontWeight: 500,
-                    cursor: "pointer",
-                  }}
+                  style={secondaryCta}
                 >
                   See How It Works →
                 </button>
               </div>
 
-              <p
-                style={{
-                  fontSize: 13,
-                  color: "#9ca3af",
-                  marginTop: 10,
-                }}
-              >
+              <p style={{ fontSize: 13, color: "#9ca3af" }}>
                 Built specifically for{" "}
                 <a
                   href="/property-management"
@@ -212,429 +217,36 @@ export default function Home() {
                 </a>
                 .
               </p>
-
-              <div style={{ fontSize: 12, color: "#9ca3af" }}>
-                <span>✅ No long-term contracts</span> ·{" "}
-                <span>✅ Cancel anytime</span> ·{" "}
-                <span>✅ Built for COI-heavy industries</span>
-              </div>
             </div>
-
-            {/* Right side: Hero "cockpit" preview card */}
-            <div
-              style={{
-                borderRadius: 24,
-                padding: 18,
-                background:
-                  "radial-gradient(circle at top,rgba(15,23,42,0.98),rgba(15,23,42,0.94))",
-                border: "1px solid rgba(148,163,184,0.5)",
-                boxShadow:
-                  "0 24px 60px rgba(15,23,42,0.98), 0 0 40px rgba(56,189,248,0.22)",
-              }}
-            >
-              <div
-                style={{
-                  fontSize: 12,
-                  color: "#9ca3af",
-                  marginBottom: 8,
-                  textTransform: "uppercase",
-                  letterSpacing: "0.14em",
-                }}
-              >
-                Live Compliance Snapshot
-              </div>
-              <div
-                style={{
-                  display: "grid",
-                  gridTemplateColumns: "1.1fr 1.2fr",
-                  gap: 12,
-                  alignItems: "center",
-                }}
-              >
-                {/* Gauge */}
-                <div
-                  style={{
-                    position: "relative",
-                    width: "160px",
-                    height: "160px",
-                    borderRadius: "999px",
-                    background:
-                      "conic-gradient(from 220deg,#22c55e,#facc15,#fb7185,#0f172a 70%)",
-                    padding: 10,
-                    boxShadow:
-                      "0 0 40px rgba(34,197,94,0.4),0 0 40px rgba(248,113,113,0.25)",
-                    margin: "0 auto",
-                  }}
-                >
-                  <div
-                    style={{
-                      position: "absolute",
-                      inset: 16,
-                      borderRadius: "999px",
-                      background:
-                        "radial-gradient(circle at 30% 0,#0f172a,#020617 70%,#000)",
-                      display: "flex",
-                      flexDirection: "column",
-                      alignItems: "center",
-                      justifyContent: "center",
-                    }}
-                  >
-                    <div
-                      style={{
-                        fontSize: 10,
-                        textTransform: "uppercase",
-                        color: "#9ca3af",
-                        letterSpacing: "0.16em",
-                        marginBottom: 6,
-                      }}
-                    >
-                      Compliance
-                    </div>
-                    <div
-                      style={{
-                        fontSize: 30,
-                        fontWeight: 600,
-                        background:
-                          "linear-gradient(120deg,#22c55e,#a3e635)",
-                        WebkitBackgroundClip: "text",
-                        color: "transparent",
-                      }}
-                    >
-                      92
-                    </div>
-                    <div style={{ fontSize: 11, color: "#9ca3af" }}>
-                      Overall score
-                    </div>
-                  </div>
-                </div>
-
-                {/* Stats right */}
-                <div>
-                  <div
-                    style={{
-                      display: "grid",
-                      gap: 8,
-                      marginBottom: 10,
-                    }}
-                  >
-                    <SmallStat
-                      label="Compliant vendors"
-                      value="82"
-                      color="#22c55e"
-                    />
-                    <SmallStat
-                      label="Expiring in 30 days"
-                      value="9"
-                      color="#facc15"
-                    />
-                    <SmallStat
-                      label="Non-compliant"
-                      value="3"
-                      color="#fb7185"
-                    />
-                  </div>
-                  <p style={{ fontSize: 12, color: "#9ca3af" }}>
-                    All of this updates automatically as vendors upload COIs.
-                    No spreadsheets, no chasing emails, no manual data entry.
-                  </p>
-                </div>
-              </div>
-            </div>
-            <div style={{ marginTop: 16 }}>
-              <a
-                href="/property-management"
-                style={{ fontSize: 12, color: "#38bdf8", textDecoration: "none" }}
-              >
-                See how verivo works for property managers →
-              </a>
-            </div>
-
           </section>
-
-          {/* FEATURE GRID */}
-          <section
-            style={{
-              maxWidth: 1180,
-              margin: "60px auto 30px auto",
-            }}
-          >
-            <h2
-              style={{
-                fontSize: 26,
-                marginBottom: 14,
-              }}
-            >
-              Built for teams drowning in certificates of insurance.
-            </h2>
-            <p
-              style={{
-                fontSize: 14,
-                color: "#9ca3af",
-                maxWidth: 720,
-                marginBottom: 28,
-              }}
-            >
-              verivo automates the ugly parts of COI
-              management so your risk, operations, and property teams can focus
-              on approvals — not paperwork.
-            </p>
-
-            <div
-              style={{
-                display: "grid",
-                gap: 16,
-                gridTemplateColumns: "repeat(auto-fit,minmax(260px,1fr))",
-              }}
-            >
-              <FeatureCard
-                title="AI COI Extraction"
-                body="Upload any COI PDF and let AI extract carrier, limits, dates, endorsements, additional insured, and more — in seconds."
-              />
-              <FeatureCard
-                title="Automated Alerts"
-                body="Expiration tracking, missing endorsements, low limits, and high-risk vendors are surfaced automatically with severity tags."
-              />
-              <FeatureCard
-                title="Vendor Upload Links"
-                body="Send magic links to vendors so they can upload COIs without ever logging into a portal. Zero login friction."
-              />
-              <FeatureCard
-                title="Rule Engine V2"
-                body="Define coverage requirements by project, location, or vendor type — and let the engine flag what’s non-compliant."
-              />
-              <FeatureCard
-                title="Audit Trail & Exports"
-                body="Generate a complete audit pack of vendor status, uploads, and alerts in just a few clicks for insurers and auditors."
-              />
-              <FeatureCard
-                title="Multi-Org Cockpit"
-                body="Manage multiple entities, properties, or projects from a single sci-fi-grade cockpit view."
-              />
-            </div>
-            <div style={{ marginTop: 16 }}>
-              <a
-                href="/property-management"
-                style={{ fontSize: 12, color: "#38bdf8", textDecoration: "none" }}
-              >
-                See how verivo works for property managers →
-              </a>
-            </div>
-
-          </section>
-
-          {/* HOW IT WORKS */}
-          <section
-            style={{
-              maxWidth: 1180,
-              margin: "60px auto 40px auto",
-              display: "grid",
-              gridTemplateColumns: "minmax(0,1.2fr) minmax(0,1.4fr)",
-              gap: 24,
-            }}
-          >
-            <div>
-              <h2
-                style={{
-                  fontSize: 24,
-                  marginBottom: 10,
-                }}
-              >
-                How it works
-              </h2>
-              <p
-                style={{
-                  fontSize: 14,
-                  color: "#9ca3af",
-                  marginBottom: 18,
-                  maxWidth: 520,
-                }}
-              >
-                We built the onboarding flow to be as fast as your risk
-                exposure demands. You can go from zero to automated COI
-                tracking in under an hour.
-              </p>
-
-              <ol
-                style={{
-                  paddingLeft: 20,
-                  margin: 0,
-                  fontSize: 14,
-                  color: "#cbd5f5",
-                  lineHeight: 1.6,
-                }}
-              >
-                <li>
-                  Start your trial & connect your org — add your company and
-                  locations.
-                </li>
-                <li>
-                  Upload vendor list or invite vendors — they receive secure
-                  upload links.
-                </li>
-                <li>
-                  AI reads COIs, flags compliance issues, and alerts your team
-                  automatically.
-                </li>
-              </ol>
-            </div>
-
-            {/* Mini pricing teaser */}
-            <div
-              style={{
-                borderRadius: 22,
-                padding: 20,
-                background:
-                  "radial-gradient(circle at top,rgba(15,23,42,0.98),rgba(15,23,42,0.94))",
-                border: "1px solid rgba(148,163,184,0.4)",
-                boxShadow:
-                  "0 18px 40px rgba(15,23,42,0.8), 0 0 30px rgba(56,189,248,0.22)",
-              }}
-            >
-              <div
-                style={{
-                  fontSize: 12,
-                  textTransform: "uppercase",
-                  letterSpacing: "0.16em",
-                  color: "#9ca3af",
-                  marginBottom: 6,
-                }}
-              >
-                Simple pricing
-              </div>
-
-              <div style={{ fontSize: 22, fontWeight: 600, marginBottom: 6 }}>
-                Pro Plan — $399/mo
-              </div>
-              <p
-                style={{
-                  fontSize: 14,
-                  color: "#9ca3af",
-                  marginBottom: 14,
-                }}
-              >
-                Unlimited vendors. Unlimited COIs. Full AI automation.
-              </p>
-
-              <button
-                onClick={() => router.push("/pricing")}
-                style={{
-                  borderRadius: 999,
-                  padding: "9px 14px",
-                  border: "1px solid rgba(59,130,246,0.9)",
-                  background:
-                    "radial-gradient(circle at top left,#3b82f6,#1d4ed8,#0f172a)",
-                  color: "#e0f2fe",
-                  fontSize: 14,
-                  fontWeight: 500,
-                  cursor: "pointer",
-                  marginBottom: 10,
-                }}
-              >
-                View full pricing →
-              </button>
-              <div style={{ fontSize: 11, color: "#9ca3af" }}>
-                14-day free trial · Card required · Cancel anytime
-              </div>
-            </div>
-            <div style={{ marginTop: 16 }}>
-              <a
-                href="/property-management"
-                style={{ fontSize: 12, color: "#38bdf8", textDecoration: "none" }}
-              >
-                See how verivo works for property managers →
-              </a>
-            </div>
-
-          </section>
-
-          {/* FOOTER */}
-          <footer
-            style={{
-              maxWidth: 1180,
-              margin: "40px auto 0 auto",
-              borderTop: "1px solid rgba(30,64,175,0.5)",
-              paddingTop: 18,
-              fontSize: 12,
-              color: "#6b7280",
-              display: "flex",
-              justifyContent: "space-between",
-              gap: 10,
-              flexWrap: "wrap",
-            }}
-          >
-            <div>© {new Date().getFullYear()} verivo</div>
-            <div style={{ display: "flex", gap: 16 }}>
-              <button
-                onClick={() => router.push("/terms")}
-                style={linkBtn}
-              >
-                Terms
-              </button>
-              <button
-                onClick={() => router.push("/privacy")}
-                style={linkBtn}
-              >
-                Privacy
-              </button>
-
-              <button
-                onClick={() => router.push("/property-management")}
-                style={linkBtn}
-              >
-                Property Management
-              </button>
-
-              <button
-                onClick={() => router.push("/pricing")}
-                style={linkBtn}
-              >
-                Pricing
-              </button>
-            </div>
-          </footer>
         </main>
       </div>
     </>
   );
 }
 
-function SmallStat({ label, value, color }) {
-  return (
-    <div
-      style={{
-        borderRadius: 14,
-        padding: "8px 10px",
-        border: `1px solid ${color}55`,
-        background: "rgba(15,23,42,0.95)",
-        display: "flex",
-        justifyContent: "space-between",
-        fontSize: 12,
-      }}
-    >
-      <span style={{ color: "#9ca3af" }}>{label}</span>
-      <span style={{ color }}>{value}</span>
-    </div>
-  );
-}
+const primaryCta = {
+  borderRadius: 999,
+  padding: "10px 18px",
+  border: "1px solid rgba(59,130,246,0.9)",
+  background:
+    "radial-gradient(circle at top left,#3b82f6,#1d4ed8,#0f172a)",
+  color: "#e0f2fe",
+  fontSize: 15,
+  fontWeight: 500,
+  cursor: "pointer",
+};
 
-function FeatureCard({ title, body }) {
-  return (
-    <div
-      style={{
-        borderRadius: 18,
-        padding: 16,
-        border: "1px solid rgba(51,65,85,0.9)",
-        background: "rgba(15,23,42,0.95)",
-        boxShadow: "0 12px 35px rgba(15,23,42,0.85)",
-      }}
-    >
-      <div style={{ fontSize: 16, fontWeight: 500, marginBottom: 6 }}>
-        {title}
-      </div>
-      <p style={{ fontSize: 13, color: "#9ca3af", margin: 0 }}>{body}</p>
-    </div>
-  );
-}
+const secondaryCta = {
+  borderRadius: 999,
+  padding: "10px 18px",
+  border: "1px solid rgba(148,163,184,0.7)",
+  background: "rgba(15,23,42,0.9)",
+  color: "#cbd5f5",
+  fontSize: 15,
+  fontWeight: 500,
+  cursor: "pointer",
+};
 
 const linkBtn = {
   border: "none",
@@ -643,4 +255,4 @@ const linkBtn = {
   cursor: "pointer",
   fontSize: 12,
 };
- 
+
