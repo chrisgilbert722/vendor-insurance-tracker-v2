@@ -514,7 +514,7 @@ export default function Home() {
               </p>
 
               <button
-                onClick={goToPricing}
+                onClick={() => router.push("/pricing")}
                 style={{
                   borderRadius: 999,
                   padding: "9px 14px",
