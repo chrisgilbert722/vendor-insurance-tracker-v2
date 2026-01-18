@@ -1,16 +1,29 @@
 // pages/index.js
+// RESPONSIVE: Mobile-first marketing landing page
+import { useEffect, useState } from "react";
 import Head from "next/head";
 import { useRouter } from "next/router";
 import MarketingHeader from "../components/MarketingHeader";
 
 export default function Home() {
   const router = useRouter();
+  const [isMobile, setIsMobile] = useState(false);
+
+  // Track screen size for responsive layout
+  useEffect(() => {
+    function checkMobile() {
+      setIsMobile(window.innerWidth < 768);
+    }
+    checkMobile();
+    window.addEventListener("resize", checkMobile);
+    return () => window.removeEventListener("resize", checkMobile);
+  }, []);
 
   const title = "verivo — AI-Powered COI Tracking & Vendor Compliance";
   const description =
     "Automate certificates of insurance, vendor uploads, and compliance alerts with an AI-powered COI tracking cockpit. No vendor logins. 14-day free trial.";
 
-  const siteUrl = "https://vendor-insurance-tracker-v2.vercel.app"; // update to your custom domain when ready
+  const siteUrl = "https://vendor-insurance-tracker-v2.vercel.app";
 
   const orgJsonLd = {
     "@context": "https://schema.org",
@@ -51,7 +64,7 @@ export default function Home() {
             "radial-gradient(circle at 20% 0%, rgba(56,189,248,0.2), transparent 45%), radial-gradient(circle at 80% 0%, rgba(168,85,247,0.18), transparent 40%), linear-gradient(180deg,#020617,#000)",
           color: "#e5e7eb",
           position: "relative",
-          padding: "40px 20px 80px",
+          padding: isMobile ? "24px 16px 60px" : "40px 20px 80px",
           overflowX: "hidden",
         }}
       >
@@ -77,9 +90,10 @@ export default function Home() {
             style={{
               maxWidth: 1180,
               margin: "0 auto",
-              display: "grid",
-              gridTemplateColumns: "minmax(0,1.5fr) minmax(0,1.2fr)",
-              gap: 30,
+              display: isMobile ? "flex" : "grid",
+              flexDirection: "column",
+              gridTemplateColumns: isMobile ? "1fr" : "minmax(0,1.5fr) minmax(0,1.2fr)",
+              gap: isMobile ? 24 : 30,
               alignItems: "center",
             }}
           >
@@ -94,12 +108,13 @@ export default function Home() {
                   border: "1px solid rgba(148,163,184,0.4)",
                   background:
                     "linear-gradient(120deg,rgba(15,23,42,0.95),rgba(15,23,42,0))",
-                  marginBottom: 14,
+                  marginBottom: isMobile ? 10 : 14,
+                  flexWrap: "wrap",
                 }}
               >
                 <span
                   style={{
-                    fontSize: 10,
+                    fontSize: isMobile ? 9 : 10,
                     color: "#9ca3af",
                     textTransform: "uppercase",
                     letterSpacing: "0.15em",
@@ -109,7 +124,7 @@ export default function Home() {
                 </span>
                 <span
                   style={{
-                    fontSize: 10,
+                    fontSize: isMobile ? 9 : 10,
                     color: "#38bdf8",
                     textTransform: "uppercase",
                     letterSpacing: "0.12em",
@@ -122,9 +137,9 @@ export default function Home() {
               <h1
                 style={{
                   margin: 0,
-                  fontSize: 44,
-                  lineHeight: 1.1,
-                  marginBottom: 16,
+                  fontSize: isMobile ? 28 : 44,
+                  lineHeight: isMobile ? 1.2 : 1.1,
+                  marginBottom: isMobile ? 12 : 16,
                   fontWeight: 700,
                 }}
               >
@@ -143,10 +158,11 @@ export default function Home() {
 
               <p
                 style={{
-                  fontSize: 16,
+                  fontSize: isMobile ? 14 : 16,
                   color: "#cbd5f5",
                   maxWidth: 580,
-                  marginBottom: 22,
+                  marginBottom: isMobile ? 16 : 22,
+                  lineHeight: 1.5,
                 }}
               >
                 Upload vendor certificates, let AI do the reading, and get
@@ -158,16 +174,16 @@ export default function Home() {
               <div
                 style={{
                   display: "flex",
+                  flexDirection: isMobile ? "column" : "row",
                   gap: 12,
-                  flexWrap: "wrap",
-                  marginBottom: 18,
+                  marginBottom: isMobile ? 14 : 18,
                 }}
               >
                 <button
                   onClick={() => router.push("/auth/signup")}
                   style={{
                     borderRadius: 999,
-                    padding: "10px 18px",
+                    padding: isMobile ? "12px 20px" : "10px 18px",
                     border: "1px solid rgba(59,130,246,0.9)",
                     background:
                       "radial-gradient(circle at top left,#3b82f6,#1d4ed8,#0f172a)",
@@ -175,6 +191,7 @@ export default function Home() {
                     fontSize: 15,
                     fontWeight: 500,
                     cursor: "pointer",
+                    width: isMobile ? "100%" : "auto",
                   }}
                 >
                   Start Free Trial →
@@ -183,13 +200,14 @@ export default function Home() {
                   onClick={() => router.push("/property-management")}
                   style={{
                     borderRadius: 999,
-                    padding: "10px 18px",
+                    padding: isMobile ? "12px 20px" : "10px 18px",
                     border: "1px solid rgba(148,163,184,0.7)",
                     background: "rgba(15,23,42,0.9)",
                     color: "#cbd5f5",
                     fontSize: 15,
                     fontWeight: 500,
                     cursor: "pointer",
+                    width: isMobile ? "100%" : "auto",
                   }}
                 >
                   See How It Works →
@@ -198,7 +216,7 @@ export default function Home() {
 
               <p
                 style={{
-                  fontSize: 13,
+                  fontSize: isMobile ? 12 : 13,
                   color: "#9ca3af",
                   marginTop: 10,
                 }}
@@ -213,7 +231,7 @@ export default function Home() {
                 .
               </p>
 
-              <div style={{ fontSize: 12, color: "#9ca3af" }}>
+              <div style={{ fontSize: isMobile ? 11 : 12, color: "#9ca3af" }}>
                 <span>✅ No long-term contracts</span> ·{" "}
                 <span>✅ Cancel anytime</span> ·{" "}
                 <span>✅ Built for COI-heavy industries</span>
@@ -223,18 +241,19 @@ export default function Home() {
             {/* Right side: Hero "cockpit" preview card */}
             <div
               style={{
-                borderRadius: 24,
-                padding: 18,
+                borderRadius: isMobile ? 18 : 24,
+                padding: isMobile ? 14 : 18,
                 background:
                   "radial-gradient(circle at top,rgba(15,23,42,0.98),rgba(15,23,42,0.94))",
                 border: "1px solid rgba(148,163,184,0.5)",
                 boxShadow:
                   "0 24px 60px rgba(15,23,42,0.98), 0 0 40px rgba(56,189,248,0.22)",
+                width: "100%",
               }}
             >
               <div
                 style={{
-                  fontSize: 12,
+                  fontSize: isMobile ? 11 : 12,
                   color: "#9ca3af",
                   marginBottom: 8,
                   textTransform: "uppercase",
@@ -245,8 +264,9 @@ export default function Home() {
               </div>
               <div
                 style={{
-                  display: "grid",
-                  gridTemplateColumns: "1.1fr 1.2fr",
+                  display: isMobile ? "flex" : "grid",
+                  flexDirection: "column",
+                  gridTemplateColumns: isMobile ? "1fr" : "1.1fr 1.2fr",
                   gap: 12,
                   alignItems: "center",
                 }}
@@ -255,12 +275,12 @@ export default function Home() {
                 <div
                   style={{
                     position: "relative",
-                    width: "160px",
-                    height: "160px",
+                    width: isMobile ? "120px" : "160px",
+                    height: isMobile ? "120px" : "160px",
                     borderRadius: "999px",
                     background:
                       "conic-gradient(from 220deg,#22c55e,#facc15,#fb7185,#0f172a 70%)",
-                    padding: 10,
+                    padding: isMobile ? 8 : 10,
                     boxShadow:
                       "0 0 40px rgba(34,197,94,0.4),0 0 40px rgba(248,113,113,0.25)",
                     margin: "0 auto",
@@ -269,7 +289,7 @@ export default function Home() {
                   <div
                     style={{
                       position: "absolute",
-                      inset: 16,
+                      inset: isMobile ? 12 : 16,
                       borderRadius: "999px",
                       background:
                         "radial-gradient(circle at 30% 0,#0f172a,#020617 70%,#000)",
@@ -281,18 +301,18 @@ export default function Home() {
                   >
                     <div
                       style={{
-                        fontSize: 10,
+                        fontSize: isMobile ? 8 : 10,
                         textTransform: "uppercase",
                         color: "#9ca3af",
                         letterSpacing: "0.16em",
-                        marginBottom: 6,
+                        marginBottom: isMobile ? 4 : 6,
                       }}
                     >
                       Compliance
                     </div>
                     <div
                       style={{
-                        fontSize: 30,
+                        fontSize: isMobile ? 24 : 30,
                         fontWeight: 600,
                         background:
                           "linear-gradient(120deg,#22c55e,#a3e635)",
@@ -302,14 +322,14 @@ export default function Home() {
                     >
                       92
                     </div>
-                    <div style={{ fontSize: 11, color: "#9ca3af" }}>
+                    <div style={{ fontSize: isMobile ? 9 : 11, color: "#9ca3af" }}>
                       Overall score
                     </div>
                   </div>
                 </div>
 
                 {/* Stats right */}
-                <div>
+                <div style={{ width: "100%" }}>
                   <div
                     style={{
                       display: "grid",
@@ -321,19 +341,22 @@ export default function Home() {
                       label="Compliant vendors"
                       value="82"
                       color="#22c55e"
+                      isMobile={isMobile}
                     />
                     <SmallStat
                       label="Expiring in 30 days"
                       value="9"
                       color="#facc15"
+                      isMobile={isMobile}
                     />
                     <SmallStat
                       label="Non-compliant"
                       value="3"
                       color="#fb7185"
+                      isMobile={isMobile}
                     />
                   </div>
-                  <p style={{ fontSize: 12, color: "#9ca3af" }}>
+                  <p style={{ fontSize: isMobile ? 11 : 12, color: "#9ca3af" }}>
                     All of this updates automatically as vendors upload COIs.
                     No spreadsheets, no chasing emails, no manual data entry.
                   </p>
@@ -355,23 +378,24 @@ export default function Home() {
           <section
             style={{
               maxWidth: 1180,
-              margin: "60px auto 30px auto",
+              margin: isMobile ? "40px auto 20px auto" : "60px auto 30px auto",
+              padding: isMobile ? "0 4px" : "0",
             }}
           >
             <h2
               style={{
-                fontSize: 26,
-                marginBottom: 14,
+                fontSize: isMobile ? 20 : 26,
+                marginBottom: isMobile ? 10 : 14,
               }}
             >
               Built for teams drowning in certificates of insurance.
             </h2>
             <p
               style={{
-                fontSize: 14,
+                fontSize: isMobile ? 13 : 14,
                 color: "#9ca3af",
                 maxWidth: 720,
-                marginBottom: 28,
+                marginBottom: isMobile ? 20 : 28,
               }}
             >
               verivo automates the ugly parts of COI
@@ -382,33 +406,39 @@ export default function Home() {
             <div
               style={{
                 display: "grid",
-                gap: 16,
-                gridTemplateColumns: "repeat(auto-fit,minmax(260px,1fr))",
+                gap: isMobile ? 12 : 16,
+                gridTemplateColumns: isMobile ? "1fr" : "repeat(auto-fit,minmax(260px,1fr))",
               }}
             >
               <FeatureCard
                 title="AI COI Extraction"
                 body="Upload any COI PDF and let AI extract carrier, limits, dates, endorsements, additional insured, and more — in seconds."
+                isMobile={isMobile}
               />
               <FeatureCard
                 title="Automated Alerts"
                 body="Expiration tracking, missing endorsements, low limits, and high-risk vendors are surfaced automatically with severity tags."
+                isMobile={isMobile}
               />
               <FeatureCard
                 title="Vendor Upload Links"
                 body="Send magic links to vendors so they can upload COIs without ever logging into a portal. Zero login friction."
+                isMobile={isMobile}
               />
               <FeatureCard
                 title="Rule Engine V2"
-                body="Define coverage requirements by project, location, or vendor type — and let the engine flag what’s non-compliant."
+                body="Define coverage requirements by project, location, or vendor type — and let the engine flag what's non-compliant."
+                isMobile={isMobile}
               />
               <FeatureCard
                 title="Audit Trail & Exports"
                 body="Generate a complete audit pack of vendor status, uploads, and alerts in just a few clicks for insurers and auditors."
+                isMobile={isMobile}
               />
               <FeatureCard
                 title="Multi-Org Cockpit"
                 body="Manage multiple entities, properties, or projects from a single sci-fi-grade cockpit view."
+                isMobile={isMobile}
               />
             </div>
             <div style={{ marginTop: 16 }}>
@@ -426,16 +456,18 @@ export default function Home() {
           <section
             style={{
               maxWidth: 1180,
-              margin: "60px auto 40px auto",
-              display: "grid",
-              gridTemplateColumns: "minmax(0,1.2fr) minmax(0,1.4fr)",
-              gap: 24,
+              margin: isMobile ? "40px auto 30px auto" : "60px auto 40px auto",
+              display: isMobile ? "flex" : "grid",
+              flexDirection: "column",
+              gridTemplateColumns: isMobile ? "1fr" : "minmax(0,1.2fr) minmax(0,1.4fr)",
+              gap: isMobile ? 20 : 24,
+              padding: isMobile ? "0 4px" : "0",
             }}
           >
             <div>
               <h2
                 style={{
-                  fontSize: 24,
+                  fontSize: isMobile ? 20 : 24,
                   marginBottom: 10,
                 }}
               >
@@ -443,7 +475,7 @@ export default function Home() {
               </h2>
               <p
                 style={{
-                  fontSize: 14,
+                  fontSize: isMobile ? 13 : 14,
                   color: "#9ca3af",
                   marginBottom: 18,
                   maxWidth: 520,
@@ -458,7 +490,7 @@ export default function Home() {
                 style={{
                   paddingLeft: 20,
                   margin: 0,
-                  fontSize: 14,
+                  fontSize: isMobile ? 13 : 14,
                   color: "#cbd5f5",
                   lineHeight: 1.6,
                 }}
@@ -481,8 +513,8 @@ export default function Home() {
             {/* Mini pricing teaser */}
             <div
               style={{
-                borderRadius: 22,
-                padding: 20,
+                borderRadius: isMobile ? 16 : 22,
+                padding: isMobile ? 16 : 20,
                 background:
                   "radial-gradient(circle at top,rgba(15,23,42,0.98),rgba(15,23,42,0.94))",
                 border: "1px solid rgba(148,163,184,0.4)",
@@ -492,7 +524,7 @@ export default function Home() {
             >
               <div
                 style={{
-                  fontSize: 12,
+                  fontSize: isMobile ? 11 : 12,
                   textTransform: "uppercase",
                   letterSpacing: "0.16em",
                   color: "#9ca3af",
@@ -502,12 +534,12 @@ export default function Home() {
                 Simple pricing
               </div>
 
-              <div style={{ fontSize: 22, fontWeight: 600, marginBottom: 6 }}>
+              <div style={{ fontSize: isMobile ? 18 : 22, fontWeight: 600, marginBottom: 6 }}>
                 Pro Plan — $399/mo
               </div>
               <p
                 style={{
-                  fontSize: 14,
+                  fontSize: isMobile ? 13 : 14,
                   color: "#9ca3af",
                   marginBottom: 14,
                 }}
@@ -519,7 +551,7 @@ export default function Home() {
                 onClick={() => router.push("/pricing")}
                 style={{
                   borderRadius: 999,
-                  padding: "9px 14px",
+                  padding: isMobile ? "10px 16px" : "9px 14px",
                   border: "1px solid rgba(59,130,246,0.9)",
                   background:
                     "radial-gradient(circle at top left,#3b82f6,#1d4ed8,#0f172a)",
@@ -528,6 +560,7 @@ export default function Home() {
                   fontWeight: 500,
                   cursor: "pointer",
                   marginBottom: 10,
+                  width: isMobile ? "100%" : "auto",
                 }}
               >
                 View full pricing →
@@ -557,13 +590,15 @@ export default function Home() {
               fontSize: 12,
               color: "#6b7280",
               display: "flex",
+              flexDirection: isMobile ? "column" : "row",
               justifyContent: "space-between",
-              gap: 10,
-              flexWrap: "wrap",
+              alignItems: isMobile ? "center" : "flex-start",
+              gap: isMobile ? 12 : 10,
+              textAlign: isMobile ? "center" : "left",
             }}
           >
             <div>© {new Date().getFullYear()} verivo</div>
-            <div style={{ display: "flex", gap: 16 }}>
+            <div style={{ display: "flex", gap: isMobile ? 12 : 16, flexWrap: "wrap", justifyContent: "center" }}>
               <button
                 onClick={() => router.push("/terms")}
                 style={linkBtn}
@@ -598,17 +633,17 @@ export default function Home() {
   );
 }
 
-function SmallStat({ label, value, color }) {
+function SmallStat({ label, value, color, isMobile }) {
   return (
     <div
       style={{
         borderRadius: 14,
-        padding: "8px 10px",
+        padding: isMobile ? "6px 10px" : "8px 10px",
         border: `1px solid ${color}55`,
         background: "rgba(15,23,42,0.95)",
         display: "flex",
         justifyContent: "space-between",
-        fontSize: 12,
+        fontSize: isMobile ? 11 : 12,
       }}
     >
       <span style={{ color: "#9ca3af" }}>{label}</span>
@@ -617,21 +652,21 @@ function SmallStat({ label, value, color }) {
   );
 }
 
-function FeatureCard({ title, body }) {
+function FeatureCard({ title, body, isMobile }) {
   return (
     <div
       style={{
-        borderRadius: 18,
-        padding: 16,
+        borderRadius: isMobile ? 14 : 18,
+        padding: isMobile ? 14 : 16,
         border: "1px solid rgba(51,65,85,0.9)",
         background: "rgba(15,23,42,0.95)",
         boxShadow: "0 12px 35px rgba(15,23,42,0.85)",
       }}
     >
-      <div style={{ fontSize: 16, fontWeight: 500, marginBottom: 6 }}>
+      <div style={{ fontSize: isMobile ? 14 : 16, fontWeight: 500, marginBottom: 6 }}>
         {title}
       </div>
-      <p style={{ fontSize: 13, color: "#9ca3af", margin: 0 }}>{body}</p>
+      <p style={{ fontSize: isMobile ? 12 : 13, color: "#9ca3af", margin: 0 }}>{body}</p>
     </div>
   );
 }

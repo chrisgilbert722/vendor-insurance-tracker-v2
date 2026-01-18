@@ -17,6 +17,17 @@ import MarketingHeader from "../components/MarketingHeader";
 
 export default function PropertyManagement() {
   const router = useRouter();
+  const [isMobile, setIsMobile] = useState(false);
+
+  // Track screen size for responsive layout
+  useEffect(() => {
+    function checkMobile() {
+      setIsMobile(window.innerWidth < 768);
+    }
+    checkMobile();
+    window.addEventListener("resize", checkMobile);
+    return () => window.removeEventListener("resize", checkMobile);
+  }, []);
 
   const title =
     "Vendor Insurance Compliance for Property Managers | COI Tracking — verivo";
@@ -326,7 +337,7 @@ const faqJsonLd = {
             "radial-gradient(circle at 20% 0%, rgba(56,189,248,0.2), transparent 45%), radial-gradient(circle at 80% 0%, rgba(168,85,247,0.18), transparent 40%), linear-gradient(180deg,#020617,#000)",
           color: "#e5e7eb",
           position: "relative",
-          padding: "40px 20px 90px",
+          padding: isMobile ? "24px 16px 60px" : "40px 20px 90px",
           overflowX: "hidden",
         }}
       >
@@ -350,9 +361,10 @@ const faqJsonLd = {
             style={{
               maxWidth: 1180,
               margin: "0 auto",
-              display: "grid",
-              gridTemplateColumns: "minmax(0,1.5fr) minmax(0,1.2fr)",
-              gap: 30,
+              display: isMobile ? "flex" : "grid",
+              flexDirection: "column",
+              gridTemplateColumns: isMobile ? "1fr" : "minmax(0,1.5fr) minmax(0,1.2fr)",
+              gap: isMobile ? 24 : 30,
               alignItems: "center",
             }}
           >
@@ -366,12 +378,13 @@ const faqJsonLd = {
                   border: "1px solid rgba(148,163,184,0.4)",
                   background:
                     "linear-gradient(120deg,rgba(15,23,42,0.95),rgba(15,23,42,0))",
-                  marginBottom: 14,
+                  marginBottom: isMobile ? 10 : 14,
+                  flexWrap: "wrap",
                 }}
               >
                 <span
                   style={{
-                    fontSize: 10,
+                    fontSize: isMobile ? 9 : 10,
                     color: "#9ca3af",
                     textTransform: "uppercase",
                     letterSpacing: "0.15em",
@@ -381,7 +394,7 @@ const faqJsonLd = {
                 </span>
                 <span
                   style={{
-                    fontSize: 10,
+                    fontSize: isMobile ? 9 : 10,
                     color: "#38bdf8",
                     textTransform: "uppercase",
                     letterSpacing: "0.12em",
@@ -394,9 +407,9 @@ const faqJsonLd = {
               <h1
                 style={{
                   margin: 0,
-                  fontSize: 44,
-                  lineHeight: 1.1,
-                  marginBottom: 16,
+                  fontSize: isMobile ? 26 : 44,
+                  lineHeight: isMobile ? 1.25 : 1.1,
+                  marginBottom: isMobile ? 12 : 16,
                   fontWeight: 700,
                 }}
               >
@@ -415,10 +428,11 @@ const faqJsonLd = {
 
               <p
                 style={{
-                  fontSize: 16,
+                  fontSize: isMobile ? 14 : 16,
                   color: "#cbd5f5",
                   maxWidth: 580,
-                  marginBottom: 22,
+                  marginBottom: isMobile ? 16 : 22,
+                  lineHeight: 1.5,
                 }}
               >
                 Live portfolio visibility: non-compliant vendors, expiring COIs,
@@ -431,9 +445,9 @@ const faqJsonLd = {
               <div
                 style={{
                   display: "flex",
+                  flexDirection: isMobile ? "column" : "row",
                   gap: 12,
-                  flexWrap: "wrap",
-                  marginBottom: 18,
+                  marginBottom: isMobile ? 14 : 18,
                 }}
               >
                 <button
@@ -441,7 +455,7 @@ const faqJsonLd = {
                   className="pm-cta"
                   style={{
                     borderRadius: 999,
-                    padding: "10px 18px",
+                    padding: isMobile ? "12px 20px" : "10px 18px",
                     border: "1px solid rgba(59,130,246,0.9)",
                     background:
                       "radial-gradient(circle at top left,#3b82f6,#1d4ed8,#0f172a)",
@@ -449,6 +463,7 @@ const faqJsonLd = {
                     fontSize: 15,
                     fontWeight: 500,
                     cursor: "pointer",
+                    width: isMobile ? "100%" : "auto",
                   }}
                 >
                   Start Free Trial →
@@ -461,13 +476,14 @@ const faqJsonLd = {
                   }}
                   style={{
                     borderRadius: 999,
-                    padding: "10px 18px",
+                    padding: isMobile ? "12px 20px" : "10px 18px",
                     border: "1px solid rgba(148,163,184,0.7)",
                     background: "rgba(15,23,42,0.9)",
                     color: "#cbd5f5",
                     fontSize: 15,
                     fontWeight: 500,
                     cursor: "pointer",
+                    width: isMobile ? "100%" : "auto",
                   }}
                 >
                   See How It Works →
@@ -486,13 +502,14 @@ const faqJsonLd = {
               ref={cockpitRef}
               className="pm-card"
               style={{
-                borderRadius: 24,
-                padding: 18,
+                borderRadius: isMobile ? 18 : 24,
+                padding: isMobile ? 14 : 18,
                 background:
                   "radial-gradient(circle at top,rgba(15,23,42,0.98),rgba(15,23,42,0.94))",
                 border: "1px solid rgba(148,163,184,0.5)",
                 boxShadow:
                   "0 24px 60px rgba(15,23,42,0.98), 0 0 40px rgba(56,189,248,0.22)",
+                width: "100%",
               }}
             >
               <div
@@ -575,14 +592,16 @@ const faqJsonLd = {
               <div
                 style={{
                   marginTop: 10,
-                  display: "grid",
-                  gridTemplateColumns: "1.1fr 1.2fr",
+                  display: isMobile ? "flex" : "grid",
+                  flexDirection: "column",
+                  gridTemplateColumns: isMobile ? "1fr" : "1.1fr 1.2fr",
                   gap: 12,
                   alignItems: "center",
                 }}
               >
                 <div style={{ margin: "0 auto" }}>
                   <GaugeRing
+                    isMobile={isMobile}
                     score={cockpit.scoreValue}
                     mode={viewMode}
                     label={cockpit.label}
@@ -681,16 +700,16 @@ const faqJsonLd = {
           <TrustAuthorityBand />
           <TestimonialsBand />
 
-          <section style={{ maxWidth: 1180, margin: "60px auto 30px auto" }}>
-            <h2 style={{ fontSize: 26, marginBottom: 14 }}>
+          <section style={{ maxWidth: 1180, margin: isMobile ? "40px auto 20px auto" : "60px auto 30px auto", padding: isMobile ? "0 4px" : "0" }}>
+            <h2 style={{ fontSize: isMobile ? 20 : 26, marginBottom: isMobile ? 10 : 14 }}>
               Built for property teams drowning in vendors.
             </h2>
             <p
               style={{
-                fontSize: 14,
+                fontSize: isMobile ? 13 : 14,
                 color: "#9ca3af",
                 maxWidth: 720,
-                marginBottom: 28,
+                marginBottom: isMobile ? 20 : 28,
               }}
             >
               Stop chasing COIs. Stop last-minute audit scrambles. Stop risking owner trust.
@@ -700,8 +719,8 @@ const faqJsonLd = {
             <div
               style={{
                 display: "grid",
-                gap: 16,
-                gridTemplateColumns: "repeat(auto-fit,minmax(260px,1fr))",
+                gap: isMobile ? 12 : 16,
+                gridTemplateColumns: isMobile ? "1fr" : "repeat(auto-fit,minmax(260px,1fr))",
               }}
             >
               <FeatureCard
@@ -732,16 +751,19 @@ const faqJsonLd = {
           </section>
 
           <section
+            id="how-it-works"
             style={{
               maxWidth: 1180,
-              margin: "60px auto 40px auto",
-              display: "grid",
-              gridTemplateColumns: "minmax(0,1.2fr) minmax(0,1.4fr)",
-              gap: 24,
+              margin: isMobile ? "40px auto 30px auto" : "60px auto 40px auto",
+              display: isMobile ? "flex" : "grid",
+              flexDirection: "column",
+              gridTemplateColumns: isMobile ? "1fr" : "minmax(0,1.2fr) minmax(0,1.4fr)",
+              gap: isMobile ? 20 : 24,
+              padding: isMobile ? "0 4px" : "0",
             }}
           >
             <div>
-              <h2 style={{ fontSize: 24, marginBottom: 10 }}>How it works (no demos)</h2>
+              <h2 style={{ fontSize: isMobile ? 20 : 24, marginBottom: 10 }}>How it works (no demos)</h2>
               <p
                 style={{
                   fontSize: 14,
@@ -839,13 +861,15 @@ const faqJsonLd = {
               fontSize: 12,
               color: "#6b7280",
               display: "flex",
+              flexDirection: isMobile ? "column" : "row",
               justifyContent: "space-between",
-              gap: 10,
-              flexWrap: "wrap",
+              alignItems: isMobile ? "center" : "flex-start",
+              gap: isMobile ? 12 : 10,
+              textAlign: isMobile ? "center" : "left",
             }}
           >
             <div>© {new Date().getFullYear()} verivo</div>
-            <div style={{ display: "flex", gap: 16 }}>
+            <div style={{ display: "flex", gap: isMobile ? 12 : 16, flexWrap: "wrap", justifyContent: "center" }}>
               <button onClick={() => router.push("/terms")} style={linkBtn}>
                 Terms
               </button>
@@ -879,7 +903,7 @@ const faqJsonLd = {
    - The arc is now actually driven by the score (0–100)
    - Center number uses solid color (no more “gradient square” bug)
 ============================================================ */
-function GaugeRing({ score, mode, label, scoreLabel, animate }) {
+function GaugeRing({ score, mode, label, scoreLabel, animate, isMobile }) {
   const [val, setVal] = useState(0);
 
   useEffect(() => {
@@ -929,15 +953,19 @@ function GaugeRing({ score, mode, label, scoreLabel, animate }) {
 
   const numberColor = mode === "owner" ? "#fb7185" : "#22c55e";
 
+  const size = isMobile ? 120 : 160;
+  const innerInset = isMobile ? 12 : 16;
+  const padSize = isMobile ? 8 : 10;
+
   return (
     <div
       style={{
         position: "relative",
-        width: 160,
-        height: 160,
+        width: size,
+        height: size,
         borderRadius: 999,
         background: track,
-        padding: 10,
+        padding: padSize,
         margin: "0 auto",
         boxShadow:
           mode === "owner"
@@ -950,7 +978,7 @@ function GaugeRing({ score, mode, label, scoreLabel, animate }) {
       <div
         style={{
           position: "absolute",
-          inset: 10,
+          inset: padSize,
           borderRadius: 999,
           background: fill,
           filter: "drop-shadow(0 0 16px rgba(56,189,248,0.10))",
@@ -961,7 +989,7 @@ function GaugeRing({ score, mode, label, scoreLabel, animate }) {
       <div
         style={{
           position: "absolute",
-          inset: 16,
+          inset: innerInset,
           borderRadius: 999,
           background:
             "radial-gradient(circle at 30% 0,#0f172a,#020617 70%,#000)",
@@ -974,21 +1002,21 @@ function GaugeRing({ score, mode, label, scoreLabel, animate }) {
       >
         <div
           style={{
-            fontSize: 10,
+            fontSize: isMobile ? 8 : 10,
             textTransform: "uppercase",
             color: "#9ca3af",
             letterSpacing: "0.16em",
-            marginBottom: 6,
+            marginBottom: isMobile ? 4 : 6,
             maxWidth: 120,
           }}
         >
           {label}
         </div>
 
-        {/* Solid color number to avoid the “gradient square” rendering bug */}
+        {/* Solid color number to avoid the "gradient square" rendering bug */}
         <div
           style={{
-            fontSize: 30,
+            fontSize: isMobile ? 24 : 30,
             fontWeight: 800,
             color: numberColor,
             lineHeight: 1,
@@ -1001,7 +1029,7 @@ function GaugeRing({ score, mode, label, scoreLabel, animate }) {
           {val}
         </div>
 
-        <div style={{ fontSize: 11, color: "#9ca3af", marginTop: 4 }}>
+        <div style={{ fontSize: isMobile ? 9 : 11, color: "#9ca3af", marginTop: 4 }}>
           {scoreLabel}
         </div>
       </div>

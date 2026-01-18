@@ -5,6 +5,7 @@
 // 1) Logged out, no trial → Start Free Trial
 // 2) Logged out, trial exists → Login
 // 3) Logged in → Sign Out
+// RESPONSIVE: Mobile-first design
 // ============================================================
 
 import { useEffect, useState } from "react";
@@ -17,6 +18,17 @@ export default function MarketingHeader() {
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
   const [hasTrial, setHasTrial] = useState(false);
+  const [isMobile, setIsMobile] = useState(false);
+
+  // Track screen size for responsive layout
+  useEffect(() => {
+    function checkMobile() {
+      setIsMobile(window.innerWidth < 640);
+    }
+    checkMobile();
+    window.addEventListener("resize", checkMobile);
+    return () => window.removeEventListener("resize", checkMobile);
+  }, []);
 
   // ----------------------------
   // AUTH + TRIAL STATE
@@ -82,30 +94,33 @@ export default function MarketingHeader() {
   }
 
   // ----------------------------
-  // SHARED CTA STYLE (MATCHES HERO)
+  // SHARED CTA STYLE (MATCHES HERO) - responsive
   // ----------------------------
   const primaryCtaStyle = {
     borderRadius: 999,
-    padding: "10px 18px",
+    padding: isMobile ? "8px 14px" : "10px 18px",
     border: "1px solid rgba(59,130,246,0.9)",
     background:
       "radial-gradient(circle at top left,#3b82f6,#1d4ed8,#0f172a)",
     color: "#e0f2fe",
-    fontSize: 15,
+    fontSize: isMobile ? 13 : 15,
     fontWeight: 500,
     cursor: "pointer",
+    whiteSpace: "nowrap",
   };
 
   return (
     <header
       style={{
         maxWidth: 1180,
-        margin: "0 auto 40px auto",
+        margin: "0 auto 24px auto",
+        padding: isMobile ? "0 16px" : "0",
         display: "flex",
         alignItems: "center",
         justifyContent: "space-between",
         position: "relative",
         zIndex: 2,
+        gap: 12,
       }}
     >
       {/* LOGO */}
@@ -113,15 +128,16 @@ export default function MarketingHeader() {
         style={{
           display: "flex",
           alignItems: "center",
-          gap: 10,
+          gap: 8,
           cursor: "pointer",
+          flexShrink: 0,
         }}
         onClick={() => router.push("/")}
       >
         <div
           style={{
-            width: 32,
-            height: 32,
+            width: isMobile ? 28 : 32,
+            height: isMobile ? 28 : 32,
             borderRadius: "999px",
             background:
               "radial-gradient(circle at 30% 0,#38bdf8,#6366f1,#0f172a)",
@@ -131,11 +147,11 @@ export default function MarketingHeader() {
             justifyContent: "center",
           }}
         >
-          <span style={{ fontSize: 18 }}>⚡</span>
+          <span style={{ fontSize: isMobile ? 14 : 18 }}>⚡</span>
         </div>
         <span
           style={{
-            fontSize: 18,
+            fontSize: isMobile ? 16 : 18,
             fontWeight: 600,
             letterSpacing: 0.4,
           }}
@@ -145,35 +161,37 @@ export default function MarketingHeader() {
       </div>
 
       {/* NAV */}
-      <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
+      <div style={{ display: "flex", alignItems: "center", gap: isMobile ? 8 : 14 }}>
         <button
           onClick={() => router.push("/pricing")}
           style={{
-            fontSize: 14,
+            fontSize: isMobile ? 12 : 14,
             border: "none",
             background: "transparent",
             color: "#cbd5f5",
             cursor: "pointer",
+            padding: isMobile ? "4px 6px" : "4px 8px",
           }}
         >
           Pricing
         </button>
 
         {loading ? (
-          <span style={{ fontSize: 13, color: "#9ca3af" }}>…</span>
+          <span style={{ fontSize: 13, color: "#9ca3af" }}>...</span>
         ) : user ? (
           // LOGGED IN → SIGN OUT
           <button
             onClick={handleLogout}
             style={{
-              fontSize: 14,
+              fontSize: isMobile ? 12 : 14,
               borderRadius: 999,
-              padding: "7px 14px",
+              padding: isMobile ? "6px 10px" : "7px 14px",
               border: "1px solid rgba(239,68,68,0.5)",
               background: "rgba(239,68,68,0.15)",
               color: "#fca5a5",
               cursor: "pointer",
               fontWeight: 500,
+              whiteSpace: "nowrap",
             }}
           >
             Sign Out

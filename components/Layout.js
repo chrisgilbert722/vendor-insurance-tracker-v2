@@ -25,9 +25,13 @@ export default function Layout({ children }) {
   const pathname = rawPath.split("?")[0];
 
   /* ------------------------------------------------------------
-     🔒 HARD BYPASS — ONBOARDING MUST NEVER USE LAYOUT
+     🔒 HARD BYPASS — MARKETING + ONBOARDING NEVER USE APP SHELL
   ------------------------------------------------------------ */
-  if (pathname.startsWith("/onboarding")) {
+  const marketingRoutes = ["/", "/property-management", "/pricing"];
+  const isMarketing = marketingRoutes.includes(pathname);
+  const isOnboarding = pathname.startsWith("/onboarding");
+
+  if (isMarketing || isOnboarding) {
     return <>{children}</>;
   }
 
