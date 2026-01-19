@@ -342,6 +342,8 @@ function Dashboard() {
   const { isFirstTime, checks, counts, loading: firstTimeLoading } = useFirstTimeCheck();
 
   // Trial status check (single source of truth)
+  // GUARD ORDER: This runs AFTER onboarding check (below)
+  // If onboarding complete but no trial/subscription active → billing
   const [trialChecked, setTrialChecked] = useState(false);
 
   useEffect(() => {
@@ -350,9 +352,17 @@ function Dashboard() {
     fetch(`/api/billing/trial-status?orgId=${activeOrgId}`)
       .then((r) => r.json())
       .then((data) => {
-        if (data.ok && data.trial) {
-          // If trial expired and not paid, redirect to billing
-          if (data.trial.expired && !data.trial.is_paid) {
+        if (data.ok) {
+          // GUARD C: If onboarding complete but trial not started or expired → billing
+          // hasStartedTrial=false means user hasn't gone through Stripe checkout yet
+          // trial.expired=true means trial ended and user isn't paid
+          if (!data.hasStartedTrial) {
+            // User completed onboarding but hasn't started billing
+            router.replace("/billing/checkout");
+            return;
+          }
+          if (data.trial?.expired && !data.trial?.is_paid) {
+            // Trial expired and not paid → upgrade page
             router.replace("/billing/upgrade?reason=expired");
             return;
           }

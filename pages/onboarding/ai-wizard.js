@@ -80,9 +80,11 @@ export default function AiOnboardingWizardPage() {
         }
 
         // Handle action from bootstrap
+        // IMPORTANT: After onboarding complete, redirect to billing (not dashboard)
+        // This prevents routing loops between dashboard/onboarding/billing
         if (json.action === "redirect_dashboard") {
           setState(STATE.REDIRECTING);
-          router.replace("/dashboard");
+          router.replace("/billing/checkout");
           return;
         }
 
