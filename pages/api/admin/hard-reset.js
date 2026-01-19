@@ -139,7 +139,7 @@ export default async function handler(req, res) {
         WHERE id = ${orgId}
       `;
       results.push({ table: "organizations", status: "reset" });
-    } catch (err) {
+    } catch {
       // Some columns might not exist - try minimal reset
       try {
         await sql`
