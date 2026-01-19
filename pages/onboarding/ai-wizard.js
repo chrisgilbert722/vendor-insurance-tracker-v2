@@ -80,11 +80,11 @@ export default function AiOnboardingWizardPage() {
         }
 
         // Handle action from bootstrap
-        // IMPORTANT: After onboarding complete, redirect to billing (not dashboard)
-        // This prevents routing loops between dashboard/onboarding/billing
+        // After onboarding complete, redirect to dashboard
+        // Dashboard BillingGate handles showing billing UI if trial not active
         if (json.action === "redirect_dashboard") {
           setState(STATE.REDIRECTING);
-          router.replace("/billing/checkout");
+          router.replace("/dashboard");
           return;
         }
 
