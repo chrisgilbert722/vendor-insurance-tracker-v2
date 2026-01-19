@@ -95,6 +95,14 @@ export default async function handler(req, res) {
       mode: "subscription",
       customer_email: email,
       line_items: [{ price: priceId, quantity: 1 }],
+
+      // Metadata on SESSION — available immediately in webhook
+      metadata: {
+        supabase_user_id: user.id,
+        org_external_uuid: orgId,
+      },
+
+      // Metadata on SUBSCRIPTION — persists with subscription
       subscription_data: {
         trial_period_days: 14,
         metadata: {
@@ -102,6 +110,7 @@ export default async function handler(req, res) {
           org_external_uuid: orgId,
         },
       },
+
       billing_address_collection: "auto",
       allow_promotion_codes: false,
 

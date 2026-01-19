@@ -1,12 +1,12 @@
 // pages/api/billing/confirm-checkout.js
 // ============================================================
 // CONFIRM STRIPE CHECKOUT — AUTHORITATIVE TRIAL ACTIVATION
-// Called from /billing/success with session_id from Stripe redirect
-// Retrieves session from Stripe API and persists trial state
+// Called from /billing/success after Stripe redirect
+// Writes trial_started_at directly (doesn't wait for webhook)
 // ============================================================
 
 import Stripe from "stripe";
-import { sql } from "../../../lib/db";
+import { neon } from "@neondatabase/serverless";
 import { createClient } from "@supabase/supabase-js";
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
@@ -15,6 +15,8 @@ export default async function handler(req, res) {
   if (req.method !== "POST") {
     return res.status(405).json({ ok: false, error: "POST only" });
   }
+
+  const sql = neon(process.env.DATABASE_URL);
 
   try {
     // -------------------------------------------
@@ -56,6 +58,7 @@ export default async function handler(req, res) {
     }
 
     const org = orgs[0];
+    console.log("[confirm-checkout] Found org:", org.id, "external_uuid:", org.external_uuid);
 
     // -------------------------------------------
     // 3. CHECK IF ALREADY ACTIVATED
@@ -70,35 +73,35 @@ export default async function handler(req, res) {
     }
 
     // -------------------------------------------
-    // 4. GET SESSION ID FROM REQUEST
+    // 4. GET STRIPE SESSION DATA (if provided)
     // -------------------------------------------
     const { sessionId } = req.body;
-
     let stripeCustomerId = null;
     let stripeSubscriptionId = null;
 
-    // If session ID provided, retrieve from Stripe for extra data
     if (sessionId) {
       try {
         const stripeSession = await stripe.checkout.sessions.retrieve(sessionId);
         stripeCustomerId = stripeSession.customer;
         stripeSubscriptionId = stripeSession.subscription;
-        console.log("[confirm-checkout] Retrieved Stripe session:", {
+        console.log("[confirm-checkout] Stripe session:", {
           sessionId,
           customer: stripeCustomerId,
           subscription: stripeSubscriptionId,
         });
       } catch (stripeErr) {
         console.warn("[confirm-checkout] Could not retrieve Stripe session:", stripeErr.message);
-        // Continue without Stripe data - trial will still activate
+        // Continue - we'll activate trial anyway
       }
     }
 
     // -------------------------------------------
-    // 5. ACTIVATE TRIAL
+    // 5. WRITE TRIAL STATE TO DATABASE
     // -------------------------------------------
     const now = new Date();
     const trialEnds = new Date(now.getTime() + 14 * 24 * 60 * 60 * 1000);
+
+    console.log("[confirm-checkout] Writing trial state for org:", org.id);
 
     await sql`
       UPDATE organizations
@@ -112,19 +115,28 @@ export default async function handler(req, res) {
       WHERE id = ${org.id};
     `;
 
-    console.log("[confirm-checkout] Trial activated for org:", org.id);
+    console.log("[confirm-checkout] SQL UPDATE executed for org:", org.id);
 
     // -------------------------------------------
-    // 6. VERIFY WRITE
+    // 6. VERIFY WRITE SUCCEEDED
     // -------------------------------------------
     const verify = await sql`
-      SELECT trial_started_at FROM organizations WHERE id = ${org.id};
+      SELECT trial_started_at, onboarding_completed
+      FROM organizations
+      WHERE id = ${org.id};
     `;
 
+    console.log("[confirm-checkout] Verify result:", verify[0]);
+
     if (!verify[0]?.trial_started_at) {
-      console.error("[confirm-checkout] Trial activation failed - not persisted");
-      return res.status(500).json({ ok: false, error: "Trial activation failed" });
+      console.error("[confirm-checkout] CRITICAL: trial_started_at not persisted!");
+      return res.status(500).json({
+        ok: false,
+        error: "Trial activation failed - not persisted",
+      });
     }
+
+    console.log("[confirm-checkout] SUCCESS - Trial activated for org:", org.id);
 
     return res.status(200).json({
       ok: true,
