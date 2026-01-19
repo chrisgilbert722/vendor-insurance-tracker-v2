@@ -3,18 +3,21 @@
 // ✅ NO server imports
 // ✅ Uses API only
 // ✅ Fail-open UI
-// ✅ Allows advancing to Finish step
+// ✅ Marks onboarding complete on Continue
 
 import { useEffect, useState } from "react";
+import { useRouter } from "next/router";
 import { supabase } from "../../lib/supabaseClient";
 
 export default function VendorsAnalyzeStep({
   orgId,
   wizardState,
   setWizardState,
-  setForceUiStep, // 👈 REQUIRED to advance wizard
+  setForceUiStep,
 }) {
+  const router = useRouter();
   const [loading, setLoading] = useState(false);
+  const [completing, setCompleting] = useState(false);
   const [summary, setSummary] = useState(null);
   const [error, setError] = useState("");
 
@@ -59,7 +62,6 @@ export default function VendorsAnalyzeStep({
 
         setSummary(json.summary || null);
 
-        // Store for Review step (safe)
         setWizardState?.((prev) => ({
           ...prev,
           vendorsAnalyzed: {
@@ -78,6 +80,51 @@ export default function VendorsAnalyzeStep({
     runAnalysis();
   }, [orgId]);
 
+  // -------------------------------------------
+  // CONTINUE → MARK ONBOARDING COMPLETE → DASHBOARD
+  // -------------------------------------------
+  async function handleContinue() {
+    if (completing) return;
+
+    setCompleting(true);
+    setError("");
+
+    try {
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
+
+      if (!session?.access_token) {
+        throw new Error("Session expired. Please refresh.");
+      }
+
+      // SINGLE DETERMINISTIC WRITE — marks onboarding complete
+      const res = await fetch("/api/onboarding/complete", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${session.access_token}`,
+        },
+      });
+
+      const json = await res.json();
+
+      if (!json.ok) {
+        throw new Error(json.error || "Failed to complete onboarding");
+      }
+
+      console.log("[VendorsAnalyzeStep] Onboarding marked complete");
+
+      // Redirect directly to dashboard
+      router.replace("/dashboard");
+
+    } catch (err) {
+      console.error("[VendorsAnalyzeStep] Complete error:", err);
+      setError(err.message || "Failed to continue");
+      setCompleting(false);
+    }
+  }
+
   return (
     <div style={{ padding: 16 }}>
       <h3 style={{ marginBottom: 12 }}>Vendor Risk Analysis</h3>
@@ -89,7 +136,7 @@ export default function VendorsAnalyzeStep({
       )}
 
       {error && (
-        <div style={{ color: "#f87171" }}>
+        <div style={{ color: "#f87171", marginBottom: 12 }}>
           {error}
         </div>
       )}
@@ -117,11 +164,11 @@ export default function VendorsAnalyzeStep({
         </div>
       )}
 
-      {/* CONTINUE */}
+      {/* CONTINUE → COMPLETE ONBOARDING */}
       <button
         type="button"
-        onClick={() => setForceUiStep?.(10)}
-        disabled={loading}
+        onClick={handleContinue}
+        disabled={loading || completing}
         style={{
           marginTop: 24,
           padding: "14px 32px",
@@ -132,12 +179,12 @@ export default function VendorsAnalyzeStep({
           color: "#dcfce7",
           fontSize: 15,
           fontWeight: 700,
-          cursor: loading ? "not-allowed" : "pointer",
+          cursor: loading || completing ? "not-allowed" : "pointer",
           width: "100%",
-          opacity: loading ? 0.6 : 1,
+          opacity: loading || completing ? 0.6 : 1,
         }}
       >
-        Continue → Finish Setup
+        {completing ? "Completing setup…" : "Continue to Dashboard →"}
       </button>
     </div>
   );
