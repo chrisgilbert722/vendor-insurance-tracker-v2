@@ -456,6 +456,7 @@ function Dashboard() {
 
   /* ============================================================
      ONBOARDING + TUTORIAL STATUS (COMBINED)
+     🔐 HARD GATE: Redirect to wizard if onboarding not complete
 ============================================================ */
   useEffect(() => {
     if (!activeOrgUuid) return;
@@ -468,6 +469,12 @@ function Dashboard() {
 
         const done = !!json.onboardingComplete;
         const tutorialEnabled = json.dashboardTutorialEnabled === true;
+
+        // 🔐 HARD GATE: Redirect to wizard if onboarding not complete
+        if (!done) {
+          router.replace("/onboarding/ai-wizard");
+          return;
+        }
 
         setOnboardingComplete(done);
         setShowHero(!done);
@@ -484,7 +491,7 @@ function Dashboard() {
         console.error("[dashboard] onboarding/tutorial status error:", err);
       }
     })();
-  }, [activeOrgUuid]);
+  }, [activeOrgUuid, router]);
 
   /* ============================================================
      AUTONOMOUS ALERT GENERATION (V2)

@@ -56,14 +56,16 @@ export default async function handler(req, res) {
        2) CORE ORG STATE (UI DRIVER)
     ---------------------------------------------------------- */
     const [org] = await sql`
-      SELECT onboarding_step, dashboard_tutorial_enabled
+      SELECT onboarding_step, onboarding_completed, dashboard_tutorial_enabled
       FROM organizations
       WHERE id = ${orgIdInt}
       LIMIT 1;
     `;
 
     const onboardingStep = Number(org?.onboarding_step ?? 0);
-    const onboardingComplete = onboardingStep >= 6;
+    // Check BOTH step count AND boolean for robustness
+    // Either condition being true means onboarding is complete
+    const onboardingComplete = onboardingStep >= 6 || org?.onboarding_completed === true;
 
     /* ----------------------------------------------------------
        3) LIVE TELEMETRY (BEST EFFORT)

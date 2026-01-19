@@ -41,9 +41,12 @@ export default async function handler(req, res) {
     if (orgRows.length) {
       const orgId = orgRows[0].org_id;
 
+      // Set BOTH onboarding_completed AND onboarding_step for consistency
+      // status.js checks onboarding_step >= 6, so we must set both
       await sql`
         UPDATE organizations
-        SET onboarding_completed = true
+        SET onboarding_completed = true,
+            onboarding_step = 6
         WHERE id = ${orgId};
       `;
     }
