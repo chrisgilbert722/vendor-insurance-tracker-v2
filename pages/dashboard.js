@@ -338,6 +338,12 @@ function Dashboard() {
   const { isAdmin, isManager } = useRole();
   const { activeOrgId, activeOrgUuid } = useOrg();
 
+  // GUARD: If somehow rendered on billing page, do nothing
+  // This prevents redirect loops during billing flow
+  if (router.pathname.startsWith("/billing")) {
+    return null;
+  }
+
   // First-time state check (single source of truth)
   const { isFirstTime, checks, counts, loading: firstTimeLoading } = useFirstTimeCheck();
 
@@ -345,9 +351,12 @@ function Dashboard() {
   // GUARD ORDER: This runs AFTER onboarding check (below)
   // If onboarding complete but no trial/subscription active → billing
   const [trialChecked, setTrialChecked] = useState(false);
+  const billingRedirectAttemptedRef = useRef(false);
 
   useEffect(() => {
     if (!activeOrgId || trialChecked) return;
+    // Prevent multiple redirect attempts (breaks loops)
+    if (billingRedirectAttemptedRef.current) return;
 
     fetch(`/api/billing/trial-status?orgId=${activeOrgId}`)
       .then((r) => r.json())
@@ -357,12 +366,14 @@ function Dashboard() {
           // hasStartedTrial=false means user hasn't gone through Stripe checkout yet
           // trial.expired=true means trial ended and user isn't paid
           if (!data.hasStartedTrial) {
-            // User completed onboarding but hasn't started billing
+            // Only redirect once per component mount
+            billingRedirectAttemptedRef.current = true;
             router.replace("/billing/checkout");
             return;
           }
           if (data.trial?.expired && !data.trial?.is_paid) {
-            // Trial expired and not paid → upgrade page
+            // Only redirect once per component mount
+            billingRedirectAttemptedRef.current = true;
             router.replace("/billing/upgrade?reason=expired");
             return;
           }

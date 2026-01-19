@@ -37,22 +37,9 @@ export default function BillingCheckout() {
           return;
         }
 
-        // Check if user already has active trial/subscription
-        // If so, skip checkout and go to dashboard
-        const trialRes = await fetch(`/api/billing/trial-status?orgId=${activeOrgUuid}`, {
-          headers: { Authorization: `Bearer ${session.access_token}` },
-        });
-        const trialData = await trialRes.json();
-
-        if (cancelled) return;
-
-        if (trialData.ok && trialData.hasStartedTrial && trialData.trial?.active) {
-          // User already has active trial or subscription → go to dashboard
-          router.replace("/dashboard");
-          return;
-        }
-
         // Create Stripe Checkout Session
+        // NOTE: Do NOT redirect to dashboard here - let Stripe/success flow handle it
+        // Redirecting here causes loops with dashboard guard
         const res = await fetch("/api/billing/create-checkout", {
           method: "POST",
           headers: {
