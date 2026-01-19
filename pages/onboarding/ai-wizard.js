@@ -2,6 +2,7 @@
 // ============================================================
 // AI Onboarding Wizard V5 — CANONICAL ONBOARDING ENTRY POINT
 // HARD-STOP: Never renders if org exists with onboarding_completed
+// RACE-SAFE: Waits for org hydration before redirect decisions
 // ============================================================
 
 import { useEffect, useState } from "react";
@@ -30,17 +31,21 @@ export default function AiOnboardingWizardPage() {
   /* -------------------------------------------------
      🛑 HARD-STOP: REDIRECT IF ONBOARDING COMPLETE
 
-     This runs FIRST, BEFORE any other logic.
+     RACE-SAFE: Only runs after org hydration completes.
      If org exists and onboarding is done, go to dashboard.
   -------------------------------------------------- */
   useEffect(() => {
+    // Wait for org context to finish loading
+    if (orgLoading) return;
+
     if (activeOrg?.onboarding_completed === true) {
       router.replace("/dashboard");
     }
-  }, [activeOrg, router]);
+  }, [orgLoading, activeOrg, router]);
 
   // SYNCHRONOUS GUARD: Block render entirely if onboarding complete
-  if (activeOrg?.onboarding_completed === true) {
+  // RACE-SAFE: Only applies after org hydration completes
+  if (!orgLoading && activeOrg?.onboarding_completed === true) {
     return null; // Redirecting to dashboard
   }
 
@@ -118,13 +123,16 @@ export default function AiOnboardingWizardPage() {
     if (checkingSession || creatingOrg) return;
     if (!hasSession) return;
 
-    // Gate 2: HARD-STOP if ANY org indicator exists
+    // Gate 2: Wait for org context to finish loading
+    if (orgLoading) return;
+
+    // Gate 3: HARD-STOP if ANY org indicator exists
     if (activeOrg) return;
     if (activeOrgId) return;
     if (activeOrgUuid) return;
     if (orgs && orgs.length > 0) return;
 
-    // Gate 3: HARD-STOP if onboarding already complete
+    // Gate 4: HARD-STOP if onboarding already complete
     if (activeOrg?.onboarding_completed === true) return;
 
     let cancelled = false;
@@ -182,7 +190,7 @@ export default function AiOnboardingWizardPage() {
     return () => {
       cancelled = true;
     };
-  }, [checkingSession, hasSession, orgs, activeOrg, activeOrgId, activeOrgUuid, creatingOrg, setActiveOrg]);
+  }, [checkingSession, hasSession, orgLoading, orgs, activeOrg, activeOrgId, activeOrgUuid, creatingOrg, setActiveOrg]);
 
   /* -------------------------------------------------
      ⏳ WAIT STATES
