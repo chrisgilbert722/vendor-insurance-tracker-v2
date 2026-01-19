@@ -1,7 +1,9 @@
 // components/billing/TrialBanner.js
 // ============================================================
-// TRIAL BANNER — Shows "Trial: X days left" during active trial
-// Subtle indicator in header/nav area
+// TRIAL BANNER — Shows "Trial: X days left" ONLY when:
+// 1. Active Stripe subscription exists
+// 2. Subscription status is "trialing"
+// NO fake trial badges without real Stripe subscription
 // ============================================================
 
 import { useTrialStatus } from "../../lib/useTrialStatus";
@@ -9,13 +11,30 @@ import { useRouter } from "next/router";
 
 export default function TrialBanner() {
   const router = useRouter();
-  const { trial, loading, isActive, isPaid, daysLeft } = useTrialStatus();
+  const { trial, loading, isPaid, daysLeft } = useTrialStatus();
 
-  // Don't show if loading, paid, or no trial data
-  if (loading || !trial || isPaid) return null;
+  // Don't show if loading
+  if (loading) return null;
 
-  // Don't show on billing pages
-  if (router.pathname.startsWith("/billing")) return null;
+  // Don't show if no trial data or no subscription
+  if (!trial) return null;
+
+  // CRITICAL: Only show if subscription exists and is trialing
+  // billing_status must be "trial" (not "none", "error", etc.)
+  if (trial.billing_status !== "trial") return null;
+
+  // Don't show if already paid (active subscription past trial)
+  if (isPaid) return null;
+
+  // Don't show on billing/onboarding/auth pages
+  const pathname = router.pathname;
+  if (
+    pathname.startsWith("/billing") ||
+    pathname.startsWith("/onboarding") ||
+    pathname.startsWith("/auth")
+  ) {
+    return null;
+  }
 
   const urgentColor = daysLeft <= 3 ? "#fb7185" : daysLeft <= 7 ? "#facc15" : "#38bdf8";
 

@@ -6,7 +6,8 @@
 //
 // MARKETING PAGES (/, /property-management, /pricing, /terms, /privacy, /compare):
 //   - Logged OUT → render page
-//   - Logged IN + onboarded → redirect to /dashboard
+//   - Logged IN + onboarded + subscribed → redirect to /dashboard
+//   - Logged IN + onboarded + NOT subscribed → redirect to /billing/checkout
 //   - Logged IN + NOT onboarded → redirect to /onboarding/ai-wizard
 //
 // AUTH PAGES (/login, /signup, /auth/*):
@@ -16,17 +17,22 @@
 //   - No session → redirect to /auth/login
 //   - Has session → allow (page handles org creation)
 //
+// BILLING PAGES (/billing/*):
+//   - Always accessible (handles own auth)
+//
 // PROTECTED ROUTES (everything else):
 //   - No session → redirect to /auth/login
 //   - No org → create org, redirect to /onboarding/ai-wizard
 //   - Onboarding incomplete → redirect to /onboarding/ai-wizard
-//   - Onboarding complete → allow
+//   - No active subscription → redirect to /billing/checkout
+//   - All checks pass → allow
 // ============================================================
 
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/router";
 import { useUser } from "../context/UserContext";
 import { useOrg } from "../context/OrgContext";
+import { supabase } from "../lib/supabaseClient";
 
 // Marketing pages that redirect logged-in users
 const MARKETING_PATHS = [
@@ -45,14 +51,14 @@ const AUTH_PATHS = [
   "/auth",
 ];
 
-// Public paths that never redirect (vendor portals, API, etc.)
+// Public paths that never redirect (vendor portals, API, billing, etc.)
 const PUBLIC_PATHS = [
   "/vendor-upload",
   "/vendor-pages",
   "/vendor/portal",
   "/broker",
   "/api",
-  "/billing",
+  "/billing", // Billing pages handle their own auth
 ];
 
 function isMarketingPath(pathname) {
@@ -78,13 +84,45 @@ export default function OnboardingGuard({ children }) {
 
   const [checked, setChecked] = useState(false);
   const [creatingOrg, setCreatingOrg] = useState(false);
+  const [accessStatus, setAccessStatus] = useState(null);
+  const [checkingAccess, setCheckingAccess] = useState(false);
   const redirectedRef = useRef(false);
 
   // Reset redirect flag on route change
   useEffect(() => {
     redirectedRef.current = false;
     setChecked(false);
+    setAccessStatus(null);
   }, [router.pathname]);
+
+  // Check access status via API (subscription check)
+  async function checkAccessStatus() {
+    if (checkingAccess) return null;
+    setCheckingAccess(true);
+
+    try {
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
+
+      if (!session?.access_token) return null;
+
+      const res = await fetch("/api/auth/access-check", {
+        headers: {
+          Authorization: `Bearer ${session.access_token}`,
+        },
+      });
+
+      const json = await res.json();
+      setAccessStatus(json);
+      return json;
+    } catch (err) {
+      console.error("[OnboardingGuard] Access check failed:", err);
+      return null;
+    } finally {
+      setCheckingAccess(false);
+    }
+  }
 
   useEffect(() => {
     // Wait for auth and org to load
@@ -166,7 +204,7 @@ export default function OnboardingGuard({ children }) {
     }
 
     // ========================================
-    // PROTECTED ROUTES — Full auth + onboarding check
+    // PROTECTED ROUTES — Full auth + onboarding + subscription check
     // ========================================
 
     // No session → redirect to login
@@ -193,10 +231,38 @@ export default function OnboardingGuard({ children }) {
       return;
     }
 
-    // Onboarding complete → allow access
-    setChecked(true);
+    // Onboarding complete → check subscription status via API
+    if (!accessStatus && !checkingAccess) {
+      checkAccessStatus().then((result) => {
+        if (!result) return;
 
-  }, [userInitializing, orgLoading, user, activeOrgId, activeOrg, orgs, router, creatingOrg]);
+        // Handle access check result
+        if (result.status === "BLOCK_PAYWALL" && result.redirect) {
+          if (!redirectedRef.current) {
+            redirectedRef.current = true;
+            router.replace(result.redirect);
+          }
+        } else if (result.status === "ALLOW") {
+          setChecked(true);
+        }
+      });
+      return;
+    }
+
+    // If access check complete and allowed, show content
+    if (accessStatus?.status === "ALLOW") {
+      setChecked(true);
+      return;
+    }
+
+    // If access check complete and blocked, redirect already happened
+    if (accessStatus?.status === "BLOCK_PAYWALL") {
+      return;
+    }
+
+    // Default: still checking
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [userInitializing, orgLoading, user, activeOrgId, activeOrg, orgs, router.pathname, creatingOrg, accessStatus, checkingAccess]);
 
   // Auto-create org for users who don't have one
   async function createOrgAndRedirect() {
