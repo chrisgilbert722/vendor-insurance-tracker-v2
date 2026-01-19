@@ -1,19 +1,21 @@
 // pages/billing/checkout.js
 // ============================================================
 // BILLING CHECKOUT PAGE — Redirects to Stripe Checkout
-// This page is shown when user needs to start/complete subscription
+// - Requires auth (redirects to login if not authenticated)
+// - Calls /api/billing/create-checkout
+// - Redirects to Stripe checkout URL
+// - Shows error + "Try Again" on failure
+// - NEVER redirects to /dashboard or /onboarding
 // ============================================================
 
 import { useEffect, useState } from "react";
-import { useRouter } from "next/router";
 import { supabase } from "../../lib/supabaseClient";
 import { useOrg } from "../../context/OrgContext";
 
 export default function BillingCheckout() {
-  const router = useRouter();
   const { activeOrgUuid } = useOrg();
 
-  const [loading, setLoading] = useState(true);
+  const [status, setStatus] = useState("loading"); // loading | waiting | error
   const [error, setError] = useState("");
 
   useEffect(() => {
@@ -21,25 +23,31 @@ export default function BillingCheckout() {
 
     async function initiateCheckout() {
       try {
+        // -------------------------------------------
+        // 1. REQUIRE AUTH
+        // -------------------------------------------
         const {
           data: { session },
         } = await supabase.auth.getSession();
 
         if (!session?.access_token) {
-          router.replace("/auth/login?redirect=/billing/checkout");
+          window.location.href = "/auth/login?redirect=/billing/checkout";
           return;
         }
 
-        // Wait for org to be available
+        // -------------------------------------------
+        // 2. WAIT FOR ORG CONTEXT
+        // -------------------------------------------
         if (!activeOrgUuid) {
-          // Retry after a short delay
-          setTimeout(initiateCheckout, 500);
-          return;
+          setStatus("waiting");
+          return; // useEffect will re-run when activeOrgUuid changes
         }
 
-        // Create Stripe Checkout Session
-        // NOTE: Do NOT redirect to dashboard here - let Stripe/success flow handle it
-        // Redirecting here causes loops with dashboard guard
+        setStatus("loading");
+
+        // -------------------------------------------
+        // 3. CALL CREATE-CHECKOUT API
+        // -------------------------------------------
         const res = await fetch("/api/billing/create-checkout", {
           method: "POST",
           headers: {
@@ -57,13 +65,16 @@ export default function BillingCheckout() {
           throw new Error(json.error || "Could not create checkout session");
         }
 
-        // Redirect to Stripe Checkout
+        // -------------------------------------------
+        // 4. REDIRECT TO STRIPE
+        // -------------------------------------------
         window.location.href = json.url;
+
       } catch (err) {
         if (cancelled) return;
         console.error("[billing/checkout]", err);
         setError(err.message || "Failed to start checkout");
-        setLoading(false);
+        setStatus("error");
       }
     }
 
@@ -72,7 +83,7 @@ export default function BillingCheckout() {
     return () => {
       cancelled = true;
     };
-  }, [activeOrgUuid, router]);
+  }, [activeOrgUuid]);
 
   return (
     <div
@@ -85,9 +96,10 @@ export default function BillingCheckout() {
         background: "radial-gradient(circle at top,#020617 0%,#000 60%)",
         color: "#e5e7eb",
         padding: 24,
+        textAlign: "center",
       }}
     >
-      {loading && !error && (
+      {status === "loading" && (
         <>
           <div style={{ fontSize: 18, marginBottom: 12 }}>
             Preparing checkout...
@@ -98,20 +110,32 @@ export default function BillingCheckout() {
         </>
       )}
 
-      {error && (
+      {status === "waiting" && (
         <>
-          <div style={{ color: "#f87171", fontSize: 16, marginBottom: 12 }}>
+          <div style={{ fontSize: 18, marginBottom: 12 }}>
+            Loading organization...
+          </div>
+          <div style={{ fontSize: 13, color: "#9ca3af" }}>
+            Please wait
+          </div>
+        </>
+      )}
+
+      {status === "error" && (
+        <>
+          <div style={{ color: "#f87171", fontSize: 16, marginBottom: 16 }}>
             {error}
           </div>
           <button
             onClick={() => window.location.reload()}
             style={{
-              marginTop: 16,
-              padding: "10px 20px",
+              padding: "12px 24px",
               borderRadius: 8,
               border: "1px solid rgba(56,189,248,0.5)",
               background: "rgba(15,23,42,0.9)",
               color: "#e5e7eb",
+              fontSize: 14,
+              fontWeight: 500,
               cursor: "pointer",
             }}
           >
