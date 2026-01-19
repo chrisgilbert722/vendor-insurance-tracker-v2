@@ -1,20 +1,20 @@
 // pages/api/billing/webhook.js
 // ============================================================
-// STRIPE WEBHOOK HANDLER (Native Next.js - no micro dependency)
-// Handles checkout.session.completed to atomically set:
-// - trial_started_at
-// - trial_expires_at
-// - onboarding_completed = true
-// - stripe_customer_id
-// - stripe_subscription_id
+// STRIPE WEBHOOK — AUTHORITATIVE TRIAL PERSISTENCE
+// This is the ONLY place trial_started_at gets written from Stripe
+//
+// Required env vars:
+// - STRIPE_SECRET_KEY
+// - STRIPE_WEBHOOK_SECRET
+// - DATABASE_URL
 // ============================================================
 
 import Stripe from "stripe";
-import { sql } from "../../../lib/db";
+import { neon } from "@neondatabase/serverless";
 
 export const config = {
   api: {
-    bodyParser: false, // Required for Stripe webhook signature verification
+    bodyParser: false, // Required for Stripe signature verification
   },
 };
 
@@ -22,105 +22,155 @@ const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
 
 export default async function handler(req, res) {
   if (req.method !== "POST") {
-    return res.status(405).end("Method Not Allowed");
+    return res.status(405).json({ error: "POST only" });
   }
 
-  // Native Next.js raw body handling (no micro dependency)
+  // -------------------------------------------
+  // 1. READ RAW BODY
+  // -------------------------------------------
   const chunks = [];
   for await (const chunk of req) {
     chunks.push(chunk);
   }
-  const body = Buffer.concat(chunks);
+  const rawBody = Buffer.concat(chunks);
 
+  // -------------------------------------------
+  // 2. VERIFY STRIPE SIGNATURE
+  // -------------------------------------------
   const sig = req.headers["stripe-signature"];
+  const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET;
+
+  if (!webhookSecret) {
+    console.error("[billing/webhook] STRIPE_WEBHOOK_SECRET not configured");
+    return res.status(500).json({ error: "Webhook secret not configured" });
+  }
 
   let event;
   try {
-    if (!process.env.STRIPE_WEBHOOK_SECRET) {
-      console.error("[webhook] STRIPE_WEBHOOK_SECRET not configured");
-      return res.status(500).json({ error: "Webhook secret not configured" });
-    }
-
-    event = stripe.webhooks.constructEvent(
-      body,
-      sig,
-      process.env.STRIPE_WEBHOOK_SECRET
-    );
+    event = stripe.webhooks.constructEvent(rawBody, sig, webhookSecret);
   } catch (err) {
-    console.error("[webhook] Stripe webhook signature failed:", err.message);
-    return res.status(400).send(`Webhook Error: ${err.message}`);
+    console.error("[billing/webhook] Signature failed:", err.message);
+    return res.status(400).json({ error: `Signature failed: ${err.message}` });
   }
 
-  // Handle Stripe events
+  console.log("[billing/webhook] Event received:", event.type);
+
+  // -------------------------------------------
+  // 3. HANDLE EVENTS
+  // -------------------------------------------
+  const sql = neon(process.env.DATABASE_URL);
+
   switch (event.type) {
     case "checkout.session.completed": {
       const session = event.data.object;
 
-      console.log("[webhook] checkout.session.completed:", {
-        session_id: session.id,
+      console.log("[billing/webhook] checkout.session.completed:", {
+        id: session.id,
         customer: session.customer,
         subscription: session.subscription,
+        metadata: session.metadata,
       });
 
       try {
-        // Extract org ID from subscription metadata (set in create-checkout.js)
-        const subscriptionId = session.subscription;
-        let orgExternalUuid = null;
+        // Get org ID from session metadata (set in create-checkout.js)
+        let orgExternalUuid = session.metadata?.org_external_uuid;
+        let orgIntId = session.metadata?.org_id;
 
-        if (subscriptionId) {
-          const subscription = await stripe.subscriptions.retrieve(subscriptionId);
-          orgExternalUuid = subscription.metadata?.org_external_uuid;
+        // Fallback: check subscription metadata
+        if (!orgExternalUuid && session.subscription) {
+          try {
+            const sub = await stripe.subscriptions.retrieve(session.subscription);
+            orgExternalUuid = sub.metadata?.org_external_uuid;
+            orgIntId = sub.metadata?.org_id;
+            console.log("[billing/webhook] Got org from subscription:", orgExternalUuid);
+          } catch (subErr) {
+            console.error("[billing/webhook] Subscription retrieve failed:", subErr.message);
+          }
         }
 
-        if (!orgExternalUuid) {
-          console.error("[webhook] No org_external_uuid in subscription metadata");
-          return res.status(200).json({ received: true, warning: "No org ID found" });
+        if (!orgExternalUuid && !orgIntId) {
+          console.error("[billing/webhook] No org identifier in metadata");
+          return res.status(200).json({ received: true, warning: "No org ID" });
         }
 
-        // Calculate trial dates
+        // -------------------------------------------
+        // 4. WRITE TRIAL STATE TO DATABASE
+        // -------------------------------------------
         const now = new Date();
         const trialEnds = new Date(now.getTime() + 14 * 24 * 60 * 60 * 1000);
 
-        // ATOMIC UPDATE: Set all trial + onboarding fields in one transaction
-        await sql`
-          UPDATE organizations
-          SET
-            trial_started_at = ${now.toISOString()},
-            trial_expires_at = ${trialEnds.toISOString()},
-            onboarding_completed = true,
-            stripe_customer_id = ${session.customer},
-            stripe_subscription_id = ${subscriptionId},
-            onboarding_step = 10
-          WHERE external_uuid = ${orgExternalUuid};
-        `;
+        console.log("[billing/webhook] Writing trial state:", {
+          orgExternalUuid,
+          orgIntId,
+          customer: session.customer,
+          subscription: session.subscription,
+        });
 
-        console.log("[webhook] Trial activated for org:", orgExternalUuid);
+        // Update by external_uuid (preferred) or id
+        if (orgExternalUuid) {
+          await sql`
+            UPDATE organizations
+            SET
+              trial_started_at = ${now.toISOString()},
+              trial_expires_at = ${trialEnds.toISOString()},
+              onboarding_completed = true,
+              onboarding_step = 999,
+              stripe_customer_id = ${session.customer},
+              stripe_subscription_id = ${session.subscription}
+            WHERE external_uuid = ${orgExternalUuid};
+          `;
+        } else if (orgIntId) {
+          await sql`
+            UPDATE organizations
+            SET
+              trial_started_at = ${now.toISOString()},
+              trial_expires_at = ${trialEnds.toISOString()},
+              onboarding_completed = true,
+              onboarding_step = 999,
+              stripe_customer_id = ${session.customer},
+              stripe_subscription_id = ${session.subscription}
+            WHERE id = ${parseInt(orgIntId, 10)};
+          `;
+        }
+
+        // Verify write
+        const verify = orgExternalUuid
+          ? await sql`SELECT id, trial_started_at FROM organizations WHERE external_uuid = ${orgExternalUuid}`
+          : await sql`SELECT id, trial_started_at FROM organizations WHERE id = ${parseInt(orgIntId, 10)}`;
+
+        if (verify[0]?.trial_started_at) {
+          console.log("[billing/webhook] SUCCESS - trial_started_at:", verify[0].trial_started_at);
+        } else {
+          console.error("[billing/webhook] FAILED - trial_started_at not persisted");
+        }
 
         return res.status(200).json({
           received: true,
           success: true,
-          orgId: orgExternalUuid,
+          orgId: orgExternalUuid || orgIntId,
         });
+
       } catch (err) {
-        console.error("[webhook] Error processing checkout:", err);
+        console.error("[billing/webhook] DB error:", err);
+        // Return 500 to trigger Stripe retry
         return res.status(500).json({ error: err.message });
       }
     }
 
-    case "customer.subscription.created":
     case "customer.subscription.updated": {
       const subscription = event.data.object;
-      const orgExternalUuid = subscription.metadata?.org_external_uuid;
+      const orgUuid = subscription.metadata?.org_external_uuid;
 
-      if (orgExternalUuid) {
+      if (orgUuid) {
         try {
           await sql`
             UPDATE organizations
             SET stripe_subscription_id = ${subscription.id}
-            WHERE external_uuid = ${orgExternalUuid};
+            WHERE external_uuid = ${orgUuid};
           `;
+          console.log("[billing/webhook] Subscription updated for org:", orgUuid);
         } catch (err) {
-          console.error("[webhook] Error updating subscription:", err);
+          console.error("[billing/webhook] Subscription update error:", err);
         }
       }
 
@@ -129,17 +179,18 @@ export default async function handler(req, res) {
 
     case "customer.subscription.deleted": {
       const subscription = event.data.object;
-      const orgExternalUuid = subscription.metadata?.org_external_uuid;
+      const orgUuid = subscription.metadata?.org_external_uuid;
 
-      if (orgExternalUuid) {
+      if (orgUuid) {
         try {
           await sql`
             UPDATE organizations
             SET stripe_subscription_id = NULL
-            WHERE external_uuid = ${orgExternalUuid};
+            WHERE external_uuid = ${orgUuid};
           `;
+          console.log("[billing/webhook] Subscription deleted for org:", orgUuid);
         } catch (err) {
-          console.error("[webhook] Error handling cancellation:", err);
+          console.error("[billing/webhook] Subscription delete error:", err);
         }
       }
 
@@ -147,8 +198,7 @@ export default async function handler(req, res) {
     }
 
     default:
-      console.log("[webhook] Unhandled event:", event.type);
+      console.log("[billing/webhook] Unhandled event:", event.type);
+      return res.status(200).json({ received: true });
   }
-
-  return res.json({ received: true });
 }

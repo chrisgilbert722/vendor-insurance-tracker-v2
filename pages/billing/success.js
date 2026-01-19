@@ -1,94 +1,32 @@
 // pages/billing/success.js
 // ============================================================
-// BILLING SUCCESS — AUTHORITATIVE TRIAL ACTIVATION
-// Waits for backend confirmation before redirecting to dashboard
-// Does NOT redirect on error - shows retry option instead
+// BILLING SUCCESS — Simple redirect to dashboard
+// Does NOT verify trial status (webhook handles persistence)
+// Dashboard will show BillingGate if trial not yet active
 // ============================================================
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/router";
-import { supabase } from "../../lib/supabaseClient";
 
 export default function BillingSuccess() {
   const router = useRouter();
-  const [status, setStatus] = useState("activating");
-  const [error, setError] = useState("");
+  const [countdown, setCountdown] = useState(3);
 
   useEffect(() => {
-    let cancelled = false;
-
-    async function activateTrialAndRedirect() {
-      try {
-        // Get session from Supabase
-        const {
-          data: { session },
-        } = await supabase.auth.getSession();
-
-        if (!session?.access_token) {
-          router.replace("/auth/login?redirect=/billing/success");
-          return;
+    // Simple countdown then redirect to dashboard
+    const timer = setInterval(() => {
+      setCountdown((c) => {
+        if (c <= 1) {
+          clearInterval(timer);
+          window.location.href = "/dashboard";
+          return 0;
         }
+        return c - 1;
+      });
+    }, 1000);
 
-        // Get Stripe session_id from URL if present
-        const urlParams = new URLSearchParams(window.location.search);
-        const sessionId = urlParams.get("session_id");
-
-        // Call confirm-checkout to activate trial
-        const res = await fetch("/api/billing/confirm-checkout", {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${session.access_token}`,
-          },
-          body: JSON.stringify({ sessionId }),
-        });
-
-        const json = await res.json();
-
-        if (cancelled) return;
-
-        if (!json.ok) {
-          throw new Error(json.error || "Failed to activate trial");
-        }
-
-        // SUCCESS - Trial is now active in database
-        console.log("[billing/success] Trial activated:", json);
-        setStatus("success");
-
-        // Redirect to dashboard after brief success message
-        setTimeout(() => {
-          if (!cancelled) {
-            window.location.href = "/dashboard";
-          }
-        }, 1500);
-
-      } catch (err) {
-        if (cancelled) return;
-        console.error("[billing/success] Error:", err);
-        setError(err.message);
-        setStatus("error");
-        // DO NOT auto-redirect on error - let user retry
-      }
-    }
-
-    activateTrialAndRedirect();
-
-    return () => {
-      cancelled = true;
-    };
-  }, [router]);
-
-  // Retry handler
-  const handleRetry = () => {
-    setStatus("activating");
-    setError("");
-    window.location.reload();
-  };
-
-  // Manual continue to dashboard
-  const handleContinue = () => {
-    window.location.href = "/dashboard";
-  };
+    return () => clearInterval(timer);
+  }, []);
 
   return (
     <div
@@ -100,95 +38,74 @@ export default function BillingSuccess() {
         justifyContent: "center",
         background: "radial-gradient(circle at top,#020617 0%,#000 60%)",
         color: "#e5e7eb",
-        fontSize: 16,
-        gap: 12,
         padding: 24,
+        textAlign: "center",
       }}
     >
-      {status === "activating" && (
-        <>
-          <div style={{ fontSize: 20 }}>Activating your trial...</div>
-          <div style={{ fontSize: 13, color: "#9ca3af" }}>
-            Please wait while we set up your account
-          </div>
-        </>
-      )}
+      <div
+        style={{
+          width: 80,
+          height: 80,
+          borderRadius: "50%",
+          background: "radial-gradient(circle at 30% 30%, #22c55e, #16a34a)",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          marginBottom: 24,
+          boxShadow: "0 0 40px rgba(34,197,94,0.5)",
+        }}
+      >
+        <span style={{ fontSize: 40 }}>✓</span>
+      </div>
 
-      {status === "success" && (
-        <>
-          <div style={{ color: "#22c55e", fontSize: 24, fontWeight: 600 }}>
-            Welcome to Verivo!
-          </div>
-          <div style={{ fontSize: 14, color: "#9ca3af" }}>
-            Your 14-day trial is now active
-          </div>
-          <div style={{ fontSize: 13, color: "#6b7280", marginTop: 8 }}>
-            Redirecting to dashboard...
-          </div>
-        </>
-      )}
+      <h1
+        style={{
+          fontSize: 28,
+          fontWeight: 600,
+          marginBottom: 12,
+          background: "linear-gradient(90deg, #22c55e, #86efac, #e5e7eb)",
+          WebkitBackgroundClip: "text",
+          color: "transparent",
+        }}
+      >
+        Payment Successful!
+      </h1>
 
-      {status === "error" && (
-        <>
-          <div style={{ color: "#f87171", fontSize: 18 }}>
-            Activation Issue
-          </div>
-          <div
-            style={{
-              fontSize: 13,
-              color: "#9ca3af",
-              maxWidth: 400,
-              textAlign: "center",
-              marginBottom: 16,
-            }}
-          >
-            {error || "There was a problem activating your trial."}
-          </div>
-          <div style={{ display: "flex", gap: 12 }}>
-            <button
-              onClick={handleRetry}
-              style={{
-                padding: "10px 20px",
-                borderRadius: 8,
-                border: "1px solid rgba(34,197,94,0.6)",
-                background: "rgba(34,197,94,0.15)",
-                color: "#22c55e",
-                cursor: "pointer",
-                fontSize: 14,
-                fontWeight: 500,
-              }}
-            >
-              Retry Activation
-            </button>
-            <button
-              onClick={handleContinue}
-              style={{
-                padding: "10px 20px",
-                borderRadius: 8,
-                border: "1px solid rgba(148,163,184,0.4)",
-                background: "rgba(15,23,42,0.9)",
-                color: "#9ca3af",
-                cursor: "pointer",
-                fontSize: 14,
-              }}
-            >
-              Continue Anyway
-            </button>
-          </div>
-          <div
-            style={{
-              fontSize: 11,
-              color: "#6b7280",
-              marginTop: 16,
-              maxWidth: 350,
-              textAlign: "center",
-            }}
-          >
-            If this persists, your payment was successful.
-            Contact support and we'll activate your account manually.
-          </div>
-        </>
-      )}
+      <p style={{ fontSize: 16, color: "#9ca3af", marginBottom: 8 }}>
+        Your 14-day free trial is being activated.
+      </p>
+
+      <p style={{ fontSize: 14, color: "#6b7280", marginBottom: 24 }}>
+        Redirecting to dashboard in {countdown}...
+      </p>
+
+      <button
+        onClick={() => (window.location.href = "/dashboard")}
+        style={{
+          padding: "12px 24px",
+          borderRadius: 999,
+          border: "1px solid rgba(34,197,94,0.6)",
+          background: "rgba(34,197,94,0.15)",
+          color: "#22c55e",
+          fontSize: 14,
+          fontWeight: 500,
+          cursor: "pointer",
+        }}
+      >
+        Go to Dashboard Now →
+      </button>
+
+      <p
+        style={{
+          fontSize: 11,
+          color: "#4b5563",
+          marginTop: 32,
+          maxWidth: 400,
+        }}
+      >
+        If your dashboard shows a trial prompt, please wait a moment and refresh.
+        Your payment has been received.
+      </p>
     </div>
   );
 }
