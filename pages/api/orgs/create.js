@@ -1,9 +1,10 @@
 // pages/api/orgs/create.js
 // ============================================================
 // CREATE ORGANIZATION — CRASH-PROOF API ENDPOINT
+// Uses Bearer token auth (token from Authorization header)
 // ============================================================
 
-import { createServerClient } from "@supabase/ssr";
+import { createClient } from "@supabase/supabase-js";
 import { neon } from "@neondatabase/serverless";
 import crypto from "crypto";
 
@@ -35,50 +36,44 @@ export default async function handler(req, res) {
     }
 
     // -------------------------------------------
-    // 3. SUPABASE AUTH (cookie-based via @supabase/ssr)
+    // 3. BEARER TOKEN AUTH
     // -------------------------------------------
     const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL;
-    const SUPABASE_ANON_KEY = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+    const SUPABASE_SERVICE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
 
-    if (!SUPABASE_URL || !SUPABASE_ANON_KEY) {
+    if (!SUPABASE_URL || !SUPABASE_SERVICE_KEY) {
       console.error("[orgs/create] FATAL: Missing Supabase env vars");
       return res.status(500).json({ ok: false, error: "Supabase not configured" });
     }
 
-    let supabase;
-    try {
-      supabase = createServerClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
-        cookies: {
-          getAll() {
-            // Parse cookies from request
-            const cookieHeader = req.headers.cookie || "";
-            const cookies = [];
-            cookieHeader.split(";").forEach((cookie) => {
-              const [name, ...rest] = cookie.trim().split("=");
-              if (name) {
-                cookies.push({ name, value: rest.join("=") });
-              }
-            });
-            return cookies;
-          },
-          setAll(cookiesToSet) {
-            // Set cookies on response
-            cookiesToSet.forEach(({ name, value, options }) => {
-              res.setHeader("Set-Cookie", `${name}=${value}; Path=/; HttpOnly; SameSite=Lax`);
-            });
-          },
-        },
-      });
-    } catch (authInitErr) {
-      console.error("[orgs/create] FATAL: Supabase client init failed:", authInitErr.message, authInitErr.stack);
-      return res.status(500).json({ ok: false, error: "Auth client failed: " + authInitErr.message });
+    // Extract Bearer token from Authorization header
+    const authHeader = req.headers.authorization || "";
+    if (!authHeader.startsWith("Bearer ")) {
+      console.log("[orgs/create] Missing or invalid Authorization header");
+      return res.status(401).json({ ok: false, error: "Missing Authorization header" });
     }
 
+    const token = authHeader.slice(7); // Remove "Bearer " prefix
+    if (!token) {
+      console.log("[orgs/create] Empty token in Authorization header");
+      return res.status(401).json({ ok: false, error: "Empty token" });
+    }
+
+    // Create Supabase admin client to verify token
+    let supabaseAdmin;
+    try {
+      supabaseAdmin = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY);
+    } catch (clientErr) {
+      console.error("[orgs/create] FATAL: Supabase client init failed:", clientErr.message, clientErr.stack);
+      return res.status(500).json({ ok: false, error: "Auth client failed: " + clientErr.message });
+    }
+
+    // Verify token and get user
     let userData;
     try {
-      userData = await supabase.auth.getUser();
+      userData = await supabaseAdmin.auth.getUser(token);
     } catch (authCallErr) {
-      console.error("[orgs/create] FATAL: getUser() threw:", authCallErr.message, authCallErr.stack);
+      console.error("[orgs/create] FATAL: getUser(token) threw:", authCallErr.message, authCallErr.stack);
       return res.status(500).json({ ok: false, error: "Auth call failed: " + authCallErr.message });
     }
 
@@ -86,11 +81,11 @@ export default async function handler(req, res) {
 
     if (authError) {
       console.error("[orgs/create] Auth error:", authError.message);
-      return res.status(401).json({ ok: false, error: "Auth error: " + authError.message });
+      return res.status(401).json({ ok: false, error: "Invalid token: " + authError.message });
     }
 
     if (!data || !data.user) {
-      console.log("[orgs/create] No user in session");
+      console.log("[orgs/create] Token valid but no user returned");
       return res.status(401).json({ ok: false, error: "Not authenticated" });
     }
 

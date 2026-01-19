@@ -87,8 +87,8 @@ export default function AiOnboardingWizardPage() {
   /* -------------------------------------------------
      🏢 AUTO-CREATE ORG IF USER DOESN'T HAVE ONE
 
-     Uses cookie-based auth — no Authorization header needed.
-     Supabase session cookie is sent automatically by browser.
+     Uses Bearer token auth — gets access_token from localStorage
+     session and sends it in Authorization header.
   -------------------------------------------------- */
   useEffect(() => {
     if (checkingSession || creatingOrg) return;
@@ -102,13 +102,21 @@ export default function AiOnboardingWizardPage() {
 
     async function createOrg() {
       try {
-        // Cookie-based auth: browser sends session cookie automatically
+        // Get access token from session (stored in localStorage)
+        const { data: { session } } = await supabase.auth.getSession();
+
+        if (!session?.access_token) {
+          console.error("[ai-wizard] No access token available");
+          return;
+        }
+
+        // Send Bearer token in Authorization header
         const res = await fetch("/api/orgs/create", {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
+            "Authorization": `Bearer ${session.access_token}`,
           },
-          credentials: "include", // Ensure cookies are sent
         });
 
         const json = await res.json();
@@ -129,6 +137,8 @@ export default function AiOnboardingWizardPage() {
               String(json.org.id)
             );
           }
+        } else if (!json?.ok) {
+          console.error("[ai-wizard] Org creation failed:", json?.error);
         }
       } catch (err) {
         console.error("[ai-wizard] Failed to create org:", err);
