@@ -1,48 +1,87 @@
 // pages/api/orgs/create.js
 // ============================================================
-// CREATE ORGANIZATION — Called when user starts onboarding
-// Uses cookie-based auth via createPagesServerClient
+// CREATE ORGANIZATION — CRASH-PROOF API ENDPOINT
 // ============================================================
 
-import { sql } from "../../../lib/db";
 import { createPagesServerClient } from "@supabase/auth-helpers-nextjs";
+import { neon } from "@neondatabase/serverless";
 import crypto from "crypto";
 
 export default async function handler(req, res) {
-  // Ensure we always return JSON, even on unexpected errors
+  // SINGLE outer try/catch — NOTHING can escape
   try {
+    // -------------------------------------------
+    // 1. METHOD CHECK
+    // -------------------------------------------
     if (req.method !== "POST") {
       return res.status(405).json({ ok: false, error: "POST only" });
     }
 
-    // Cookie-based auth via Supabase auth helpers
+    // -------------------------------------------
+    // 2. DATABASE CONNECTION (lazy, validated)
+    // -------------------------------------------
+    const DATABASE_URL = process.env.DATABASE_URL;
+    if (!DATABASE_URL) {
+      console.error("[orgs/create] FATAL: DATABASE_URL is not set");
+      return res.status(500).json({ ok: false, error: "Database not configured" });
+    }
+
+    let sql;
+    try {
+      sql = neon(DATABASE_URL);
+    } catch (dbInitErr) {
+      console.error("[orgs/create] FATAL: Failed to init DB client:", dbInitErr.message, dbInitErr.stack);
+      return res.status(500).json({ ok: false, error: "Database client failed: " + dbInitErr.message });
+    }
+
+    // -------------------------------------------
+    // 3. SUPABASE AUTH (cookie-based ONLY)
+    // -------------------------------------------
     let supabase;
     try {
       supabase = createPagesServerClient({ req, res });
-    } catch (clientErr) {
-      console.error("[orgs/create] Failed to create Supabase client:", clientErr);
-      return res.status(500).json({ ok: false, error: "Auth client initialization failed" });
+    } catch (authInitErr) {
+      console.error("[orgs/create] FATAL: Supabase client init failed:", authInitErr.message, authInitErr.stack);
+      return res.status(500).json({ ok: false, error: "Auth client failed: " + authInitErr.message });
     }
 
-    const { data, error: authError } = await supabase.auth.getUser();
+    let userData;
+    try {
+      userData = await supabase.auth.getUser();
+    } catch (authCallErr) {
+      console.error("[orgs/create] FATAL: getUser() threw:", authCallErr.message, authCallErr.stack);
+      return res.status(500).json({ ok: false, error: "Auth call failed: " + authCallErr.message });
+    }
+
+    const { data, error: authError } = userData;
 
     if (authError) {
-      console.error("[orgs/create] Auth error:", authError);
-      return res.status(401).json({ ok: false, error: "Authentication failed" });
+      console.error("[orgs/create] Auth error:", authError.message);
+      return res.status(401).json({ ok: false, error: "Auth error: " + authError.message });
     }
 
-    if (!data?.user) {
-      console.log("[orgs/create] No session found via cookies");
-      return res.status(401).json({ ok: false, error: "Authentication required" });
+    if (!data || !data.user) {
+      console.log("[orgs/create] No user in session");
+      return res.status(401).json({ ok: false, error: "Not authenticated" });
     }
 
     const user = data.user;
     const userId = user.id;
-    const email = user.email;
+    const email = user.email || "";
 
-    console.log("[orgs/create] Authenticated user:", userId);
+    // -------------------------------------------
+    // 4. VALIDATE USER ID
+    // -------------------------------------------
+    if (!userId || typeof userId !== "string") {
+      console.error("[orgs/create] FATAL: Invalid userId:", userId);
+      return res.status(500).json({ ok: false, error: "Invalid user ID from auth" });
+    }
 
-    // Check if user already has an org
+    console.log("[orgs/create] Auth OK. userId:", userId, "email:", email);
+
+    // -------------------------------------------
+    // 5. CHECK FOR EXISTING ORG
+    // -------------------------------------------
     let existingOrgs;
     try {
       existingOrgs = await sql`
@@ -52,29 +91,44 @@ export default async function handler(req, res) {
         WHERE om.user_id = ${userId}
         LIMIT 1;
       `;
-    } catch (dbErr) {
-      console.error("[orgs/create] DB error checking existing orgs:", dbErr);
-      return res.status(500).json({ ok: false, error: "Database query failed: " + dbErr.message });
+    } catch (selectErr) {
+      console.error("[orgs/create] DB SELECT failed:", selectErr.message, selectErr.stack, "userId:", userId);
+      return res.status(500).json({ ok: false, error: "DB select failed: " + selectErr.message });
     }
 
     if (existingOrgs && existingOrgs.length > 0 && existingOrgs[0]) {
-      console.log("[orgs/create] Returning existing org:", existingOrgs[0].id);
+      const existingOrg = existingOrgs[0];
+      console.log("[orgs/create] Returning existing org:", existingOrg.id);
       return res.status(200).json({
         ok: true,
-        org: existingOrgs[0],
+        org: existingOrg,
         created: false,
       });
     }
 
-    // Get org name from request body or generate from email
-    const { name: requestedName } = req.body || {};
-    const orgName = requestedName ||
-      (email ? `${email.split("@")[0]}'s Organization` : "My Organization");
+    // -------------------------------------------
+    // 6. GENERATE ORG DATA
+    // -------------------------------------------
+    let orgName;
+    try {
+      const body = req.body || {};
+      const requestedName = body.name;
+      orgName = requestedName || (email ? `${email.split("@")[0]}'s Organization` : "My Organization");
+    } catch (bodyErr) {
+      orgName = "My Organization";
+    }
 
-    // Generate external_uuid explicitly (don't rely on database DEFAULT)
     const externalUuid = crypto.randomUUID();
+    if (!externalUuid) {
+      console.error("[orgs/create] FATAL: crypto.randomUUID() returned falsy");
+      return res.status(500).json({ ok: false, error: "UUID generation failed" });
+    }
 
-    // Create new organization
+    console.log("[orgs/create] Creating org:", orgName, "uuid:", externalUuid);
+
+    // -------------------------------------------
+    // 7. INSERT ORGANIZATION
+    // -------------------------------------------
     let newOrgResult;
     try {
       newOrgResult = await sql`
@@ -83,51 +137,61 @@ export default async function handler(req, res) {
         RETURNING id, name, external_uuid, onboarding_step, onboarding_completed;
       `;
     } catch (insertErr) {
-      console.error("[orgs/create] DB error inserting org:", insertErr);
-      return res.status(500).json({ ok: false, error: "Failed to insert organization: " + insertErr.message });
+      console.error("[orgs/create] DB INSERT org failed:", insertErr.message, insertErr.stack, "orgName:", orgName, "uuid:", externalUuid);
+      return res.status(500).json({ ok: false, error: "DB insert org failed: " + insertErr.message });
     }
 
-    if (!newOrgResult || !newOrgResult[0]) {
-      console.error("[orgs/create] Insert returned no result");
-      return res.status(500).json({ ok: false, error: "Failed to create organization - no result returned" });
+    if (!newOrgResult || !Array.isArray(newOrgResult) || newOrgResult.length === 0 || !newOrgResult[0]) {
+      console.error("[orgs/create] INSERT returned empty result:", newOrgResult);
+      return res.status(500).json({ ok: false, error: "Org insert returned no data" });
     }
 
     const newOrg = newOrgResult[0];
+    const orgId = newOrg.id;
 
-    console.log("[orgs/create] Created org:", {
-      id: newOrg.id,
-      external_uuid: newOrg.external_uuid,
-      name: newOrg.name,
-    });
+    if (!orgId) {
+      console.error("[orgs/create] FATAL: newOrg.id is falsy:", newOrg);
+      return res.status(500).json({ ok: false, error: "Org created but ID is missing" });
+    }
 
-    // Add user as owner
+    console.log("[orgs/create] Org created:", orgId, newOrg.external_uuid);
+
+    // -------------------------------------------
+    // 8. INSERT ORGANIZATION MEMBER (FK safe)
+    // -------------------------------------------
     try {
       await sql`
         INSERT INTO organization_members (org_id, user_id, role)
-        VALUES (${newOrg.id}, ${userId}, 'owner');
+        VALUES (${orgId}, ${userId}, 'owner');
       `;
+      console.log("[orgs/create] Member added:", userId, "->", orgId);
     } catch (memberErr) {
-      console.error("[orgs/create] DB error adding member:", memberErr);
-      // Org was created, so return it anyway but log the error
+      console.error("[orgs/create] DB INSERT member failed:", memberErr.message, memberErr.stack, "orgId:", orgId, "userId:", userId);
+      // Return org anyway — it exists, membership just failed
       return res.status(200).json({
         ok: true,
         org: newOrg,
         created: true,
-        warning: "Org created but member assignment failed",
+        warning: "Member insert failed: " + memberErr.message,
       });
     }
 
+    // -------------------------------------------
+    // 9. SUCCESS
+    // -------------------------------------------
     return res.status(200).json({
       ok: true,
       org: newOrg,
       created: true,
     });
+
   } catch (err) {
-    console.error("[orgs/create] Unexpected error:", err);
-    return res.status(500).json({
-      ok: false,
-      error: err.message || "Internal server error",
-      stack: process.env.NODE_ENV === "development" ? err.stack : undefined,
-    });
+    // -------------------------------------------
+    // GLOBAL CATCH — nothing escapes
+    // -------------------------------------------
+    const message = err && err.message ? err.message : "Unknown error";
+    const stack = err && err.stack ? err.stack : "No stack";
+    console.error("[orgs/create] UNCAUGHT ERROR:", message, stack);
+    return res.status(500).json({ ok: false, error: message });
   }
 }
