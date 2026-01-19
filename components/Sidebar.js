@@ -1,9 +1,16 @@
 // components/Sidebar.js — Tactical Neon Rail V17 (CLEANED + SEO SAFE)
+// RULE: Onboarding link ONLY shows when onboarding_completed !== true
 
 import React from "react";
 import Link from "next/link";
+import { useOrg } from "../context/OrgContext";
 
-export default function Sidebar({ pathname }) {
+export default function Sidebar() {
+  const { activeOrg } = useOrg();
+
+  // CRITICAL: Hide onboarding link once onboarding is complete
+  const showOnboarding = activeOrg?.onboarding_completed !== true;
+
   return (
     <div
       style={{
@@ -36,8 +43,10 @@ export default function Sidebar({ pathname }) {
       <RailLink href="/admin/renewals" label="Exec AI" icon="🏆" />
       <RailLink href="/admin/security/sso" label="SSO" icon="🔐" />
 
-      {/* ONBOARDING */}
-      <RailLink href="/onboarding/ai-wizard" label="Onboard" icon="🧭" />
+      {/* ONBOARDING — Only show if onboarding NOT complete */}
+      {showOnboarding && (
+        <RailLink href="/onboarding/ai-wizard" label="Onboard" icon="🧭" />
+      )}
 
       {/* TUTORIAL */}
       <RailLink href="/dashboard?tutorial=1" label="Tutorial" icon="🎯" />

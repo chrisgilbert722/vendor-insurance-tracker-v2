@@ -18,6 +18,7 @@ export default function AiOnboardingWizardPage() {
 
   const {
     activeOrgUuid,
+    activeOrg,
     orgs,
     setActiveOrg,
     loading: orgLoading,
@@ -167,8 +168,35 @@ export default function AiOnboardingWizardPage() {
   }, [activeOrgUuid, orgLoading, setActiveOrg]);
 
   /* -------------------------------------------------
+     🚫 REDIRECT IF ONBOARDING ALREADY COMPLETE
+     Once onboarding_completed === true, NEVER show wizard again
+  -------------------------------------------------- */
+  useEffect(() => {
+    if (orgLoading) return;
+    if (!activeOrg) return;
+
+    if (activeOrg.onboarding_completed === true) {
+      console.log("[ai-wizard] Onboarding already complete, redirecting to dashboard");
+      router.replace("/dashboard");
+    }
+  }, [activeOrg, orgLoading, router]);
+
+  /* -------------------------------------------------
      ⏳ WAIT STATES (with AuthHeader for logout access)
   -------------------------------------------------- */
+
+  // If onboarding complete, show nothing while redirecting
+  if (activeOrg?.onboarding_completed === true) {
+    return (
+      <div style={{ minHeight: "100vh", background: "#020617" }}>
+        <AuthHeader />
+        <div style={{ padding: 40, color: "#9ca3af" }}>
+          Redirecting to dashboard...
+        </div>
+      </div>
+    );
+  }
+
   if (checkingSession || orgLoading || creatingOrg) {
     return (
       <div style={{ minHeight: "100vh", background: "#020617" }}>
