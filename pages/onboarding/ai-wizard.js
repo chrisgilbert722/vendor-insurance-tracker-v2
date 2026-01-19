@@ -59,13 +59,21 @@ export default function AiOnboardingWizardPage() {
 
   /* -------------------------------------------------
      🏢 AUTO-CREATE ORG IF USER DOESN'T HAVE ONE
+
+     FIX: The original deadlock occurred because:
+     - After org creation, `orgs` array stays empty (OrgContext doesn't re-fetch)
+     - Effect re-runs when `creatingOrg` becomes false
+     - `orgs.length === 0` is still true, so it tries to create again
+     - This loops forever, keeping `creatingOrg` toggling
+
+     Solution: Also check `activeOrgUuid` - if set, org exists (was just created)
   -------------------------------------------------- */
   useEffect(() => {
     if (checkingSession || orgLoading || creatingOrg) return;
     if (!hasSession) return;
 
-    // If user has orgs, no need to create
-    if (orgs && orgs.length > 0) return;
+    // If user has orgs OR activeOrgUuid is already set (org just created), skip
+    if ((orgs && orgs.length > 0) || activeOrgUuid) return;
 
     // Auto-create org
     let cancelled = false;
@@ -114,7 +122,7 @@ export default function AiOnboardingWizardPage() {
     return () => {
       cancelled = true;
     };
-  }, [checkingSession, orgLoading, hasSession, orgs, creatingOrg, setActiveOrg]);
+  }, [checkingSession, orgLoading, hasSession, orgs, activeOrgUuid, creatingOrg, setActiveOrg]);
 
   /* -------------------------------------------------
      🧠 ACTIVATE ORG VIA API (if org exists but not active)
