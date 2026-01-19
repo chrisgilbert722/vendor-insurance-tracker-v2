@@ -2,6 +2,7 @@
 // GOD MODE — CSV Vendor Import (V2, UUID-SAFE)
 // Internal CSV parser (no papaparse) for maximum stability.
 
+import crypto from "crypto";
 import { sql } from "@db";
 import { resolveOrg } from "@resolveOrg";
 
@@ -104,11 +105,12 @@ export default async function handler(req, res) {
         continue;
       }
 
-      // ✅ INSERT VENDOR (CORRECT SCHEMA)
+      // ✅ INSERT VENDOR (CORRECT SCHEMA + external_uuid)
+      const externalUuid = crypto.randomUUID();
       const inserted = await sql`
-        INSERT INTO vendors (org_id, name, email)
-        VALUES (${orgId}, ${name}, ${email})
-        RETURNING id, name;
+        INSERT INTO vendors (org_id, name, email, external_uuid)
+        VALUES (${orgId}, ${name}, ${email}, ${externalUuid})
+        RETURNING id, name, external_uuid;
       `;
 
       createdCount++;

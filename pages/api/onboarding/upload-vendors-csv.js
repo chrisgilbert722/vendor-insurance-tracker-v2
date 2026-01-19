@@ -2,6 +2,7 @@
 // PHASE 1 — CSV INGEST + VENDOR INSERT (AUTHORITATIVE WRITE)
 // 🔒 FAIL-OPEN AUTH (never bricks onboarding UI)
 
+import crypto from "crypto";
 import formidable from "formidable";
 import fs from "fs";
 import { createClient } from "@supabase/supabase-js";
@@ -160,9 +161,10 @@ export default async function handler(req, res) {
 
       if (exists.length) continue;
 
+      const externalUuid = crypto.randomUUID();
       await sql`
-        INSERT INTO vendors (org_id, name)
-        VALUES (${orgIdInt}, ${name});
+        INSERT INTO vendors (org_id, name, external_uuid)
+        VALUES (${orgIdInt}, ${name}, ${externalUuid});
       `;
 
       inserted++;

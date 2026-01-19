@@ -84,6 +84,7 @@ async function runRenewalPrediction(vendorId) {
 async function autoCreateVendor(orgIdInt, vendor) {
   try {
     const token = crypto.randomBytes(24).toString("hex");
+    const externalUuid = crypto.randomUUID();
     const expiresAt = new Date();
     expiresAt.setDate(expiresAt.getDate() + 30);
 
@@ -94,6 +95,7 @@ async function autoCreateVendor(orgIdInt, vendor) {
         email,
         upload_token,
         upload_token_expires_at,
+        external_uuid,
         created_at
       )
       VALUES (
@@ -102,9 +104,10 @@ async function autoCreateVendor(orgIdInt, vendor) {
         ${vendor.email || null},
         ${token},
         ${expiresAt},
+        ${externalUuid},
         NOW()
       )
-      RETURNING id, name, email, upload_token;
+      RETURNING id, name, email, upload_token, external_uuid;
     `;
 
     const baseUrl =

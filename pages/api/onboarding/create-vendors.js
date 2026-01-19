@@ -30,21 +30,24 @@ export default async function handler(req, res) {
     for (const v of vendors) {
       const vendorName = v.vendor_name || v.name || "Unnamed Vendor";
 
-      // 1️⃣ Insert vendor
+      // 1️⃣ Insert vendor (with external_uuid)
+      const externalUuid = crypto.randomUUID();
       const rows = await sql`
         INSERT INTO vendors (
           org_id,
           name,
           email,
+          external_uuid,
           created_at
         )
         VALUES (
           ${orgId},
           ${vendorName},
           ${v.email || null},
+          ${externalUuid},
           NOW()
         )
-        RETURNING id, name, email, created_at;
+        RETURNING id, name, email, external_uuid, created_at;
       `;
 
       const vendor = rows[0];

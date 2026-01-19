@@ -1,6 +1,7 @@
 // pages/api/vendors/import-cois.js
 // GOD MODE — AI COI Ingestion + Vendor Creation + Policy Creation (V1)
 
+import crypto from "crypto";
 import formidable from "formidable";
 import fs from "fs";
 import { sql } from "../../../lib/db";
@@ -118,9 +119,10 @@ Read this COI PDF and return JSON with:
       if (exists.length > 0) {
         vendorId = exists[0].id;
       } else {
+        const externalUuid = crypto.randomUUID();
         const insertedVendor = await sql`
-          INSERT INTO vendors (org_id, name)
-          VALUES (${orgId}, ${vendorName})
+          INSERT INTO vendors (org_id, name, external_uuid)
+          VALUES (${orgId}, ${vendorName}, ${externalUuid})
           RETURNING id
         `;
         vendorId = insertedVendor[0].id;
