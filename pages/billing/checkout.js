@@ -8,7 +8,7 @@
 // - NEVER redirects to /dashboard or /onboarding
 // ============================================================
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import { supabase } from "../../lib/supabaseClient";
 import { useOrg } from "../../context/OrgContext";
 
@@ -18,10 +18,16 @@ export default function BillingCheckout() {
   const [status, setStatus] = useState("loading"); // loading | waiting | error
   const [error, setError] = useState("");
 
+  // REDIRECT GUARD: Prevent multiple redirects per mount
+  const redirectedRef = useRef(false);
+
   useEffect(() => {
     let cancelled = false;
 
     async function initiateCheckout() {
+      // Guard: only one redirect per mount
+      if (redirectedRef.current) return;
+
       try {
         // -------------------------------------------
         // 1. REQUIRE AUTH
@@ -31,6 +37,8 @@ export default function BillingCheckout() {
         } = await supabase.auth.getSession();
 
         if (!session?.access_token) {
+          redirectedRef.current = true;
+          console.log("[billing/checkout] REDIRECT: no session → /auth/login");
           window.location.href = "/auth/login?redirect=/billing/checkout";
           return;
         }
@@ -68,6 +76,8 @@ export default function BillingCheckout() {
         // -------------------------------------------
         // 4. REDIRECT TO STRIPE
         // -------------------------------------------
+        redirectedRef.current = true;
+        console.log("[billing/checkout] REDIRECT: checkout created → Stripe");
         window.location.href = json.url;
 
       } catch (err) {

@@ -341,6 +341,9 @@ function Dashboard() {
   // First-time state check (single source of truth)
   const { isFirstTime, checks, counts, loading: firstTimeLoading } = useFirstTimeCheck();
 
+  // REDIRECT GUARD: Prevent multiple redirects per mount
+  const redirectedRef = useRef(false);
+
   // Trial status check (NO REDIRECTS - renders billing gate instead)
   const [trialStatus, setTrialStatus] = useState({
     checked: false,
@@ -478,7 +481,10 @@ function Dashboard() {
         const tutorialEnabled = json.dashboardTutorialEnabled === true;
 
         // 🔐 HARD GATE: Redirect to wizard if onboarding not complete
-        if (!done) {
+        // Uses ref to prevent multiple redirects per mount
+        if (!done && !redirectedRef.current) {
+          redirectedRef.current = true;
+          console.log("[dashboard] REDIRECT: onboarding incomplete → /onboarding/ai-wizard");
           router.replace("/onboarding/ai-wizard");
           return;
         }

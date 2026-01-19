@@ -84,6 +84,7 @@ export default function AiOnboardingWizardPage() {
         // Dashboard BillingGate handles showing billing UI if trial not active
         if (json.action === "redirect_dashboard") {
           setState(STATE.REDIRECTING);
+          console.log("[ai-wizard] REDIRECT: onboarding complete → /dashboard");
           router.replace("/dashboard");
           return;
         }
@@ -111,6 +112,7 @@ export default function AiOnboardingWizardPage() {
       } else {
         // No session — redirect to login
         setState(STATE.REDIRECTING);
+        console.log("[ai-wizard] REDIRECT: no session → /auth/login");
         router.replace("/auth/login?redirect=/onboarding/ai-wizard");
       }
     }
@@ -127,6 +129,7 @@ export default function AiOnboardingWizardPage() {
         handleSession(session);
       } else if (event === "SIGNED_OUT") {
         setState(STATE.REDIRECTING);
+        console.log("[ai-wizard] REDIRECT: signed out → /auth/login");
         router.replace("/auth/login?redirect=/onboarding/ai-wizard");
       }
     });
