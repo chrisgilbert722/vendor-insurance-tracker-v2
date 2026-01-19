@@ -1,6 +1,7 @@
 // pages/onboarding/ai-wizard.js
 // ============================================================
 // AI Onboarding Wizard V5 — CANONICAL ONBOARDING ENTRY POINT
+// HARD-STOP: Never renders if org exists with onboarding_completed
 // ============================================================
 
 import { useEffect, useState } from "react";
@@ -15,6 +16,7 @@ export default function AiOnboardingWizardPage() {
 
   const {
     activeOrgUuid,
+    activeOrgId,
     activeOrg,
     orgs,
     setActiveOrg,
@@ -24,6 +26,23 @@ export default function AiOnboardingWizardPage() {
   const [checkingSession, setCheckingSession] = useState(true);
   const [hasSession, setHasSession] = useState(false);
   const [creatingOrg, setCreatingOrg] = useState(false);
+
+  /* -------------------------------------------------
+     🛑 HARD-STOP: REDIRECT IF ONBOARDING COMPLETE
+
+     This runs FIRST, BEFORE any other logic.
+     If org exists and onboarding is done, go to dashboard.
+  -------------------------------------------------- */
+  useEffect(() => {
+    if (activeOrg?.onboarding_completed === true) {
+      router.replace("/dashboard");
+    }
+  }, [activeOrg, router]);
+
+  // SYNCHRONOUS GUARD: Block render entirely if onboarding complete
+  if (activeOrg?.onboarding_completed === true) {
+    return null; // Redirecting to dashboard
+  }
 
   /* -------------------------------------------------
      🔐 SESSION GATE (MAGIC-LINK SAFE)
@@ -85,17 +104,28 @@ export default function AiOnboardingWizardPage() {
   }, [router]);
 
   /* -------------------------------------------------
-     🏢 AUTO-CREATE ORG IF USER DOESN'T HAVE ONE
+     🏢 AUTO-CREATE ORG — ONLY IF NO ORG EXISTS
 
-     Uses Bearer token auth — gets access_token from localStorage
-     session and sends it in Authorization header.
+     HARD GUARD: Never fires if ANY of these are truthy:
+     - activeOrg
+     - activeOrgId
+     - activeOrgUuid
+     - orgs.length > 0
+     - onboarding_completed === true
   -------------------------------------------------- */
   useEffect(() => {
+    // Gate 1: Still checking session or already creating
     if (checkingSession || creatingOrg) return;
     if (!hasSession) return;
 
-    // If org already exists or was just created, do nothing
-    if ((orgs && orgs.length > 0) || activeOrgUuid) return;
+    // Gate 2: HARD-STOP if ANY org indicator exists
+    if (activeOrg) return;
+    if (activeOrgId) return;
+    if (activeOrgUuid) return;
+    if (orgs && orgs.length > 0) return;
+
+    // Gate 3: HARD-STOP if onboarding already complete
+    if (activeOrg?.onboarding_completed === true) return;
 
     let cancelled = false;
     setCreatingOrg(true);
@@ -152,18 +182,7 @@ export default function AiOnboardingWizardPage() {
     return () => {
       cancelled = true;
     };
-  }, [checkingSession, hasSession, orgs, activeOrgUuid, creatingOrg, setActiveOrg]);
-
-  /* -------------------------------------------------
-     🚫 REDIRECT IF ONBOARDING ALREADY COMPLETE
-  -------------------------------------------------- */
-  useEffect(() => {
-    if (!activeOrg) return;
-
-    if (activeOrg.onboarding_completed === true) {
-      router.replace("/dashboard");
-    }
-  }, [activeOrg, router]);
+  }, [checkingSession, hasSession, orgs, activeOrg, activeOrgId, activeOrgUuid, creatingOrg, setActiveOrg]);
 
   /* -------------------------------------------------
      ⏳ WAIT STATES
