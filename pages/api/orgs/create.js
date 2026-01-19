@@ -7,7 +7,7 @@
 // ============================================================
 
 import { sql } from "@db";
-import { supabaseServer } from "../../../lib/supabaseServer";
+import { createPagesServerClient } from "@supabase/auth-helpers-nextjs";
 
 export default async function handler(req, res) {
   if (req.method !== "POST") {
@@ -15,24 +15,16 @@ export default async function handler(req, res) {
   }
 
   try {
-    const authHeader = req.headers.authorization || "";
-    const token = authHeader.startsWith("Bearer ")
-      ? authHeader.slice(7)
-      : null;
+    // Use session-based auth via cookies
+    const supabase = createPagesServerClient({ req, res });
+    const { data: { user }, error } = await supabase.auth.getUser();
 
-    if (!token) {
+    if (error || !user) {
       return res.status(401).json({ ok: false, error: "Authentication required" });
     }
 
-    const supabase = supabaseServer();
-    const { data, error } = await supabase.auth.getUser(token);
-
-    if (error || !data?.user) {
-      return res.status(401).json({ ok: false, error: "Invalid session" });
-    }
-
-    const userId = data.user.id;
-    const email = data.user.email;
+    const userId = user.id;
+    const email = user.email;
 
     // Check if user already has an org
     const existingOrgs = await sql`
