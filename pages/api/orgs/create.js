@@ -3,7 +3,7 @@
 // CREATE ORGANIZATION — CRASH-PROOF API ENDPOINT
 // ============================================================
 
-import { createPagesServerClient } from "@supabase/auth-helpers-nextjs";
+import { createServerClient } from "@supabase/ssr";
 import { neon } from "@neondatabase/serverless";
 import crypto from "crypto";
 
@@ -35,11 +35,40 @@ export default async function handler(req, res) {
     }
 
     // -------------------------------------------
-    // 3. SUPABASE AUTH (cookie-based ONLY)
+    // 3. SUPABASE AUTH (cookie-based via @supabase/ssr)
     // -------------------------------------------
+    const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL;
+    const SUPABASE_ANON_KEY = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+
+    if (!SUPABASE_URL || !SUPABASE_ANON_KEY) {
+      console.error("[orgs/create] FATAL: Missing Supabase env vars");
+      return res.status(500).json({ ok: false, error: "Supabase not configured" });
+    }
+
     let supabase;
     try {
-      supabase = createPagesServerClient({ req, res });
+      supabase = createServerClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
+        cookies: {
+          getAll() {
+            // Parse cookies from request
+            const cookieHeader = req.headers.cookie || "";
+            const cookies = [];
+            cookieHeader.split(";").forEach((cookie) => {
+              const [name, ...rest] = cookie.trim().split("=");
+              if (name) {
+                cookies.push({ name, value: rest.join("=") });
+              }
+            });
+            return cookies;
+          },
+          setAll(cookiesToSet) {
+            // Set cookies on response
+            cookiesToSet.forEach(({ name, value, options }) => {
+              res.setHeader("Set-Cookie", `${name}=${value}; Path=/; HttpOnly; SameSite=Lax`);
+            });
+          },
+        },
+      });
     } catch (authInitErr) {
       console.error("[orgs/create] FATAL: Supabase client init failed:", authInitErr.message, authInitErr.stack);
       return res.status(500).json({ ok: false, error: "Auth client failed: " + authInitErr.message });
