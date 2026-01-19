@@ -7,6 +7,7 @@
 import { sql } from "@db";
 import { createPagesServerClient } from "@supabase/auth-helpers-nextjs";
 import { createClient } from "@supabase/supabase-js";
+import crypto from "crypto";
 
 export default async function handler(req, res) {
   if (req.method !== "POST") {
@@ -74,10 +75,13 @@ export default async function handler(req, res) {
     const orgName = requestedName ||
       (email ? `${email.split("@")[0]}'s Organization` : "My Organization");
 
+    // Generate external_uuid explicitly (don't rely on database DEFAULT)
+    const externalUuid = crypto.randomUUID();
+
     // Create new organization
     const newOrgResult = await sql`
-      INSERT INTO organizations (name, onboarding_step, onboarding_completed)
-      VALUES (${orgName}, 0, FALSE)
+      INSERT INTO organizations (name, external_uuid, onboarding_step, onboarding_completed)
+      VALUES (${orgName}, ${externalUuid}, 0, FALSE)
       RETURNING id, name, external_uuid, onboarding_step, onboarding_completed;
     `;
 
@@ -86,6 +90,12 @@ export default async function handler(req, res) {
     }
 
     const newOrg = newOrgResult[0];
+
+    console.log("[orgs/create] Created org:", {
+      id: newOrg.id,
+      external_uuid: newOrg.external_uuid,
+      name: newOrg.name,
+    });
 
     // Add user as owner
     await sql`
