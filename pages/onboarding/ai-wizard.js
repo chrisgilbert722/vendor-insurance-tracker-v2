@@ -26,31 +26,61 @@ export default function AiOnboardingWizardPage() {
   const [creatingOrg, setCreatingOrg] = useState(false);
 
   /* -------------------------------------------------
-     🔐 SESSION GATE (HARD)
+     🔐 SESSION GATE (MAGIC-LINK SAFE)
+
+     Uses onAuthStateChange to properly detect session hydration
+     after magic-link redirect. getSession() alone returns null
+     during the async token exchange.
   -------------------------------------------------- */
   useEffect(() => {
     let alive = true;
+    let redirecting = false;
 
-    async function checkSession() {
-      const {
-        data: { session },
-      } = await supabase.auth.getSession();
+    // Handler for auth state changes
+    function handleSession(session) {
+      if (!alive || redirecting) return;
 
-      if (!alive) return;
-
-      if (!session?.access_token) {
+      if (session?.access_token) {
+        setHasSession(true);
+        setCheckingSession(false);
+      } else {
+        // No session after hydration — redirect to login
+        redirecting = true;
         router.replace("/auth/login?redirect=/onboarding/ai-wizard");
-        return;
       }
-
-      setHasSession(true);
-      setCheckingSession(false);
     }
 
-    checkSession();
+    // 1) Subscribe to auth state changes (catches magic-link hydration)
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange((event, session) => {
+      // SIGNED_IN fires after magic-link token exchange completes
+      // INITIAL_SESSION fires on page load if already authenticated
+      if (event === "SIGNED_IN" || event === "INITIAL_SESSION") {
+        handleSession(session);
+      } else if (event === "SIGNED_OUT") {
+        if (!alive || redirecting) return;
+        redirecting = true;
+        router.replace("/auth/login?redirect=/onboarding/ai-wizard");
+      }
+    });
+
+    // 2) Also check current session (handles already-authenticated users)
+    //    This runs immediately; if session exists, we're done.
+    //    If null, we wait for onAuthStateChange to fire.
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      if (!alive || redirecting) return;
+
+      if (session?.access_token) {
+        handleSession(session);
+      }
+      // If no session, don't redirect yet — wait for onAuthStateChange
+      // Magic-link flow will trigger SIGNED_IN event shortly
+    });
 
     return () => {
       alive = false;
+      subscription.unsubscribe();
     };
   }, [router]);
 
