@@ -1,230 +1,218 @@
 // pages/onboarding/ai-wizard.js
 // ============================================================
-// AI Onboarding Wizard V5 — CANONICAL ONBOARDING ENTRY POINT
-// HARD-STOP: Never renders if org exists with onboarding_completed
-// RACE-SAFE: Waits for org hydration before redirect decisions
+// AI Onboarding Wizard — PRODUCTION-GRADE STATE MACHINE
+// - Uses /api/orgs/bootstrap as single source of truth
+// - No direct org creation — bootstrap handles everything
+// - Hard timeout prevents infinite hangs
+// - Uses refs to avoid stale closures in timeouts
 // ============================================================
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import { useRouter } from "next/router";
 import { supabase } from "../../lib/supabaseClient";
 import { useOrg } from "../../context/OrgContext";
 import AiWizardPanel from "../../components/onboarding/AiWizardPanel";
 import AuthHeader from "../../components/AuthHeader";
 
+// State machine states
+const STATE = {
+  CHECKING_SESSION: "checking_session",
+  BOOTSTRAPPING: "bootstrapping",
+  READY: "ready",
+  REDIRECTING: "redirecting",
+  ERROR: "error",
+};
+
 export default function AiOnboardingWizardPage() {
   const router = useRouter();
+  const { setActiveOrg } = useOrg();
 
-  const {
-    activeOrgUuid,
-    activeOrgId,
-    activeOrg,
-    orgs,
-    setActiveOrg,
-    loading: orgLoading,
-  } = useOrg();
+  const [state, setState] = useState(STATE.CHECKING_SESSION);
+  const [orgUuid, setOrgUuid] = useState(null);
+  const [error, setError] = useState(null);
 
-  const [checkingSession, setCheckingSession] = useState(true);
-  const [hasSession, setHasSession] = useState(false);
-  const [creatingOrg, setCreatingOrg] = useState(false);
+  // Refs to avoid stale closures in timeouts
+  const aliveRef = useRef(true);
+  const bootstrapCalledRef = useRef(false);
+  const subscriptionRef = useRef(null);
 
-  /* -------------------------------------------------
-     🛑 HARD-STOP: REDIRECT IF ONBOARDING COMPLETE
-
-     RACE-SAFE: Only runs after org hydration completes.
-     If org exists and onboarding is done, go to dashboard.
-  -------------------------------------------------- */
   useEffect(() => {
-    // Wait for org context to finish loading
-    if (orgLoading) return;
+    aliveRef.current = true;
+    bootstrapCalledRef.current = false;
 
-    if (activeOrg?.onboarding_completed === true) {
-      router.replace("/dashboard");
-    }
-  }, [orgLoading, activeOrg, router]);
+    // -------------------------------------------
+    // BOOTSTRAP FUNCTION — Single API call
+    // -------------------------------------------
+    async function bootstrap(accessToken) {
+      // Guard against double-call
+      if (bootstrapCalledRef.current) return;
+      bootstrapCalledRef.current = true;
 
-  // SYNCHRONOUS GUARD: Block render entirely if onboarding complete
-  // RACE-SAFE: Only applies after org hydration completes
-  if (!orgLoading && activeOrg?.onboarding_completed === true) {
-    return null; // Redirecting to dashboard
-  }
+      if (!aliveRef.current) return;
+      setState(STATE.BOOTSTRAPPING);
 
-  /* -------------------------------------------------
-     🔐 SESSION GATE (MAGIC-LINK SAFE)
-
-     Uses onAuthStateChange to properly detect session hydration
-     after magic-link redirect. getSession() alone returns null
-     during the async token exchange.
-  -------------------------------------------------- */
-  useEffect(() => {
-    let alive = true;
-    let redirecting = false;
-
-    // Handler for auth state changes
-    function handleSession(session) {
-      if (!alive || redirecting) return;
-
-      if (session?.access_token) {
-        setHasSession(true);
-        setCheckingSession(false);
-      } else {
-        // No session after hydration — redirect to login
-        redirecting = true;
-        router.replace("/auth/login?redirect=/onboarding/ai-wizard");
-      }
-    }
-
-    // 1) Subscribe to auth state changes (catches magic-link hydration)
-    const {
-      data: { subscription },
-    } = supabase.auth.onAuthStateChange((event, session) => {
-      // SIGNED_IN fires after magic-link token exchange completes
-      // INITIAL_SESSION fires on page load if already authenticated
-      if (event === "SIGNED_IN" || event === "INITIAL_SESSION") {
-        handleSession(session);
-      } else if (event === "SIGNED_OUT") {
-        if (!alive || redirecting) return;
-        redirecting = true;
-        router.replace("/auth/login?redirect=/onboarding/ai-wizard");
-      }
-    });
-
-    // 2) Also check current session (handles already-authenticated users)
-    //    This runs immediately; if session exists, we're done.
-    //    If null, we wait for onAuthStateChange to fire.
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      if (!alive || redirecting) return;
-
-      if (session?.access_token) {
-        handleSession(session);
-      }
-      // If no session, don't redirect yet — wait for onAuthStateChange
-      // Magic-link flow will trigger SIGNED_IN event shortly
-    });
-
-    return () => {
-      alive = false;
-      subscription.unsubscribe();
-    };
-  }, [router]);
-
-  /* -------------------------------------------------
-     🏢 AUTO-CREATE ORG — ONLY IF NO ORG EXISTS
-
-     HARD GUARD: Never fires if ANY of these are truthy:
-     - activeOrg
-     - activeOrgId
-     - activeOrgUuid
-     - orgs.length > 0
-     - onboarding_completed === true
-  -------------------------------------------------- */
-  useEffect(() => {
-    // Gate 1: Still checking session or already creating
-    if (checkingSession || creatingOrg) return;
-    if (!hasSession) return;
-
-    // Gate 2: Wait for org context to finish loading
-    if (orgLoading) return;
-
-    // Gate 3: HARD-STOP if ANY org indicator exists
-    if (activeOrg) return;
-    if (activeOrgId) return;
-    if (activeOrgUuid) return;
-    if (orgs && orgs.length > 0) return;
-
-    // Gate 4: HARD-STOP if onboarding already complete
-    if (activeOrg?.onboarding_completed === true) return;
-
-    let cancelled = false;
-    setCreatingOrg(true);
-
-    async function createOrg() {
       try {
-        // Get access token from session (stored in localStorage)
-        const { data: { session } } = await supabase.auth.getSession();
-
-        if (!session?.access_token) {
-          console.error("[ai-wizard] No access token available");
-          return;
-        }
-
-        // Send Bearer token in Authorization header
-        const res = await fetch("/api/orgs/create", {
+        const res = await fetch("/api/orgs/bootstrap", {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
-            "Authorization": `Bearer ${session.access_token}`,
+            Authorization: `Bearer ${accessToken}`,
           },
         });
 
+        if (!aliveRef.current) return;
+
         const json = await res.json();
-        if (cancelled) return;
 
-        if (json?.org) {
-          setActiveOrg(json.org);
-
-          if (json.org.external_uuid) {
-            localStorage.setItem(
-              "verivo:activeOrgUuid",
-              json.org.external_uuid
-            );
-          }
-          if (json.org.id) {
-            localStorage.setItem(
-              "verivo:activeOrgId",
-              String(json.org.id)
-            );
-          }
-        } else if (!json?.ok) {
-          console.error("[ai-wizard] Org creation failed:", json?.error);
+        if (!json.ok) {
+          throw new Error(json.error || "Bootstrap failed");
         }
+
+        const org = json.org;
+
+        // Update context and localStorage
+        setActiveOrg(org);
+        if (org.external_uuid) {
+          localStorage.setItem("verivo:activeOrgUuid", org.external_uuid);
+        }
+        if (org.id) {
+          localStorage.setItem("verivo:activeOrgId", String(org.id));
+        }
+
+        // Handle action from bootstrap
+        if (json.action === "redirect_dashboard") {
+          setState(STATE.REDIRECTING);
+          router.replace("/dashboard");
+          return;
+        }
+
+        // Ready to show wizard
+        setOrgUuid(org.external_uuid);
+        setState(STATE.READY);
+
       } catch (err) {
-        console.error("[ai-wizard] Failed to create org:", err);
-      } finally {
-        if (!cancelled) setCreatingOrg(false);
+        if (!aliveRef.current) return;
+        console.error("[ai-wizard] Bootstrap error:", err);
+        setError(err.message);
+        setState(STATE.ERROR);
       }
     }
 
-    createOrg();
+    // -------------------------------------------
+    // SESSION HANDLER
+    // -------------------------------------------
+    function handleSession(session) {
+      if (!aliveRef.current) return;
 
+      if (session?.access_token) {
+        bootstrap(session.access_token);
+      } else {
+        // No session — redirect to login
+        setState(STATE.REDIRECTING);
+        router.replace("/auth/login?redirect=/onboarding/ai-wizard");
+      }
+    }
+
+    // -------------------------------------------
+    // AUTH STATE SUBSCRIPTION
+    // -------------------------------------------
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange((event, session) => {
+      if (!aliveRef.current) return;
+
+      if (event === "SIGNED_IN" || event === "INITIAL_SESSION") {
+        handleSession(session);
+      } else if (event === "SIGNED_OUT") {
+        setState(STATE.REDIRECTING);
+        router.replace("/auth/login?redirect=/onboarding/ai-wizard");
+      }
+    });
+
+    // Store subscription in ref for cleanup
+    subscriptionRef.current = subscription;
+
+    // Also check current session immediately
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      if (!aliveRef.current) return;
+      if (session?.access_token) {
+        handleSession(session);
+      }
+      // If no session, wait for onAuthStateChange
+    });
+
+    // -------------------------------------------
+    // HARD TIMEOUT — Prevent infinite hangs
+    // -------------------------------------------
+    const timeoutId = setTimeout(() => {
+      if (!aliveRef.current) return;
+      if (!bootstrapCalledRef.current) {
+        console.error("[ai-wizard] Hard timeout: no session after 10s");
+        setError("Session timeout. Please refresh or log in again.");
+        setState(STATE.ERROR);
+      }
+    }, 10000);
+
+    // -------------------------------------------
+    // CLEANUP
+    // -------------------------------------------
     return () => {
-      cancelled = true;
+      aliveRef.current = false;
+      clearTimeout(timeoutId);
+      if (subscriptionRef.current) {
+        subscriptionRef.current.unsubscribe();
+      }
     };
-  }, [checkingSession, hasSession, orgLoading, orgs, activeOrg, activeOrgId, activeOrgUuid, creatingOrg, setActiveOrg]);
+  }, [router, setActiveOrg]);
 
-  /* -------------------------------------------------
-     ⏳ WAIT STATES
-     IMPORTANT: Only block on checkingSession
-  -------------------------------------------------- */
-  if (checkingSession) {
+  // -------------------------------------------
+  // RENDER BASED ON STATE
+  // -------------------------------------------
+
+  if (state === STATE.CHECKING_SESSION || state === STATE.BOOTSTRAPPING) {
     return (
       <div style={{ minHeight: "100vh", background: "#020617" }}>
         <AuthHeader />
         <div style={{ padding: 40, color: "#9ca3af" }}>
-          Loading onboarding…
+          {state === STATE.CHECKING_SESSION
+            ? "Checking session…"
+            : "Setting up your organization…"}
         </div>
       </div>
     );
   }
 
-  if (!hasSession) {
-    return null; // redirecting
+  if (state === STATE.REDIRECTING) {
+    return null;
   }
 
-  if (!activeOrgUuid) {
+  if (state === STATE.ERROR) {
     return (
       <div style={{ minHeight: "100vh", background: "#020617" }}>
         <AuthHeader />
-        <div style={{ padding: 40, color: "#9ca3af" }}>
-          Setting up your organization…
+        <div style={{ padding: 40 }}>
+          <div style={{ color: "#f87171", marginBottom: 16 }}>
+            {error || "Something went wrong"}
+          </div>
+          <button
+            onClick={() => router.replace("/auth/login?redirect=/onboarding/ai-wizard")}
+            style={{
+              padding: "12px 24px",
+              borderRadius: 8,
+              border: "1px solid rgba(148,163,184,0.5)",
+              background: "rgba(15,23,42,0.9)",
+              color: "#e5e7eb",
+              cursor: "pointer",
+            }}
+          >
+            Return to Login
+          </button>
         </div>
       </div>
     );
   }
 
-  /* -------------------------------------------------
-     ✅ RENDER WIZARD
-  -------------------------------------------------- */
+  // STATE.READY
   return (
     <div
       style={{
@@ -246,7 +234,7 @@ export default function AiOnboardingWizardPage() {
             boxShadow: "0 0 60px rgba(15,23,42,0.95)",
           }}
         >
-          <AiWizardPanel orgId={activeOrgUuid} />
+          <AiWizardPanel orgId={orgUuid} />
         </div>
       </div>
     </div>
