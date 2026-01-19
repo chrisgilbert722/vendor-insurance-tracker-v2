@@ -1,7 +1,8 @@
 // pages/api/orgs/create.js
 // ============================================================
-// CREATE ORGANIZATION — CRASH-PROOF API ENDPOINT
+// CREATE ORGANIZATION — IDEMPOTENT, CRASH-PROOF API ENDPOINT
 // Uses Bearer token auth (token from Authorization header)
+// ALWAYS returns 200 with JSON in normal operation
 // ============================================================
 
 import { createClient } from "@supabase/supabase-js";
@@ -31,8 +32,8 @@ export default async function handler(req, res) {
     try {
       sql = neon(DATABASE_URL);
     } catch (dbInitErr) {
-      console.error("[orgs/create] FATAL: Failed to init DB client:", dbInitErr.message, dbInitErr.stack);
-      return res.status(500).json({ ok: false, error: "Database client failed: " + dbInitErr.message });
+      console.error("[orgs/create] FATAL: Failed to init DB client:", dbInitErr.message);
+      return res.status(500).json({ ok: false, error: "Database client failed" });
     }
 
     // -------------------------------------------
@@ -46,46 +47,39 @@ export default async function handler(req, res) {
       return res.status(500).json({ ok: false, error: "Supabase not configured" });
     }
 
-    // Extract Bearer token from Authorization header
     const authHeader = req.headers.authorization || "";
     if (!authHeader.startsWith("Bearer ")) {
-      console.log("[orgs/create] Missing or invalid Authorization header");
       return res.status(401).json({ ok: false, error: "Missing Authorization header" });
     }
 
-    const token = authHeader.slice(7); // Remove "Bearer " prefix
+    const token = authHeader.slice(7);
     if (!token) {
-      console.log("[orgs/create] Empty token in Authorization header");
       return res.status(401).json({ ok: false, error: "Empty token" });
     }
 
-    // Create Supabase admin client to verify token
     let supabaseAdmin;
     try {
       supabaseAdmin = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY);
     } catch (clientErr) {
-      console.error("[orgs/create] FATAL: Supabase client init failed:", clientErr.message, clientErr.stack);
-      return res.status(500).json({ ok: false, error: "Auth client failed: " + clientErr.message });
+      console.error("[orgs/create] FATAL: Supabase client init failed:", clientErr.message);
+      return res.status(500).json({ ok: false, error: "Auth client failed" });
     }
 
-    // Verify token and get user
     let userData;
     try {
       userData = await supabaseAdmin.auth.getUser(token);
     } catch (authCallErr) {
-      console.error("[orgs/create] FATAL: getUser(token) threw:", authCallErr.message, authCallErr.stack);
-      return res.status(500).json({ ok: false, error: "Auth call failed: " + authCallErr.message });
+      console.error("[orgs/create] FATAL: getUser(token) threw:", authCallErr.message);
+      return res.status(500).json({ ok: false, error: "Auth call failed" });
     }
 
     const { data, error: authError } = userData;
 
     if (authError) {
-      console.error("[orgs/create] Auth error:", authError.message);
-      return res.status(401).json({ ok: false, error: "Invalid token: " + authError.message });
+      return res.status(401).json({ ok: false, error: "Invalid token" });
     }
 
     if (!data || !data.user) {
-      console.log("[orgs/create] Token valid but no user returned");
       return res.status(401).json({ ok: false, error: "Not authenticated" });
     }
 
@@ -93,36 +87,35 @@ export default async function handler(req, res) {
     const userId = user.id;
     const email = user.email || "";
 
-    // -------------------------------------------
-    // 4. VALIDATE USER ID
-    // -------------------------------------------
     if (!userId || typeof userId !== "string") {
       console.error("[orgs/create] FATAL: Invalid userId:", userId);
       return res.status(500).json({ ok: false, error: "Invalid user ID from auth" });
     }
 
-    console.log("[orgs/create] Auth OK. userId:", userId, "email:", email);
-
     // -------------------------------------------
-    // 5. CHECK FOR EXISTING ORG
+    // 4. CHECK FOR EXISTING ORG (IDEMPOTENT)
     // -------------------------------------------
-    let existingOrgs;
+    let existingOrg = null;
     try {
-      existingOrgs = await sql`
+      const rows = await sql`
         SELECT o.id, o.name, o.external_uuid, o.onboarding_step, o.onboarding_completed
-        FROM organization_members om
-        JOIN organizations o ON o.id = om.org_id
+        FROM organizations o
+        JOIN organization_members om ON om.org_id = o.id
         WHERE om.user_id = ${userId}
+        ORDER BY o.id ASC
         LIMIT 1;
       `;
+      if (rows && rows.length > 0 && rows[0]) {
+        existingOrg = rows[0];
+      }
     } catch (selectErr) {
-      console.error("[orgs/create] DB SELECT failed:", selectErr.message, selectErr.stack, "userId:", userId);
-      return res.status(500).json({ ok: false, error: "DB select failed: " + selectErr.message });
+      console.error("[orgs/create] DB SELECT failed:", selectErr.message);
+      return res.status(500).json({ ok: false, error: "DB select failed" });
     }
 
-    if (existingOrgs && existingOrgs.length > 0 && existingOrgs[0]) {
-      const existingOrg = existingOrgs[0];
-      console.log("[orgs/create] Returning existing org:", existingOrg.id);
+    // If user already has an org, return it immediately (IDEMPOTENT)
+    if (existingOrg) {
+      console.log("[orgs/create] IDEMPOTENT: Returning existing org:", existingOrg.id);
       return res.status(200).json({
         ok: true,
         org: existingOrg,
@@ -131,77 +124,96 @@ export default async function handler(req, res) {
     }
 
     // -------------------------------------------
-    // 6. GENERATE ORG DATA
+    // 5. GENERATE ORG DATA
     // -------------------------------------------
     let orgName;
     try {
       const body = req.body || {};
       const requestedName = body.name;
       orgName = requestedName || (email ? `${email.split("@")[0]}'s Organization` : "My Organization");
-    } catch (bodyErr) {
+    } catch {
       orgName = "My Organization";
     }
 
     const externalUuid = crypto.randomUUID();
-    if (!externalUuid) {
-      console.error("[orgs/create] FATAL: crypto.randomUUID() returned falsy");
-      return res.status(500).json({ ok: false, error: "UUID generation failed" });
-    }
 
-    console.log("[orgs/create] Creating org:", orgName, "uuid:", externalUuid);
+    console.log("[orgs/create] Creating org:", orgName, "uuid:", externalUuid, "for user:", userId);
 
     // -------------------------------------------
-    // 7. INSERT ORGANIZATION
+    // 6. INSERT ORGANIZATION (handle race condition)
     // -------------------------------------------
-    let newOrgResult;
+    let newOrg = null;
     try {
-      newOrgResult = await sql`
+      const result = await sql`
         INSERT INTO organizations (name, external_uuid, onboarding_step, onboarding_completed)
         VALUES (${orgName}, ${externalUuid}, 0, FALSE)
         RETURNING id, name, external_uuid, onboarding_step, onboarding_completed;
       `;
+      if (result && result.length > 0 && result[0]) {
+        newOrg = result[0];
+      }
     } catch (insertErr) {
-      console.error("[orgs/create] DB INSERT org failed:", insertErr.message, insertErr.stack, "orgName:", orgName, "uuid:", externalUuid);
-      return res.status(500).json({ ok: false, error: "DB insert org failed: " + insertErr.message });
+      // Race condition: another request may have created org + membership
+      // Re-check for existing org before failing
+      console.log("[orgs/create] Org insert failed, re-checking for existing:", insertErr.message);
+      try {
+        const recheck = await sql`
+          SELECT o.id, o.name, o.external_uuid, o.onboarding_step, o.onboarding_completed
+          FROM organizations o
+          JOIN organization_members om ON om.org_id = o.id
+          WHERE om.user_id = ${userId}
+          ORDER BY o.id ASC
+          LIMIT 1;
+        `;
+        if (recheck && recheck.length > 0 && recheck[0]) {
+          console.log("[orgs/create] IDEMPOTENT: Found org on recheck:", recheck[0].id);
+          return res.status(200).json({
+            ok: true,
+            org: recheck[0],
+            created: false,
+          });
+        }
+      } catch {}
+      // Truly failed
+      console.error("[orgs/create] DB INSERT org failed:", insertErr.message);
+      return res.status(500).json({ ok: false, error: "DB insert org failed" });
     }
 
-    if (!newOrgResult || !Array.isArray(newOrgResult) || newOrgResult.length === 0 || !newOrgResult[0]) {
-      console.error("[orgs/create] INSERT returned empty result:", newOrgResult);
+    if (!newOrg || !newOrg.id) {
+      console.error("[orgs/create] INSERT returned empty result");
       return res.status(500).json({ ok: false, error: "Org insert returned no data" });
     }
 
-    const newOrg = newOrgResult[0];
-    const orgId = newOrg.id;
-
-    if (!orgId) {
-      console.error("[orgs/create] FATAL: newOrg.id is falsy:", newOrg);
-      return res.status(500).json({ ok: false, error: "Org created but ID is missing" });
-    }
-
-    console.log("[orgs/create] Org created:", orgId, newOrg.external_uuid);
+    console.log("[orgs/create] Org created:", newOrg.id);
 
     // -------------------------------------------
-    // 8. INSERT ORGANIZATION MEMBER (FK safe)
+    // 7. INSERT MEMBERSHIP (ON CONFLICT DO NOTHING)
     // -------------------------------------------
     try {
       await sql`
         INSERT INTO organization_members (org_id, user_id, role)
-        VALUES (${orgId}, ${userId}, 'owner');
+        VALUES (${newOrg.id}, ${userId}, 'owner')
+        ON CONFLICT (org_id, user_id) DO NOTHING;
       `;
-      console.log("[orgs/create] Member added:", userId, "->", orgId);
+      console.log("[orgs/create] Member added:", userId, "->", newOrg.id);
     } catch (memberErr) {
-      console.error("[orgs/create] DB INSERT member failed:", memberErr.message, memberErr.stack, "orgId:", orgId, "userId:", userId);
-      // Return org anyway — it exists, membership just failed
-      return res.status(200).json({
-        ok: true,
-        org: newOrg,
-        created: true,
-        warning: "Member insert failed: " + memberErr.message,
-      });
+      // If ON CONFLICT syntax not supported, try plain insert and ignore duplicate error
+      if (memberErr.message && memberErr.message.includes("duplicate")) {
+        console.log("[orgs/create] Membership already exists (duplicate key)");
+      } else {
+        console.error("[orgs/create] DB INSERT member failed:", memberErr.message);
+        // Still return the org - it exists
+        return res.status(200).json({
+          ok: true,
+          org: newOrg,
+          created: true,
+          warning: "Member insert failed",
+        });
+      }
     }
 
     // -------------------------------------------
-    // 9. SUCCESS
+    // 8. SUCCESS
     // -------------------------------------------
     return res.status(200).json({
       ok: true,
@@ -214,8 +226,7 @@ export default async function handler(req, res) {
     // GLOBAL CATCH — nothing escapes
     // -------------------------------------------
     const message = err && err.message ? err.message : "Unknown error";
-    const stack = err && err.stack ? err.stack : "No stack";
-    console.error("[orgs/create] UNCAUGHT ERROR:", message, stack);
+    console.error("[orgs/create] UNCAUGHT ERROR:", message);
     return res.status(500).json({ ok: false, error: message });
   }
 }
