@@ -338,50 +338,36 @@ function Dashboard() {
   const { isAdmin, isManager } = useRole();
   const { activeOrgId, activeOrgUuid } = useOrg();
 
-  // GUARD: If somehow rendered on billing page, do nothing
-  // This prevents redirect loops during billing flow
-  if (router.pathname.startsWith("/billing")) {
-    return null;
-  }
-
   // First-time state check (single source of truth)
   const { isFirstTime, checks, counts, loading: firstTimeLoading } = useFirstTimeCheck();
 
-  // Trial status check (single source of truth)
-  // GUARD ORDER: This runs AFTER onboarding check (below)
-  // If onboarding complete but no trial/subscription active → billing
-  const [trialChecked, setTrialChecked] = useState(false);
-  const billingRedirectAttemptedRef = useRef(false);
+  // Trial status check (NO REDIRECTS - renders billing gate instead)
+  const [trialStatus, setTrialStatus] = useState({
+    checked: false,
+    hasStartedTrial: true, // Assume true until checked
+    isActive: true,
+    isExpired: false,
+  });
 
   useEffect(() => {
-    if (!activeOrgId || trialChecked) return;
-    // Prevent multiple redirect attempts (breaks loops)
-    if (billingRedirectAttemptedRef.current) return;
+    if (!activeOrgId || trialStatus.checked) return;
 
     fetch(`/api/billing/trial-status?orgId=${activeOrgId}`)
       .then((r) => r.json())
       .then((data) => {
         if (data.ok) {
-          // GUARD C: If onboarding complete but trial not started or expired → billing
-          // hasStartedTrial=false means user hasn't gone through Stripe checkout yet
-          // trial.expired=true means trial ended and user isn't paid
-          if (!data.hasStartedTrial) {
-            // Only redirect once per component mount
-            billingRedirectAttemptedRef.current = true;
-            router.replace("/billing/checkout");
-            return;
-          }
-          if (data.trial?.expired && !data.trial?.is_paid) {
-            // Only redirect once per component mount
-            billingRedirectAttemptedRef.current = true;
-            router.replace("/billing/upgrade?reason=expired");
-            return;
-          }
+          setTrialStatus({
+            checked: true,
+            hasStartedTrial: data.hasStartedTrial ?? false,
+            isActive: data.trial?.active ?? false,
+            isExpired: data.trial?.expired ?? false,
+          });
+        } else {
+          setTrialStatus((prev) => ({ ...prev, checked: true }));
         }
-        setTrialChecked(true);
       })
-      .catch(() => setTrialChecked(true));
-  }, [activeOrgId, trialChecked, router]);
+      .catch(() => setTrialStatus((prev) => ({ ...prev, checked: true })));
+  }, [activeOrgId, trialStatus.checked]);
 
   // Spotlight anchors for tutorial (Option B)
   const riskRef = useRef(null);
@@ -1148,8 +1134,123 @@ const alertSummarySafe = {
 const alertVendorsList = [];
 
   /* ============================================================
+     BILLING GATE — Shows when trial not started or expired
+     NO REDIRECTS — User clicks to go to billing
+============================================================ */
+  const needsBilling = trialStatus.checked && (!trialStatus.hasStartedTrial || trialStatus.isExpired);
+
+  /* ============================================================
      MAIN RENDER
 ============================================================ */
+  // Show billing gate if trial not active (no redirect)
+  if (needsBilling) {
+    return (
+      <div
+        style={{
+          minHeight: "100vh",
+          background:
+            "radial-gradient(circle at top left,#020617 0,#020617 45%,#000000 100%)",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          padding: 40,
+          color: GP.text,
+        }}
+      >
+        <div
+          style={{
+            maxWidth: 480,
+            padding: 32,
+            borderRadius: 24,
+            background:
+              "radial-gradient(circle at top left,rgba(15,23,42,0.98),rgba(15,23,42,0.92))",
+            border: "1px solid rgba(148,163,184,0.45)",
+            boxShadow:
+              "0 0 60px rgba(0,0,0,0.85), 0 0 80px rgba(56,189,248,0.25)",
+            textAlign: "center",
+          }}
+        >
+          <div
+            style={{
+              width: 64,
+              height: 64,
+              margin: "0 auto 20px",
+              borderRadius: "50%",
+              background:
+                "radial-gradient(circle at 30% 30%, #3b82f6, #1d4ed8)",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              boxShadow: "0 0 30px rgba(59,130,246,0.5)",
+            }}
+          >
+            <span style={{ fontSize: 28 }}>🚀</span>
+          </div>
+
+          <h2
+            style={{
+              fontSize: 24,
+              fontWeight: 600,
+              marginBottom: 12,
+              background:
+                "linear-gradient(90deg, #38bdf8, #a5b4fc, #e5e7eb)",
+              WebkitBackgroundClip: "text",
+              color: "transparent",
+            }}
+          >
+            {trialStatus.isExpired
+              ? "Your Trial Has Ended"
+              : "Start Your Free Trial"}
+          </h2>
+
+          <p
+            style={{
+              fontSize: 14,
+              color: "#9ca3af",
+              marginBottom: 24,
+              lineHeight: 1.6,
+            }}
+          >
+            {trialStatus.isExpired
+              ? "Upgrade to continue using Verivo's compliance intelligence platform."
+              : "Get 14 days of full access to Verivo's compliance intelligence platform. No credit card required to start."}
+          </p>
+
+          <button
+            onClick={() => router.push(trialStatus.isExpired ? "/billing/upgrade" : "/billing/checkout")}
+            style={{
+              width: "100%",
+              padding: "14px 24px",
+              borderRadius: 999,
+              border: "1px solid rgba(59,130,246,0.8)",
+              background:
+                "radial-gradient(circle at top left, #3b82f6, #1d4ed8, #1e3a8a)",
+              color: "#e0f2fe",
+              fontSize: 15,
+              fontWeight: 600,
+              cursor: "pointer",
+              boxShadow: "0 0 20px rgba(59,130,246,0.4)",
+            }}
+          >
+            {trialStatus.isExpired ? "Upgrade Now →" : "Start 14-Day Free Trial →"}
+          </button>
+
+          <p
+            style={{
+              fontSize: 11,
+              color: "#6b7280",
+              marginTop: 16,
+            }}
+          >
+            {trialStatus.isExpired
+              ? "Questions? Contact support@verivo.io"
+              : "Secure checkout · Cancel anytime"}
+          </p>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div
       style={{
