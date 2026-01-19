@@ -1,13 +1,12 @@
 // pages/api/orgs/create.js
 // ============================================================
 // CREATE ORGANIZATION — Called when user starts onboarding
-// - Creates a new org for the authenticated user
-// - Adds user as owner
-// - Returns the new org
+// Supports both cookie-based auth AND Bearer token auth
 // ============================================================
 
 import { sql } from "@db";
 import { createPagesServerClient } from "@supabase/auth-helpers-nextjs";
+import { createClient } from "@supabase/supabase-js";
 
 export default async function handler(req, res) {
   if (req.method !== "POST") {
@@ -15,15 +14,41 @@ export default async function handler(req, res) {
   }
 
   try {
-    // Use session-based auth via cookies
-    const supabase = createPagesServerClient({ req, res });
-    const { data, error } = await supabase.auth.getUser();
+    let user = null;
 
-    if (error || !data?.user) {
+    // Try 1: Cookie-based auth via createPagesServerClient
+    try {
+      const supabaseCookie = createPagesServerClient({ req, res });
+      const { data, error } = await supabaseCookie.auth.getUser();
+      if (!error && data?.user) {
+        user = data.user;
+      }
+    } catch {}
+
+    // Try 2: Bearer token auth (fallback)
+    if (!user) {
+      const authHeader = req.headers.authorization || "";
+      const token = authHeader.startsWith("Bearer ") ? authHeader.slice(7) : null;
+
+      if (token) {
+        try {
+          const supabaseAdmin = createClient(
+            process.env.NEXT_PUBLIC_SUPABASE_URL,
+            process.env.SUPABASE_SERVICE_ROLE_KEY
+          );
+          const { data, error } = await supabaseAdmin.auth.getUser(token);
+          if (!error && data?.user) {
+            user = data.user;
+          }
+        } catch {}
+      }
+    }
+
+    // No auth found
+    if (!user) {
       return res.status(401).json({ ok: false, error: "Authentication required" });
     }
 
-    const user = data.user;
     const userId = user.id;
     const email = user.email;
 
