@@ -1,9 +1,6 @@
 // pages/onboarding/ai-wizard.js
 // ============================================================
 // AI Onboarding Wizard V5 — CANONICAL ONBOARDING ENTRY POINT
-// ✅ Session required (redirects to login if missing)
-// ✅ Auto-creates org if user doesn't have one
-// ✅ Single onboarding UI for all users
 // ============================================================
 
 import { useEffect, useState } from "react";
@@ -59,23 +56,14 @@ export default function AiOnboardingWizardPage() {
 
   /* -------------------------------------------------
      🏢 AUTO-CREATE ORG IF USER DOESN'T HAVE ONE
-
-     FIX: The original deadlock occurred because:
-     - After org creation, `orgs` array stays empty (OrgContext doesn't re-fetch)
-     - Effect re-runs when `creatingOrg` becomes false
-     - `orgs.length === 0` is still true, so it tries to create again
-     - This loops forever, keeping `creatingOrg` toggling
-
-     Solution: Also check `activeOrgUuid` - if set, org exists (was just created)
   -------------------------------------------------- */
   useEffect(() => {
-    if (checkingSession || orgLoading || creatingOrg) return;
+    if (checkingSession || creatingOrg) return;
     if (!hasSession) return;
 
-    // If user has orgs OR activeOrgUuid is already set (org just created), skip
+    // If org already exists or was just created, do nothing
     if ((orgs && orgs.length > 0) || activeOrgUuid) return;
 
-    // Auto-create org
     let cancelled = false;
     setCreatingOrg(true);
 
@@ -96,18 +84,22 @@ export default function AiOnboardingWizardPage() {
         });
 
         const json = await res.json();
-
         if (cancelled) return;
 
-        if (json.ok && json.org) {
+        if (json?.org) {
           setActiveOrg(json.org);
 
-          // Store org info
           if (json.org.external_uuid) {
-            localStorage.setItem("verivo:activeOrgUuid", json.org.external_uuid);
+            localStorage.setItem(
+              "verivo:activeOrgUuid",
+              json.org.external_uuid
+            );
           }
           if (json.org.id) {
-            localStorage.setItem("verivo:activeOrgId", String(json.org.id));
+            localStorage.setItem(
+              "verivo:activeOrgId",
+              String(json.org.id)
+            );
           }
         }
       } catch (err) {
@@ -122,90 +114,24 @@ export default function AiOnboardingWizardPage() {
     return () => {
       cancelled = true;
     };
-  }, [checkingSession, orgLoading, hasSession, orgs, activeOrgUuid, creatingOrg, setActiveOrg]);
-
-  /* -------------------------------------------------
-     🧠 ACTIVATE ORG VIA API (if org exists but not active)
-  -------------------------------------------------- */
-  useEffect(() => {
-    if (!activeOrgUuid || orgLoading) return;
-
-    let cancelled = false;
-
-    async function activate() {
-      try {
-        const {
-          data: { session },
-        } = await supabase.auth.getSession();
-
-        if (!session?.access_token) return;
-
-        const res = await fetch("/api/orgs/for-user", {
-          headers: {
-            Authorization: `Bearer ${session.access_token}`,
-          },
-        });
-
-        if (!res.ok) {
-          console.error("Failed to load orgs during onboarding");
-          return;
-        }
-
-        const json = await res.json();
-        if (!json?.ok || !Array.isArray(json.orgs)) return;
-
-        if (cancelled) return;
-
-        const org = json.orgs.find(
-          (o) => o.external_uuid === activeOrgUuid
-        );
-
-        if (org) {
-          setActiveOrg(org);
-        }
-      } catch (err) {
-        console.error("Failed to activate org during onboarding", err);
-      }
-    }
-
-    activate();
-
-    return () => {
-      cancelled = true;
-    };
-  }, [activeOrgUuid, orgLoading, setActiveOrg]);
+  }, [checkingSession, hasSession, orgs, activeOrgUuid, creatingOrg, setActiveOrg]);
 
   /* -------------------------------------------------
      🚫 REDIRECT IF ONBOARDING ALREADY COMPLETE
-     Once onboarding_completed === true, NEVER show wizard again
   -------------------------------------------------- */
   useEffect(() => {
-    if (orgLoading) return;
     if (!activeOrg) return;
 
     if (activeOrg.onboarding_completed === true) {
-      console.log("[ai-wizard] Onboarding already complete, redirecting to dashboard");
       router.replace("/dashboard");
     }
-  }, [activeOrg, orgLoading, router]);
+  }, [activeOrg, router]);
 
   /* -------------------------------------------------
-     ⏳ WAIT STATES (with AuthHeader for logout access)
+     ⏳ WAIT STATES
+     IMPORTANT: Only block on checkingSession
   -------------------------------------------------- */
-
-  // If onboarding complete, show nothing while redirecting
-  if (activeOrg?.onboarding_completed === true) {
-    return (
-      <div style={{ minHeight: "100vh", background: "#020617" }}>
-        <AuthHeader />
-        <div style={{ padding: 40, color: "#9ca3af" }}>
-          Redirecting to dashboard...
-        </div>
-      </div>
-    );
-  }
-
-  if (checkingSession || orgLoading || creatingOrg) {
+  if (checkingSession) {
     return (
       <div style={{ minHeight: "100vh", background: "#020617" }}>
         <AuthHeader />
@@ -217,10 +143,9 @@ export default function AiOnboardingWizardPage() {
   }
 
   if (!hasSession) {
-    return null; // redirecting to login
+    return null; // redirecting
   }
 
-  // Still waiting for org to be created/loaded
   if (!activeOrgUuid) {
     return (
       <div style={{ minHeight: "100vh", background: "#020617" }}>
@@ -233,7 +158,7 @@ export default function AiOnboardingWizardPage() {
   }
 
   /* -------------------------------------------------
-     ✅ RENDER WIZARD (with AuthHeader)
+     ✅ RENDER WIZARD
   -------------------------------------------------- */
   return (
     <div
