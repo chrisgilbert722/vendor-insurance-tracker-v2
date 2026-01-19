@@ -8,11 +8,6 @@
 import { sql } from "../../../lib/db";
 import { createClient } from "@supabase/supabase-js";
 
-const supabaseAdmin = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL,
-  process.env.SUPABASE_SERVICE_ROLE_KEY
-);
-
 export default async function handler(req, res) {
   if (req.method !== "POST") {
     return res.status(405).json({ ok: false, error: "POST only" });
@@ -23,6 +18,17 @@ export default async function handler(req, res) {
   if (!email) {
     return res.status(400).json({ ok: false, error: "Missing email" });
   }
+
+  // Create Supabase admin client inside handler
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+
+  if (!supabaseUrl || !supabaseKey) {
+    console.error("[nuke-by-email] Missing SUPABASE env vars");
+    return res.status(500).json({ ok: false, error: "Missing Supabase configuration" });
+  }
+
+  const supabaseAdmin = createClient(supabaseUrl, supabaseKey);
 
   try {
     console.log(`[nuke-by-email] ========================================`);
