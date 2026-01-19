@@ -1,24 +1,16 @@
 // components/onboarding/ReviewLaunchStep.js
-// STEP 4 — Finish Setup → Dashboard
-// ✅ Context-safe
-// ✅ Uses REAL OrgContext setter
-// ✅ Forces org hydration correctly
+// STEP 10 — Start Free Trial → Stripe Checkout
+// ✅ MUST complete Stripe checkout before accessing dashboard
+// ✅ No path to dashboard without successful payment setup
 
 import { useState } from "react";
-import { useRouter } from "next/router";
 import { supabase } from "../../lib/supabaseClient";
-import { useOrg } from "../../context/OrgContext";
-
-const ACTIVE_ORG_KEY = "verivo:activeOrgUuid";
 
 export default function ReviewLaunchStep({ orgId }) {
-  const router = useRouter();
-  const orgCtx = useOrg();
-
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
 
-  async function finishOnboarding() {
+  async function startFreeTrial() {
     if (loading) return;
 
     setLoading(true);
@@ -33,32 +25,27 @@ export default function ReviewLaunchStep({ orgId }) {
         throw new Error("Session expired. Please refresh.");
       }
 
-      // 1️⃣ Mark onboarding complete (fail-open)
-      await fetch("/api/onboarding/complete", {
+      // Create Stripe Checkout Session (14-day trial, card required)
+      const res = await fetch("/api/billing/create-checkout", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
           Authorization: `Bearer ${session.access_token}`,
         },
         body: JSON.stringify({ orgId }),
-      }).catch(() => {});
+      });
 
-      // 2️⃣ FORCE org selection in context (REAL setter)
-      if (typeof orgCtx?.setActiveOrgId === "function") {
-        orgCtx.setActiveOrgId(orgId);
+      const json = await res.json();
+
+      if (!json.ok || !json.url) {
+        throw new Error(json.error || "Could not create checkout session");
       }
 
-      // 3️⃣ Persist for hard reloads
-      try {
-        localStorage.setItem(ACTIVE_ORG_KEY, orgId);
-      } catch {}
-
-      // 4️⃣ Hard navigate so dashboard hydrates clean
-      window.location.href = "/dashboard";
+      // Redirect to Stripe Checkout
+      window.location.href = json.url;
     } catch (err) {
-      console.error("[Finish Onboarding]", err);
-      setError(err.message || "Could not finish setup");
-    } finally {
+      console.error("[Start Free Trial]", err);
+      setError(err.message || "Could not start trial");
       setLoading(false);
     }
   }
@@ -78,7 +65,11 @@ export default function ReviewLaunchStep({ orgId }) {
 
       <p style={{ color: "#9ca3af", fontSize: 14 }}>
         Your vendors are loaded and analyzed.
-        You can now access your compliance dashboard.
+        Start your 14-day free trial to access the compliance dashboard.
+      </p>
+
+      <p style={{ color: "#64748b", fontSize: 12, marginTop: 8 }}>
+        Credit card required. Cancel anytime during trial.
       </p>
 
       {error && (
@@ -98,7 +89,7 @@ export default function ReviewLaunchStep({ orgId }) {
       )}
 
       <button
-        onClick={finishOnboarding}
+        onClick={startFreeTrial}
         disabled={loading}
         style={{
           marginTop: 18,
@@ -114,7 +105,7 @@ export default function ReviewLaunchStep({ orgId }) {
           opacity: loading ? 0.7 : 1,
         }}
       >
-        {loading ? "Finishing setup…" : "Continue → Dashboard"}
+        {loading ? "Starting trial…" : "Start Free Trial →"}
       </button>
     </div>
   );

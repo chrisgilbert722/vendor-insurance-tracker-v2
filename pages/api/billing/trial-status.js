@@ -1,22 +1,22 @@
 // pages/api/billing/trial-status.js
 // ============================================================
-// TRIAL STATUS API — Single source of truth for trial state
-// Trial fields live on organizations table
-// Stripe test mode with graceful no-op if keys missing
+// TRIAL STATUS API — READ ONLY
+// Returns current trial state from organizations table
+// DOES NOT auto-create trials (that happens via Stripe webhook)
 // ============================================================
 
+import Stripe from "stripe";
 import { sql } from "../../../lib/db";
 import { resolveOrg } from "../../../lib/server/resolveOrg";
 
-// Stripe test mode (graceful no-op if missing)
+// Stripe for checking subscription status
 let stripe = null;
 try {
-  if (process.env.STRIPE_SECRET_KEY?.startsWith("sk_test_")) {
-    const Stripe = require("stripe");
+  if (process.env.STRIPE_SECRET_KEY) {
     stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
   }
 } catch {
-  console.warn("[trial-status] Stripe not available - running in simulated mode");
+  console.warn("[trial-status] Stripe not available");
 }
 
 export default async function handler(req, res) {
@@ -27,7 +27,18 @@ export default async function handler(req, res) {
   try {
     const orgId = await resolveOrg(req, res);
     if (!orgId) {
-      return res.status(400).json({ ok: false, error: "Organization not resolved" });
+      // No org = no trial
+      return res.status(200).json({
+        ok: true,
+        hasStartedTrial: false,
+        trial: {
+          active: false,
+          started_at: null,
+          expires_at: null,
+          days_left: 0,
+          billing_status: "none",
+        },
+      });
     }
 
     // Get current org state (trial fields on organizations table)
@@ -36,6 +47,7 @@ export default async function handler(req, res) {
         id,
         name,
         onboarding_step,
+        onboarding_completed,
         trial_started_at,
         trial_expires_at,
         stripe_customer_id,
@@ -46,76 +58,36 @@ export default async function handler(req, res) {
     `.catch(() => [{}]);
 
     if (!org?.id) {
-      return res.status(400).json({ ok: false, error: "Organization not found" });
-    }
-
-    // Check if trial needs to be started
-    if (!org.trial_started_at) {
-      const now = new Date();
-      const trialEnds = new Date(now.getTime() + 14 * 24 * 60 * 60 * 1000);
-
-      // Try to create Stripe customer and trial subscription (test mode only)
-      let stripeCustomerId = null;
-      let stripeSubscriptionId = null;
-      let stripeMode = "simulated";
-
-      if (stripe && process.env.STRIPE_PRICE_ID) {
-        try {
-          // Create customer
-          const customer = await stripe.customers.create({
-            metadata: { org_id: String(orgId), org_name: org.name || "Unknown" },
-          });
-          stripeCustomerId = customer.id;
-
-          // Create trial subscription
-          const subscription = await stripe.subscriptions.create({
-            customer: customer.id,
-            items: [{ price: process.env.STRIPE_PRICE_ID }],
-            trial_period_days: 14,
-            payment_behavior: "default_incomplete",
-            expand: ["latest_invoice.payment_intent"],
-          });
-          stripeSubscriptionId = subscription.id;
-          stripeMode = "test";
-        } catch (stripeErr) {
-          console.warn("[trial-status] Stripe error (continuing with simulated):", stripeErr.message);
-        }
-      } else {
-        console.log("[trial-status] Stripe keys missing - using simulated trial");
-      }
-
-      // Update organizations table with trial data
-      try {
-        await sql`
-          UPDATE organizations
-          SET
-            trial_started_at = ${now.toISOString()},
-            trial_expires_at = ${trialEnds.toISOString()},
-            stripe_customer_id = ${stripeCustomerId},
-            stripe_subscription_id = ${stripeSubscriptionId}
-          WHERE id = ${orgId}
-        `;
-      } catch (updateErr) {
-        // Columns might not exist - try minimal update
-        console.warn("[trial-status] Full update failed, trying minimal:", updateErr.message);
-        // Continue without saving to DB - trial will be simulated
-      }
-
       return res.status(200).json({
         ok: true,
+        hasStartedTrial: false,
         trial: {
-          active: true,
-          started_at: now.toISOString(),
-          expires_at: trialEnds.toISOString(),
-          days_left: 14,
-          billing_status: "trial",
-          stripe_mode: stripeMode,
-          stripe_customer_id: stripeCustomerId,
+          active: false,
+          started_at: null,
+          expires_at: null,
+          days_left: 0,
+          billing_status: "none",
         },
       });
     }
 
-    // Trial already started - calculate status
+    // NO TRIAL STARTED YET — return inactive status (do NOT auto-create)
+    if (!org.trial_started_at) {
+      return res.status(200).json({
+        ok: true,
+        hasStartedTrial: false,
+        trial: {
+          active: false,
+          started_at: null,
+          expires_at: null,
+          days_left: 0,
+          billing_status: "none",
+          onboarding_completed: org.onboarding_completed || false,
+        },
+      });
+    }
+
+    // Trial exists - calculate status
     const now = new Date();
     const trialExpires = new Date(org.trial_expires_at);
     const daysLeft = Math.max(0, Math.ceil((trialExpires - now) / (24 * 60 * 60 * 1000)));
@@ -134,6 +106,7 @@ export default async function handler(req, res) {
 
     return res.status(200).json({
       ok: true,
+      hasStartedTrial: true,
       trial: {
         active: !isExpired || isPaid,
         expired: isExpired && !isPaid,
@@ -144,21 +117,21 @@ export default async function handler(req, res) {
         is_paid: isPaid,
         stripe_customer_id: org.stripe_customer_id || null,
         stripe_subscription_id: org.stripe_subscription_id || null,
+        onboarding_completed: org.onboarding_completed || false,
       },
     });
   } catch (err) {
     console.error("[trial-status] error:", err);
-    // Fail open - return simulated trial to not block users
+    // Return no trial on error (fail closed for billing)
     return res.status(200).json({
       ok: true,
+      hasStartedTrial: false,
       trial: {
-        active: true,
-        expired: false,
+        active: false,
         started_at: null,
         expires_at: null,
-        days_left: 14,
-        billing_status: "simulated",
-        is_paid: false,
+        days_left: 0,
+        billing_status: "error",
         error: err.message,
       },
     });
