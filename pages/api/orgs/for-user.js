@@ -1,42 +1,35 @@
 // pages/api/orgs/for-user.js
+// ============================================================
+// GET USER'S ORGANIZATIONS — Returns all orgs for authenticated user
+// ============================================================
 
 import { sql } from "../../../lib/db";
-import { supabaseServer } from "../../../lib/supabaseServer";
+import { createPagesServerClient } from "@supabase/auth-helpers-nextjs";
 
 export default async function handler(req, res) {
   if (req.method !== "GET") {
     return res.status(405).json({
       ok: false,
+      orgs: [],
       error: "Method not allowed",
     });
   }
 
   try {
-    const authHeader = req.headers.authorization || "";
-    const token = authHeader.startsWith("Bearer ")
-      ? authHeader.slice(7)
-      : null;
-
-    if (!token) {
-      return res.status(401).json({
-        ok: false,
-        error: "Missing auth token",
-      });
-    }
-
-    // ✅ CORRECT: create server-side Supabase client
-    const supabase = supabaseServer();
-    const { data, error } = await supabase.auth.getUser(token);
+    // Use session-based auth via cookies
+    const supabase = createPagesServerClient({ req, res });
+    const { data, error } = await supabase.auth.getUser();
 
     if (error || !data?.user) {
-      return res.status(401).json({
-        ok: false,
-        error: "Invalid session",
+      return res.status(200).json({
+        ok: true,
+        orgs: [],
+        hasOrg: false,
+        authenticated: false,
       });
     }
 
     const userId = data.user.id;
-    const email = data.user.email;
 
     const orgs = await sql`
       SELECT
@@ -51,18 +44,19 @@ export default async function handler(req, res) {
       ORDER BY o.id ASC;
     `;
 
-    // NO AUTO-CREATE: Return empty array if user has no orgs
-    // User must explicitly create an org via onboarding
     return res.status(200).json({
       ok: true,
       orgs: orgs || [],
       hasOrg: orgs && orgs.length > 0,
+      authenticated: true,
     });
   } catch (err) {
     console.error("[api/orgs/for-user] error:", err);
-    return res.status(500).json({
-      ok: false,
-      error: "Internal server error",
+    return res.status(200).json({
+      ok: true,
+      orgs: [],
+      hasOrg: false,
+      error: err.message,
     });
   }
 }
