@@ -4,21 +4,34 @@
 // Uses cookie-based auth via createPagesServerClient
 // ============================================================
 
-import { sql } from "@db";
+import { sql } from "../../../lib/db";
 import { createPagesServerClient } from "@supabase/auth-helpers-nextjs";
 import crypto from "crypto";
 
 export default async function handler(req, res) {
-  if (req.method !== "POST") {
-    return res.status(405).json({ ok: false, error: "POST only" });
-  }
-
+  // Ensure we always return JSON, even on unexpected errors
   try {
-    // Cookie-based auth via Supabase auth helpers
-    const supabase = createPagesServerClient({ req, res });
-    const { data, error } = await supabase.auth.getUser();
+    if (req.method !== "POST") {
+      return res.status(405).json({ ok: false, error: "POST only" });
+    }
 
-    if (error || !data?.user) {
+    // Cookie-based auth via Supabase auth helpers
+    let supabase;
+    try {
+      supabase = createPagesServerClient({ req, res });
+    } catch (clientErr) {
+      console.error("[orgs/create] Failed to create Supabase client:", clientErr);
+      return res.status(500).json({ ok: false, error: "Auth client initialization failed" });
+    }
+
+    const { data, error: authError } = await supabase.auth.getUser();
+
+    if (authError) {
+      console.error("[orgs/create] Auth error:", authError);
+      return res.status(401).json({ ok: false, error: "Authentication failed" });
+    }
+
+    if (!data?.user) {
       console.log("[orgs/create] No session found via cookies");
       return res.status(401).json({ ok: false, error: "Authentication required" });
     }
@@ -27,16 +40,25 @@ export default async function handler(req, res) {
     const userId = user.id;
     const email = user.email;
 
-    // Check if user already has an org
-    const existingOrgs = await sql`
-      SELECT o.id, o.name, o.external_uuid, o.onboarding_step, o.onboarding_completed
-      FROM organization_members om
-      JOIN organizations o ON o.id = om.org_id
-      WHERE om.user_id = ${userId}
-      LIMIT 1;
-    `;
+    console.log("[orgs/create] Authenticated user:", userId);
 
-    if (existingOrgs.length > 0 && existingOrgs[0]) {
+    // Check if user already has an org
+    let existingOrgs;
+    try {
+      existingOrgs = await sql`
+        SELECT o.id, o.name, o.external_uuid, o.onboarding_step, o.onboarding_completed
+        FROM organization_members om
+        JOIN organizations o ON o.id = om.org_id
+        WHERE om.user_id = ${userId}
+        LIMIT 1;
+      `;
+    } catch (dbErr) {
+      console.error("[orgs/create] DB error checking existing orgs:", dbErr);
+      return res.status(500).json({ ok: false, error: "Database query failed: " + dbErr.message });
+    }
+
+    if (existingOrgs && existingOrgs.length > 0 && existingOrgs[0]) {
+      console.log("[orgs/create] Returning existing org:", existingOrgs[0].id);
       return res.status(200).json({
         ok: true,
         org: existingOrgs[0],
@@ -53,14 +75,21 @@ export default async function handler(req, res) {
     const externalUuid = crypto.randomUUID();
 
     // Create new organization
-    const newOrgResult = await sql`
-      INSERT INTO organizations (name, external_uuid, onboarding_step, onboarding_completed)
-      VALUES (${orgName}, ${externalUuid}, 0, FALSE)
-      RETURNING id, name, external_uuid, onboarding_step, onboarding_completed;
-    `;
+    let newOrgResult;
+    try {
+      newOrgResult = await sql`
+        INSERT INTO organizations (name, external_uuid, onboarding_step, onboarding_completed)
+        VALUES (${orgName}, ${externalUuid}, 0, FALSE)
+        RETURNING id, name, external_uuid, onboarding_step, onboarding_completed;
+      `;
+    } catch (insertErr) {
+      console.error("[orgs/create] DB error inserting org:", insertErr);
+      return res.status(500).json({ ok: false, error: "Failed to insert organization: " + insertErr.message });
+    }
 
     if (!newOrgResult || !newOrgResult[0]) {
-      return res.status(500).json({ ok: false, error: "Failed to create organization" });
+      console.error("[orgs/create] Insert returned no result");
+      return res.status(500).json({ ok: false, error: "Failed to create organization - no result returned" });
     }
 
     const newOrg = newOrgResult[0];
@@ -72,10 +101,21 @@ export default async function handler(req, res) {
     });
 
     // Add user as owner
-    await sql`
-      INSERT INTO organization_members (org_id, user_id, role)
-      VALUES (${newOrg.id}, ${userId}, 'owner');
-    `;
+    try {
+      await sql`
+        INSERT INTO organization_members (org_id, user_id, role)
+        VALUES (${newOrg.id}, ${userId}, 'owner');
+      `;
+    } catch (memberErr) {
+      console.error("[orgs/create] DB error adding member:", memberErr);
+      // Org was created, so return it anyway but log the error
+      return res.status(200).json({
+        ok: true,
+        org: newOrg,
+        created: true,
+        warning: "Org created but member assignment failed",
+      });
+    }
 
     return res.status(200).json({
       ok: true,
@@ -83,7 +123,11 @@ export default async function handler(req, res) {
       created: true,
     });
   } catch (err) {
-    console.error("[orgs/create] error:", err);
-    return res.status(500).json({ ok: false, error: err.message || "Internal server error" });
+    console.error("[orgs/create] Unexpected error:", err);
+    return res.status(500).json({
+      ok: false,
+      error: err.message || "Internal server error",
+      stack: process.env.NODE_ENV === "development" ? err.stack : undefined,
+    });
   }
 }
