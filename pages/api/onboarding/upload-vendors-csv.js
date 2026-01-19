@@ -170,11 +170,27 @@ export default async function handler(req, res) {
       inserted++;
     }
 
+    /* -------------------------------------------------
+       ADVANCE ONBOARDING STATE IF VENDORS INSERTED
+    -------------------------------------------------- */
+    let nextStep = null;
+    if (inserted > 0) {
+      // Set onboarding_step = 3 to indicate vendors are added, billing is next
+      await sql`
+        UPDATE organizations
+        SET onboarding_step = 3
+        WHERE id = ${orgIdInt}
+          AND onboarding_step < 3;
+      `;
+      nextStep = "billing";
+    }
+
     return res.status(200).json({
       ok: true,
       headers,
       rows,
       inserted,
+      nextStep,
     });
   } catch (err) {
     console.error("[upload-vendors-csv]", err);
@@ -185,6 +201,7 @@ export default async function handler(req, res) {
       headers: [],
       rows: [],
       inserted: 0,
+      nextStep: null,
     });
   }
 }

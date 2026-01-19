@@ -94,6 +94,7 @@ export default function VendorsUploadStep({ orgId, onUploadSuccess }) {
 
       const headers = Array.isArray(json.headers) ? json.headers : [];
       const rows = Array.isArray(json.rows) ? json.rows : [];
+      const nextStep = json.nextStep || null;
 
       // 🔓 FAIL-OPEN: still advance even if rows empty
       if (!rows.length) {
@@ -104,6 +105,31 @@ export default function VendorsUploadStep({ orgId, onUploadSuccess }) {
           autoSkip: true,
         });
         return;
+      }
+
+      // 💳 BILLING REDIRECT: If vendors were inserted, redirect to Stripe checkout
+      if (nextStep === "billing" && json.inserted > 0) {
+        try {
+          const checkoutRes = await fetch("/api/billing/create-checkout", {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              Authorization: `Bearer ${session.access_token}`,
+            },
+            body: JSON.stringify({ orgId: String(orgId) }),
+          });
+
+          const checkoutJson = await checkoutRes.json();
+
+          if (checkoutJson.ok && checkoutJson.url) {
+            // Redirect to Stripe checkout
+            window.location.href = checkoutJson.url;
+            return;
+          }
+        } catch (billingErr) {
+          console.error("[BILLING REDIRECT ERROR]", billingErr);
+          // Fall through to normal flow if billing fails
+        }
       }
 
       const mapping = detectMappingWithConfidence(headers);
