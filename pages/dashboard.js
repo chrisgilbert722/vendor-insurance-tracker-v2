@@ -1,4 +1,13 @@
 // pages/dashboard.js — Dashboard V5 (Cinematic Intelligence Cockpit)
+// ============================================================
+// HARD INVARIANTS (per mandate):
+// ❌ NO router.replace() calls - this page NEVER redirects
+// ❌ NO billing redirects
+// ❌ NO onboarding redirects (OnboardingGuard handles this)
+// ✅ Trial status is READ ONLY
+// ✅ Shows BillingGate UI when trial not active (no redirect)
+// ✅ OnboardingGuard handles auth/onboarding checks before this renders
+// ============================================================
 
 import { supabase } from "../lib/supabaseClient";
 import React, { useEffect, useState, useRef } from "react";
@@ -341,9 +350,6 @@ function Dashboard() {
   // First-time state check (single source of truth)
   const { isFirstTime, checks, counts, loading: firstTimeLoading } = useFirstTimeCheck();
 
-  // REDIRECT GUARD: Prevent multiple redirects per mount
-  const redirectedRef = useRef(false);
-
   // Trial status check (NO REDIRECTS - renders billing gate instead)
   const [trialStatus, setTrialStatus] = useState({
     checked: false,
@@ -466,7 +472,8 @@ function Dashboard() {
 
   /* ============================================================
      ONBOARDING + TUTORIAL STATUS (COMBINED)
-     🔐 HARD GATE: Redirect to wizard if onboarding not complete
+     NOTE: OnboardingGuard handles redirect to wizard if onboarding not complete
+     Dashboard does NOT redirect - it only renders UI
 ============================================================ */
   useEffect(() => {
     if (!activeOrgUuid) return;
@@ -479,15 +486,6 @@ function Dashboard() {
 
         const done = !!json.onboardingComplete;
         const tutorialEnabled = json.dashboardTutorialEnabled === true;
-
-        // 🔐 HARD GATE: Redirect to wizard if onboarding not complete
-        // Uses ref to prevent multiple redirects per mount
-        if (!done && !redirectedRef.current) {
-          redirectedRef.current = true;
-          console.log("[dashboard] REDIRECT: onboarding incomplete → /onboarding/ai-wizard");
-          router.replace("/onboarding/ai-wizard");
-          return;
-        }
 
         setOnboardingComplete(done);
         setShowHero(!done);
@@ -504,7 +502,7 @@ function Dashboard() {
         console.error("[dashboard] onboarding/tutorial status error:", err);
       }
     })();
-  }, [activeOrgUuid, router]);
+  }, [activeOrgUuid]);
 
   /* ============================================================
      AUTONOMOUS ALERT GENERATION (V2)

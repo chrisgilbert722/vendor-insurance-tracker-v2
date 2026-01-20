@@ -1,6 +1,19 @@
 // pages/onboarding/ai-wizard.js
 // ============================================================
 // AI Onboarding Wizard — PRODUCTION-GRADE STATE MACHINE
+//
+// HARD INVARIANTS (per mandate):
+// ❌ NO billing redirects from this page
+// ❌ NO hook redirects
+// ❌ NO trial auto-creation
+// ✅ Bootstrap is idempotent (single API call)
+// ✅ Only redirects: login (no session) OR dashboard (onboarding complete)
+//
+// STATE MACHINE:
+// 1. no session → /auth/login
+// 2. onboarding_completed = false → render wizard
+// 3. onboarding_completed = true → /dashboard
+//
 // - Uses /api/orgs/bootstrap as single source of truth
 // - No direct org creation — bootstrap handles everything
 // - Hard timeout prevents infinite hangs

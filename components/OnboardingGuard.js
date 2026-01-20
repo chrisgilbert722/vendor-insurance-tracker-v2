@@ -2,12 +2,17 @@
 // ============================================================
 // CANONICAL ROUTING GUARD — Single source of truth
 //
+// HARD INVARIANTS (per mandate):
+// ❌ NO billing redirects from this guard
+// ❌ NO auto-redirects without user action
+// ✅ Pages render and show their own gates/UI
+// ✅ Only redirects: auth (login) and onboarding (wizard)
+//
 // ROUTING RULES:
 //
 // MARKETING PAGES (/, /property-management, /pricing, /terms, /privacy, /compare):
 //   - Logged OUT → render page
-//   - Logged IN + onboarded + subscribed → redirect to /dashboard
-//   - Logged IN + onboarded + NOT subscribed → redirect to /billing/checkout
+//   - Logged IN + onboarded → redirect to /dashboard
 //   - Logged IN + NOT onboarded → redirect to /onboarding/ai-wizard
 //
 // AUTH PAGES (/login, /signup, /auth/*):
@@ -22,17 +27,16 @@
 //
 // PROTECTED ROUTES (everything else):
 //   - No session → redirect to /auth/login
-//   - No org → create org, redirect to /onboarding/ai-wizard
+//   - No org → redirect to /onboarding/ai-wizard
 //   - Onboarding incomplete → redirect to /onboarding/ai-wizard
-//   - No active subscription → redirect to /billing/checkout
-//   - All checks pass → allow
+//   - Onboarding complete → ALLOW (page renders billing gate if needed)
+//
 // ============================================================
 
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/router";
 import { useUser } from "../context/UserContext";
 import { useOrg } from "../context/OrgContext";
-import { supabase } from "../lib/supabaseClient";
 
 // Marketing pages that redirect logged-in users
 const MARKETING_PATHS = [
@@ -80,54 +84,20 @@ function isPublicPath(pathname) {
 export default function OnboardingGuard({ children }) {
   const router = useRouter();
   const { user, initializing: userInitializing } = useUser();
-  const { activeOrgId, activeOrg, orgs, loading: orgLoading, setActiveOrg } = useOrg();
+  const { activeOrgId, activeOrg, orgs, loading: orgLoading } = useOrg();
 
   const [checked, setChecked] = useState(false);
-  const [creatingOrg, setCreatingOrg] = useState(false);
-  const [accessStatus, setAccessStatus] = useState(null);
-  const [checkingAccess, setCheckingAccess] = useState(false);
   const redirectedRef = useRef(false);
 
   // Reset redirect flag on route change
   useEffect(() => {
     redirectedRef.current = false;
     setChecked(false);
-    setAccessStatus(null);
   }, [router.pathname]);
-
-  // Check access status via API (subscription check)
-  async function checkAccessStatus() {
-    if (checkingAccess) return null;
-    setCheckingAccess(true);
-
-    try {
-      const {
-        data: { session },
-      } = await supabase.auth.getSession();
-
-      if (!session?.access_token) return null;
-
-      const res = await fetch("/api/auth/access-check", {
-        headers: {
-          Authorization: `Bearer ${session.access_token}`,
-        },
-      });
-
-      const json = await res.json();
-      setAccessStatus(json);
-      return json;
-    } catch (err) {
-      console.error("[OnboardingGuard] Access check failed:", err);
-      return null;
-    } finally {
-      setCheckingAccess(false);
-    }
-  }
 
   useEffect(() => {
     // Wait for auth and org to load
     if (userInitializing || orgLoading) return;
-    if (creatingOrg) return;
 
     const pathname = router.pathname;
 
@@ -162,6 +132,7 @@ export default function OnboardingGuard({ children }) {
         // No org yet → redirect to onboarding
         if (!redirectedRef.current) {
           redirectedRef.current = true;
+          console.log("[OnboardingGuard] REDIRECT: no org → /onboarding/ai-wizard");
           router.replace("/onboarding/ai-wizard");
         }
         return;
@@ -172,6 +143,7 @@ export default function OnboardingGuard({ children }) {
         // Onboarded → redirect to dashboard
         if (!redirectedRef.current) {
           redirectedRef.current = true;
+          console.log("[OnboardingGuard] REDIRECT: onboarded → /dashboard");
           router.replace("/dashboard");
         }
         return;
@@ -180,6 +152,7 @@ export default function OnboardingGuard({ children }) {
       // Not onboarded → redirect to onboarding
       if (!redirectedRef.current) {
         redirectedRef.current = true;
+        console.log("[OnboardingGuard] REDIRECT: not onboarded → /onboarding/ai-wizard");
         router.replace("/onboarding/ai-wizard");
       }
       return;
@@ -193,6 +166,7 @@ export default function OnboardingGuard({ children }) {
         // No session → redirect to login
         if (!redirectedRef.current) {
           redirectedRef.current = true;
+          console.log("[OnboardingGuard] REDIRECT: no session → /auth/login");
           router.replace(`/auth/login?redirect=${encodeURIComponent(pathname)}`);
         }
         return;
@@ -204,21 +178,27 @@ export default function OnboardingGuard({ children }) {
     }
 
     // ========================================
-    // PROTECTED ROUTES — Full auth + onboarding + subscription check
+    // PROTECTED ROUTES — Auth + onboarding check only
+    // NO BILLING REDIRECTS - pages show their own gates
     // ========================================
 
     // No session → redirect to login
     if (!user) {
       if (!redirectedRef.current) {
         redirectedRef.current = true;
+        console.log("[OnboardingGuard] REDIRECT: no session → /auth/login");
         router.replace(`/auth/login?redirect=${encodeURIComponent(pathname)}`);
       }
       return;
     }
 
-    // No org → create one automatically, then redirect to onboarding
+    // No org → redirect to onboarding
     if (!orgs || orgs.length === 0) {
-      createOrgAndRedirect();
+      if (!redirectedRef.current) {
+        redirectedRef.current = true;
+        console.log("[OnboardingGuard] REDIRECT: no org → /onboarding/ai-wizard");
+        router.replace("/onboarding/ai-wizard");
+      }
       return;
     }
 
@@ -226,85 +206,20 @@ export default function OnboardingGuard({ children }) {
     if (activeOrg?.onboarding_completed !== true) {
       if (!redirectedRef.current) {
         redirectedRef.current = true;
+        console.log("[OnboardingGuard] REDIRECT: onboarding incomplete → /onboarding/ai-wizard");
         router.replace("/onboarding/ai-wizard");
       }
       return;
     }
 
-    // Onboarding complete → check subscription status via API
-    if (!accessStatus && !checkingAccess) {
-      checkAccessStatus().then((result) => {
-        if (!result) return;
+    // ========================================
+    // ONBOARDING COMPLETE → ALLOW
+    // Page will render its own billing gate if needed
+    // NO BILLING REDIRECTS FROM THIS GUARD
+    // ========================================
+    setChecked(true);
 
-        // Handle access check result
-        if (result.status === "BLOCK_PAYWALL" && result.redirect) {
-          if (!redirectedRef.current) {
-            redirectedRef.current = true;
-            router.replace(result.redirect);
-          }
-        } else if (result.status === "ALLOW") {
-          setChecked(true);
-        }
-      });
-      return;
-    }
-
-    // If access check complete and allowed, show content
-    if (accessStatus?.status === "ALLOW") {
-      setChecked(true);
-      return;
-    }
-
-    // If access check complete and blocked, redirect already happened
-    if (accessStatus?.status === "BLOCK_PAYWALL") {
-      return;
-    }
-
-    // Default: still checking
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [userInitializing, orgLoading, user, activeOrgId, activeOrg, orgs, router.pathname, creatingOrg, accessStatus, checkingAccess]);
-
-  // Auto-create org for users who don't have one
-  async function createOrgAndRedirect() {
-    if (creatingOrg) return;
-    setCreatingOrg(true);
-
-    try {
-      const token = localStorage.getItem("supabase_token") || "";
-
-      const res = await fetch("/api/orgs/create", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          ...(token ? { Authorization: `Bearer ${token}` } : {}),
-        },
-      });
-
-      const json = await res.json();
-
-      if (json.ok && json.org) {
-        // Activate the new org
-        setActiveOrg(json.org);
-
-        // Store org info
-        if (json.org.external_uuid) {
-          localStorage.setItem("verivo:activeOrgUuid", json.org.external_uuid);
-        }
-        if (json.org.id) {
-          localStorage.setItem("verivo:activeOrgId", String(json.org.id));
-        }
-      }
-
-      // Redirect to onboarding
-      router.replace("/onboarding/ai-wizard");
-    } catch (err) {
-      console.error("[OnboardingGuard] Failed to create org:", err);
-      // Still redirect to onboarding - it will handle the error
-      router.replace("/onboarding/ai-wizard");
-    } finally {
-      setCreatingOrg(false);
-    }
-  }
+  }, [userInitializing, orgLoading, user, activeOrgId, activeOrg, orgs, router.pathname, router]);
 
   // Show nothing while checking (prevents flash)
   if (!checked && !isAuthPath(router.pathname) && !isPublicPath(router.pathname)) {

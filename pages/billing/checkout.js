@@ -1,11 +1,18 @@
 // pages/billing/checkout.js
 // ============================================================
 // BILLING CHECKOUT PAGE — Redirects to Stripe Checkout
-// - Requires auth (redirects to login if not authenticated)
-// - Calls /api/billing/create-checkout
-// - Redirects to Stripe checkout URL
-// - Shows error + "Try Again" on failure
-// - NEVER redirects to /dashboard or /onboarding
+//
+// HARD INVARIANTS (per mandate):
+// ❌ NEVER redirects to /dashboard
+// ❌ NEVER redirects to /onboarding
+// ❌ NO hook redirects
+// ✅ Only runs when user clicks a button (not auto-triggered)
+// ✅ Stripe customer creation is idempotent (handled by API)
+// ✅ Only redirects: login (no session) OR Stripe (checkout created)
+//
+// FLOW:
+// 1. No session → /auth/login
+// 2. Has session → create checkout → redirect to Stripe
 // ============================================================
 
 import { useEffect, useState, useRef } from "react";
